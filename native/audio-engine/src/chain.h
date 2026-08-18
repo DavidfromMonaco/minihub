@@ -54,9 +54,21 @@ public:
     // Lock-free MIDI injection (control thread -> audio callback).
     void pushMidi(const juce::MidiBuffer& buffer);
     void pullMidi(juce::MidiBuffer& dest, int numSamples);
+    /** Drop every queued event without emitting it (audio thread). */
+    void discardQueuedMidi();
 
     bool midiEnabled() const { return midiEnabled_.load(std::memory_order_relaxed); }
-    void setMidiEnabled(bool b) { midiEnabled_.store(b, std::memory_order_relaxed); }
+    void setMidiEnabled(bool b);
+
+    /**
+     * Ask the audio thread to silence every held note on the next block.
+     *
+     * Losing the MIDI route (cable pulled, node deleted, device unplugged)
+     * means the matching Note Offs will never arrive, so the instrument would
+     * hold those notes forever. Safe to call from the message thread; the
+     * messages themselves are emitted inside the callback.
+     */
+    void panic();
     bool outputEnabled() const { return outputEnabled_.load(std::memory_order_relaxed); }
     void setOutputEnabled(bool b) { outputEnabled_.store(b, std::memory_order_relaxed); }
 
@@ -70,6 +82,7 @@ private:
     mutable juce::SpinLock lock_;
     std::atomic<bool> midiEnabled_{false};
     std::atomic<bool> outputEnabled_{false};
+    std::atomic<bool> panicPending_{false};
 
     // Reused across blocks so the audio callback never allocates a MidiBuffer.
     static constexpr int kMidiScratchBytes = 8192;

@@ -80,6 +80,20 @@ std::vector<PluginInstance*> Chain::copyPlugins() const
     return out;
 }
 
+void Chain::setMidiEnabled(bool b)
+{
+    const bool was = midiEnabled_.exchange(b, std::memory_order_relaxed);
+    // Losing the route means every Note Off that would have followed is now
+    // never going to arrive: silence what is currently held.
+    if (was && !b)
+        panic();
+}
+
+void Chain::panic()
+{
+    panicPending_.store(true, std::memory_order_relaxed);
+}
+
 void Chain::pushMidi(const juce::MidiBuffer& buffer)
 {
     for (const auto& meta : buffer)
@@ -101,6 +115,13 @@ void Chain::pushMidi(const juce::MidiBuffer& buffer)
         std::memcpy(ev.bytes, msg.getRawData(), static_cast<size_t>(n));
         midiFifo_.finishedWrite(1);
     }
+}
+
+void Chain::discardQueuedMidi()
+{
+    const int available = midiFifo_.getNumReady();
+    if (available > 0)
+        midiFifo_.finishedRead(available);
 }
 
 void Chain::pullMidi(juce::MidiBuffer& dest, int numSamples)
@@ -148,9 +169,23 @@ void Chain::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& mid
     if (!sl.isLocked())
         return;
 
+    if (panicPending_.exchange(false, std::memory_order_relaxed))
+    {
+        // Drop anything still queued (those notes belong to a route that no
+        // longer exists) and silence the instruments. MidiMessage stores three
+        // bytes inline and the buffer is pre-sized, so this does not allocate.
+        discardQueuedMidi();
+        for (int channel = 1; channel <= 16; ++channel)
+        {
+            midi.addEvent(juce::MidiMessage::allNotesOff(channel), 0);
+            midi.addEvent(juce::MidiMessage::allSoundOff(channel), 0);
+        }
+    }
     // Only pull MIDI into chains that are MIDI-connected in the Hub graph.
-    if (midiEnabled())
+    else if (midiEnabled())
+    {
         pullMidi(midi, buffer.getNumSamples());
+    }
 
     // MIDI is consumed by the first instrument in the chain; subsequent
     // instruments (if any) receive no MIDI. Effects before the first

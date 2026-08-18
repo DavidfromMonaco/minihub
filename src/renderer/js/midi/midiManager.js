@@ -15,6 +15,8 @@ import { isMiniLabName, miniLabScore } from './minilab.js';
  *   midi:state     { state: 'unavailable'|'ready'|'error', error? }
  *   midi:ports     { inputs: [...], outputs: [...] }
  *   midi:message   normalized message (only from the selected input)
+ *   midi:panic     the selected input went away or changed while it may have
+ *                  held notes down - everything downstream must be silenced
  *   midi:noteon / midi:noteoff / midi:cc / midi:pitchbend / ...
  */
 export class MidiManager {
@@ -74,9 +76,12 @@ export class MidiManager {
       this.outputs.set(port.id, this._portInfo(port));
     });
 
-    // If the selected input disappeared, clear the selection.
+    // If the selected input disappeared, clear the selection. Any note it was
+    // holding will never get its Note Off, so tell everything downstream to
+    // silence itself.
     if (this.selectedInputId && !this.inputs.has(this.selectedInputId)) {
       this.selectedInputId = null;
+      this.events.emit('midi:panic', { reason: 'input-disconnected' });
     }
     if (this.selectedOutputId && !this.outputs.has(this.selectedOutputId)) {
       this.selectedOutputId = null;
@@ -141,7 +146,13 @@ export class MidiManager {
 
   selectInput(id) {
     if (id !== null && !this.inputs.has(id)) return false;
+    const previous = this.selectedInputId;
     this.selectedInputId = id;
+    // Switching away from a device that may be holding notes leaves them
+    // stuck downstream, because its Note Offs are now filtered out.
+    if (previous && previous !== id) {
+      this.events.emit('midi:panic', { reason: 'input-changed' });
+    }
     return true;
   }
 

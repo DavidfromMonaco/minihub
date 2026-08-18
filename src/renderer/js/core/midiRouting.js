@@ -13,8 +13,31 @@
  */
 const NODE_ID = 'minilab-3';
 
+/** CC 123 (All Notes Off) then CC 120 (All Sound Off), for one channel. */
+function panicMessages(channel) {
+  const status = 0xb0 | (channel - 1);
+  return [
+    { type: 'cc', channel, controller: 123, value: 0, raw: [status, 123, 0] },
+    { type: 'cc', channel, controller: 120, value: 0, raw: [status, 120, 0] }
+  ];
+}
+
 export function setupMidiRouting(hub) {
-  return hub.events.on('midi:message', (msg) => {
+  const offMessage = hub.events.on('midi:message', (msg) => {
     hub.graph.emitData(NODE_ID, 'midi-out', msg);
   });
+
+  // The controller vanished (or the user switched inputs) while notes were
+  // held: the matching Note Offs are never coming. Push an explicit panic
+  // through the same route the notes took, so only actually-connected chains
+  // are affected. Channel is not tracked, so all 16 are silenced.
+  const offPanic = hub.events.on('midi:panic', () => {
+    for (let channel = 1; channel <= 16; channel += 1) {
+      for (const msg of panicMessages(channel)) {
+        hub.graph.emitData(NODE_ID, 'midi-out', msg);
+      }
+    }
+  });
+
+  return () => { offMessage(); offPanic(); };
 }
