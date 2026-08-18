@@ -1,0 +1,11 @@
+node_modules/
+dist/
+out/
+*.log
+
+# Native audio engine build artifacts
+native/audio-engine/build/
+
+# Vendored JUCE SDK (126 MB) - fetch/extract it locally, never commit it.
+native/third_party/JUCE/
+native/third_party/*.zip

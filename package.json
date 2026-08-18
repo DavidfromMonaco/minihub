@@ -1,0 +1,15 @@
+{
+  "name": "minilab-hub",
+  "version": "0.1.0",
+  "description": "Desktop HUB application for the Arturia MiniLab 3 MIDI controller",
+  "main": "src/main/main.js",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test \"test/*.test.mjs\""
+  },
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^43.4.0"
+  }
+}

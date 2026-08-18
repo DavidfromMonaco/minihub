@@ -1,0 +1,1111 @@
+:root {
+  /* Surfaces */
+  --bg: #191b1e;
+  --bg-raised: #1f2226;
+  --bg-panel: #23262b;
+  --bg-hover: #2a2e34;
+  --bg-active: #30353c;
+  --sidebar-bg: #1c1f23;
+
+  /* Borders */
+  --border: #2e3238;
+  --border-strong: #3a3f46;
+
+  /* Text */
+  --text: #e6e8eb;
+  --text-dim: #9aa1a9;
+  --text-faint: #6b727a;
+
+  /* Accent */
+  --accent: #4f8cff;
+  --accent-dim: #2f5fbf;
+  --accent-soft: rgba(79, 140, 255, 0.14);
+
+  /* Status */
+  --ok: #3ecf7e;
+  --warn: #e0b04c;
+  --danger: #e05a5a;
+
+  /* Routing port types (color is secondary to shape/label) */
+  --midi: #4f8cff;
+  --audio: #e0b04c;
+  --control: #c77dff;
+
+  /* Node type accents (defined centrally; change in one place) */
+  --accent-vst: #e08a3c; /* orange */
+  --accent-video: #3fb6c9; /* cyan/teal */
+  --accent-image: #7ec96b; /* green */
+  --accent-sequencer: #a78bfa; /* soft violet */
+
+  /* Internal VST plugin role accents (mirror vstChain.js VST_ROLES) */
+  --vst-role-instrument: #f5c451;
+  --vst-role-audio-effect: #ef6a5b;
+  --vst-role-midi-effect: #a78bfa;
+  --vst-role-utility: #48b8cc;
+  --vst-role-unknown: #94a3b8;
+
+  --radius: 8px;
+  --radius-sm: 6px;
+  --font: -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --mono: "SF Mono", "Cascadia Code", Consolas, "Roboto Mono", monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 13px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  user-select: none;
+}
+
+/* ---------- Header ---------- */
+.app-header {
+  height: 48px;
+  flex: 0 0 48px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 0 16px;
+  background: var(--bg-raised);
+  border-bottom: 1px solid var(--border);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+}
+
+.brand-mark {
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  background: linear-gradient(135deg, var(--accent), #7aa5ff);
+}
+
+.header-center {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+}
+
+.device-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  color: var(--text-dim);
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.device-status::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-faint);
+}
+
+.device-status.ok {
+  color: var(--ok);
+  border-color: rgba(62, 207, 126, 0.35);
+}
+.device-status.ok::before {
+  background: var(--ok);
+  box-shadow: 0 0 6px rgba(62, 207, 126, 0.7);
+}
+
+.device-status.idle::before {
+  background: var(--text-faint);
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.icon-button {
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+.icon-button:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+  border-color: var(--border);
+}
+.icon-button:active {
+  background: var(--bg-active);
+}
+
+/* ---------- Body layout ---------- */
+.app-body {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+/* ---------- Sidebar ---------- */
+.sidebar {
+  width: 220px;
+  flex: 0 0 220px;
+  background: var(--sidebar-bg);
+  border-right: 1px solid var(--border);
+  padding: 12px 10px;
+  overflow-y: auto;
+}
+
+.sidebar-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-faint);
+  padding: 8px 10px 6px;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  margin-bottom: 2px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.nav-item:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.nav-item.active {
+  background: var(--accent-soft);
+  color: var(--text);
+  border-color: rgba(79, 140, 255, 0.25);
+}
+
+.nav-icon {
+  display: inline-flex;
+  width: 18px;
+  height: 18px;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-faint);
+}
+
+.nav-item.active .nav-icon {
+  color: var(--accent);
+}
+
+/* ---------- Content ---------- */
+.content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px 22px;
+}
+
+/* ---------- Panels / cards ---------- */
+.panel {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+}
+
+.panel + .panel {
+  margin-top: 16px;
+}
+
+.panel-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-faint);
+  margin: 0 0 12px;
+}
+
+.grid {
+  display: grid;
+  gap: 16px;
+}
+
+.grid-2 {
+  grid-template-columns: 1fr 1fr;
+}
+
+/* ---------- Typography helpers ---------- */
+.muted {
+  color: var(--text-dim);
+}
+.faint {
+  color: var(--text-faint);
+}
+.mono {
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+/* ---------- Buttons ---------- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  background: var(--bg-raised);
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+}
+.btn:hover {
+  background: var(--bg-hover);
+}
+.btn:active {
+  background: var(--bg-active);
+}
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.btn.primary {
+  background: var(--accent-dim);
+  border-color: var(--accent-dim);
+  color: #fff;
+}
+.btn.primary:hover {
+  background: var(--accent);
+}
+
+/* ---------- Selects ---------- */
+.select {
+  width: 100%;
+  padding: 7px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  background: var(--bg-raised);
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+}
+.select:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.select:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.field label {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+/* ---------- Status pills ---------- */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-dim);
+}
+.pill::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-faint);
+}
+.pill.ok {
+  color: var(--ok);
+  border-color: rgba(62, 207, 126, 0.35);
+}
+.pill.ok::before {
+  background: var(--ok);
+}
+.pill.warn {
+  color: var(--warn);
+  border-color: rgba(224, 176, 76, 0.35);
+}
+.pill.warn::before {
+  background: var(--warn);
+}
+.pill.off {
+  color: var(--text-faint);
+}
+
+/* ---------- Keyboard ---------- */
+.keyboard {
+  display: flex;
+  gap: 2px;
+  align-items: stretch;
+  height: 96px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-raised);
+  overflow: hidden;
+}
+
+.key {
+  flex: 1;
+  position: relative;
+  border-radius: 3px;
+  background: #eef0f2;
+  border: 1px solid #c8ccd1;
+  transition: background 80ms ease, box-shadow 80ms ease;
+}
+
+.key.black {
+  background: #23262b;
+  border-color: #0f1113;
+}
+
+.key.on {
+  background: var(--accent);
+  border-color: var(--accent);
+  box-shadow: 0 0 10px rgba(79, 140, 255, 0.6);
+}
+
+.key.black.on {
+  background: #7aa5ff;
+  border-color: #7aa5ff;
+}
+
+/* ---------- MIDI monitor ---------- */
+.monitor {
+  height: 220px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-raised);
+  padding: 6px 0;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.monitor-row {
+  display: flex;
+  gap: 10px;
+  padding: 2px 12px;
+  white-space: nowrap;
+}
+.monitor-row .time {
+  color: var(--text-faint);
+}
+.monitor-row .ch {
+  color: var(--accent);
+  width: 34px;
+}
+.monitor-row .type {
+  color: var(--text-dim);
+  width: 90px;
+}
+.monitor-row .data {
+  color: var(--text);
+}
+.monitor-row.fresh {
+  background: var(--accent-soft);
+}
+
+/* ---------- Last event ---------- */
+.last-event {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.last-event .big {
+  font-size: 22px;
+  font-weight: 600;
+  font-family: var(--mono);
+}
+.last-event .sub {
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+/* ---------- Modal ---------- */
+.modal-root {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 100;
+}
+.modal-root.hidden {
+  display: none;
+}
+.modal {
+  width: 440px;
+  max-width: 90vw;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  padding: 20px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+}
+.modal h2 {
+  margin: 0 0 4px;
+  font-size: 16px;
+}
+.modal .modal-sub {
+  color: var(--text-dim);
+  margin-bottom: 16px;
+}
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 20px;
+}
+.modal .kv {
+  display: flex;
+  justify-content: space-between;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+.modal .kv .k {
+  color: var(--text-dim);
+}
+.modal .kv .v {
+  font-family: var(--mono);
+}
+
+/* ---------- Misc ---------- */
+.row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.spacer {
+  flex: 1;
+}
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.stat .stat-label {
+  font-size: 11px;
+  color: var(--text-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.stat .stat-value {
+  font-size: 14px;
+  font-weight: 600;
+}
+.stat .stat-value.mono {
+  font-weight: 500;
+}
+
+/* ---------- Utility spacing / typography ---------- */
+.m-0 { margin: 0; }
+.mb-6 { margin-bottom: 6px; }
+.mb-16 { margin-bottom: 16px; }
+.mt-10 { margin-top: 10px; }
+.mt-12 { margin-top: 12px; }
+.mt-14 { margin-top: 14px; }
+.mt-16 { margin-top: 16px; }
+
+.page-title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+/* ---------- Timing compensation ---------- */
+.range {
+  flex: 1;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.range:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.offset-value {
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 600;
+  min-width: 64px;
+  text-align: right;
+}
+.offset-hint {
+  font-size: 11px;
+  color: var(--text-faint);
+  margin: 0;
+}
+
+/* ===================== Routing / Patch Bay ===================== */
+.routing-host {
+  padding: 0 !important;
+  overflow: hidden;
+  display: flex;
+}
+
+.routing-view {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.routing-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 16px;
+  background: var(--bg-raised);
+  border-bottom: 1px solid var(--border);
+  flex: 0 0 auto;
+}
+
+.routing-title {
+  font-weight: 600;
+  letter-spacing: 0.2px;
+}
+
+.routing-hint {
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
+.legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.jack-dot {
+  width: 9px;
+  height: 9px;
+  display: inline-block;
+}
+.jack-dot.square {
+  border-radius: 2px;
+  background: var(--midi);
+}
+.jack-dot.circle {
+  border-radius: 50%;
+  background: var(--audio);
+}
+.jack-dot.triangle {
+  width: 0;
+  height: 0;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-bottom: 9px solid var(--control);
+  background: transparent;
+}
+
+.routing-canvas {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  background: var(--bg);
+}
+
+.routing-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  cursor: default;
+  touch-action: none;
+}
+.routing-svg.panning {
+  cursor: grabbing;
+}
+
+.viewport-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.zoom-readout {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  min-width: 40px;
+  text-align: right;
+}
+
+.btn-sm {
+  padding: 4px 10px;
+  font-size: 12px;
+}
+.btn.danger {
+  background: transparent;
+  border-color: rgba(224, 90, 90, 0.5);
+  color: var(--danger);
+}
+.btn.danger:hover {
+  background: rgba(224, 90, 90, 0.12);
+}
+
+.select-sm {
+  width: auto;
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
+.new-node-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Node type accent dots (sidebar) and pills (editor shell) */
+.nav-accent {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--text-faint);
+  flex: 0 0 auto;
+}
+.nav-item.accent-vst .nav-accent { background: var(--accent-vst); }
+.nav-item.accent-video .nav-accent { background: var(--accent-video); }
+.nav-item.accent-image .nav-accent { background: var(--accent-image); }
+.nav-item.accent-sequencer .nav-accent { background: var(--accent-sequencer); }
+
+.pill.accent-vst { color: var(--accent-vst); border-color: rgba(224, 138, 60, 0.4); }
+.pill.accent-video { color: var(--accent-video); border-color: rgba(63, 182, 201, 0.4); }
+.pill.accent-image { color: var(--accent-image); border-color: rgba(126, 201, 107, 0.4); }
+.pill.accent-sequencer { color: var(--accent-sequencer); border-color: rgba(167, 139, 250, 0.4); }
+
+/* --- VST plugin chain / role cards --- */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.plugin-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-raised);
+}
+.plugin-card + .plugin-card {
+  margin-top: 8px;
+}
+.plugin-role-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--text-faint);
+  flex: 0 0 auto;
+}
+.plugin-card.role-instrument .plugin-role-dot { background: var(--vst-role-instrument); }
+.plugin-card.role-audio-effect .plugin-role-dot { background: var(--vst-role-audio-effect); }
+.plugin-card.role-midi-effect .plugin-role-dot { background: var(--vst-role-midi-effect); }
+.plugin-card.role-utility .plugin-role-dot { background: var(--vst-role-utility); }
+.plugin-card.role-unknown .plugin-role-dot { background: var(--vst-role-unknown); }
+
+.plugin-name {
+  font-weight: 600;
+}
+.plugin-role-badge {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+}
+.plugin-role-label {
+  font-size: 11px;
+  color: var(--text-faint);
+}
+.plugin-card.role-instrument .plugin-role-badge { color: var(--vst-role-instrument); border-color: rgba(245, 196, 81, 0.4); }
+.plugin-card.role-audio-effect .plugin-role-badge { color: var(--vst-role-audio-effect); border-color: rgba(239, 106, 91, 0.4); }
+.plugin-card.role-midi-effect .plugin-role-badge { color: var(--vst-role-midi-effect); border-color: rgba(167, 139, 250, 0.4); }
+.plugin-card.role-utility .plugin-role-badge { color: var(--vst-role-utility); border-color: rgba(72, 184, 204, 0.4); }
+.plugin-card.role-unknown .plugin-role-badge { color: var(--vst-role-unknown); border-color: rgba(148, 163, 184, 0.4); }
+
+.plugin-action {
+  margin-left: auto;
+}
+
+.grid-line {
+  stroke: #23272c;
+  stroke-width: 1;
+}
+.grid-line-major {
+  stroke: #2b3036;
+  stroke-width: 1;
+}
+
+/* --- nodes --- */
+.node {
+  cursor: grab;
+}
+.node.dragging {
+  cursor: grabbing;
+}
+
+.node-panel {
+  fill: var(--bg-panel);
+  stroke: var(--border-strong);
+  stroke-width: 1;
+  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.35));
+}
+.node.dragging .node-panel {
+  stroke: var(--accent);
+}
+
+/* Selected node: blue outline on top of the preserved family/type colors. */
+.node.selected .node-panel {
+  stroke: var(--accent);
+  stroke-width: 2;
+  filter: drop-shadow(0 0 5px rgba(79, 140, 255, 0.55)) drop-shadow(0 4px 10px rgba(0, 0, 0, 0.35));
+}
+
+/* Upper identity/content surface: dark, family-tinted (not saturated). */
+.node-identity {
+  fill: var(--bg-panel);
+}
+.node-type-vst .node-identity { fill: color-mix(in srgb, var(--accent-vst) 18%, var(--bg-panel)); }
+.node-type-video .node-identity { fill: color-mix(in srgb, var(--accent-video) 18%, var(--bg-panel)); }
+.node-type-image .node-identity { fill: color-mix(in srgb, var(--accent-image) 18%, var(--bg-panel)); }
+.node-type-sequencer .node-identity { fill: color-mix(in srgb, var(--accent-sequencer) 18%, var(--bg-panel)); }
+.node-native .node-identity { fill: color-mix(in srgb, var(--accent) 18%, var(--bg-panel)); }
+
+/* Lower I/O dock: dark/neutral, holds the routing ports. */
+.node-dock {
+  fill: var(--bg);
+}
+.node-dock-divider {
+  fill: var(--border);
+}
+
+/* Strong family accent bar at the top of the identity area. */
+.node-accent {
+  fill: var(--text-faint);
+}
+.node-type-vst .node-accent { fill: var(--accent-vst); }
+.node-type-video .node-accent { fill: var(--accent-video); }
+.node-type-image .node-accent { fill: var(--accent-image); }
+.node-type-sequencer .node-accent { fill: var(--accent-sequencer); }
+.node-native .node-accent { fill: var(--accent); }
+
+.node-title {
+  fill: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+  font-family: var(--font);
+}
+
+.node-subtitle {
+  fill: var(--text-dim);
+  font-size: 10px;
+  font-family: var(--font);
+}
+
+/* --- node badges (family + type) --- */
+.node-badge-bg {
+  fill: var(--bg-raised);
+  stroke: var(--border-strong);
+  stroke-width: 1;
+}
+.node-badge-text {
+  fill: var(--text);
+  font-size: 9px;
+  font-weight: 700;
+  font-family: var(--mono);
+  letter-spacing: 0.04em;
+}
+
+/* Family badge: carries the centralized family color. */
+.node-type-vst .node-badge.family .node-badge-bg { fill: color-mix(in srgb, var(--accent-vst) 26%, var(--bg-panel)); stroke: var(--accent-vst); }
+.node-type-vst .node-badge.family .node-badge-text { fill: var(--accent-vst); }
+.node-type-video .node-badge.family .node-badge-bg { fill: color-mix(in srgb, var(--accent-video) 26%, var(--bg-panel)); stroke: var(--accent-video); }
+.node-type-video .node-badge.family .node-badge-text { fill: var(--accent-video); }
+.node-type-image .node-badge.family .node-badge-bg { fill: color-mix(in srgb, var(--accent-image) 26%, var(--bg-panel)); stroke: var(--accent-image); }
+.node-type-image .node-badge.family .node-badge-text { fill: var(--accent-image); }
+.node-type-sequencer .node-badge.family .node-badge-bg { fill: color-mix(in srgb, var(--accent-sequencer) 26%, var(--bg-panel)); stroke: var(--accent-sequencer); }
+.node-type-sequencer .node-badge.family .node-badge-text { fill: var(--accent-sequencer); }
+
+/* Type badge: EMPTY is neutral; VST roles use the centralized role colors. */
+.node-badge.type.empty .node-badge-bg { fill: var(--bg-panel); stroke: var(--text-faint); }
+.node-badge.type.empty .node-badge-text { fill: var(--text-dim); }
+.node-badge.type.role-instrument .node-badge-bg { fill: color-mix(in srgb, var(--vst-role-instrument) 26%, var(--bg-panel)); stroke: var(--vst-role-instrument); }
+.node-badge.type.role-instrument .node-badge-text { fill: var(--vst-role-instrument); }
+.node-badge.type.role-audio-effect .node-badge-bg { fill: color-mix(in srgb, var(--vst-role-audio-effect) 26%, var(--bg-panel)); stroke: var(--vst-role-audio-effect); }
+.node-badge.type.role-audio-effect .node-badge-text { fill: var(--vst-role-audio-effect); }
+.node-badge.type.role-midi-effect .node-badge-bg { fill: color-mix(in srgb, var(--vst-role-midi-effect) 26%, var(--bg-panel)); stroke: var(--vst-role-midi-effect); }
+.node-badge.type.role-midi-effect .node-badge-text { fill: var(--vst-role-midi-effect); }
+.node-badge.type.role-utility .node-badge-bg { fill: color-mix(in srgb, var(--vst-role-utility) 26%, var(--bg-panel)); stroke: var(--vst-role-utility); }
+.node-badge.type.role-utility .node-badge-text { fill: var(--vst-role-utility); }
+.node-badge.type.mixed .node-badge-bg { fill: color-mix(in srgb, var(--vst-role-unknown) 26%, var(--bg-panel)); stroke: var(--vst-role-unknown); }
+.node-badge.type.mixed .node-badge-text { fill: var(--vst-role-unknown); }
+
+/* --- ports / jacks --- */
+.port {
+  cursor: crosshair;
+}
+
+.jack {
+  fill: var(--bg);
+  stroke: var(--text-faint);
+  stroke-width: 1.6;
+}
+
+.type-midi .jack {
+  stroke: var(--midi);
+}
+.type-audio .jack {
+  stroke: var(--audio);
+}
+.type-control .jack {
+  stroke: var(--control);
+}
+
+.port:hover .jack {
+  stroke-width: 2.4;
+  filter: drop-shadow(0 0 4px currentColor);
+}
+.port.active .jack {
+  stroke: var(--text);
+  stroke-width: 2.6;
+}
+.port.reject .jack {
+  stroke: var(--danger);
+  stroke-width: 2.6;
+}
+
+.port-label {
+  fill: var(--text-dim);
+  font-size: 10px;
+  font-family: var(--font);
+}
+.port:hover .port-label {
+  fill: var(--text);
+}
+
+/* --- cables --- */
+.cable {
+  fill: none;
+  stroke: var(--text-faint);
+  stroke-width: 2;
+  stroke-linecap: round;
+  opacity: 0.85;
+  cursor: pointer;
+}
+.cable:hover {
+  stroke: var(--text-dim);
+  opacity: 1;
+}
+.cable.selected {
+  stroke: var(--accent);
+  stroke-width: 2.6;
+  opacity: 1;
+}
+.cable.temp {
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-dasharray: 6 4;
+  opacity: 1;
+  pointer-events: none;
+  cursor: default;
+}
+.cable.unplugging {
+  opacity: 0.25;
+  stroke-dasharray: 6 4;
+}
+
+/* Wide invisible hit area for cables (visible cable stays thin). */
+.cable-hit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 14;
+  pointer-events: stroke;
+  cursor: pointer;
+}
+
+/* Larger invisible hit area for port jacks (easy to grab input endpoints). */
+.port-hit {
+  fill: transparent;
+  pointer-events: all;
+}
+
+/* --- node context menu --- */
+.routing-host {
+  position: relative;
+}
+.node-context-menu {
+  position: absolute;
+  z-index: 50;
+  min-width: 150px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  padding: 4px;
+}
+.ctx-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 7px 10px;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font-size: 13px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.ctx-item:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+.ctx-item:disabled {
+  color: var(--text-faint);
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+.ctx-separator {
+  height: 1px;
+  background: var(--border);
+  margin: 4px 6px;
+}
+.ctx-submenu {
+  position: relative;
+}
+.ctx-parent {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+.ctx-caret {
+  color: var(--text-faint);
+}
+.ctx-sub {
+  display: none;
+  position: absolute;
+  left: 100%;
+  top: -4px;
+  min-width: 140px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  padding: 4px;
+}
+.ctx-submenu:hover .ctx-sub,
+.ctx-submenu:focus-within .ctx-sub {
+  display: block;
+}
+
+/* --- VST plugin chain status + actions --- */
+.plugin-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.plugin-card .plugin-action {
+  margin-left: 0;
+}
+.plugin-status {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+}
+.plugin-status.status-ready { color: #4ade82; border-color: rgba(74, 222, 128, 0.35); }
+.plugin-status.status-loading { color: var(--vst-role-instrument); border-color: rgba(245, 196, 81, 0.4); }
+.plugin-status.status-error { color: #ef6a5b; border-color: rgba(239, 106, 91, 0.4); }
+.plugin-status.status-bypassed { color: var(--text-faint); border-color: var(--border); }
+
+/* Feedback from the native plugin editor (opened / closed / why it failed). */
+.plugin-editor-note {
+  font-size: 11px;
+  color: var(--text-faint);
+  margin-left: 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 220px;
+}
+
+/* --- Audio Output module --- */
+.ao-error {
+  margin-top: 12px;
+  color: #ef6a5b;
+  font-size: 12px;
+  min-height: 16px;
+}
+.ml-6 {
+  margin-left: 6px;
+}
+.build-stamp {
+  font-size: 11px;
+  letter-spacing: 0.03em;
+}
