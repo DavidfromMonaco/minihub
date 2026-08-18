@@ -21,7 +21,19 @@ pass, so an interrupted session can resume from the last green commit.
 | 4 | Native C++ conservative cleanup + RT safety re-check | done |
 | 5 | MIDI all-notes-off on disconnect / route loss / chain deletion | done |
 | 6 | Dead code, CSS, comments, README, persisted-settings schema | done |
-| 7 | Full regression verification + final report | pending |
+| 7 | Full regression verification + final report | done |
+
+## Final state
+
+- 218 JS tests passing (baseline 183)
+- native Release engine builds clean from scratch, zero warnings
+- app launches twice in a row: handshake, 47 plugins, 9 devices, persisted
+  chain replayed, clean shutdown, no orphan processes, no errors in either log
+- native editor lifecycle re-verified (open / close / reopen / remove / quit)
+- MIDI panic path exercised against a real instrument
+- verified against the real user settings file: legacy install with
+  `counts.vst = 11` and one surviving "VST 1" now produces `vst-012` named
+  "VST 2" (was "VST 11")
 
 ## Rules for this pass
 
