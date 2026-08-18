@@ -173,8 +173,12 @@ class EngineProcess {
       }
     }
     this.child = null;
-    this.state = 'stopped';
-    this._emitState();
+    // `_onExit` already reported `stopped` for an orderly shutdown; only emit
+    // here if the process never reached the exit handler.
+    if (this.state !== 'stopped') {
+      this.state = 'stopped';
+      this._emitState();
+    }
   }
 
   _waitForExit(timeoutMs) {

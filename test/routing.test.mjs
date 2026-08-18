@@ -1,88 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { makeHub } from './helpers.mjs';
+import { makeEl, installDom, fire, fireKey, findClass } from './domShim.mjs';
 
 // ---- DOM shim (only what the routing module touches) ------------------------
-function makeEl(tag) {
-  const el = {
-    tagName: tag.toUpperCase(),
-    nodeType: 1,
-    children: [],
-    attributes: {},
-    dataset: {},
-    _classSet: new Set(),
-    textContent: '',
-    parentNode: null,
-    style: {},
-    _listeners: {}
-  };
-  Object.defineProperty(el, 'classList', {
-    get() {
-      return {
-        add: (c) => el._classSet.add(c),
-        remove: (c) => el._classSet.delete(c),
-        toggle: (c, force) => {
-          if (force === undefined) {
-            if (el._classSet.has(c)) el._classSet.delete(c);
-            else el._classSet.add(c);
-          } else if (force) el._classSet.add(c);
-          else el._classSet.delete(c);
-        },
-        contains: (c) => el._classSet.has(c)
-      };
-    }
-  });
-  Object.defineProperty(el, 'innerHTML', {
-    get() { return ''; },
-    set() { el.children.length = 0; },
-    configurable: true
-  });
-  el.setAttribute = (k, v) => {
-    el.attributes[k] = String(v);
-    if (k === 'id') el.id = String(v);
-    if (k === 'class') el._classSet = new Set(String(v).split(/\s+/).filter(Boolean));
-  };
-  el.getAttribute = (k) => el.attributes[k];
-  el.appendChild = (child) => { child.parentNode = el; el.children.push(child); return child; };
-  el.removeChild = (child) => {
-    const i = el.children.indexOf(child);
-    if (i >= 0) el.children.splice(i, 1);
-    child.parentNode = null;
-  };
-  el.remove = () => { if (el.parentNode) el.parentNode.removeChild(el); };
-  el.addEventListener = (t, fn) => { (el._listeners[t] = el._listeners[t] || new Set()).add(fn); };
-  el.removeEventListener = (t, fn) => { el._listeners[t]?.delete(fn); };
-  el.getBoundingClientRect = () => ({ left: 0, top: 0, width: 800, height: 600, right: 800, bottom: 600 });
-  el.matches = (sel) => {
-    const parts = sel.split('.').filter(Boolean);
-    const tag = parts[0];
-    const classes = parts.slice(1);
-    if (tag && tag.toLowerCase() !== el.tagName.toLowerCase()) return false;
-    return classes.every((c) => el._classSet.has(c));
-  };
-  el.closest = (sel) => {
-    let cur = el;
-    while (cur) {
-      if (cur.matches && cur.matches(sel)) return cur;
-      cur = cur.parentNode;
-    }
-    return null;
-  };
-  el.querySelector = (sel) => {
-    if (sel.startsWith('#')) {
-      const id = sel.slice(1);
-      const stack = [el];
-      while (stack.length) {
-        const n = stack.pop();
-        if (n.id === id) return n;
-        stack.push(...n.children);
-      }
-    }
-    return null;
-  };
-  return el;
-}
-
 function makeContainer() {
   const container = makeEl('div');
   const svg = makeEl('svg');
@@ -93,28 +14,6 @@ function makeContainer() {
     configurable: true
   });
   return { container, svg };
-}
-
-function findClass(root, cls) {
-  const stack = [...root.children];
-  while (stack.length) {
-    const n = stack.pop();
-    if (n._classSet.has(cls)) return n;
-    stack.push(...n.children);
-  }
-  return null;
-}
-
-function installDom() {
-  const docListeners = {};
-  globalThis.document = {
-    createElementNS: (ns, tag) => makeEl(tag),
-    createElement: (tag) => makeEl(tag),
-    elementFromPoint: () => null,
-    addEventListener: (t, fn) => { (docListeners[t] = docListeners[t] || new Set()).add(fn); },
-    removeEventListener: (t, fn) => { docListeners[t]?.delete(fn); }
-  };
-  globalThis.window = { addEventListener: () => {}, removeEventListener: () => {} };
 }
 
 // ---- module + core imports (after DOM globals are set) ---------------------

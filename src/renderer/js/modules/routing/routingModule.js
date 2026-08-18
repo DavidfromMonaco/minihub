@@ -306,6 +306,21 @@ export function createRoutingModule(hub) {
     return Boolean(target.isContentEditable);
   }
 
+  /**
+   * Delete a dynamic node and clear every Patch Bay reference to it.
+   *
+   * `hub.nodes.delete` owns the real teardown (engine chain, graph
+   * connections, layout, module registration, persistence); this only clears
+   * the view state that would otherwise keep pointing at a node that is gone.
+   */
+  function deleteNode(nodeId) {
+    if (!isDeletable(nodeId)) return false;
+    hub.nodes.delete(nodeId);
+    if (selectedNodeId === nodeId) setSelectedNode(null);
+    if (contextNodeId === nodeId) contextNodeId = null;
+    return true;
+  }
+
   /** Select a node (Patch Bay UI state only). Selecting a node clears cable selection. */
   function setSelectedNode(id) {
     selectedNodeId = id;
@@ -464,8 +479,7 @@ export function createRoutingModule(hub) {
     del.classList.add('ctx-item');
     del.textContent = 'Delete Node';
     del.addEventListener('click', () => {
-      hub.nodes.delete(nodeId);
-      if (selectedNodeId === nodeId) setSelectedNode(null);
+      deleteNode(nodeId);
       closeContextMenu();
     });
     menu.appendChild(del);
@@ -868,11 +882,8 @@ export function createRoutingModule(hub) {
       return;
     }
 
-    // Delete the selected node via the existing dynamic-node deletion path.
-    // Native/system nodes are not in hub.nodes, so they are never deleted.
-    if (selectedNodeId && isDeletable(selectedNodeId)) {
-      hub.nodes.delete(selectedNodeId);
-      setSelectedNode(null);
+    // Native/system nodes are not in hub.nodes, so deleteNode ignores them.
+    if (selectedNodeId && deleteNode(selectedNodeId)) {
       e.preventDefault();
     }
   }

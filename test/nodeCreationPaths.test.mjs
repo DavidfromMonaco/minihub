@@ -12,103 +12,7 @@ import { makeHub } from './helpers.mjs';
  * selected.
  */
 
-// ---- DOM shim: only what the routing module touches --------------------------
-
-function makeEl(tag) {
-  const el = {
-    tagName: tag.toUpperCase(),
-    nodeType: 1,
-    children: [],
-    attributes: {},
-    dataset: {},
-    _classSet: new Set(),
-    _listeners: {},
-    textContent: '',
-    parentNode: null,
-    style: {},
-    disabled: false,
-    value: ''
-  };
-  Object.defineProperty(el, 'classList', {
-    get: () => ({
-      add: (...c) => {
-        c.forEach((x) => el._classSet.add(x));
-        if (el._classSet.has('node-context-menu')) globalThis.__lastMenu = el;
-      },
-      remove: (c) => el._classSet.delete(c),
-      toggle: (c, force) => {
-        if (force === undefined) {
-          if (el._classSet.has(c)) el._classSet.delete(c);
-          else el._classSet.add(c);
-        } else if (force) el._classSet.add(c);
-        else el._classSet.delete(c);
-      },
-      contains: (c) => el._classSet.has(c)
-    })
-  });
-  Object.defineProperty(el, 'innerHTML', {
-    get: () => '',
-    set: () => { el.children.length = 0; },
-    configurable: true
-  });
-  el.setAttribute = (k, v) => {
-    el.attributes[k] = String(v);
-    if (k === 'id') el.id = String(v);
-    if (k === 'class') el._classSet = new Set(String(v).split(/\s+/).filter(Boolean));
-  };
-  el.getAttribute = (k) => el.attributes[k];
-  el.appendChild = (c) => { c.parentNode = el; el.children.push(c); return c; };
-  el.removeChild = (c) => {
-    const i = el.children.indexOf(c);
-    if (i >= 0) el.children.splice(i, 1);
-    c.parentNode = null;
-  };
-  el.remove = () => { if (el.parentNode) el.parentNode.removeChild(el); };
-  el.addEventListener = (t, fn) => { (el._listeners[t] = el._listeners[t] || new Set()).add(fn); };
-  el.removeEventListener = (t, fn) => { el._listeners[t]?.delete(fn); };
-  el.setPointerCapture = () => {};
-  el.releasePointerCapture = () => {};
-  el.getBoundingClientRect = () => ({ left: 0, top: 0, width: 800, height: 600, right: 800, bottom: 600 });
-  el.matches = (sel) => (sel.startsWith('.') ? el._classSet.has(sel.slice(1)) : el.tagName.toLowerCase() === sel.toLowerCase());
-  el.closest = (sel) => {
-    let cur = el;
-    while (cur) {
-      if (cur.matches && cur.matches(sel)) return cur;
-      cur = cur.parentNode;
-    }
-    return null;
-  };
-  el.querySelector = (sel) => {
-    if (!sel.startsWith('#')) return null;
-    const id = sel.slice(1);
-    const stack = [el];
-    while (stack.length) {
-      const n = stack.pop();
-      if (n.id === id) return n;
-      stack.push(...n.children);
-    }
-    return null;
-  };
-  return el;
-}
-
-function installDom() {
-  const docListeners = {};
-  const winListeners = {};
-  globalThis.document = {
-    _listeners: docListeners,
-    createElementNS: (ns, tag) => makeEl(tag),
-    createElement: (tag) => makeEl(tag),
-    elementFromPoint: () => null,
-    addEventListener: (t, fn) => { (docListeners[t] = docListeners[t] || new Set()).add(fn); },
-    removeEventListener: (t, fn) => { docListeners[t]?.delete(fn); }
-  };
-  globalThis.window = {
-    _listeners: winListeners,
-    addEventListener: (t, fn) => { (winListeners[t] = winListeners[t] || new Set()).add(fn); },
-    removeEventListener: (t, fn) => { winListeners[t]?.delete(fn); }
-  };
-}
+import { makeEl, installDom, findClass, lastCreatedWithClass } from './domShim.mjs';
 
 installDom();
 const { createRoutingModule } = await import('../src/renderer/js/modules/routing/routingModule.js');
@@ -150,16 +54,6 @@ function setupHub() {
   return hub;
 }
 
-function findClass(root, cls) {
-  const stack = [...root.children];
-  while (stack.length) {
-    const n = stack.pop();
-    if (n._classSet.has(cls)) return n;
-    stack.push(...n.children);
-  }
-  return null;
-}
-
 const nodeEl = (svg, id) =>
   findClass(svg, 'nodes').children.find((c) => c.dataset.nodeId === id);
 
@@ -172,9 +66,7 @@ function fireContextMenu(svg, clientX = 400, clientY = 300) {
 }
 
 function clickMenuLabel(label) {
-  // The menu is appended to document.body in the real DOM; the shim keeps the
-  // created element reachable through the click handlers registered on it.
-  const menu = globalThis.__lastMenu;
+  const menu = lastCreatedWithClass('node-context-menu');
   const stack = [...menu.children];
   while (stack.length) {
     const n = stack.pop();
@@ -186,8 +78,6 @@ function clickMenuLabel(label) {
   }
   return false;
 }
-
-globalThis.document.body = makeEl('body');
 
 // ---- tests ------------------------------------------------------------------
 

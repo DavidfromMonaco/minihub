@@ -4,88 +4,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { makeHub } from './helpers.mjs';
+import { makeEl, installDom, fire, fireKey, findClass } from './domShim.mjs';
 
 // ---- DOM shim (only what the routing module touches) ------------------------
-function makeEl(tag) {
-  const el = {
-    tagName: tag.toUpperCase(),
-    nodeType: 1,
-    children: [],
-    attributes: {},
-    dataset: {},
-    _classSet: new Set(),
-    textContent: '',
-    parentNode: null,
-    style: {},
-    disabled: false,
-    _listeners: {}
-  };
-  Object.defineProperty(el, 'classList', {
-    get() {
-      return {
-        add: (c) => el._classSet.add(c),
-        remove: (c) => el._classSet.delete(c),
-        toggle: (c, force) => {
-          if (force === undefined) {
-            if (el._classSet.has(c)) el._classSet.delete(c);
-            else el._classSet.add(c);
-          } else if (force) el._classSet.add(c);
-          else el._classSet.delete(c);
-        },
-        contains: (c) => el._classSet.has(c)
-      };
-    }
-  });
-  Object.defineProperty(el, 'innerHTML', {
-    get() { return ''; },
-    set() { el.children.length = 0; },
-    configurable: true
-  });
-  el.setAttribute = (k, v) => {
-    el.attributes[k] = String(v);
-    if (k === 'id') el.id = String(v);
-    if (k === 'class') el._classSet = new Set(String(v).split(/\s+/).filter(Boolean));
-  };
-  el.getAttribute = (k) => el.attributes[k];
-  el.appendChild = (child) => { child.parentNode = el; el.children.push(child); return child; };
-  el.removeChild = (child) => {
-    const i = el.children.indexOf(child);
-    if (i >= 0) el.children.splice(i, 1);
-    child.parentNode = null;
-  };
-  el.remove = () => { if (el.parentNode) el.parentNode.removeChild(el); };
-  el.addEventListener = (t, fn) => { (el._listeners[t] = el._listeners[t] || new Set()).add(fn); };
-  el.removeEventListener = (t, fn) => { el._listeners[t]?.delete(fn); };
-  el.setPointerCapture = () => {};
-  el.releasePointerCapture = () => {};
-  el.getBoundingClientRect = () => ({ left: 0, top: 0, width: 800, height: 600, right: 800, bottom: 600 });
-  el.matches = (sel) => {
-    if (sel.startsWith('.')) return el._classSet.has(sel.slice(1));
-    return el.tagName.toLowerCase() === sel.toLowerCase();
-  };
-  el.closest = (sel) => {
-    let cur = el;
-    while (cur) {
-      if (cur.matches && cur.matches(sel)) return cur;
-      cur = cur.parentNode;
-    }
-    return null;
-  };
-  el.querySelector = (sel) => {
-    if (sel.startsWith('#')) {
-      const id = sel.slice(1);
-      const stack = [el];
-      while (stack.length) {
-        const n = stack.pop();
-        if (n.id === id) return n;
-        stack.push(...n.children);
-      }
-    }
-    return null;
-  };
-  return el;
-}
-
 function makeContainer() {
   const container = makeEl('div');
   const svg = makeEl('svg');
@@ -96,34 +17,6 @@ function makeContainer() {
     configurable: true
   });
   return { container, svg };
-}
-
-function findClass(root, cls) {
-  const stack = [...root.children];
-  while (stack.length) {
-    const n = stack.pop();
-    if (n._classSet.has(cls)) return n;
-    stack.push(...n.children);
-  }
-  return null;
-}
-
-function installDom() {
-  const docListeners = {};
-  const winListeners = {};
-  globalThis.document = {
-    _listeners: docListeners,
-    createElementNS: (ns, tag) => makeEl(tag),
-    createElement: (tag) => makeEl(tag),
-    elementFromPoint: () => null,
-    addEventListener: (t, fn) => { (docListeners[t] = docListeners[t] || new Set()).add(fn); },
-    removeEventListener: (t, fn) => { docListeners[t]?.delete(fn); }
-  };
-  globalThis.window = {
-    _listeners: winListeners,
-    addEventListener: (t, fn) => { (winListeners[t] = winListeners[t] || new Set()).add(fn); },
-    removeEventListener: (t, fn) => { winListeners[t]?.delete(fn); }
-  };
 }
 
 installDom();
@@ -140,36 +33,6 @@ const {
 const { fitViewport } = await import('../src/renderer/js/core/viewportMath.js');
 
 // ---- event simulation helpers -------------------------------------------------
-function fire(el, type, init = {}) {
-  const evt = {
-    target: init.target || el,
-    button: init.button ?? 0,
-    clientX: init.clientX ?? 0,
-    clientY: init.clientY ?? 0,
-    pointerId: init.pointerId ?? 1,
-    ctrlKey: init.ctrlKey ?? false,
-    key: init.key,
-    preventDefault() {},
-    stopPropagation() {}
-  };
-  const listeners = el._listeners[type];
-  if (listeners) [...listeners].forEach((fn) => fn(evt));
-  return evt;
-}
-
-function fireKey(key, target, opts = {}) {
-  const evt = {
-    key,
-    target: target || null,
-    ctrlKey: opts.ctrlKey ?? false,
-    metaKey: opts.metaKey ?? false,
-    preventDefault() {}
-  };
-  const listeners = window._listeners['keydown'];
-  if (listeners) [...listeners].forEach((fn) => fn(evt));
-  return evt;
-}
-
 function clickMenuItem(menu, label) {
   const item = [...menu.children].find((c) => c._classSet.has('ctx-item') && c.textContent === label);
   assert.ok(item, `menu item "${label}" present`);

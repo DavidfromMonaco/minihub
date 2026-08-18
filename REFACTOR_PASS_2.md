@@ -16,7 +16,7 @@ pass, so an interrupted session can resume from the last green commit.
 |---|-------|-------|
 | 0 | Baseline: tests, native build, real app launch | done — `6ee0b5e` |
 | 1 | Node identity vs visible naming (lowest free ordinal); creation/copy/paste parity | done |
-| 2 | Single authoritative deletion path; listener/lifecycle consolidation | pending |
+| 2 | Single authoritative deletion path; listener/lifecycle consolidation | done |
 | 3 | Central engine state; remove duplicate IPC and redundant module workarounds | pending |
 | 4 | Native C++ conservative cleanup + RT safety re-check | pending |
 | 5 | MIDI all-notes-off on disconnect / route loss / chain deletion | pending |

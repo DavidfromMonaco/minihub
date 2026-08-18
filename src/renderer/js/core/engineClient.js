@@ -20,10 +20,19 @@ export class EngineClient {
     this.plugins = []; // real VST3 registry
     this._registry = new Map(); // pluginId -> record
     this._unsubs = [];
+    this._ready = null;
     this.diag = (line) => { try { api.diagnosticsLog(line); } catch (e) {} };
   }
 
+  /**
+   * Subscribe to the main process and pick up the current engine state.
+   *
+   * Idempotent: calling it twice used to register a second pair of listeners
+   * and double every engine event. Returns a promise that resolves once the
+   * initial state query has landed, so callers can await a known state.
+   */
   init() {
+    if (this._ready) return this._ready;
     this.diag('renderer: engineClient.init');
     this._unsubs.push(
       this.api.onEngineState((s) => {
@@ -34,12 +43,21 @@ export class EngineClient {
       }),
       this.api.onEngineEvent((msg) => this._onEvent(msg))
     );
-    this.api.engineState().then((s) => {
+    this._ready = this.api.engineState().then((s) => {
       if (s) {
         this.state = s.state;
         this.error = s.error;
       }
+      return this.state;
     });
+    return this._ready;
+  }
+
+  /** Drop every main-process subscription (teardown / tests). */
+  dispose() {
+    this._unsubs.forEach((off) => { if (typeof off === 'function') off(); });
+    this._unsubs = [];
+    this._ready = null;
   }
 
   _onEvent(msg) {

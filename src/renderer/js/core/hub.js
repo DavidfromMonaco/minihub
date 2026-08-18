@@ -27,8 +27,10 @@ export function createHub(api) {
   const diagnostics = createDiagnostics(api);
 
   const hub = { events, settings, midi, graph, engine, diagnostics };
-  hub.modules = new ModuleSystem({ events, settings, midi, graph });
-  hub.nodes = new NodeInstanceManager(hub); // full hub (needs engine for MIDI forwarding)
+  // Both take the real hub: handing ModuleSystem a partial copy meant anything
+  // it later needed (engine, nodes, diagnostics) was silently undefined.
+  hub.modules = new ModuleSystem(hub);
+  hub.nodes = new NodeInstanceManager(hub);
 
   return hub;
 }
