@@ -7,10 +7,15 @@
  * engine knows nothing about — plugins looked loaded but produced no sound and
  * `openEditor` answered `instance-not-found`.
  *
- * Rebuilding is driven by the plugin registry event rather than by engine
- * state, because `createInstance` can only succeed once the engine has scanned
- * and knows the pluginId. Only persisted, reconstructable data is replayed
- * (pluginId, order, bypass, serialized state) — never a native handle.
+ * The rebuild runs as soon as the engine is running. It used to wait for the
+ * plugin registry event, i.e. for a full VST3 scan of every installed plugin -
+ * around twenty seconds - during which the persisted chain existed only in the
+ * UI and nothing could be opened or played. The engine resolves a chain's
+ * plugin from its stable id (an absolute .vst3 path) on demand, so the rebuild
+ * does not need the registry at all.
+ *
+ * Only persisted, reconstructable data is replayed (pluginId, order, bypass,
+ * serialized state) — never a native handle.
  */
 export function setupChainSync(hub, syncRouting) {
   let needsRebuild = true;
@@ -34,16 +39,25 @@ export function setupChainSync(hub, syncRouting) {
     if (typeof syncRouting === 'function') syncRouting();
   };
 
-  hub.events.on('engine:state', (s) => {
-    if (s && s.state !== 'running') needsRebuild = true;
-  });
-
-  hub.events.on('engine:plugins', () => {
+  const maybeRebuild = () => {
     if (!needsRebuild) return;
-    if (!hub.engine.plugins.length) return;
+    if (hub.engine.state !== 'running') return;
     needsRebuild = false;
     rebuild();
+  };
+
+  hub.events.on('engine:state', (s) => {
+    if (s && s.state !== 'running') {
+      needsRebuild = true;
+      return;
+    }
+    maybeRebuild();
   });
 
-  return { rebuild };
+  // Cold start: the renderer usually attaches after the engine is already
+  // running, so no `running` transition is ever observed. init() is idempotent
+  // and resolves with the current state.
+  Promise.resolve(hub.engine.init()).then(maybeRebuild);
+
+  return { rebuild, maybeRebuild };
 }

@@ -19,6 +19,10 @@ export class EngineClient {
     this.devices = []; // real WASAPI output devices from the engine
     this.plugins = []; // real VST3 registry
     this.deviceState = null; // last known { running, device, sampleRate, bufferSize, error }
+    // Runtime chain state as the ENGINE sees it: chainId -> Map(instanceId -> status).
+    // A module opened later must be able to ask what is actually loaded rather
+    // than infer it from events it happened to witness.
+    this.chains = new Map();
     this._registry = new Map(); // pluginId -> record
     this._unsubs = [];
     this._ready = null;
@@ -81,11 +85,22 @@ export class EngineClient {
     this.scanVst3();
   }
 
+  /**
+   * Runtime status of one plugin instance as the engine last reported it:
+   * 'loading' | 'ready' | 'error', or null when the engine has never mentioned
+   * it (which is NOT the same as ready).
+   */
+  getInstanceStatus(chainId, instanceId) {
+    const chain = this.chains.get(chainId);
+    return (chain && chain.get(instanceId)) || null;
+  }
+
   /** The engine went away: everything cached about it is now meaningless. */
   _invalidate() {
     this._refreshed = false;
     this.devices = [];
     this.deviceState = null;
+    this.chains.clear(); // a dead engine holds no instances
     this._setPlugins([]);
     this.events.emit('engine:devices', this.devices);
     this.events.emit('engine:plugins', this.plugins);
@@ -116,12 +131,19 @@ export class EngineClient {
         this.diag(`renderer: plugins event received count=${this.plugins.length}`);
         this.events.emit('engine:plugins', this.plugins);
         break;
-      case 'chainChanged':
+      case 'chainChanged': {
+        const statuses = new Map();
+        for (const inst of msg.instances || []) statuses.set(inst.instanceId, inst.status);
+        this.chains.set(msg.chainId, statuses);
         this.events.emit('engine:chainChanged', msg);
         break;
-      case 'instanceStatus':
+      }
+      case 'instanceStatus': {
+        if (!this.chains.has(msg.chainId)) this.chains.set(msg.chainId, new Map());
+        this.chains.get(msg.chainId).set(msg.instanceId, msg.status);
         this.events.emit('engine:instanceStatus', msg);
         break;
+      }
       case 'editorStatus':
         this.events.emit('engine:editorStatus', msg);
         break;

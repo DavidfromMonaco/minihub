@@ -384,12 +384,14 @@ void Engine::cmdCreateInstance(const juce::var& msg)
         return;
     }
 
+    // `pluginId` is the plugin's absolute .vst3 path, so an instance can be
+    // created without a completed registry scan. Requiring the registry made
+    // every persisted chain unusable for the ~20s a full scan takes: the UI
+    // showed the plugins, the engine had never heard of them, and opening an
+    // editor answered "Unknown instance".
     const PluginRecord* rec = scanner_.find(pluginId);
-    if (rec == nullptr)
-    {
-        sendError("plugin-not-found", "Unknown plugin: " + pluginId);
-        return;
-    }
+    const bool resolved = rec != nullptr;
+    const PluginRecord recCopy = resolved ? *rec : PluginRecord{};
 
     Chain* chain = getOrCreateChain(chainId);
     if (chain == nullptr)
@@ -411,8 +413,6 @@ void Engine::cmdCreateInstance(const juce::var& msg)
         ipc_.send(out);
     }
 
-    // Copy the record so the background thread does not touch the registry.
-    const PluginRecord recCopy = *rec;
     const double sr = currentSampleRate_;
     const int bs = currentBlockSize_;
 
@@ -420,10 +420,42 @@ void Engine::cmdCreateInstance(const juce::var& msg)
     inst->setInstanceId(instanceId);
     auto alive = alive_;
 
-    std::thread([this, alive, chainId, instanceId, recCopy, inst, index, sr, bs]()
+    std::thread([this, alive, chainId, instanceId, pluginId, recCopy, resolved, inst, index, sr, bs]()
     {
         juce::String error;
-        const bool ok = inst->create(recCopy, sr, bs, error);
+        PluginRecord record = recCopy;
+
+        // Not in the registry: resolve this one file directly. Done here, on
+        // the worker thread, so the message thread keeps serving commands.
+        if (!resolved)
+        {
+            const auto found = Vst3Scanner::scanFile(pluginId);
+            if (found.empty())
+            {
+                juce::MessageManager::callAsync([this, alive, chainId, instanceId, pluginId, inst]()
+                {
+                    if (*alive)
+                    {
+                        // Report a definite failure for this instance, not just
+                        // a loose error: a card left waiting for a status that
+                        // never arrives looks like it is still loading forever.
+                        juce::var out = makeObject();
+                        setProp(out, "type", "instanceStatus");
+                        setProp(out, "chainId", chainId);
+                        setProp(out, "instanceId", instanceId);
+                        setProp(out, "status", "error");
+                        setProp(out, "error", "Plugin file not found: " + pluginId);
+                        ipc_.send(out);
+                        sendError("plugin-not-found", "Unknown plugin: " + pluginId);
+                    }
+                    delete inst;
+                });
+                return;
+            }
+            record = found.front();
+        }
+
+        const bool ok = inst->create(record, sr, bs, error);
 
         juce::MessageManager::callAsync([this, alive, chainId, instanceId, inst, ok, error, index]()
         {

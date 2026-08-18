@@ -63,9 +63,17 @@ function renderGenericShell(instance, type) {
     </div>`;
 }
 
+/**
+ * A plugin card shows RUNTIME state, not the persisted model.
+ *
+ * `status` is what the native engine last reported for this instance. When the
+ * engine has never mentioned it there is no live plugin behind the card, and
+ * saying "ready" was an outright lie: it made "Open Plugin" look available
+ * during the whole startup window and produced "Unknown instance" when clicked.
+ */
 function renderPluginCard(plugin, status, editorNote) {
   const role = getVstRole(plugin.role);
-  const st = plugin.bypassed ? 'bypassed' : (status || 'ready');
+  const st = plugin.bypassed ? 'bypassed' : (status || 'pending');
   const note = editorNote ? `<span class="plugin-editor-note">${escapeHtml(editorNote)}</span>` : '';
   return `
     <div class="plugin-card role-${role.id}" data-plugin-id="${escapeHtml(plugin.id)}">
@@ -367,7 +375,16 @@ export class NodeInstanceManager {
       navEntry: { label: instance.name, icon: type.icon, accent: instance.type },
       routingNode: buildRoutingNode(instance, hub),
       mount(container) {
+        // Seed from the engine rather than starting blank: opening this panel
+        // for the second time must show what is actually loaded, not "pending"
+        // for everything just because the events fired while it was unmounted.
         const statusMap = new Map(); // instanceId -> loading|ready|error
+        if (type.id === 'vst') {
+          for (const plugin of (instance.content && instance.content.plugins) || []) {
+            const status = hub.engine.getInstanceStatus(instance.id, plugin.id);
+            if (status) statusMap.set(plugin.id, status);
+          }
+        }
         const editorNotes = new Map(); // instanceId -> last editor feedback line
         const subs = [];
 
@@ -466,6 +483,17 @@ export class NodeInstanceManager {
           if (idx === -1) return;
 
           if (action === 'open') {
+            const status = hub.engine.getInstanceStatus(instance.id, id);
+            if (status !== 'ready') {
+              // No runtime instance yet (engine still starting, plugin still
+              // loading, or it failed). Say so instead of firing a command
+              // that can only come back as "Unknown instance".
+              editorNotes.set(id, status === 'error'
+                ? 'plugin failed to load'
+                : 'still loading — try again in a moment');
+              rerenderChain();
+              return;
+            }
             editorNotes.set(id, 'opening editor…');
             rerenderChain();
             hub.engine.openEditor(instance.id, id);

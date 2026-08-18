@@ -1079,6 +1079,7 @@ body {
 .plugin-status.status-loading { color: var(--vst-role-instrument); border-color: rgba(245, 196, 81, 0.4); }
 .plugin-status.status-error { color: #ef6a5b; border-color: rgba(239, 106, 91, 0.4); }
 .plugin-status.status-bypassed { color: var(--text-faint); border-color: var(--border); }
+.plugin-status.status-pending { color: var(--text-faint); border-color: var(--border); }
 
 /* Feedback from the native plugin editor (opened / closed / why it failed). */
 .plugin-editor-note {
