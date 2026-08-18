@@ -80,12 +80,6 @@ std::vector<PluginInstance*> Chain::copyPlugins() const
     return out;
 }
 
-int Chain::size() const
-{
-    const juce::SpinLock::ScopedLockType sl(lock_);
-    return static_cast<int>(plugins_.size());
-}
-
 void Chain::pushMidi(const juce::MidiBuffer& buffer)
 {
     for (const auto& meta : buffer)
@@ -130,6 +124,9 @@ void Chain::pullMidi(juce::MidiBuffer& dest, int numSamples)
 void Chain::prepareToPlay(double sampleRate, int blockSize)
 {
     const juce::SpinLock::ScopedLockType sl(lock_);
+    // Grow the scratch MIDI buffer here rather than on the first block: a
+    // plugin that emits MIDI would otherwise allocate inside the callback once.
+    emptyMidi_.ensureSize(kMidiScratchBytes);
     for (auto& p : plugins_)
         p->prepareToPlay(sampleRate, blockSize);
 }

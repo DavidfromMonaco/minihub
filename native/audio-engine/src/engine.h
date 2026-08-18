@@ -69,6 +69,18 @@ private:
 
     Chain* getOrCreateChain(const juce::String& chainId);
     Chain* getChain(const juce::String& chainId);
+
+    /** Resolve `chainId` from a command, reporting `chain-not-found`. */
+    Chain* requireChain(const juce::String& chainId);
+    /** Resolve `chainId`+`instanceId`, filling `code`/`message` on failure so
+     *  the caller can report it in whatever shape its response needs. */
+    PluginInstance* lookupInstance(const juce::String& chainId,
+                                   const juce::String& instanceId,
+                                   juce::String& code,
+                                   juce::String& message);
+    /** Resolve `chainId`+`instanceId`, reporting the failure as an error event. */
+    PluginInstance* requireInstance(const juce::String& chainId,
+                                    const juce::String& instanceId);
     void sendPlugins();
     /** Stop the audio callback and close the device. Must run before any chain
      *  or plugin is destroyed. */
@@ -77,10 +89,6 @@ private:
     void sendChainChanged(const juce::String& chainId);
     void sendDeviceState();
     void sendInstanceStatus(const juce::String& chainId, PluginInstance* inst);
-
-    // Find the WASAPI shared low latency device type (preferred), else the
-    // first available output type.
-    juce::AudioIODeviceType* findOutputDeviceType();
 
     static constexpr int kMaxChains = 32;
 

@@ -1,7 +1,6 @@
 #include "engine.h"
 #include "var_util.h"
 
-#include <iostream>
 #include <thread>
 
 namespace mlh {
@@ -147,26 +146,6 @@ void Engine::cmdHello(const juce::var& msg)
     setProp(out, "juceVersion", juce::SystemStats::getJUCEVersion());
     setProp(out, "platform", "win-x64");
     ipc_.send(out);
-}
-
-juce::AudioIODeviceType* Engine::findOutputDeviceType()
-{
-    for (auto* type : deviceManager_.getAvailableDeviceTypes())
-    {
-        type->scanForDevices();
-        if (type->getTypeName() == kWASAPILowLatencyType && type->getDeviceNames(false).size() > 0)
-            return type;
-    }
-    // Fall back to the first type that exposes output devices.
-    for (auto* type : deviceManager_.getAvailableDeviceTypes())
-    {
-        type->scanForDevices();
-        if (type->getDeviceNames(false).size() > 0)
-            return type;
-    }
-    return deviceManager_.getAvailableDeviceTypes().size() > 0
-               ? deviceManager_.getAvailableDeviceTypes()[0]
-               : nullptr;
 }
 
 void Engine::cmdListDevices(const juce::var& msg)
@@ -352,6 +331,46 @@ Chain* Engine::getChain(const juce::String& chainId)
     return it == chains_.end() ? nullptr : it->second.get();
 }
 
+Chain* Engine::requireChain(const juce::String& chainId)
+{
+    Chain* chain = getChain(chainId);
+    if (chain == nullptr)
+        sendError("chain-not-found", "Unknown chain: " + chainId);
+    return chain;
+}
+
+PluginInstance* Engine::lookupInstance(const juce::String& chainId,
+                                       const juce::String& instanceId,
+                                       juce::String& code,
+                                       juce::String& message)
+{
+    Chain* chain = getChain(chainId);
+    if (chain == nullptr)
+    {
+        code = "chain-not-found";
+        message = "Unknown chain: " + chainId;
+        return nullptr;
+    }
+    PluginInstance* inst = chain->find(instanceId);
+    if (inst == nullptr)
+    {
+        code = "instance-not-found";
+        message = "Unknown instance: " + instanceId;
+        return nullptr;
+    }
+    return inst;
+}
+
+PluginInstance* Engine::requireInstance(const juce::String& chainId,
+                                        const juce::String& instanceId)
+{
+    juce::String code, message;
+    PluginInstance* inst = lookupInstance(chainId, instanceId, code, message);
+    if (inst == nullptr)
+        sendError(code, message);
+    return inst;
+}
+
 void Engine::cmdCreateInstance(const juce::var& msg)
 {
     const juce::String chainId = msg["chainId"].toString();
@@ -451,21 +470,13 @@ void Engine::cmdRemoveInstance(const juce::var& msg)
 {
     const juce::String chainId = msg["chainId"].toString();
     const juce::String instanceId = msg["instanceId"].toString();
-    Chain* chain = getChain(chainId);
-    if (chain == nullptr)
-    {
-        sendError("chain-not-found", "Unknown chain: " + chainId);
+    if (requireInstance(chainId, instanceId) == nullptr)
         return;
-    }
 
-    PluginInstance* inst = chain->find(instanceId);
-    if (inst == nullptr)
-    {
-        sendError("instance-not-found", "Unknown instance: " + instanceId);
-        return;
-    }
-    inst->closeEditor();
-    chain->removePlugin(instanceId);
+    // The destructor closes the editor and releases the plugin; removePlugin
+    // holds the chain lock across it so the audio thread is never inside the
+    // plugin while it goes away.
+    getChain(chainId)->removePlugin(instanceId);
     sendChainChanged(chainId);
 }
 
@@ -474,12 +485,9 @@ void Engine::cmdReorderChain(const juce::var& msg)
     const juce::String chainId = msg["chainId"].toString();
     const juce::String instanceId = msg["instanceId"].toString();
     const int toIndex = msg["toIndex"].isInt() ? static_cast<int>(msg["toIndex"]) : 0;
-    Chain* chain = getChain(chainId);
+    Chain* chain = requireChain(chainId);
     if (chain == nullptr)
-    {
-        sendError("chain-not-found", "Unknown chain: " + chainId);
         return;
-    }
     if (!chain->reorderPlugin(instanceId, toIndex))
     {
         sendError("instance-not-found", "Unknown instance: " + instanceId);
@@ -493,12 +501,9 @@ void Engine::cmdSetBypass(const juce::var& msg)
     const juce::String chainId = msg["chainId"].toString();
     const juce::String instanceId = msg["instanceId"].toString();
     const bool bypassed = msg["bypassed"].isBool() ? static_cast<bool>(msg["bypassed"]) : false;
-    Chain* chain = getChain(chainId);
+    Chain* chain = requireChain(chainId);
     if (chain == nullptr)
-    {
-        sendError("chain-not-found", "Unknown chain: " + chainId);
         return;
-    }
     if (!chain->setPluginBypass(instanceId, bypassed))
     {
         sendError("instance-not-found", "Unknown instance: " + instanceId);
@@ -510,12 +515,9 @@ void Engine::cmdSetBypass(const juce::var& msg)
 void Engine::cmdMidi(const juce::var& msg)
 {
     const juce::String chainId = msg["chainId"].toString();
-    Chain* chain = getChain(chainId);
+    Chain* chain = requireChain(chainId);
     if (chain == nullptr)
-    {
-        sendError("chain-not-found", "Unknown chain: " + chainId);
         return;
-    }
     // Only forward MIDI to chains that are MIDI-connected in the Hub graph.
     if (!chain->midiEnabled())
         return;
@@ -571,26 +573,19 @@ void Engine::cmdOpenEditor(const juce::var& msg)
     setProp(out, "chainId", chainId);
     setProp(out, "instanceId", instanceId);
 
-    Chain* chain = getChain(chainId);
-    if (chain == nullptr)
-    {
-        setProp(out, "open", false);
-        setProp(out, "message", "Unknown chain: " + chainId);
-        ipc_.send(out);
-        sendError("chain-not-found", "Unknown chain: " + chainId);
-        return;
-    }
-    PluginInstance* inst = chain->find(instanceId);
+    juce::String code, message;
+    PluginInstance* inst = lookupInstance(chainId, instanceId, code, message);
     if (inst == nullptr)
     {
+        // Always answer the request: a silent failure leaves the UI showing
+        // "opening editor..." forever.
         setProp(out, "open", false);
-        setProp(out, "message", "Unknown plugin instance: " + instanceId);
+        setProp(out, "message", message);
         ipc_.send(out);
-        sendError("instance-not-found", "Unknown instance: " + instanceId);
+        sendError(code, message);
         return;
     }
 
-    juce::String message;
     const bool ok = inst->openEditor(message);
 
     // Report what is actually on screen, not merely that the command ran.
@@ -609,12 +604,10 @@ void Engine::cmdCloseEditor(const juce::var& msg)
 {
     const juce::String chainId = msg["chainId"].toString();
     const juce::String instanceId = msg["instanceId"].toString();
-    Chain* chain = getChain(chainId);
-    if (chain == nullptr)
-        return;
-    PluginInstance* inst = chain->find(instanceId);
+    juce::String code, message;
+    PluginInstance* inst = lookupInstance(chainId, instanceId, code, message);
     if (inst == nullptr)
-        return;
+        return; // closing something that is already gone is not an error
 
     inst->closeEditor();
 
@@ -630,18 +623,10 @@ void Engine::cmdGetState(const juce::var& msg)
 {
     const juce::String chainId = msg["chainId"].toString();
     const juce::String instanceId = msg["instanceId"].toString();
-    Chain* chain = getChain(chainId);
-    if (chain == nullptr)
-    {
-        sendError("chain-not-found", "Unknown chain: " + chainId);
-        return;
-    }
-    PluginInstance* inst = chain->find(instanceId);
+    PluginInstance* inst = requireInstance(chainId, instanceId);
     if (inst == nullptr)
-    {
-        sendError("instance-not-found", "Unknown instance: " + instanceId);
         return;
-    }
+
     juce::var out = makeObject();
     setProp(out, "type", "pluginState");
     setProp(out, "chainId", chainId);
@@ -654,18 +639,10 @@ void Engine::cmdSetState(const juce::var& msg)
 {
     const juce::String chainId = msg["chainId"].toString();
     const juce::String instanceId = msg["instanceId"].toString();
-    Chain* chain = getChain(chainId);
-    if (chain == nullptr)
-    {
-        sendError("chain-not-found", "Unknown chain: " + chainId);
-        return;
-    }
-    PluginInstance* inst = chain->find(instanceId);
+    PluginInstance* inst = requireInstance(chainId, instanceId);
     if (inst == nullptr)
-    {
-        sendError("instance-not-found", "Unknown instance: " + instanceId);
         return;
-    }
+
     juce::String error;
     if (!inst->setState(msg["state"], error))
     {

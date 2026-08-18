@@ -49,9 +49,6 @@ public:
     // ---- message-thread read (takes the lock, allocates) ----
     std::vector<PluginInstance*> copyPlugins() const;
 
-    /** Number of plugins currently in the chain (message thread). */
-    int size() const;
-
     PluginInstance* find(const juce::String& instanceId);
 
     // Lock-free MIDI injection (control thread -> audio callback).
@@ -75,6 +72,7 @@ private:
     std::atomic<bool> outputEnabled_{false};
 
     // Reused across blocks so the audio callback never allocates a MidiBuffer.
+    static constexpr int kMidiScratchBytes = 8192;
     juce::MidiBuffer emptyMidi_;
 
     static constexpr int kMaxPlugins = 16;

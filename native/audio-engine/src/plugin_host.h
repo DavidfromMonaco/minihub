@@ -36,8 +36,6 @@ public:
     /** Process one block. Called from the real-time audio callback only. */
     void processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi);
 
-    juce::AudioPluginInstance* get() const { return plugin_.get(); }
-
     const juce::String& instanceId() const { return instanceId_; }
     const juce::String& pluginId() const { return pluginId_; }
     const juce::String& name() const { return name_; }
