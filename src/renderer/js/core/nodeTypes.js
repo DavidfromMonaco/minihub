@@ -58,6 +58,18 @@ export function getNodeType(id) {
   return NODE_TYPES[id] || null;
 }
 
+/**
+ * User-facing name for a node: the type label plus its display ordinal.
+ *
+ * The ordinal is NOT identity — see `nodeInstances.js`. It is the lowest
+ * positive number free within the node's own type family at creation time, so
+ * deleting nodes frees their numbers for reuse while stable internal IDs
+ * (`vst-011`) are never reused.
+ */
+export function nodeDisplayName(type, ordinal) {
+  return `${type.label} ${ordinal}`;
+}
+
 export function listNodeTypes() {
   return Object.values(NODE_TYPES);
 }

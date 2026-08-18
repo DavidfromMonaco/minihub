@@ -382,25 +382,33 @@ export function createRoutingModule(hub) {
     return pos;
   }
 
-  /** Ctrl+V: paste around the pointer (if over the canvas) or the viewport center. */
-  function pasteAtPointerOrCenter() {
-    if (!clipboard) return;
+  /** World position at the centre of the visible canvas. */
+  function viewportCenterWorld() {
     const r = svgRect();
-    let world;
+    return {
+      x: viewport.x + (r.width / viewport.zoom) / 2,
+      y: viewport.y + (r.height / viewport.zoom) / 2
+    };
+  }
+
+  /** World position under the pointer, or the viewport centre if it is elsewhere. */
+  function pointerWorldOrCenter() {
+    const r = svgRect();
     if (lastPointerClient &&
         lastPointerClient.x >= r.left && lastPointerClient.x <= r.right &&
         lastPointerClient.y >= r.top && lastPointerClient.y <= r.bottom) {
-      world = screenToWorld(viewport, {
+      return screenToWorld(viewport, {
         x: lastPointerClient.x - r.left,
         y: lastPointerClient.y - r.top
       });
-    } else {
-      world = {
-        x: viewport.x + (r.width / viewport.zoom) / 2,
-        y: viewport.y + (r.height / viewport.zoom) / 2
-      };
     }
-    pasteNode(world);
+    return viewportCenterWorld();
+  }
+
+  /** Ctrl+V: paste around the pointer (if over the canvas) or the viewport centre. */
+  function pasteAtPointerOrCenter() {
+    if (!clipboard) return;
+    pasteNode(pointerWorldOrCenter());
   }
 
   // ---------- context menu ----------
@@ -989,8 +997,11 @@ export function createRoutingModule(hub) {
     const newBtn = container.querySelector('#routing-new-node');
     const newType = container.querySelector('#routing-new-type');
     if (newBtn && hub.nodes) {
+      // Same path as the canvas context menu: place it, select it, render.
+      // Calling hub.nodes.create() directly left the node unplaced and
+      // unselected, so "+ New Node" and "right-click > New Node" disagreed.
       newBtn.addEventListener('click', () => {
-        hub.nodes.create(newType ? newType.value : 'vst');
+        createNodeAt(newType ? newType.value : 'vst', viewportCenterWorld());
       });
     }
 

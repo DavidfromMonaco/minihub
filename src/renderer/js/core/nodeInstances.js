@@ -4,16 +4,29 @@
  * Manages user-created node instances (e.g. "VST 1", "Video 1"). Each instance
  * is a thin object:
  *
- *   { id, type, name, content }
+ *   { id, type, ordinal, name, content }
  *
- * `type` is immutable (from the Node Type Registry); `content` is reserved for
- * future loading. For VST nodes, content is the internal plugin chain
- * `{ plugins: [] }` (see vstChain.js); other types keep `content: null` for now.
+ * IDENTITY vs DISPLAY NUMBER - these are deliberately two different things:
  *
- * Instances are persisted separately under the `nodeInstances` settings key
- * (with a per-type monotonic counter so IDs are never reused after deletion).
- * They integrate with the Hub by registering a module (sidebar entry + editor
- * shell) and a routing node in `hub.graph`.
+ *   id       `vst-011`. Stable, unique forever, NEVER reused after a delete.
+ *            Everything that must survive a reload keys off this: routing
+ *            connections, layout, module registration, native engine chains.
+ *   ordinal  `2`, rendered as "VST 2". Display only. A new node takes the
+ *            LOWEST positive number not currently used by a live node of the
+ *            same type, so deleting VST 2..10 makes the next VST "VST 2"
+ *            again - while its id may well be `vst-011`.
+ *
+ * Existing nodes are never renumbered; only new ones fill the holes.
+ * `name` is derived (`type.label + ordinal`) and is not persisted separately.
+ *
+ * `type` is immutable (from the Node Type Registry). For VST nodes, content is
+ * the internal plugin chain `{ plugins: [] }` (see vstChain.js); other types
+ * keep `content: null` for now.
+ *
+ * Instances are persisted under the `nodeInstances` settings key, together with
+ * the per-type monotonic id sequence. They integrate with the Hub by
+ * registering a module (sidebar entry + editor shell) and a routing node in
+ * `hub.graph`.
  *
  * VST nodes now connect their internal plugin chain to the native engine:
  * every chain operation (add / remove / reorder / bypass) is synchronized to
@@ -24,7 +37,7 @@
  * Responsibilities are kept separate: `nodeInstances` owns instances,
  * `graphLayout` owns positions, `graphConnections` owns routing.
  */
-import { getNodeType } from './nodeTypes.js';
+import { getNodeType, nodeDisplayName } from './nodeTypes.js';
 import { GraphLayout } from './graphLayout.js';
 import { VstChain, getVstRole, duplicateVstContent } from './vstChain.js';
 import { escapeHtml } from './html.js';
@@ -143,12 +156,29 @@ function buildRoutingNode(instance, hub) {
   };
 }
 
+/** Fresh default content for a node type (VST nodes own a plugin chain). */
+function defaultContentFor(typeId) {
+  return typeId === 'vst' ? { plugins: [] } : null;
+}
+
+/** An independent deep copy of a node's content, for duplicate/paste. */
+function cloneContentFor(typeId, content) {
+  if (typeId === 'vst') return duplicateVstContent(content);
+  return content ? JSON.parse(JSON.stringify(content)) : null;
+}
+
+/** Numeric suffix of a stable instance id (`vst-011` -> 11), or 0. */
+function idSuffix(id) {
+  const m = /-(\d+)$/.exec(String(id));
+  return m ? Number(m[1]) : 0;
+}
+
 export class NodeInstanceManager {
   constructor(hub) {
     this.hub = hub;
     this.instances = new Map(); // id -> instance
     this.layout = new GraphLayout(hub.settings);
-    this._counts = {}; // type -> last used sequence number (never reused)
+    this._idSeq = {}; // type -> last used ID sequence number (never reused)
   }
 
   list() {
@@ -170,45 +200,118 @@ export class NodeInstanceManager {
   async load() {
     const data = this.hub.settings.get(KEY);
     const stored = data && Array.isArray(data.instances) ? data.instances : [];
-    const counts = data && data.counts && typeof data.counts === 'object' ? data.counts : {};
-    this._counts = { ...counts };
-    for (const inst of stored) {
-      if (!getNodeType(inst.type)) continue;
-      let content = inst.content ?? null;
-      if (inst.type === 'vst') {
-        const plugins = content && Array.isArray(content.plugins) ? content.plugins : [];
-        content = { plugins };
-      }
-      const instance = { id: inst.id, type: inst.type, name: inst.name, content };
+    // `counts` is the pre-ordinal key name; still read so existing installs
+    // keep their ID sequence and never regenerate an id that is already taken.
+    const seq = (data && (data.idSeq || data.counts)) || {};
+    this._idSeq = typeof seq === 'object' ? { ...seq } : {};
+
+    for (const entry of stored) {
+      const type = getNodeType(entry.type);
+      if (!type) continue;
+      const content = entry.type === 'vst'
+        ? { plugins: (entry.content && Array.isArray(entry.content.plugins)) ? entry.content.plugins : [] }
+        : (entry.content ?? null);
+
+      const instance = {
+        id: entry.id,
+        type: entry.type,
+        ordinal: this._restoreOrdinal(entry, type),
+        content
+      };
+      instance.name = nodeDisplayName(type, instance.ordinal);
+
+      // Defensive: if the persisted sequence is missing or behind the ids
+      // actually in use, a new node would collide with an existing one and
+      // module registration would throw. Keep the sequence ahead of reality.
+      const suffix = idSuffix(instance.id);
+      if (suffix > (this._idSeq[instance.type] || 0)) this._idSeq[instance.type] = suffix;
+
       this.instances.set(instance.id, instance);
       this._registerModule(instance);
     }
   }
 
-  /** Create a new empty instance of the given node type. */
-  create(typeId) {
+  /**
+   * Ordinal for a restored instance: the persisted one when valid, else the
+   * number in its persisted name (pre-ordinal installs), else the lowest free
+   * one. Duplicates are resolved so two live nodes never share a number.
+   */
+  _restoreOrdinal(entry, type) {
+    const candidates = [];
+    if (Number.isInteger(entry.ordinal) && entry.ordinal > 0) candidates.push(entry.ordinal);
+    const fromName = /\s(\d+)$/.exec(String(entry.name || ''));
+    if (fromName) candidates.push(Number(fromName[1]));
+    const taken = this._takenOrdinals(entry.type);
+    for (const n of candidates) {
+      if (!taken.has(n)) return n;
+    }
+    return this._lowestFreeOrdinal(entry.type);
+  }
+
+  /** Display ordinals currently in use by live instances of a type. */
+  _takenOrdinals(typeId) {
+    const taken = new Set();
+    for (const inst of this.instances.values()) {
+      if (inst.type === typeId) taken.add(inst.ordinal);
+    }
+    return taken;
+  }
+
+  /**
+   * Lowest positive display number free within a type family. This is what
+   * makes "delete VST 2..10, create a VST" produce "VST 2" and not "VST 11".
+   */
+  _lowestFreeOrdinal(typeId) {
+    const taken = this._takenOrdinals(typeId);
+    let n = 1;
+    while (taken.has(n)) n += 1;
+    return n;
+  }
+
+  /** Next stable id for a type. Monotonic per type; never reused. */
+  _nextId(typeId) {
+    const n = (this._idSeq[typeId] || 0) + 1;
+    this._idSeq[typeId] = n;
+    return `${typeId}-${String(n).padStart(3, '0')}`;
+  }
+
+  /**
+   * The single creation path. Every UI route (sidebar, Patch Bay toolbar,
+   * context menu, paste, duplicate) ends up here, so naming, default content,
+   * module registration, graph registration and persistence cannot drift
+   * apart between them.
+   */
+  _add(typeId, content) {
     const type = getNodeType(typeId);
-    if (!type) throw new Error(`Unknown node type: ${typeId}`);
-    const n = (this._counts[typeId] || 0) + 1;
-    this._counts[typeId] = n;
-    const id = `${typeId}-${String(n).padStart(3, '0')}`;
-    const content = typeId === 'vst' ? { plugins: [] } : null;
-    const instance = { id, type: typeId, name: `${type.label} ${n}`, content };
-    this.instances.set(id, instance);
+    if (!type) return null;
+    const instance = {
+      id: this._nextId(typeId),
+      type: typeId,
+      ordinal: this._lowestFreeOrdinal(typeId),
+      content
+    };
+    instance.name = nodeDisplayName(type, instance.ordinal);
+    this.instances.set(instance.id, instance);
     this._registerModule(instance);
     this._persist();
     return instance;
   }
 
+  /** Create a new empty instance of the given node type. */
+  create(typeId) {
+    if (!getNodeType(typeId)) throw new Error(`Unknown node type: ${typeId}`);
+    return this._add(typeId, defaultContentFor(typeId));
+  }
+
   /**
    * Create a new independent instance duplicating a live instance's content.
-   * The copy gets a fresh monotonic ID/name and a separate layout entry; it
-   * starts externally disconnected (no copied graph connections).
+   * The copy gets a fresh ID, its own display number and a separate layout
+   * entry; it starts externally disconnected (no copied graph connections).
    */
   duplicate(sourceId) {
     const source = this.instances.get(sourceId);
     if (!source) return null;
-    return this._createFrom(source.type, source.content);
+    return this._add(source.type, cloneContentFor(source.type, source.content));
   }
 
   /**
@@ -217,26 +320,9 @@ export class NodeInstanceManager {
    * instance is fully independent of the snapshot/source.
    */
   createFromSnapshot(snapshot) {
-    if (!snapshot || typeof snapshot !== 'object' || !getNodeType(snapshot.type)) {
-      return null;
-    }
-    return this._createFrom(snapshot.type, snapshot.content);
-  }
-
-  _createFrom(typeId, content) {
-    const type = getNodeType(typeId);
-    if (!type) return null;
-    const n = (this._counts[typeId] || 0) + 1;
-    this._counts[typeId] = n;
-    const id = `${typeId}-${String(n).padStart(3, '0')}`;
-    const newContent = typeId === 'vst'
-      ? duplicateVstContent(content)
-      : (content ? JSON.parse(JSON.stringify(content)) : null);
-    const instance = { id, type: typeId, name: `${type.label} ${n}`, content: newContent };
-    this.instances.set(id, instance);
-    this._registerModule(instance);
-    this._persist();
-    return instance;
+    if (!snapshot || typeof snapshot !== 'object') return null;
+    if (!getNodeType(snapshot.type)) return null;
+    return this._add(snapshot.type, cloneContentFor(snapshot.type, snapshot.content));
   }
 
   /** Delete a user-created instance (native/system nodes are never deletable). */
@@ -435,10 +521,23 @@ export class NodeInstanceManager {
     this.hub.modules.register(module);
   }
 
+  /**
+   * Persisted form of an instance. `name` is deliberately NOT stored: it is
+   * derived from type + ordinal, and storing both invites the two to drift.
+   */
+  _serialize(instance) {
+    return {
+      id: instance.id,
+      type: instance.type,
+      ordinal: instance.ordinal,
+      content: instance.content
+    };
+  }
+
   _persist() {
     return this.hub.settings.set(KEY, {
-      instances: [...this.instances.values()],
-      counts: { ...this._counts }
+      instances: this.list().map((inst) => this._serialize(inst)),
+      idSeq: { ...this._idSeq }
     });
   }
 }

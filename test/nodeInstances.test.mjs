@@ -75,8 +75,11 @@ test('IDs are never reused after deletion', () => {
   hub.nodes.create('vst'); // vst-002
   hub.nodes.delete('vst-001');
   const c = hub.nodes.create('vst');
+  // Identity keeps moving forward...
   assert.equal(c.id, 'vst-003');
-  assert.equal(c.name, 'VST 3');
+  // ...while the display number fills the hole left by the deleted VST 1.
+  assert.equal(c.name, 'VST 1');
+  assert.equal(c.ordinal, 1);
 });
 
 test('node type is immutable', () => {
@@ -207,7 +210,7 @@ test('instances persist and reload', async () => {
   hub.nodes.create('video');
   const persisted = hub.settings.get('nodeInstances');
   assert.equal(persisted.instances.length, 2);
-  assert.ok(persisted.counts.vst >= 1);
+  assert.ok(persisted.idSeq.vst >= 1);
 
   // Simulate relaunch over the same settings data.
   const hub2 = makeFullHub(hub.settings.data);
