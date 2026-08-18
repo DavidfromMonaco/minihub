@@ -47,6 +47,10 @@ async function main() {
   // Native audio engine client + graph sync. Initialized BEFORE any module is
   // activated so event listeners are always registered before a command can
   // trigger a response (no missed events).
+  // EngineClient.init() resolves the current engine state and, when the engine
+  // is up, pulls devices + device state + the VST3 registry once per engine
+  // run. Modules read those cached values instead of each issuing their own
+  // requests when they happen to be opened.
   hub.engine.init();
   const syncRouting = setupEngineSync(hub);
   // MIDI reaches the graph for the whole app lifetime, not just while the
@@ -55,14 +59,6 @@ async function main() {
   // Replay persisted VST chains into the engine once it has a plugin registry
   // (engine restart / renderer reload leaves the engine with no chains).
   setupChainSync(hub, syncRouting);
-  // Populate the real VST3 registry in the background so "+ Add VST" works.
-  hub.diagnostics.log('renderer: requesting scanVst3');
-  hub.engine.scanVst3();
-  // Pre-populate the real device list centrally so the Audio Output module shows
-  // devices immediately when opened (no wait for a mount-time request).
-  hub.diagnostics.log('renderer: requesting listDevices');
-  hub.engine.listDevices();
-  hub.engine.getDeviceState();
 
   // Start on Home.
   hub.modules.activate('home', contentEl);

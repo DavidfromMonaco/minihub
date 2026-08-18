@@ -134,20 +134,14 @@ export function createAudioOutputModule(hub) {
         fillDeviceSelect(dedupeDevices(hub.engine.devices), hub.settings.get(CONFIG_KEY)?.deviceName);
       }),
       hub.events.on('engine:deviceState', (msg) => updateDeviceState(msg)),
-      hub.events.on('engine:state', () => {
-        updateEngineState();
-        // If the module was opened before the engine was ready, re-request the
-        // real device list once the engine handshake completes.
-        if (hub.engine.state === 'running') {
-          hub.engine.listDevices();
-          hub.engine.getDeviceState();
-        }
-      })
+      hub.events.on('engine:state', updateEngineState)
     );
 
     updateEngineState();
-    hub.engine.listDevices();
-    hub.engine.getDeviceState();
+    // The engine client refreshes devices/device state once per engine run, so
+    // opening this panel renders from that cache instead of issuing its own
+    // round trip every time.
+    if (hub.engine.deviceState) updateDeviceState(hub.engine.deviceState);
   }
 
   function fillDeviceSelect(devices, selectedName) {

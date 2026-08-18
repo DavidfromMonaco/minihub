@@ -18,9 +18,11 @@ export class EngineClient {
     this.error = null;
     this.devices = []; // real WASAPI output devices from the engine
     this.plugins = []; // real VST3 registry
+    this.deviceState = null; // last known { running, device, sampleRate, bufferSize, error }
     this._registry = new Map(); // pluginId -> record
     this._unsubs = [];
     this._ready = null;
+    this._refreshed = false;
     this.diag = (line) => { try { api.diagnosticsLog(line); } catch (e) {} };
   }
 
@@ -35,12 +37,7 @@ export class EngineClient {
     if (this._ready) return this._ready;
     this.diag('renderer: engineClient.init');
     this._unsubs.push(
-      this.api.onEngineState((s) => {
-        this.state = s.state;
-        this.error = s.error;
-        this.diag(`renderer: engine:state ${s.state}`);
-        this.events.emit('engine:state', s);
-      }),
+      this.api.onEngineState((s) => this._onState(s)),
       this.api.onEngineEvent((msg) => this._onEvent(msg))
     );
     this._ready = this.api.engineState().then((s) => {
@@ -48,9 +45,50 @@ export class EngineClient {
         this.state = s.state;
         this.error = s.error;
       }
+      // A renderer that starts (or reloads) after the engine is already up
+      // never sees a `running` transition, so ask here rather than relying on
+      // having witnessed a past event.
+      if (this.state === 'running') this.refresh();
       return this.state;
     });
     return this._ready;
+  }
+
+  _onState(s) {
+    this.state = s.state;
+    this.error = s.error;
+    this.diag(`renderer: engine:state ${s.state}`);
+    if (this.state === 'running') {
+      this.refresh();
+    } else {
+      this._invalidate();
+    }
+    this.events.emit('engine:state', s);
+  }
+
+  /**
+   * Pull everything the renderer needs to describe the engine. Runs once per
+   * engine run: modules read the cached values instead of each issuing their
+   * own listDevices/getDeviceState when they happen to be opened.
+   */
+  refresh() {
+    if (this._refreshed) return;
+    this._refreshed = true;
+    this.listDevices();
+    this.getDeviceState();
+    // The engine holds no registry across restarts, and nothing can be
+    // instantiated until it has scanned.
+    this.scanVst3();
+  }
+
+  /** The engine went away: everything cached about it is now meaningless. */
+  _invalidate() {
+    this._refreshed = false;
+    this.devices = [];
+    this.deviceState = null;
+    this._setPlugins([]);
+    this.events.emit('engine:devices', this.devices);
+    this.events.emit('engine:plugins', this.plugins);
   }
 
   /** Drop every main-process subscription (teardown / tests). */
@@ -58,6 +96,7 @@ export class EngineClient {
     this._unsubs.forEach((off) => { if (typeof off === 'function') off(); });
     this._unsubs = [];
     this._ready = null;
+    this._refreshed = false;
   }
 
   _onEvent(msg) {
@@ -69,6 +108,7 @@ export class EngineClient {
         this.events.emit('engine:devices', this.devices);
         break;
       case 'deviceState':
+        this.deviceState = msg;
         this.events.emit('engine:deviceState', msg);
         break;
       case 'plugins':

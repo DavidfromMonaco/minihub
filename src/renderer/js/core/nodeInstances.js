@@ -408,11 +408,6 @@ export class NodeInstanceManager {
                 pill.textContent = down ? 'Engine unavailable' : 'Engine ready';
                 pill.className = 'pill ' + (down ? 'off' : 'ok');
               }
-              // If the engine became ready and the registry is still empty
-              // (e.g. the auto-scan raced engine startup), re-trigger the scan.
-              if (hub.engine.state === 'running' && hub.engine.plugins.length === 0) {
-                hub.engine.scanVst3();
-              }
             })
           );
         }

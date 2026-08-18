@@ -62,6 +62,32 @@ function setupPatchBay() {
   return { hub, container, svg, mod };
 }
 
+/**
+ * A container whose `innerHTML` setter recreates a fixed set of ids, so a
+ * module that queries its own markup after rendering finds real elements.
+ */
+function makePanelContainer(ids) {
+  const container = makeEl('div');
+  Object.defineProperty(container, 'innerHTML', {
+    get: () => '',
+    set: () => {
+      container.children.length = 0;
+      for (const id of ids) {
+        const el = makeEl('div');
+        el.setAttribute('id', id);
+        container.appendChild(el);
+      }
+    },
+    configurable: true
+  });
+  return container;
+}
+
+const AUDIO_OUTPUT_IDS = [
+  'ao-status', 'ao-device', 'ao-sample-rate', 'ao-buffer', 'ao-apply', 'ao-refresh',
+  'ao-engine-state', 'ao-current-device', 'ao-current-sr', 'ao-current-buf', 'ao-error'
+];
+
 const nodeEls = (svg) => findClass(svg, 'nodes').children;
 const nodeElFor = (svg, id) => nodeEls(svg).find((c) => c.dataset.nodeId === id);
 const panelOf = (nodeG) => nodeG.children.find((c) => c._classSet.has('node-panel'));
@@ -204,4 +230,101 @@ test('the sidebar does rebuild when the set of modules changes', () => {
 
   hub.nodes.delete(node.id);
   assert.equal(sidebarEl.children.length, before, 'and disappears when deleted');
+});
+
+// ---- engine chatter -----------------------------------------------------------
+
+const { setupEngineSync } = await import('../src/renderer/js/core/engineSync.js');
+const { createAudioOutputModule } = await import('../src/renderer/js/modules/audioOutput/audioOutputModule.js');
+
+test('chain enable flags are published only when they actually change', async () => {
+  const api = mockApi();
+  const hub = createHub(api);
+  await hub.engine.init();
+  hub.modules.register(createAudioOutputModule(hub));
+  const node = hub.nodes.create('vst');
+  setupEngineSync(hub);
+
+  const enableCmds = () => api.sent.filter(
+    (m) => m.type === 'setChainMidiEnabled' || m.type === 'setChainOutputEnabled'
+  ).length;
+
+  const afterInitial = enableCmds();
+  hub.graph.connect(node.id, 'audio-out', 'audio-output', 'audio-in');
+  const afterConnect = enableCmds();
+  assert.ok(afterConnect > afterInitial, 'a real change must be published');
+
+  // Graph changes that do not affect this chain must not re-publish it.
+  hub.graph.addNode({ id: 'src', name: 'Src', outputs: [{ id: 'midi-out', type: 'midi' }] });
+  hub.graph.addNode({ id: 'spare', name: 'Spare', inputs: [{ id: 'midi-in', type: 'midi' }] });
+  hub.graph.connect('src', 'midi-out', 'spare', 'midi-in');
+  assert.equal(enableCmds(), afterConnect, 'unrelated graph changes cause no engine chatter');
+
+  hub.graph.disconnect(node.id, 'audio-out', 'audio-output', 'audio-in');
+  assert.ok(enableCmds() > afterConnect, 'disconnecting is a real change and is published');
+});
+
+test('an engine restart re-publishes the routing topology', async () => {
+  const api = mockApi();
+  const hub = createHub(api);
+  await hub.engine.init();
+  hub.modules.register(createAudioOutputModule(hub));
+  const node = hub.nodes.create('vst');
+  const sync = setupEngineSync(hub);
+  hub.graph.connect(node.id, 'audio-out', 'audio-output', 'audio-in');
+
+  api.sent.length = 0;
+  sync();
+  assert.equal(api.sent.length, 0, 'nothing changed, nothing sent');
+
+  api.emitState({ state: 'error', error: 'engine crashed' });
+  api.emitState({ state: 'running', error: null });
+  api.sent.length = 0;
+  sync();
+  assert.ok(
+    api.sent.some((m) => m.type === 'setChainOutputEnabled' && m.chainId === node.id && m.enabled === true),
+    'after a restart the engine knows nothing, so the topology must be re-sent'
+  );
+});
+
+test('the engine client warms up once per engine run, not once per module', async () => {
+  const api = mockApi();
+  const hub = createHub(api);
+  await hub.engine.init();
+
+  const warmup = () => api.sent.filter(
+    (m) => m.type === 'listDevices' || m.type === 'getDeviceState' || m.type === 'scanVst3'
+  ).length;
+  assert.equal(warmup(), 3, 'init pulls devices, device state and the registry once');
+
+  // Opening the Audio Output panel must not re-issue them.
+  const mod = createAudioOutputModule(hub);
+  hub.modules.register(mod);
+  mod.mount(makePanelContainer(AUDIO_OUTPUT_IDS));
+  assert.equal(warmup(), 3, 'a module reads the cached state instead of re-requesting');
+  mod.unmount();
+});
+
+test('engine state and caches are invalidated when the engine goes away', async () => {
+  const api = mockApi();
+  const hub = createHub(api);
+  await hub.engine.init();
+  api.emitEvent({ type: 'devices', outputs: [{ name: 'Speakers', isWASAPI: true }] });
+  api.emitEvent({ type: 'deviceState', running: true, device: 'Speakers', sampleRate: 48000 });
+  api.emitEvent({ type: 'plugins', plugins: [{ pluginId: 'A', name: 'Vital' }] });
+  assert.equal(hub.engine.devices.length, 1);
+  assert.equal(hub.engine.plugins.length, 1);
+  assert.ok(hub.engine.deviceState);
+
+  api.emitState({ state: 'error', error: 'engine crashed' });
+  assert.deepEqual(hub.engine.devices, [], 'a dead engine has no devices');
+  assert.deepEqual(hub.engine.plugins, [], 'and no usable registry');
+  assert.equal(hub.engine.deviceState, null);
+  assert.equal(hub.engine.getPlugin('A'), null);
+
+  api.sent.length = 0;
+  api.emitState({ state: 'running', error: null });
+  const types = api.sent.map((m) => m.type);
+  assert.ok(types.includes('listDevices') && types.includes('getDeviceState') && types.includes('scanVst3'),
+    'coming back up re-pulls everything the renderer needs');
 });
