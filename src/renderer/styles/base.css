@@ -776,10 +776,6 @@ body {
   border: 1px solid var(--border);
   color: var(--text-dim);
 }
-.plugin-role-label {
-  font-size: 11px;
-  color: var(--text-faint);
-}
 .plugin-card.role-instrument .plugin-role-badge { color: var(--vst-role-instrument); border-color: rgba(245, 196, 81, 0.4); }
 .plugin-card.role-audio-effect .plugin-role-badge { color: var(--vst-role-audio-effect); border-color: rgba(239, 106, 91, 0.4); }
 .plugin-card.role-midi-effect .plugin-role-badge { color: var(--vst-role-midi-effect); border-color: rgba(167, 139, 250, 0.4); }

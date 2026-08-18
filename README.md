@@ -252,8 +252,12 @@ boundary — Electron is the UI / Patch Bay / configuration layer only.
   `unknown`).
 - **Serial chains**: each VST node's internal ordered plugin chain is mirrored in
   the engine. Add / remove / reorder / bypass are synchronized between the
-  persisted node content model and the native runtime chain. The Patch Bay still
-  sees the whole chain as ONE VST node.
+  persisted node content model and the native runtime chain, and the chain is
+  replayed into the engine after any engine start (launch, crash + relaunch,
+  renderer reload). The Patch Bay still sees the whole chain as ONE VST node.
+- **MIDI panic**: losing a MIDI route while notes are held (controller
+  unplugged, input changed, cable pulled, node deleted) emits All Notes Off +
+  All Sound Off rather than leaving the instrument sounding.
 - **Real-time audio callback** never blocks and never allocates. It reads an
   append-only chain array published with release/acquire ordering, takes each
   chain's SpinLock with `tryEnter` (skipping the block instead of spinning if
@@ -284,6 +288,20 @@ cmake --build native/audio-engine/build --config Release --target mlh_audio_engi
 The executable is `native/audio-engine/build/Release/mlh-audio-engine.exe`. The
 Electron main process locates and launches it automatically.
 
+### Node identity vs display numbering
+
+A node has two numbers and they are deliberately unrelated:
+
+| | example | reused? | used for |
+|---|---|---|---|
+| stable id | `vst-011` | never | routing, layout, module registry, engine chains, persistence |
+| display ordinal | `2` -> "VST 2" | yes | the name shown in the sidebar and Patch Bay |
+
+A new node takes the lowest positive ordinal free within its own type family,
+so deleting VST 2..10 makes the next VST "VST 2" again while its id keeps
+moving forward. Existing nodes are never renumbered. The name is derived from
+type + ordinal and is not persisted separately.
+
 ### Engine IPC protocol (versioned, newline-delimited JSON over stdin/stdout)
 
 Every message carries `"v": 1`. Commands (Electron -> engine): `hello`,
@@ -296,6 +314,12 @@ rejects unknown ones). Events (engine -> Electron): `hello`,
 `devices`, `deviceState`, `plugins`, `chainChanged`, `instanceStatus`,
 `editorStatus`, `status`, `error`, `shutdownAck`. Only CONTROL and MIDI messages
 cross this boundary.
+
+The renderer's `EngineClient` owns the engine-derived state (devices, device
+state, plugin registry) and warms it up once per engine run; modules read that
+cache instead of issuing their own requests when they are opened. Chain
+enable flags are published only on a real transition, and the cache is dropped
+when the engine goes away so a restarted engine gets the full topology again.
 
 ### Manual acceptance test (first real sound)
 

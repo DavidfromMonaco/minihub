@@ -20,7 +20,7 @@ pass, so an interrupted session can resume from the last green commit.
 | 3 | Central engine state; remove duplicate IPC and redundant module workarounds | done |
 | 4 | Native C++ conservative cleanup + RT safety re-check | done |
 | 5 | MIDI all-notes-off on disconnect / route loss / chain deletion | done |
-| 6 | Dead code, CSS, comments, README, persisted-settings schema | pending |
+| 6 | Dead code, CSS, comments, README, persisted-settings schema | done |
 | 7 | Full regression verification + final report | pending |
 
 ## Rules for this pass

@@ -206,6 +206,10 @@ export class NodeInstanceManager {
     this._idSeq = typeof seq === 'object' ? { ...seq } : {};
 
     for (const entry of stored) {
+      // Persisted data is not trusted: a corrupt entry must cost that one node,
+      // not the whole startup.
+      if (!entry || typeof entry !== 'object' || typeof entry.id !== 'string' || !entry.id) continue;
+      if (this.instances.has(entry.id)) continue; // duplicate id in the file
       const type = getNodeType(entry.type);
       if (!type) continue;
       const content = entry.type === 'vst'

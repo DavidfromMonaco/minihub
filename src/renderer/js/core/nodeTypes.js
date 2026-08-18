@@ -10,7 +10,9 @@
  * editor shell. Ports are declared here so a type's routing contract lives in
  * one place and can be extended later.
  *
- * Audio/control ports are structural only for now — no audio processing.
+ * Audio ports carry no samples in the renderer (the native engine owns audio),
+ * but an audio connection is authoritative: it is what routes a VST chain to
+ * the physical output. Control ports are declared and not yet used.
  */
 
 export const NODE_TYPES = {

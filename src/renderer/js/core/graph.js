@@ -6,8 +6,13 @@
  * source node through the graph to connected targets — modules never call
  * each other directly.
  *
- * Port types: 'midi' | 'audio' | 'control'. Only 'midi' is functional for now;
- * 'audio' and 'control' are declared for future use and are not processed.
+ * Port types: 'midi' | 'audio' | 'control'.
+ *   midi     carries real MIDI events through `emitData` to connected nodes
+ *   audio    carries no samples through this graph - audio never crosses the
+ *            Electron boundary - but the connection is authoritative: a VST
+ *            chain reaches the physical output only while its `audio-out` is
+ *            connected to the Audio Output node (see engineSync.js)
+ *   control  declared, not yet used by anything
  *
  * Routing state is fully independent of UI focus: changing which module is
  * visible never affects the graph.

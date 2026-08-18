@@ -1,12 +1,13 @@
 'use strict';
 
 /**
- * Temporary startup diagnostics logger.
+ * Startup and lifecycle log.
  *
- * Writes a plain-text lifecycle trace to a file in the Electron userData dir so
- * the exact startup paths and event sequence are captured even when the user
- * does not see the console. Used to prove the launched instance runs the same
- * build/code as the one that was tested.
+ * Writes a plain-text trace to a file in the Electron userData dir so the
+ * startup paths and the Electron/native event sequence are recoverable after
+ * the fact, without the user having had a console open. This is the first
+ * thing to read when the engine fails to come up on a machine you cannot
+ * attach a debugger to.
  */
 
 const fs = require('fs');

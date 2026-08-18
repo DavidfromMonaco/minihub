@@ -198,3 +198,39 @@ test('two live nodes never share a display number, even from corrupt data', asyn
   const ordinals = hub.nodes.list().map((n) => n.ordinal);
   assert.equal(new Set(ordinals).size, ordinals.length, 'duplicate ordinals are resolved on load');
 });
+
+// ---- corrupt persisted data ---------------------------------------------------
+
+test('a corrupt instance entry costs that node, not the whole startup', async () => {
+  const hub = makeFullHub({
+    nodeInstances: {
+      instances: [
+        null,
+        'garbage',
+        { type: 'vst' },                                    // no id
+        { id: 'vst-001', type: 'nope', ordinal: 1 },        // unknown type
+        { id: 'vst-002', type: 'vst', ordinal: 1, content: { plugins: [] } },
+        { id: 'vst-002', type: 'vst', ordinal: 5, content: { plugins: [] } } // duplicate id
+      ],
+      idSeq: { vst: 2 }
+    }
+  });
+
+  await hub.nodes.load();
+
+  assert.deepEqual(hub.nodes.list().map((n) => n.id), ['vst-002'], 'only the valid entry survives');
+  assert.equal(hub.nodes.list()[0].name, 'VST 1');
+  assert.equal(hub.nodes.create('vst').id, 'vst-003', 'and the ID sequence is still sane');
+});
+
+test('a VST node with a corrupt content blob still loads with an empty chain', async () => {
+  const hub = makeFullHub({
+    nodeInstances: {
+      instances: [{ id: 'vst-001', type: 'vst', ordinal: 1, content: 'not-an-object' }],
+      idSeq: { vst: 1 }
+    }
+  });
+  await hub.nodes.load();
+  assert.deepEqual(hub.nodes.get('vst-001').content, { plugins: [] });
+  assert.equal(hub.nodes.getChain('vst-001').count(), 0);
+});
