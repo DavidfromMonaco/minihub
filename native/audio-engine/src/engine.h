@@ -85,6 +85,10 @@ private:
     /** Stop the audio callback and close the device. Must run before any chain
      *  or plugin is destroyed. */
     void stopAudio();
+
+    /** Open the system's default output so the engine is audible before the
+     *  user has ever visited the Audio Output panel. */
+    void openDefaultOutput();
     void sendError(const juce::String& code, const juce::String& message);
     void sendChainChanged(const juce::String& chainId);
     void sendDeviceState();

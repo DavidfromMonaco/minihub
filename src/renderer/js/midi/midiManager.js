@@ -78,10 +78,23 @@ export class MidiManager {
 
     // If the selected input disappeared, clear the selection. Any note it was
     // holding will never get its Note Off, so tell everything downstream to
-    // silence itself.
+    // silence itself. The persisted preference is deliberately NOT cleared, so
+    // the port can be re-armed when it comes back.
     if (this.selectedInputId && !this.inputs.has(this.selectedInputId)) {
       this.selectedInputId = null;
       this.events.emit('midi:panic', { reason: 'input-disconnected' });
+    }
+
+    // Hot-plug: the preferred port has (re)appeared while nothing is armed.
+    // Without this, plugging the controller in after launch left the selection
+    // empty, which silently routed EVERY input - including the MiniLab's
+    // control-surface port - into the graph.
+    if (!this.selectedInputId) {
+      const preferred = this.settings.get('selectedInputId');
+      if (preferred && this.inputs.has(preferred)) {
+        this.selectedInputId = preferred;
+        this.events.emit('midi:inputArmed', { inputId: preferred });
+      }
     }
     if (this.selectedOutputId && !this.outputs.has(this.selectedOutputId)) {
       this.selectedOutputId = null;

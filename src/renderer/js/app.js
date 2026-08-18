@@ -10,6 +10,7 @@ import { setupEngineSync } from './core/engineSync.js';
 import { setupMidiRouting } from './core/midiRouting.js';
 import { setupChainSync } from './core/chainSync.js';
 import { BUILD_STAMP } from './core/buildStamp.js';
+import { isMiniLabName, isPerformanceInputName } from './midi/minilab.js';
 
 async function main() {
   const hub = createHub(window.hubAPI);
@@ -79,13 +80,40 @@ async function main() {
     }
   }
 
+
   // Restore the persisted audio output configuration once the engine is ready.
   restoreAudioConfig(hub);
 }
 
+/**
+ * Restore the persisted port selection, correcting one specific stale case.
+ *
+ * A MiniLab exposes several inputs and only some of them carry what you play.
+ * An earlier heuristic scored them all identically, so the first enumerated
+ * port - the MCU/HUI control surface - could be persisted as "the" input, and
+ * every key press was then filtered out as coming from an unselected device.
+ *
+ * Only a selection that PROVABLY cannot deliver notes is overridden; a working
+ * choice (including a deliberate non-MiniLab one) is always left alone.
+ */
 function restoreSelection(hub) {
-  const inId = hub.settings.get('selectedInputId');
+  let inId = hub.settings.get('selectedInputId');
   const outId = hub.settings.get('selectedOutputId');
+
+  const persisted = inId ? hub.midi.getInput(inId) : null;
+  if (persisted && isMiniLabName(persisted.name) && !isPerformanceInputName(persisted.name)) {
+    const better = hub.midi.findMiniLabInputId();
+    if (better && better !== inId) {
+      hub.diagnostics.log(
+        `midi: corrected stale input ${inId} ${JSON.stringify(persisted.name)}`
+        + ` -> ${better} ${JSON.stringify((hub.midi.getInput(better) || {}).name || '?')}`
+        + ' (previous port cannot send played notes)'
+      );
+      inId = better;
+      hub.settings.set('selectedInputId', inId);
+    }
+  }
+
   if (inId) hub.midi.selectInput(inId);
   if (outId) hub.midi.selectOutput(outId);
 }

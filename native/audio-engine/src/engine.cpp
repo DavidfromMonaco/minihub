@@ -26,6 +26,44 @@ juce::var makeError(const juce::String& code, const juce::String& message)
 Engine::Engine(Ipc& ipc) : ipc_(ipc)
 {
     deviceManager_.addAudioCallback(this);
+    // Without this the engine came up with NO audio device at all: it waited
+    // for a selectDevice that only arrives if the user has already saved an
+    // audio configuration. No device means no audio callback, which means the
+    // MIDI FIFO is never drained and the instrument never receives a note -
+    // the chain looked healthy and was simply never running.
+    openDefaultOutput();
+}
+
+void Engine::openDefaultOutput()
+{
+    // Prefer WASAPI shared low latency, as the rest of the engine documents.
+    for (auto* type : deviceManager_.getAvailableDeviceTypes())
+    {
+        type->scanForDevices();
+        if (type->getTypeName() == kWASAPILowLatencyType && type->getDeviceNames(false).size() > 0)
+        {
+            deviceManager_.setCurrentAudioDeviceType(type->getTypeName(), true);
+            break;
+        }
+    }
+
+    const juce::String err = deviceManager_.initialiseWithDefaultDevices(0, 2);
+    if (err.isNotEmpty())
+    {
+        engineError_ = err;
+        engineRunning_ = false;
+        sendError("device-open", "No default audio output could be opened: " + err);
+        return;
+    }
+
+    if (auto* device = deviceManager_.getCurrentAudioDevice())
+    {
+        currentOutputDevice_ = device->getName();
+        currentSampleRate_ = device->getCurrentSampleRate();
+        currentBlockSize_ = device->getCurrentBufferSizeSamples();
+        engineRunning_ = true;
+        engineError_.clear();
+    }
 }
 
 Engine::~Engine()
