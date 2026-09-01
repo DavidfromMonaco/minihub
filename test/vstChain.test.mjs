@@ -33,7 +33,7 @@ test('unknown-role fallback', () => {
 test('a VST node starts with an empty plugin chain', () => {
   const hub = makeFullHub();
   const inst = hub.nodes.create('vst');
-  assert.deepEqual(inst.content, { plugins: [] });
+  assert.deepEqual(inst.content, { plugins: [], controlBindings: [] });
   const chain = hub.nodes.getChain(inst.id);
   assert.ok(chain);
   assert.equal(chain.count(), 0);
@@ -146,6 +146,25 @@ test('chain order and state persist across reload', async () => {
   assert.equal(d.id, 'plugin-4');
 });
 
+test('deleted highest plugin id is tombstoned across remount and restart', async () => {
+  const hub = makeFullHub();
+  const inst = hub.nodes.create('vst');
+  let chain = hub.nodes.getChain(inst.id);
+  chain.append({ name: 'A' });
+  chain.append({ name: 'B' });
+  chain.append({ name: 'C' });
+  chain.remove('plugin-3');
+
+  chain = hub.nodes.getChain(inst.id); // a fresh wrapper must retain the mark
+  assert.equal(chain.append({ name: 'D' }).id, 'plugin-4');
+  chain.remove('plugin-4');
+
+  const restarted = makeFullHub(hub.settings.data);
+  await restarted.nodes.load();
+  const restored = restarted.nodes.getChain(inst.id);
+  assert.equal(restored.append({ name: 'E' }).id, 'plugin-5');
+});
+
 // ---- independence from Hub routing --------------------------------------------
 test('internal chain changes never alter hub.graph', () => {
   const hub = makeFullHub();
@@ -165,7 +184,7 @@ test('internal chain changes never alter hub.graph', () => {
   assert.equal(hub.graph.connections().length, 1);
   // The routing node still exposes the same structural ports.
   const node = hub.graph.getNode(inst.id);
-  assert.deepEqual(node.inputs.map((p) => p.id), ['midi-in', 'audio-in']);
+  assert.deepEqual(node.inputs.map((p) => p.id), ['midi-in', 'audio-in', 'ctrl-in']);
   assert.deepEqual(node.outputs.map((p) => p.id), ['audio-out']);
 });
 

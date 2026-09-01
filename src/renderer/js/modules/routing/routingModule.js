@@ -22,10 +22,14 @@
 import { GraphLayout } from '../../core/graphLayout.js';
 import { GraphViewport } from '../../core/graphViewport.js';
 import { GRID_SIZE, dragPosition } from '../../core/grid.js';
-import { getNodeType, listNodeTypes } from '../../core/nodeTypes.js';
+import { getNodeType, listNodeTypes, listOmniBoxCategories } from '../../core/nodeTypes.js';
 import {
   NODE_WIDTH,
   IDENTITY_H,
+  identityHeight,
+  MINILAB_SURFACE_SCALE,
+  MINILAB_SURFACE_Y,
+  MINILAB_SURFACE_X,
   portY,
   nodeGeometry
 } from '../../core/nodeGeometry.js';
@@ -43,6 +47,7 @@ import {
   deleteConnection,
   portTypeInfo
 } from './routingCore.js';
+import { appendMiniLabControlSurfaceSvg } from '../../ui/miniLabControlSurface.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
@@ -78,11 +83,14 @@ export function createRoutingModule(hub) {
 
   let selectedCableId = null;
   let selectedNodeId = null; // Patch Bay UI selection (never persisted)
+  let lastNodeTap = null;    // { nodeId, at } - pointer-level double-tap detection
   let contextNodeId = null; // right-click context-menu target (independent of selection)
   let contextMenuEl = null;
   let suppressContextMenu = false; // suppress menu right after a right-drag pan
   let suppressTimer = null;
   let drag = null; // node drag, cable drag, or pan state
+  let rearView = false; // front hides cable runs beneath panels; rear exposes them
+  let viewSideSwitch = null;
 
   // Internal Patch Bay clipboard (temporary app state, never persisted).
   let clipboard = null; // { type, content } serializable snapshot
@@ -121,6 +129,7 @@ export function createRoutingModule(hub) {
     cableHits.clear();
     cablesLayer.innerHTML = '';
     nodesLayer.innerHTML = '';
+    viewSideSwitch = null;
     if (clipDefs) clipDefs.innerHTML = '';
 
     const geo = new Map();
@@ -173,14 +182,20 @@ export function createRoutingModule(hub) {
 
       const clipped = svgEl('g', { 'clip-path': `url(#${clipId})` });
       // Upper identity/content surface (family-tinted) + lower I/O dock.
-      clipped.appendChild(svgEl('rect', { class: 'node-identity', x: 0, y: 0, width: NODE_WIDTH, height: IDENTITY_H }));
-      clipped.appendChild(svgEl('rect', { class: 'node-dock', x: 0, y: IDENTITY_H, width: NODE_WIDTH, height: height - IDENTITY_H }));
-      clipped.appendChild(svgEl('rect', { class: 'node-dock-divider', x: 0, y: IDENTITY_H, width: NODE_WIDTH, height: 1 }));
+      const identityH=identityHeight(node);
+      clipped.appendChild(svgEl('rect', { class: 'node-identity', x: 0, y: 0, width: NODE_WIDTH, height: identityH }));
+      clipped.appendChild(svgEl('rect', { class: 'node-dock', x: 0, y: identityH, width: NODE_WIDTH, height: height - identityH }));
+      clipped.appendChild(svgEl('rect', { class: 'node-dock-divider', x: 0, y: identityH, width: NODE_WIDTH, height: 1 }));
       clipped.appendChild(svgEl('rect', { class: 'node-accent', x: 0, y: 0, width: NODE_WIDTH, height: 4 }));
 
       const title = svgEl('text', { class: 'node-title', x: 12, y: 24 });
       title.textContent = node.name;
       clipped.appendChild(title);
+
+      // Direct route to the node's own page. Double-click still works, but a
+      // visible control is the discoverable one - and it does not depend on
+      // the synthesized click that pointer capture retargets during a drag.
+      if (type && hub.modules?.get(node.id)) clipped.appendChild(buildOpenControl(node));
 
       // Family + type badges and content info (dynamic nodes only).
       if (type) {
@@ -206,18 +221,73 @@ export function createRoutingModule(hub) {
 
       g.appendChild(clipped);
 
+      if (node.id === 'minilab-3') {
+        const connectedPortIds = new Set(cables
+          .filter((cable) => cable.from.nodeId === node.id)
+          .map((cable) => cable.from.portId));
+        const surfaceHolder = svgEl('g', { transform: `translate(${MINILAB_SURFACE_X} ${MINILAB_SURFACE_Y}) scale(${MINILAB_SURFACE_SCALE})` });
+        appendMiniLabControlSurfaceSvg(surfaceHolder, {
+          connectedPortIds,
+          buildPort: (control, x, y) => buildPort(
+            { id: control.portId, type: 'control', label: control.label },
+            'output', x, y, node.id, false
+          )
+        });
+        g.appendChild(surfaceHolder);
+        viewSideSwitch = buildViewSideSwitch();
+        g.appendChild(viewSideSwitch);
+        const midi = node.outputs.find((port) => port.id === 'midi-out');
+        if (midi) g.appendChild(buildPort(midi, 'output', NODE_WIDTH, 146, node.id));
+      }
       // Inputs on the left (I/O dock).
       node.inputs.forEach((port, i) => {
         g.appendChild(buildPort(port, 'input', 0, portY(node, i), node.id));
       });
       // Outputs on the right (I/O dock).
-      node.outputs.forEach((port, i) => {
-        g.appendChild(buildPort(port, 'output', NODE_WIDTH, portY(node, i), node.id));
-      });
+      if (node.id !== 'minilab-3') node.outputs.forEach((port, i) => {
+          g.appendChild(buildPort(port, 'output', NODE_WIDTH, portY(node, i), node.id));
+        });
 
       nodesLayer.appendChild(g);
       nodeEls.set(node.id, g);
     });
+    updateViewSideSwitch();
+  }
+
+  function buildViewSideSwitch() {
+    const group = svgEl('g', {
+      class: 'view-side-switch', transform: 'translate(72 135)',
+      role: 'button', tabindex: '0', 'aria-label': 'Show rear cable view'
+    });
+    group.appendChild(svgEl('rect', { class: 'view-side-switch-bg', width: 66, height: 22, rx: 5 }));
+    group.appendChild(svgEl('text', { class: 'view-side-switch-label', x: 33, y: 15, 'text-anchor': 'middle' }));
+    return group;
+  }
+
+  function buildOpenControl(node) {
+    const width = 46;
+    const group = svgEl('g', {
+      class: 'node-open-control', transform: `translate(${NODE_WIDTH - 12 - width} 11)`,
+      role: 'button', tabindex: '0', 'aria-label': `Open ${node.name}`
+    });
+    group.dataset.nodeAction = 'open';
+    const tooltip = svgEl('title');
+    tooltip.textContent = `Open ${node.name}`;
+    group.appendChild(tooltip);
+    group.appendChild(svgEl('rect', { width, height: 18, rx: 4 }));
+    const label = svgEl('text', { x: width / 2, y: 12.5, 'text-anchor': 'middle' });
+    label.textContent = 'OPEN';
+    group.appendChild(label);
+    return group;
+  }
+
+  function updateViewSideSwitch() {
+    if (!viewSideSwitch) return;
+    viewSideSwitch.classList.toggle('active', rearView);
+    viewSideSwitch.setAttribute('aria-pressed', rearView ? 'true' : 'false');
+    viewSideSwitch.setAttribute('aria-label', rearView ? 'Return to front cable view' : 'Show rear cable view');
+    const label = Array.from(viewSideSwitch.children).find((child) => child.classList?.contains('view-side-switch-label'));
+    if (label) label.textContent = rearView ? 'Front View' : 'Rear View';
   }
 
   /** Semantic type badge for a VST node based on its plugin chain. */
@@ -244,7 +314,7 @@ export function createRoutingModule(hub) {
     return g;
   }
 
-  function buildPort(port, side, x, y, nodeId) {
+  function buildPort(port, side, x, y, nodeId, showLabel = true) {
     const info = portTypeInfo(port.type);
     const g = svgEl('g', {
       class: `port port-${side} type-${info.className}`,
@@ -271,7 +341,7 @@ export function createRoutingModule(hub) {
       'text-anchor': side === 'input' ? 'start' : 'end'
     });
     label.textContent = port.label || info.label;
-    g.appendChild(label);
+    if (showLabel) g.appendChild(label);
 
     // Larger invisible hit area so jacks are easy to grab (input endpoints).
     const hit = svgEl('rect', {
@@ -293,9 +363,16 @@ export function createRoutingModule(hub) {
 
   // ---------- selection ----------
 
-  /** A node is deletable/copyable only if it is a user-created instance. */
+  /** A node is deletable only when its project-owned type permits it. */
   function isDeletable(nodeId) {
-    return Boolean(hub.nodes && hub.nodes.get(nodeId));
+    const instance = hub.nodes?.get(nodeId);
+    return Boolean(instance && getNodeType(instance.type)?.deletable !== false);
+  }
+
+  /** A node is copyable only when its project-owned type permits it. */
+  function isCopyable(nodeId) {
+    const instance = hub.nodes?.get(nodeId);
+    return Boolean(instance && getNodeType(instance.type)?.copyable !== false);
   }
 
   /** True when the keyboard event target is an editable text control. */
@@ -334,7 +411,7 @@ export function createRoutingModule(hub) {
 
   /** Copy a dynamic node into the internal clipboard (native nodes cannot be copied). */
   function copyNode(nodeId) {
-    if (!isDeletable(nodeId)) return;
+    if (!isCopyable(nodeId)) return;
     const inst = hub.nodes.get(nodeId);
     if (!inst) return;
     clipboard = {
@@ -436,6 +513,63 @@ export function createRoutingModule(hub) {
     contextNodeId = null;
   }
 
+  function openSubmenuToAvailableSide(wrap) {
+    const submenu = [...wrap.children].find((child) => child.classList?.contains('ctx-sub'));
+    if (!submenu) return;
+    wrap.classList.add('ctx-expanded');
+    submenu.classList.remove('ctx-flip-left');
+    submenu.style.left = '100%';
+    submenu.style.right = 'auto';
+    submenu.style.top = '-4px';
+    const viewport = container.getBoundingClientRect();
+    const parent = wrap.getBoundingClientRect();
+    const width = submenu.offsetWidth || 140;
+    const height = submenu.offsetHeight || 40;
+    const rightFits = parent.right + width <= viewport.right - 8;
+    const leftFits = parent.left - width >= viewport.left + 8;
+    if (!rightFits && leftFits) {
+      submenu.classList.add('ctx-flip-left');
+      submenu.style.left = 'auto';
+      submenu.style.right = '100%';
+    }
+    else if (!rightFits) {
+      const desiredLeft = Math.max(viewport.left + 8, Math.min(parent.right, viewport.right - width - 8));
+      submenu.style.left = `${desiredLeft - parent.left}px`;
+      submenu.style.right = 'auto';
+    }
+    const top = Math.max(viewport.top + 8, Math.min(parent.top - 4, viewport.bottom - height - 8));
+    submenu.style.top = `${top - parent.top}px`;
+  }
+
+  function closeSubmenuBranch(wrap) {
+    wrap.classList.remove('ctx-expanded');
+    const pending = [...wrap.children];
+    while (pending.length) {
+      const child = pending.pop();
+      if (child.classList?.contains('ctx-submenu')) child.classList.remove('ctx-expanded');
+      pending.push(...(child.children || []));
+    }
+  }
+
+  function armSubmenu(wrap) {
+    let closeTimer = null;
+    wrap.addEventListener('pointerenter', () => {
+      if (closeTimer) clearTimeout(closeTimer);
+      const parentPanel = wrap.parentElement || wrap.parentNode;
+      if (parentPanel) {
+        [...parentPanel.children].forEach((sibling) => {
+          if (sibling !== wrap && sibling.classList?.contains('ctx-submenu')) {
+            closeSubmenuBranch(sibling);
+          }
+        });
+      }
+      openSubmenuToAvailableSide(wrap);
+    });
+    wrap.addEventListener('pointerleave', () => {
+      closeTimer = setTimeout(() => closeSubmenuBranch(wrap), 180);
+    });
+  }
+
   /** Position a menu near the pointer, clamped inside the visible container. */
   function positionMenu(menu, clientX, clientY) {
     const r = container.getBoundingClientRect();
@@ -456,33 +590,41 @@ export function createRoutingModule(hub) {
   /** Node context menu. Native/system nodes expose no actions. */
   function openNodeContextMenu(nodeId, clientX, clientY) {
     closeContextMenu();
-    if (!isDeletable(nodeId)) return; // native: no Copy, no Delete
+    const canCopy = isCopyable(nodeId);
+    const canDelete = isDeletable(nodeId);
+    if (!canCopy && !canDelete) return; // native/fixed: no Copy, no Delete
     contextNodeId = nodeId;
 
     const menu = document.createElement('div');
     menu.classList.add('node-context-menu');
 
-    const copy = document.createElement('button');
-    copy.classList.add('ctx-item');
-    copy.textContent = 'Copy';
-    copy.addEventListener('click', () => {
-      copyNode(nodeId);
-      closeContextMenu();
-    });
-    menu.appendChild(copy);
+    if (canCopy) {
+      const copy = document.createElement('button');
+      copy.classList.add('ctx-item');
+      copy.textContent = 'Copy';
+      copy.addEventListener('click', () => {
+        copyNode(nodeId);
+        closeContextMenu();
+      });
+      menu.appendChild(copy);
+    }
 
-    const sep = document.createElement('div');
-    sep.classList.add('ctx-separator');
-    menu.appendChild(sep);
+    if (canCopy && canDelete) {
+      const sep = document.createElement('div');
+      sep.classList.add('ctx-separator');
+      menu.appendChild(sep);
+    }
 
-    const del = document.createElement('button');
-    del.classList.add('ctx-item');
-    del.textContent = 'Delete Node';
-    del.addEventListener('click', () => {
-      deleteNode(nodeId);
-      closeContextMenu();
-    });
-    menu.appendChild(del);
+    if (canDelete) {
+      const del = document.createElement('button');
+      del.classList.add('ctx-item');
+      del.textContent = 'Delete Node';
+      del.addEventListener('click', () => {
+        deleteNode(nodeId);
+        closeContextMenu();
+      });
+      menu.appendChild(del);
+    }
 
     positionMenu(menu, clientX, clientY);
   }
@@ -497,26 +639,45 @@ export function createRoutingModule(hub) {
     const menu = document.createElement('div');
     menu.classList.add('node-context-menu');
 
-    // New Node submenu (driven by the Node Type Registry).
+    // OmniBox hierarchy is driven by populated families in the Node Type Registry.
     const subWrap = document.createElement('div');
     subWrap.classList.add('ctx-submenu');
     const parent = document.createElement('button');
     parent.classList.add('ctx-item', 'ctx-parent');
-    parent.innerHTML = 'New Node <span class="ctx-caret">›</span>';
+    parent.textContent = 'OmniBox';
+    const parentCaret = document.createElement('span');
+    parentCaret.classList.add('ctx-caret'); parentCaret.textContent = '›'; parent.appendChild(parentCaret);
     const sub = document.createElement('div');
     sub.classList.add('ctx-sub');
-    listNodeTypes().forEach((t) => {
-      const btn = document.createElement('button');
-      btn.classList.add('ctx-item');
-      btn.textContent = t.label;
-      btn.addEventListener('click', () => {
-        createNodeAt(t.id, world);
-        closeContextMenu();
+    listOmniBoxCategories().forEach((category) => {
+      const categoryWrap = document.createElement('div');
+      categoryWrap.classList.add('ctx-submenu');
+      const categoryButton = document.createElement('button');
+      categoryButton.classList.add('ctx-item', 'ctx-parent');
+      categoryButton.textContent = category.label;
+      const categoryCaret = document.createElement('span');
+      categoryCaret.classList.add('ctx-caret'); categoryCaret.textContent = '›'; categoryButton.appendChild(categoryCaret);
+      const categorySub = document.createElement('div');
+      categorySub.classList.add('ctx-sub');
+      category.types.forEach((t) => {
+        const btn = document.createElement('button');
+        btn.classList.add('ctx-item');
+        btn.textContent = t.label;
+        btn.dataset.nodeType = t.id;
+        btn.addEventListener('click', () => {
+          createNodeAt(t.id, world);
+          closeContextMenu();
+        });
+        categorySub.appendChild(btn);
       });
-      sub.appendChild(btn);
+      categoryWrap.appendChild(categoryButton);
+      categoryWrap.appendChild(categorySub);
+      sub.appendChild(categoryWrap);
     });
     subWrap.appendChild(parent);
     subWrap.appendChild(sub);
+    armSubmenu(subWrap);
+    [...sub.children].forEach(armSubmenu);
     menu.appendChild(subWrap);
 
     const sep = document.createElement('div');
@@ -545,6 +706,19 @@ export function createRoutingModule(hub) {
   // ---------- interactions ----------
 
   function onPointerDown(e) {
+    const openEl = e.target.closest?.('.node-open-control');
+    if (openEl) {
+      e.preventDefault();
+      e.stopPropagation();
+      openNodeAction(openEl.closest('.node')?.dataset.nodeId);
+      return;
+    }
+    if (e.target.closest?.('.view-side-switch')) {
+      e.preventDefault();
+      e.stopPropagation();
+      toggleViewSide();
+      return;
+    }
     // Right button: potential context click or pan start on empty canvas.
     if (e.button === 2) {
       const portEl = e.target.closest('.port');
@@ -582,6 +756,70 @@ export function createRoutingModule(hub) {
     // Clicking empty canvas deselects nodes and cables.
     if (selectedCableId) setSelectedCable(null);
     if (selectedNodeId) setSelectedNode(null);
+  }
+
+  /** Single entry point for "show me this node's page" (chip, tap, dblclick). */
+  function openNodeEditor(nodeId) {
+    if(!nodeId||!hub.nodes?.get(nodeId)||!hub.modules?.get(nodeId))return false;
+    hub.modules.activate(nodeId,container);
+    return true;
+  }
+
+  /**
+   * Patch Bay OPEN button behavior (contextual for VST nodes).
+   *
+   * For a VST node:
+   *   - if the chain holds a usable (ready) primary plugin, open/foreground its
+   *     native editor and stay on the Patch Bay;
+   *   - otherwise (empty chain, or the primary plugin is still loading/failed)
+   *     navigate to that node's MiniHub VST page so the user can select/add a
+   *     plugin.
+   * The primary plugin is the first entry in the chain, matching the existing
+   * chain semantics (no new chain-selection model). Non-VST nodes keep the
+   * plain "open this node's page" behavior.
+   */
+  function openNodeAction(nodeId) {
+    if (!nodeId) return;
+    const instance = hub.nodes?.get(nodeId);
+    if (!instance) return;
+    if (instance.type === 'vst') {
+      const chain = hub.nodes.getChain(nodeId);
+      const primary = chain && chain.plugins && chain.plugins[0];
+      if (primary) {
+        const status = hub.engine.getInstanceStatus(nodeId, primary.id);
+        if (status === 'ready') {
+          hub.engine.openEditor(nodeId, primary.id);
+          return; // stay on Routing / Patch Bay
+        }
+      }
+    }
+    openNodeEditor(nodeId);
+  }
+
+  /**
+   * Pointer-level double-tap.
+   *
+   * A node press captures the pointer on the SVG root, and the browser then
+   * retargets the synthesized click/dblclick to that capture element - so the
+   * `dblclick` listener on the nodes layer never sees it and double-clicking a
+   * node did nothing. Counting taps where the node did not move reproduces the
+   * intent without depending on those synthesized events.
+   */
+  function registerNodeTap(nodeId) {
+    const now = Date.now();
+    if (lastNodeTap && lastNodeTap.nodeId === nodeId && now - lastNodeTap.at < 400) {
+      lastNodeTap = null;
+      openNodeEditor(nodeId);
+      return;
+    }
+    lastNodeTap = { nodeId, at: now };
+  }
+
+  function onNodeDoubleClick(e){
+    if(e.target.closest?.('.port'))return;
+    const nodeId=e.target.closest?.('.node')?.dataset.nodeId;
+    if(!openNodeEditor(nodeId))return;
+    e.preventDefault();e.stopPropagation();
   }
 
   // --- pan (right-drag) ---
@@ -676,6 +914,7 @@ export function createRoutingModule(hub) {
     const pos = positions.get(d.nodeId);
     layout.set(d.nodeId, pos.x, pos.y);
     drag = null;
+    if (pos.x === d.origX && pos.y === d.origY) registerNodeTap(d.nodeId);
   }
 
   // --- cable drag (create connection) ---
@@ -689,7 +928,7 @@ export function createRoutingModule(hub) {
 
     const pos = positions.get(nodeId);
     const geo = nodeGeometry(
-      { inputs: node.inputs, outputs: node.outputs },
+      { id: node.id, inputs: node.inputs, outputs: node.outputs },
       pos
     );
     const out = geo.outputs.find((p) => p.port.id === portId);
@@ -943,6 +1182,35 @@ export function createRoutingModule(hub) {
     updateZoomDisplay();
   }
 
+  function applyViewSide() {
+    if (!svg || !cablesLayer || !nodesLayer) return;
+    // appendChild moves an existing SVG layer without recreating ports/cables.
+    // This changes presentation only; hub.graph remains the topology authority.
+    if (rearView) {
+      if (cablesLayer.parentNode === svg) svg.removeChild(cablesLayer);
+      svg.appendChild(cablesLayer);
+    }
+    else {
+      if (cablesLayer.parentNode === svg) svg.removeChild(cablesLayer);
+      if (nodesLayer.parentNode === svg) svg.removeChild(nodesLayer);
+      svg.appendChild(cablesLayer);
+      svg.appendChild(nodesLayer);
+    }
+    cablesLayer.classList.toggle('rear', rearView);
+    svg.classList.toggle('rear-view', rearView);
+    updateViewSideSwitch();
+  }
+
+  function setRearView(enabled) {
+    rearView = enabled === true;
+    applyViewSide();
+    return rearView;
+  }
+
+  function toggleViewSide() {
+    setRearView(!rearView);
+  }
+
   function mount(el) {
     container = el;
     container.classList.add('routing-host');
@@ -955,7 +1223,7 @@ export function createRoutingModule(hub) {
       <div class="routing-view">
         <div class="routing-toolbar">
           <span class="routing-title">Patch Bay</span>
-          <span class="routing-hint">Wheel to zoom · right-drag to pan · right-click for menu · drag output to input to connect · click a cable, then Delete to remove</span>
+          <span class="routing-hint">Double-click a node to edit · wheel to zoom · right-drag to pan · right-click for menu · drag output to input to connect</span>
           <span class="spacer"></span>
           <span class="legend">
             <span class="legend-item type-midi"><i class="jack-dot square"></i>MIDI</span>
@@ -989,6 +1257,7 @@ export function createRoutingModule(hub) {
     nodesLayer = svgEl('g', { class: 'nodes' });
     svg.appendChild(cablesLayer);
     svg.appendChild(nodesLayer);
+    applyViewSide();
 
     render();
 
@@ -999,6 +1268,7 @@ export function createRoutingModule(hub) {
     svg.addEventListener('wheel', onWheel, { passive: false });
     svg.addEventListener('contextmenu', onContextMenu);
     cablesLayer.addEventListener('click', onCableClick);
+    nodesLayer.addEventListener('dblclick',onNodeDoubleClick);
     window.addEventListener('keydown', onKeyDown);
     document.addEventListener('pointerdown', onGlobalPointerDown);
 
@@ -1175,6 +1445,7 @@ export function createRoutingModule(hub) {
       svg.removeEventListener('wheel', onWheel);
       svg.removeEventListener('contextmenu', onContextMenu);
       cablesLayer.removeEventListener('click', onCableClick);
+      nodesLayer.removeEventListener('dblclick',onNodeDoubleClick);
     }
     const resetBtn = container && container.querySelector('#routing-reset');
     if (resetBtn) resetBtn.removeEventListener('click', resetView);
@@ -1208,13 +1479,17 @@ export function createRoutingModule(hub) {
       suppressTimer = null;
     }
     drag = null;
+    rearView = false;
+    viewSideSwitch = null;
   }
 
   return {
     id: 'routing',
     name: 'Routing',
-    navEntry: { label: 'Routing', icon: 'cable' },
+    navEntry: { label: 'Routing', icon: 'cable', group: 'node', fixed: true },
     mount,
-    unmount
+    unmount,
+    setRearView,
+    isRearView: () => rearView
   };
 }

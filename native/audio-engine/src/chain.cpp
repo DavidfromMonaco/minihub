@@ -1,13 +1,14 @@
 #include "chain.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 
 namespace mlh {
 
 PluginInstance* Chain::find(const juce::String& instanceId)
 {
-    const juce::SpinLock::ScopedLockType sl(lock_);
+    jassert(juce::MessageManager::existsAndIsCurrentThread());
     for (auto& p : plugins_)
         if (p->instanceId() == instanceId)
             return p.get();
@@ -20,6 +21,7 @@ bool Chain::insertPlugin(int index, std::unique_ptr<PluginInstance> p)
     if (plugins_.size() >= kMaxPlugins)
         return false;
     const int i = std::clamp(index, 0, static_cast<int>(plugins_.size()));
+    p->setPlayHead(playHead_);
     plugins_.insert(plugins_.begin() + i, std::move(p));
     return true;
 }
@@ -91,6 +93,7 @@ void Chain::setMidiEnabled(bool b)
 
 void Chain::panic()
 {
+    midiEpoch_.fetch_add(1, std::memory_order_acq_rel);
     panicPending_.store(true, std::memory_order_relaxed);
 }
 
@@ -98,6 +101,7 @@ void Chain::pushMidi(const juce::MidiBuffer& buffer)
 {
     for (const auto& meta : buffer)
     {
+        const auto epoch = midiEpoch_.load(std::memory_order_acquire);
         const juce::MidiMessage msg = meta.getMessage();
         const int n = msg.getRawDataSize();
         if (n <= 0 || n > 3)
@@ -112,6 +116,7 @@ void Chain::pushMidi(const juce::MidiBuffer& buffer)
         auto& ev = midiEvents_[static_cast<size_t>(slot)];
         ev.samplePos = meta.samplePosition;
         ev.numBytes = n;
+        ev.epoch = epoch;
         std::memcpy(ev.bytes, msg.getRawData(), static_cast<size_t>(n));
         midiFifo_.finishedWrite(1);
     }
@@ -137,7 +142,8 @@ void Chain::pullMidi(juce::MidiBuffer& dest, int numSamples)
         const int slot = (size1 > 0) ? start1 : start2;
         const auto& ev = midiEvents_[static_cast<size_t>(slot)];
         const int pos = std::clamp(ev.samplePos, 0, numSamples - 1);
-        dest.addEvent(juce::MidiMessage(ev.bytes, ev.numBytes, 0.0), pos);
+        if (ev.epoch == midiEpoch_.load(std::memory_order_acquire))
+            dest.addEvent(juce::MidiMessage(ev.bytes, ev.numBytes, 0.0), pos);
         midiFifo_.finishedRead(1);
     }
 }
@@ -159,6 +165,13 @@ void Chain::reset()
         p->reset();
 }
 
+void Chain::setPlayHead(juce::AudioPlayHead* playHead)
+{
+    const juce::SpinLock::ScopedLockType guard(lock_);
+    playHead_ = playHead;
+    for (auto& plugin : plugins_) plugin->setPlayHead(playHead);
+}
+
 void Chain::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
 {
     // Real-time thread. Never block: if the message thread is mid-edit
@@ -174,12 +187,15 @@ void Chain::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& mid
         // Drop anything still queued (those notes belong to a route that no
         // longer exists) and silence the instruments. MidiMessage stores three
         // bytes inline and the buffer is pre-sized, so this does not allocate.
-        discardQueuedMidi();
         for (int channel = 1; channel <= 16; ++channel)
         {
             midi.addEvent(juce::MidiMessage::allNotesOff(channel), 0);
             midi.addEvent(juce::MidiMessage::allSoundOff(channel), 0);
         }
+        // Keep only events queued after panic (for example sample-zero note
+        // chase on the first block after seek/export). Epoch filtering drops
+        // stale pre-panic notes without swallowing the new transport block.
+        pullMidi(midi, buffer.getNumSamples());
     }
     // Only pull MIDI into chains that are MIDI-connected in the Hub graph.
     else if (midiEnabled())

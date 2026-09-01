@@ -1,12 +1,16 @@
 #include "engine.h"
 #include "ipc.h"
-#include "var_util.h"
-#include "vst3_scanner.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
 #include <iostream>
 #include <memory>
+#if defined(_WIN32)
+#include <process.h>
+#include <windows.h>
+#else
+#include <unistd.h>
+#endif
 
 /**
  * MiniLab Hub native audio engine.
@@ -17,27 +21,48 @@
  * only over a versioned newline-delimited JSON IPC channel (stdin/stdout) for
  * CONTROL and MIDI messages — audio samples never cross that boundary.
  *
- * Two modes:
- *   - default: the engine (reads commands on stdin, writes responses on stdout)
- *   - `--scan-file <path>`: scan a single VST3 file and print its metadata as
- *     JSON lines, then exit. Used by the engine for out-of-process scanning so a
- *     crashing plugin never takes down the engine and plugin stdout noise never
- *     corrupts the engine's IPC channel.
+ * This executable has exactly one role: the live engine. VST discovery runs in
+ * the sibling `mlh-vst3-scanner.exe`, which cannot construct Engine and cannot
+ * open JUCE's AudioDeviceManager.
  */
+
+namespace {
+mlh::EngineRuntimeIdentity gRuntimeIdentity;
+
+juce::int64 currentProcessId() noexcept
+{
+#if defined(_WIN32)
+    return static_cast<juce::int64>(_getpid());
+#else
+    return static_cast<juce::int64>(getpid());
+#endif
+}
+}
 
 class MlhEngineApplication : public juce::JUCEApplication {
 public:
     const juce::String getApplicationName() override { return "MiniLab Hub Audio Engine"; }
     const juce::String getApplicationVersion() override { return "1.0.0"; }
-    bool moreThanOneInstanceAllowed() override { return false; }
+    // Electron owns the single-application policy. JUCE's process-global
+    // single-instance gate can briefly see the previous engine while Windows
+    // is still releasing it and makes the replacement exit successfully (0)
+    // before handshake, permanently stranding the new renderer in error.
+    bool moreThanOneInstanceAllowed() override { return true; }
 
     void initialise(const juce::String&) override
     {
-        engine_ = std::make_unique<mlh::Engine>(ipc_);
-        ipc_.start([this](const juce::var& msg)
-        {
-            engine_->handleCommand(msg);
-        });
+        engine_ = std::make_unique<mlh::Engine>(ipc_, gRuntimeIdentity);
+        ipc_.start(
+            [this](const juce::var& msg)
+            {
+                if (engine_)
+                    engine_->handleCommand(msg);
+            },
+            [this]()
+            {
+                if (engine_)
+                    engine_->requestShutdown(false);
+            });
         // Let the supervisor know the engine is alive.
         engine_->sendStatus();
     }
@@ -53,67 +78,92 @@ private:
     std::unique_ptr<mlh::Engine> engine_;
 };
 
-class ScanApplication : public juce::JUCEApplication {
-public:
-    explicit ScanApplication(juce::String file) : file_(std::move(file)) {}
-
-    const juce::String getApplicationName() override { return "MiniLab Hub VST3 Scanner"; }
-    const juce::String getApplicationVersion() override { return "1.0.0"; }
-    bool moreThanOneInstanceAllowed() override { return false; }
-
-    void initialise(const juce::String&) override
-    {
-        const auto records = mlh::Vst3Scanner::scanFile(file_);
-        for (const auto& r : records)
-        {
-            juce::var o = mlh::makeObject();
-            // Serialize the full plugin description (incl. uniqueId) so the
-            // parent can reconstruct it and later instantiate the plugin.
-            if (auto xml = r.description.createXml())
-                mlh::setProp(o, "descriptionXml", xml->toString());
-            mlh::setProp(o, "pluginId", r.pluginId);
-            mlh::setProp(o, "name", r.name);
-            mlh::setProp(o, "manufacturer", r.manufacturer);
-            mlh::setProp(o, "category", r.category);
-            mlh::setProp(o, "path", r.path);
-            mlh::setProp(o, "isInstrument", r.isInstrument);
-            mlh::setProp(o, "numInputChannels", r.numInputChannels);
-            mlh::setProp(o, "numOutputChannels", r.numOutputChannels);
-            mlh::setProp(o, "role", r.role);
-            std::cout << juce::JSON::toString(o, true).toStdString() << std::endl;
-        }
-        std::cout.flush();
-        quit();
-    }
-
-    void shutdown() override {}
-
-private:
-    juce::String file_;
-};
-
-namespace {
-juce::String gScanFile;
-}
-
 juce::JUCEApplicationBase* juce_CreateApplication()
 {
-    if (gScanFile.isNotEmpty())
-        return new ScanApplication(gScanFile);
     return new MlhEngineApplication();
 }
 
 int main(int argc, char* argv[])
 {
+    gRuntimeIdentity.processId = currentProcessId();
+    gRuntimeIdentity.role = "live";
+    juce::StringArray arguments;
     for (int i = 1; i < argc; ++i)
     {
-        if (juce::String(argv[i]) == "--scan-file" && i + 1 < argc)
+        const juce::String argument(argv[i]);
+        arguments.add(argument);
+        if (argument == "--role" && i + 1 < argc)
         {
-            gScanFile = argv[i + 1];
-            break;
+            gRuntimeIdentity.role = argv[i + 1];
+            arguments.add(argv[i + 1]);
+            ++i;
+        }
+        else if (argument == "--parent-pid" && i + 1 < argc)
+        {
+            gRuntimeIdentity.parentProcessId = juce::String(argv[i + 1]).getLargeIntValue();
+            arguments.add(argv[i + 1]);
+            ++i;
+        }
+        else if (argument == "--created-at" && i + 1 < argc)
+        {
+            gRuntimeIdentity.createdAt = argv[i + 1];
+            arguments.add(argv[i + 1]);
+            ++i;
+        }
+        else if (argument == "--scan-file")
+        {
+            std::cerr << "[native-process] rejected role=scan executable=mlh-audio-engine audioDeviceOpen=false" << std::endl;
+            return 64;
         }
     }
+    gRuntimeIdentity.arguments = arguments.joinIntoString(" ");
+    if (gRuntimeIdentity.role != "live")
+    {
+        std::cerr << "[native-process] rejected role=" << gRuntimeIdentity.role
+                  << " executable=mlh-audio-engine audioDeviceOpen=false" << std::endl;
+        return 64;
+    }
+
+    // Defence in depth beyond Electron's requestSingleInstanceLock and the JS
+    // supervisor guard. A manually or accidentally spawned second native live
+    // engine exits before constructing AudioDeviceManager, so it can never
+    // create a second Windows audio session.
+#if defined(_WIN32)
+    // Use one deterministic per-session namespace. JUCE may fall back from a
+    // Global mutex to Local when permissions differ between launches, which
+    // can let those two processes acquire different mutexes.
+    HANDLE liveEngineLock = CreateMutexW(nullptr, TRUE,
+                                         L"Local\\MiniHub.LiveAudioEngine.v1");
+    const bool duplicateLiveEngine = liveEngineLock != nullptr
+        && GetLastError() == ERROR_ALREADY_EXISTS;
+    if (liveEngineLock == nullptr || duplicateLiveEngine)
+#else
+    juce::InterProcessLock liveEngineLock("MiniHub.LiveAudioEngine.v1");
+    if (!liveEngineLock.enter(0))
+#endif
+    {
+#if defined(_WIN32)
+        if (liveEngineLock != nullptr)
+            CloseHandle(liveEngineLock);
+#endif
+        std::cerr << "[native-process] rejected duplicate role=live pid="
+                  << gRuntimeIdentity.processId << " audioDeviceOpen=false" << std::endl;
+        return 73;
+    }
+
+    std::cerr << "[native-process] role=live pid=" << gRuntimeIdentity.processId
+              << " parentPid=" << gRuntimeIdentity.parentProcessId
+              << " createdAt=" << gRuntimeIdentity.createdAt
+              << " audioDevice=owned lifetime=application reason=electron-main-singleton args=\""
+              << gRuntimeIdentity.arguments << "\"" << std::endl;
 
     juce::JUCEApplicationBase::createInstance = &juce_CreateApplication;
-    return juce::JUCEApplicationBase::main(argc, (const char**) argv);
+    const int result = juce::JUCEApplicationBase::main(argc, (const char**) argv);
+#if defined(_WIN32)
+    ReleaseMutex(liveEngineLock);
+    CloseHandle(liveEngineLock);
+#else
+    liveEngineLock.exit();
+#endif
+    return result;
 }

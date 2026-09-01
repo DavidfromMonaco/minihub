@@ -193,7 +193,76 @@ test('persisted chains are rebuilt as soon as the engine is running', async () =
   assert.deepEqual(created.map((c) => c.instanceId), [first.id, second.id]);
   assert.deepEqual(created.map((c) => c.index), [0, 1], 'processing order must be preserved');
   assert.equal(created[0].chainId, node.id);
+  assert.deepEqual(sentOf(api, 'setBypass'), [], 'restore must wait for native READY');
+  api.emitEvent({
+    type: 'instanceStatus', status: 'ready', requestId: created[0].requestId,
+    chainId: node.id, instanceId: first.id, pluginId: first.pluginId, generation: 1
+  });
+  api.emitEvent({
+    type: 'instanceStatus', status: 'ready', requestId: created[1].requestId,
+    chainId: node.id, instanceId: second.id, pluginId: second.pluginId, generation: 2
+  });
   assert.deepEqual(sentOf(api, 'setBypass').map((b) => b.instanceId), [second.id]);
+});
+
+test('persisted state and bypass restore only after READY for the exact create', async () => {
+  const api = mockApi();
+  const hub = createHub(api);
+  const node = hub.nodes.create('vst');
+  const plugin = hub.nodes.getChain(node.id).append({
+    pluginId: 'A', name: 'Vital', role: 'instrument', state: 'saved-state'
+  });
+  plugin.bypassed = true;
+
+  setupChainSync(hub, () => {});
+  await hub.engine.init();
+  const create = sentOf(api, 'createInstance')[0];
+  assert.deepEqual(sentOf(api, 'setState'), []);
+  assert.deepEqual(sentOf(api, 'setBypass'), []);
+
+  // A stale operation for the same instance must not restore anything.
+  api.emitEvent({ type: 'instanceStatus', status: 'ready', requestId: 'stale-create', chainId: node.id, instanceId: plugin.id, pluginId: plugin.pluginId, generation: 1 });
+  assert.deepEqual(sentOf(api, 'setState'), []);
+
+  api.emitEvent({ type: 'instanceStatus', status: 'ready', requestId: create.requestId, chainId: node.id, instanceId: plugin.id, pluginId: plugin.pluginId, generation: 2 });
+  assert.deepEqual(sentOf(api, 'setState').map((m) => m.instanceId), [plugin.id]);
+  assert.deepEqual(sentOf(api, 'setBypass').map((m) => m.instanceId), [plugin.id]);
+  assert.ok(api.sent.indexOf(sentOf(api, 'setState')[0]) < api.sent.indexOf(sentOf(api, 'setBypass')[0]));
+});
+
+test('plugin removed while native create is pending is never restored on late READY', async () => {
+  const api = mockApi();
+  const hub = createHub(api);
+  const node = hub.nodes.create('vst');
+  const chain = hub.nodes.getChain(node.id);
+  const plugin = chain.append({ pluginId: 'A', name: 'Vital', role: 'instrument', state: 'saved-state' });
+  plugin.bypassed = true;
+
+  setupChainSync(hub, () => {});
+  await hub.engine.init();
+  const create = sentOf(api, 'createInstance')[0];
+  chain.remove(plugin.id);
+  api.emitEvent({ type: 'instanceStatus', status: 'ready', requestId: create.requestId, chainId: node.id, instanceId: plugin.id, pluginId: plugin.pluginId, generation: 1 });
+
+  assert.deepEqual(sentOf(api, 'setState'), []);
+  assert.deepEqual(sentOf(api, 'setBypass'), []);
+});
+
+test('node deleted while native create is pending is never restored on late READY', async () => {
+  const api = mockApi();
+  const hub = createHub(api);
+  const node = hub.nodes.create('vst');
+  const plugin = hub.nodes.getChain(node.id).append({ pluginId: 'A', name: 'Vital', role: 'instrument', state: 'saved-state' });
+  plugin.bypassed = true;
+
+  setupChainSync(hub, () => {});
+  await hub.engine.init();
+  const create = sentOf(api, 'createInstance')[0];
+  hub.nodes.delete(node.id);
+  api.emitEvent({ type: 'instanceStatus', status: 'ready', requestId: create.requestId, chainId: node.id, instanceId: plugin.id, pluginId: plugin.pluginId, generation: 1 });
+
+  assert.deepEqual(sentOf(api, 'setState'), []);
+  assert.deepEqual(sentOf(api, 'setBypass'), []);
 });
 
 test('the rebuild happens once per engine run, and again after a restart', async () => {
@@ -231,13 +300,12 @@ test('deleting a VST node tears its chain down in the engine', () => {
   const plugin = chain.append({ pluginId: 'A', name: 'Vital', role: 'instrument' });
   hub.graph.connect(node.id, 'audio-out', 'audio-output', 'audio-in');
 
-  assert.ok(sentOf(api, 'setChainOutputEnabled').some((m) => m.chainId === node.id && m.enabled === true));
+  assert.ok(sentOf(api, 'syncAudioGraph').some((m) => m.nodes.find((n)=>n.id==='audio-output')?.inputs.some((i)=>i.sourceNodeId===node.id)));
 
   api.sent.length = 0;
   hub.nodes.delete(node.id);
 
-  const off = sentOf(api, 'setChainOutputEnabled').filter((m) => m.chainId === node.id);
-  assert.ok(off.length > 0 && off[off.length - 1].enabled === false, 'output must be disabled on delete');
+  assert.ok(sentOf(api, 'syncAudioGraph').at(-1).nodes.every((n)=>n.id!==node.id), 'deleted node must leave native graph');
   assert.deepEqual(
     sentOf(api, 'removeInstance').map((m) => [m.chainId, m.instanceId]),
     [[node.id, plugin.id]],
@@ -426,4 +494,58 @@ test('a dead engine clears the runtime chain state it was reporting', async () =
   api.emitState({ state: 'error', error: 'engine crashed' });
   assert.equal(hub.engine.getInstanceStatus(node.id, plugin.id), null,
     'a crashed engine holds no instances, so nothing may still look ready');
+});
+
+test('independent native state chunks persist and restore only to matching READY generations', async () => {
+  const api=mockApi();const hub=createHub(api);await hub.settings.load();await hub.engine.init();setupChainSync(hub,()=>{});
+  const node=hub.nodes.create('vst'),chain=hub.nodes.getChain(node.id);
+  const a=chain.append({pluginId:'A',name:'One',role:'instrument'}),b=chain.append({pluginId:'B',name:'Two',role:'audio-effect'});
+  api.emitEvent({type:'instanceStatus',chainId:node.id,instanceId:a.id,pluginId:'A',generation:11,status:'ready'});
+  api.emitEvent({type:'instanceStatus',chainId:node.id,instanceId:b.id,pluginId:'B',generation:12,status:'ready'});
+  api.emitEvent({type:'pluginState',chainId:node.id,instanceId:a.id,pluginId:'A',generation:11,state:'QUFB-state-chunk'});
+  api.emitEvent({type:'pluginState',chainId:node.id,instanceId:b.id,pluginId:'B',generation:12,state:'QkJC-state-chunk'});
+  api.emitEvent({type:'pluginState',chainId:node.id,instanceId:a.id,pluginId:'A',generation:10,state:'STALE'});
+  assert.equal(a.state,'QUFB-state-chunk');assert.equal(b.state,'QkJC-state-chunk');
+
+  const api2=mockApi(api.data),hub2=createHub(api2);await hub2.settings.load();await hub2.nodes.load();await hub2.engine.init();setupChainSync(hub2,()=>{});
+  await new Promise((resolve)=>setImmediate(resolve));
+  const creates=sentOf(api2,'createInstance');
+  api2.emitEvent({type:'instanceStatus',requestId:creates[0].requestId,chainId:node.id,instanceId:a.id,pluginId:'A',generation:21,status:'ready'});
+  api2.emitEvent({type:'instanceStatus',requestId:creates[1].requestId,chainId:node.id,instanceId:b.id,pluginId:'B',generation:22,status:'ready'});
+  const restores=sentOf(api2,'setState');
+  assert.deepEqual(restores.map((m)=>[m.instanceId,m.state,m.generation]),[[a.id,'QUFB-state-chunk',21],[b.id,'QkJC-state-chunk',22]]);
+});
+
+test('fresh app lifecycle waits for handshake then restores two persisted VST paths and exact states', async () => {
+  const saved = {
+    nodeInstances: { idSeq: { vst: 1 }, instances: [{
+      id: 'vst-001', type: 'vst', ordinal: 1,
+      content: { plugins: [
+        { id: 'plugin-1', pluginId: 'C:/VST3/Instrument.vst3', name: 'Instrument', state: 'STATE-A' },
+        { id: 'plugin-2', pluginId: 'C:/VST3/Effect.vst3', name: 'Effect', state: 'STATE-B' }
+      ], nextPluginInstanceSeq: 2, controlBindings: [] }
+    }] }
+  };
+  const api = mockApi(saved);
+  api.engineState = async () => ({ state: 'starting', error: null });
+  const fresh = createHub(api);
+  await fresh.settings.load();
+  await fresh.nodes.load();
+  setupChainSync(fresh, () => {});
+  await fresh.engine.init();
+  assert.equal(sentOf(api, 'createInstance').length, 0, 'no create is lost into a starting engine');
+
+  api.emitState({ state: 'running', error: null });
+  await new Promise((resolve) => setImmediate(resolve));
+  const creates = sentOf(api, 'createInstance');
+  assert.deepEqual(creates.map((m) => [m.pluginId, m.instanceId]), [
+    ['C:/VST3/Instrument.vst3', 'plugin-1'],
+    ['C:/VST3/Effect.vst3', 'plugin-2']
+  ]);
+  api.emitEvent({ type: 'instanceStatus', requestId: creates[0].requestId, chainId: 'vst-001', instanceId: 'plugin-1', pluginId: creates[0].pluginId, generation: 101, status: 'ready' });
+  api.emitEvent({ type: 'instanceStatus', requestId: creates[1].requestId, chainId: 'vst-001', instanceId: 'plugin-2', pluginId: creates[1].pluginId, generation: 102, status: 'ready' });
+  assert.deepEqual(sentOf(api, 'setState').map((m) => [m.instanceId, m.state, m.generation]), [
+    ['plugin-1', 'STATE-A', 101], ['plugin-2', 'STATE-B', 102]
+  ]);
+  assert.equal(sentOf(api, 'scanVst3').length, 1, 'background catalog scan is not a prerequisite for creates');
 });

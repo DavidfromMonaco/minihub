@@ -3,6 +3,7 @@
 #include <juce_core/juce_core.h>
 #include <functional>
 #include <memory>
+#include <atomic>
 
 namespace mlh {
 
@@ -22,6 +23,14 @@ class Ipc {
 public:
     using Handler = std::function<void(const juce::var& msg)>;
 
+    /** Shared by queued message-thread callbacks so stop() can invalidate them
+     *  without relying on the ReaderThread object's lifetime. */
+    struct CallbackState {
+        Handler handler;
+        std::function<void()> eofHandler;
+        std::atomic<bool> active { true };
+    };
+
     Ipc() = default;
     ~Ipc();
 
@@ -30,7 +39,7 @@ public:
 
     /** Start a background thread reading newline-delimited JSON from stdin and
      *  dispatching each message to `handler` on the JUCE message thread. */
-    void start(const Handler& handler);
+    void start(const Handler& handler, std::function<void()> eofHandler = {});
 
     /** Send a JSON object (single line) to stdout. Thread-safe. */
     void send(const juce::var& obj);
@@ -39,6 +48,7 @@ public:
 
 private:
     Handler handler_;
+    std::shared_ptr<CallbackState> callbackState_;
     std::unique_ptr<juce::Thread> reader_;
     juce::CriticalSection writeLock_;
 };

@@ -49,6 +49,10 @@ public:
     // ---- message-thread read (takes the lock, allocates) ----
     std::vector<PluginInstance*> copyPlugins() const;
 
+    /** Message-thread-only lookup. It deliberately does not take `lock_`:
+     *  message-thread mutations are serialized, and a read/read traversal with
+     *  the audio callback is safe. Taking the lock here could make the audio
+     *  callback's try-lock drop an otherwise healthy block. */
     PluginInstance* find(const juce::String& instanceId);
 
     // Lock-free MIDI injection (control thread -> audio callback).
@@ -73,6 +77,7 @@ public:
     void setOutputEnabled(bool b) { outputEnabled_.store(b, std::memory_order_relaxed); }
 
     void prepareToPlay(double sampleRate, int blockSize);
+    void setPlayHead(juce::AudioPlayHead* playHead);
     void reset();
     void processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi);
 
@@ -83,6 +88,7 @@ private:
     std::atomic<bool> midiEnabled_{false};
     std::atomic<bool> outputEnabled_{false};
     std::atomic<bool> panicPending_{false};
+    juce::AudioPlayHead* playHead_ = nullptr;
 
     // Reused across blocks so the audio callback never allocates a MidiBuffer.
     static constexpr int kMidiScratchBytes = 8192;
@@ -96,9 +102,11 @@ private:
         int samplePos = 0;
         uint8_t bytes[3] = {};
         int numBytes = 0;
+        uint32_t epoch = 0;
     };
     juce::AbstractFifo midiFifo_{kFifoSize};
     std::array<MidiEvent, kFifoSize> midiEvents_{};
+    std::atomic<uint32_t> midiEpoch_{1};
 };
 
 } // namespace mlh

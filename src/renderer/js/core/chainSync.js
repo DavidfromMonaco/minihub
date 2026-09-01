@@ -19,9 +19,45 @@
  */
 export function setupChainSync(hub, syncRouting) {
   let needsRebuild = true;
+  const pendingRestore = new Map(); // create requestId -> persisted plugin record
+
+  hub.events.on('engine:pluginState',(msg)=>{
+    if(hub.engine.getInstanceGeneration(msg.chainId,msg.instanceId)!==msg.generation)return;
+    hub.nodes.setPluginState(msg.chainId,msg.instanceId,msg.pluginId,msg.state);
+  });
+
+  hub.events.on('engine:instanceStatus', (msg) => {
+    if (!msg || !msg.requestId) return;
+    const pending = pendingRestore.get(msg.requestId);
+    if (!pending) return;
+    if (pending.engineGeneration !== hub.engine.runtimeGeneration) {
+      pendingRestore.delete(msg.requestId);
+      return;
+    }
+    if (msg.status === 'error') {
+      pendingRestore.delete(msg.requestId);
+      return;
+    }
+    if (msg.status !== 'ready') return;
+    pendingRestore.delete(msg.requestId);
+
+    // The model may have changed while native creation was in flight. Restore
+    // only when this exact chain entry still owns the same plugin.
+    const node = hub.nodes.get(pending.chainId);
+    const live = node?.type === 'vst'
+      ? node.content?.plugins?.find((p) => p.id === pending.plugin.id)
+      : null;
+    if (!live || live.pluginId !== pending.plugin.pluginId
+        || (msg.pluginId && msg.pluginId !== live.pluginId)) return;
+
+    if (live.state) hub.engine.setState(pending.chainId, live.id, live.state, live.pluginId, msg.generation);
+    if (live.bypassed) hub.engine.setBypass(pending.chainId, live.id, true);
+  });
 
   const rebuild = () => {
     if (!hub.engine || !hub.nodes) return;
+    hub.diagnostics?.log(`startup:vst-chain-rebuild count=${hub.nodes.list().filter((node) => node.type === 'vst').length}`);
+    const engineGeneration = hub.engine.runtimeGeneration;
     for (const instance of hub.nodes.list()) {
       if (instance.type !== 'vst') continue;
       const plugins = (instance.content && Array.isArray(instance.content.plugins))
@@ -29,9 +65,13 @@ export function setupChainSync(hub, syncRouting) {
         : [];
       plugins.forEach((plugin, index) => {
         if (!plugin.pluginId) return;
-        hub.engine.createInstance(instance.id, plugin.pluginId, plugin.id, index);
-        if (plugin.bypassed) hub.engine.setBypass(instance.id, plugin.id, true);
-        if (plugin.state) hub.engine.setState(instance.id, plugin.id, plugin.state);
+        const creation = hub.engine.createInstanceTracked(
+          instance.id, plugin.pluginId, plugin.id, index
+        );
+        pendingRestore.set(creation.requestId, { chainId: instance.id, plugin, engineGeneration });
+        creation.accepted.then((res) => {
+          if (!res || !res.ok) pendingRestore.delete(creation.requestId);
+        }).catch(() => pendingRestore.delete(creation.requestId));
       });
     }
     // Chain MIDI/output gating lives in the engine too and is equally lost on
@@ -49,6 +89,7 @@ export function setupChainSync(hub, syncRouting) {
   hub.events.on('engine:state', (s) => {
     if (s && s.state !== 'running') {
       needsRebuild = true;
+      pendingRestore.clear();
       return;
     }
     maybeRebuild();

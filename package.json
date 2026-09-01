@@ -4,12 +4,17 @@
   "description": "Desktop HUB application for the Arturia MiniLab 3 MIDI controller",
   "main": "src/main/main.js",
   "scripts": {
-    "start": "electron .",
-    "test": "node --test \"test/*.test.mjs\""
+    "build:native": "cmake --build native/audio-engine/build --config Release --target mlh_audio_engine -- /m:1",
+    "build:native:tests": "cmake --build native/audio-engine/build --config Release --target mlh_native_tests -- /m:1",
+    "package": "npm run build:native && npm run sync:dist",
+    "start": "npm run package && node scripts/launch-dist.mjs",
+    "test": "node --test \"test/*.test.mjs\" \"test/*.test.cjs\"",
+    "sync:dist": "node scripts/sync-dist.mjs"
   },
   "author": "",
   "license": "MIT",
   "devDependencies": {
-    "electron": "^43.4.0"
+    "electron": "^43.4.0",
+    "rcedit": "^5.0.2"
   }
 }

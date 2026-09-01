@@ -11,8 +11,8 @@ namespace {
 
 class ReaderThread : public juce::Thread {
 public:
-    explicit ReaderThread(Ipc::Handler handler)
-        : juce::Thread("mlh-ipc-reader"), handler_(std::move(handler)) {}
+    explicit ReaderThread(std::shared_ptr<Ipc::CallbackState> state)
+        : juce::Thread("mlh-ipc-reader"), state_(std::move(state)) {}
 
     void run() override
     {
@@ -29,24 +29,26 @@ public:
             auto msg = parsed;
             // Dispatch onto the JUCE message thread so the engine core never
             // runs concurrently with the GUI/audio control path.
-            juce::MessageManager::callAsync([this, msg]() mutable
+            const auto state = state_;
+            juce::MessageManager::callAsync([state, msg]() mutable
             {
-                if (handler_)
-                    handler_(msg);
+                if (state->active.load(std::memory_order_acquire) && state->handler)
+                    state->handler(msg);
             });
         }
 
         // stdin reached EOF — the supervisor (Electron) is gone. Shut down
         // cleanly so we never leave an orphan native engine process behind.
-        juce::MessageManager::callAsync([]()
+        const auto state = state_;
+        juce::MessageManager::callAsync([state]()
         {
-            if (auto* app = juce::JUCEApplicationBase::getInstance())
-                app->quit();
+            if (state->active.load(std::memory_order_acquire) && state->eofHandler)
+                state->eofHandler();
         });
     }
 
 private:
-    Ipc::Handler handler_;
+    std::shared_ptr<Ipc::CallbackState> state_;
 };
 
 } // namespace
@@ -56,10 +58,13 @@ Ipc::~Ipc()
     stop();
 }
 
-void Ipc::start(const Handler& handler)
+void Ipc::start(const Handler& handler, std::function<void()> eofHandler)
 {
     handler_ = handler;
-    reader_ = std::make_unique<ReaderThread>(handler_);
+    callbackState_ = std::make_shared<CallbackState>();
+    callbackState_->handler = handler_;
+    callbackState_->eofHandler = std::move(eofHandler);
+    reader_ = std::make_unique<ReaderThread>(callbackState_);
     reader_->startThread();
 }
 
@@ -81,12 +86,15 @@ void Ipc::send(const juce::var& obj)
 
 void Ipc::stop()
 {
+    if (callbackState_)
+        callbackState_->active.store(false, std::memory_order_release);
     if (reader_)
     {
         reader_->signalThreadShouldExit();
         reader_->stopThread(2000);
         reader_.reset();
     }
+    callbackState_.reset();
 }
 
 } // namespace mlh

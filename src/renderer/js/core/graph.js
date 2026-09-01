@@ -12,7 +12,7 @@
  *            Electron boundary - but the connection is authoritative: a VST
  *            chain reaches the physical output only while its `audio-out` is
  *            connected to the Audio Output node (see engineSync.js)
- *   control  declared, not yet used by anything
+ *   control  carries normalized semantic control values (for example K1..K8)
  *
  * Routing state is fully independent of UI focus: changing which module is
  * visible never affects the graph.
@@ -87,6 +87,10 @@ export class Graph {
     if (this._hasConnection(fromNodeId, fromPortId, toNodeId, toPortId)) {
       throw new Error('Connection already exists');
     }
+    if ((fromPort.type === 'midi' || fromPort.type === 'audio')
+        && this._wouldCreateCycle(fromNodeId, toNodeId, fromPort.type)) {
+      throw new Error(`${fromPort.type.toUpperCase()} connection would create a feedback cycle`);
+    }
 
     const conn = {
       from: { nodeId: fromNodeId, portId: fromPortId },
@@ -96,6 +100,33 @@ export class Graph {
     this._persist();
     this._emit({ type: 'connect', from: { ...conn.from }, to: { ...conn.to } });
     return true;
+  }
+
+  _wouldCreateCycle(fromNodeId, toNodeId, type) {
+    if (fromNodeId === toNodeId) return true;
+    const pending = [toNodeId];
+    const seen = new Set();
+    while (pending.length) {
+      const id = pending.pop();
+      if (id === fromNodeId) return true;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      const current = this._nodes.get(id);
+      // A physical MIDI output is an endpoint, not an internal thru path. The
+      // MiniLab card deliberately represents two independent hardware sides:
+      // its MIDI OUT originates at the device; data received on MIDI IN is
+      // sent to the selected output and is never re-emitted from MIDI OUT.
+      // Treating those ports as an implicit node-level edge creates a false
+      // cycle for MiniLab -> Sequencer -> MiniLab hardware monitoring.
+      if (type === 'midi' && current?.type === 'midi-output') continue;
+      for (const c of this._connections) {
+        if (c.from.nodeId !== id) continue;
+        const source = this._nodes.get(c.from.nodeId);
+        const port = source?.outputs.find((p) => p.id === c.from.portId);
+        if (port?.type === type) pending.push(c.to.nodeId);
+      }
+    }
+    return false;
   }
 
   disconnect(fromNodeId, fromPortId, toNodeId, toPortId) {
@@ -193,6 +224,28 @@ export class Graph {
           console.error(`[graph] onInput failed for "${target.id}":`, err);
         }
       }
+    }
+  }
+
+  /** Forward through one already-existing cable only. This keeps physical
+   * topology authoritative while allowing track-aware sources such as the
+   * Sequencer to choose which of their stable fan-out branches receives a
+   * live event. */
+  emitDataTo(nodeId, portId, targetNodeId, data) {
+    const node = this._nodes.get(nodeId);
+    const port = node?.outputs.find((candidate) => candidate.id === portId);
+    if (!port) return false;
+    const connection = this.connectionsFrom(nodeId, portId)
+      .find((candidate) => candidate.to.nodeId === targetNodeId);
+    if (!connection) return false;
+    const target = this._nodes.get(connection.to.nodeId);
+    if (!target?.onInput) return false;
+    try {
+      target.onInput(connection.to.portId, data);
+      return true;
+    } catch (err) {
+      console.error(`[graph] onInput failed for "${target.id}":`, err);
+      return false;
     }
   }
 

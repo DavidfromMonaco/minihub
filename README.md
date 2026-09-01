@@ -1,9 +1,8 @@
 # MiniLab Hub
 
-A modular desktop HUB application for the **Arturia MiniLab 3** MIDI controller.
-This is an MVP foundation: it establishes the architecture, UI shell, and MIDI
-communication layer that future modules (sequencer, VST library, arpeggiator,
-etc.) will plug into — without rewriting the shell.
+A modular desktop music HUB for the **Arturia MiniLab 3** MIDI controller. It
+combines a Patch Bay, native JUCE/VST3 audio engine, Mixer, Morpher,
+Arpeggiator, and an integrated MIDI + audio arrangement Sequencer.
 
 ## Run
 
@@ -28,7 +27,9 @@ process stays CommonJS and is unaffected.
 ## Stack
 
 - **Electron** for the desktop shell.
-- **Web MIDI API** (Chromium) for MIDI device access — no native compilation.
+- **Web MIDI API** (Chromium) for physical controller input and configuration.
+- **JUCE 9 / C++** for sample-clocked sequencing, audio I/O, recording, VST3
+  hosting and master WAV rendering.
 - Plain ES modules, no framework, no build step.
 
 ## Architecture
@@ -69,13 +70,14 @@ src/
 Every module interacts with the app only through the `Hub`:
 
 - `hub.events` — pub/sub bus. MIDI is exposed as normalized events
-  (`midi:message`, `midi:noteon`, `midi:noteoff`, `midi:cc`, `midi:pitchbend`,
-  `midi:ports`, `midi:state`).
+  (`midi:inputMessage` for per-port recording; selected-input `midi:message`,
+  `midi:noteon`, `midi:noteoff`, `midi:cc`, `midi:pitchbend`, `midi:ports`,
+  `midi:state`).
 - `hub.midi` — device layer (enumerate, select, connect/disconnect, send, timing offset).
 - `hub.settings` — persisted preferences.
 - `hub.modules` — module registry.
 
-### Adding a module (future)
+### Adding a module
 
 ```js
 hub.modules.register({
@@ -128,8 +130,10 @@ forwards to each connected target's `onInput` — modules never call each other
 directly.
 
 A module opts into routing by declaring a `routingNode` descriptor; purely UI
-modules omit it. The MiniLab module is the first routing node (`minilab-3`,
-`midi-out`), and its compensated MIDI events are pushed into the graph.
+modules omit it. The MiniLab node (`minilab-3`) exposes musical `midi-out` plus
+stable `control-k1`…`control-k8` outputs. Factory Arturia/User encoder CCs are
+promoted to normalized CONTROL data and therefore do not also enter the
+musical MIDI route.
 Connections are serialized to settings (`graphConnections`) and restored on
 startup.
 
@@ -189,8 +193,10 @@ Grid & snapping:
 
 ### Node types & instances
 
-Users can create multiple independent typed nodes (VST, Video, Image,
-Sequencer) via the Patch Bay's **+ New Node** control.
+Users can create multiple independent typed nodes (VST, Mixer, Morpher,
+Arpeggiator, Video and Image) via the Patch Bay's **+ New Node** control. The
+arrangement Sequencer is a fixed system module and fixed Patch Bay source, not
+a disposable dynamic node.
 
 - **Node Type** (`core/nodeTypes.js`) defines identity/capabilities (label,
   accent, icon, ports) and is immutable per instance.
@@ -199,10 +205,9 @@ Sequencer) via the Patch Bay's **+ New Node** control.
   is `null` for now.
 - Instances persist under the `nodeInstances` settings key with a per-type
   monotonic counter, so IDs are unique and never reused after deletion.
-- Each instance registers a Hub module (sidebar entry with its type accent +
-  an empty editor shell) and a routing node in `hub.graph`. VST declares
-  MIDI IN / AUDIO IN / AUDIO OUT; Video/Image/Sequencer currently declare no
-  speculative ports.
+- Each instance registers a Hub module and a routing node in `hub.graph`. VST
+  declares MIDI IN / AUDIO IN / CTRL IN / AUDIO OUT; Mixer and Morpher expose
+  dynamic audio inputs; Arpeggiator exposes MIDI IN / OUT.
 - Deleting a node removes its instance, routing node (and connections),
   layout entry, and sidebar entry. Native/system nodes (MiniLab) are never
   deletable through this mechanism.
@@ -229,9 +234,60 @@ Hub module or Patch Bay node.
 - The chain is mirrored into the native audio engine, which loads the real VST3
   plugins and performs the audio processing (see the native engine section below).
 
-Not implemented (out of scope for this MVP): sequencer engine, mixer, sends,
-sidechains, automation, sequencer, recording, preset management, minimap,
-undo/redo, automatic graph layout, node groups, and content loading.
+### CONTROL parameter bindings
+
+MiniLab CONTROL sources map observable physical controls to real hosted VST3
+parameters without consuming their native MIDI messages. K1–K8 retain their
+original stable identities; F1–F4, the main encoder and click, Pitch Bend,
+Modulation, Shift, and P1–P8 have additional stable CONTROL identities.
+The graph cable only authorizes a physical source to reach a VST node's single
+`CTRL IN`; the node content persists the exact destination:
+
+```text
+{ version, sourceControlId, pluginInstanceId, pluginId, parameterId,
+  pluginName, parameterName }
+```
+
+Only `sourceControlId`, the owning VST node id, stable `pluginInstanceId`, exact
+`pluginId`, and VST3 ParamID are identity. Names are display metadata. Native
+LEARN captures the next real plugin gesture; a binding then works with the
+editor closed. Missing/replaced plugins remain visibly stale and are never
+retargeted by name. Updates carry the current native instance generation and
+are rejected if that runtime has been replaced.
+
+### Integrated Sequencer
+
+The fixed **Sequencer** sidebar page is MiniHub's only composition-recording
+workflow. It owns the project arrangement model while the native JUCE engine
+owns musical timing and audio-critical work.
+
+- MIDI and audio tracks share one PPQ timeline, global playhead/BPM/loop and
+  the existing Patch Bay. Track destinations create real graph cables.
+- MIDI clips retain pitch, PPQ start/duration, velocity and channel. The Piano
+  Roll supports create/delete, snap, zoom/scroll, resize and multi-note moves.
+- Armed MIDI input is recorded against the native transport with the existing
+  per-input compensation and becomes an editable clip on Stop.
+- Audio files are decoded/cached by JUCE, displayed with native-derived peaks,
+  and support placement, trim, gain, track volume/mute and synchronized loop/
+  seek playback. Armed physical or graph sources write real 32-bit WAV takes.
+- Master export taps one final PCM stream after VST/Mixer/Morpher, per-node
+  protection and Master Gain. A private, non-looping export transport consumes
+  a frozen arrangement/routing snapshot; it never seeks, starts, stops or
+  restores the live transport. The encoder stage writes WAV (24-bit default),
+  MP3 CBR 128/192/256/320 kbps, or JUCE OGG Vorbis quality options. MP3 uses
+  the packaged LGPL LAME 3.100.1 executable beside the engine, never an
+  installed FFmpeg/LAME. Full/loop ranges, deterministic tails, cancellation
+  and successive exports share the same PCM render path.
+- Sequencer state is part of the existing `.minihub` project snapshot. Project
+  save remains manual; project keys are excluded from application autosaving.
+
+The retired Recorder UI/protocol/node no longer exists. Its reusable threaded
+WAV primitive was reduced to `AudioTakeWriter` and is owned by armed Sequencer
+audio tracks. Current documented limitations are in
+`SEQUENCER_IMPLEMENTATION_REPORT.md`.
+
+Still outside the current scope: sends, sidechains, automation, preset
+management, minimap, undo/redo, automatic graph layout and node groups.
 
 ## Native audio engine (VST3 + WASAPI)
 
@@ -308,11 +364,16 @@ Every message carries `"v": 1`. Commands (Electron -> engine): `hello`,
 `listDevices`, `selectDevice`, `getDeviceState`, `scanVst3`, `listPlugins`,
 `createInstance`, `removeInstance`, `reorderChain`, `setBypass`, `midi`,
 `setChainMidiEnabled`, `setChainOutputEnabled`, `openEditor`, `closeEditor`,
-`getState`, `setState`, `shutdown` (`shutdown` is issued by the Electron main
+`getState`, `setState`, `getVstParameters`, `setVstParameter`, `setTransport`,
+`syncAudioGraph`, `syncMidiGraph`, `syncSequencer`, `sequencerMidiInput`,
+`sequencerRecord`, `sequencerExport`, `sequencerCancelExport`, `sequencerPanic`, `setMetronome`, `shutdown`
+(`shutdown` is issued by the Electron main
 process only — the renderer IPC surface allowlists every other command and
 rejects unknown ones). Events (engine -> Electron): `hello`,
 `devices`, `deviceState`, `plugins`, `chainChanged`, `instanceStatus`,
-`editorStatus`, `status`, `error`, `shutdownAck`. Only CONTROL and MIDI messages
+`editorStatus`, `vstParameters`, `vstParameterTouched`, `transport`,
+`sequencerMidiRecorded`, `sequencerAudioRecorded`, `sequencerAudioInfo`,
+`sequencerExport`, `status`, `error`, `shutdownAck`. Only state, CONTROL and MIDI messages
 cross this boundary.
 
 The renderer's `EngineClient` owns the engine-derived state (devices, device
@@ -336,3 +397,30 @@ when the engine goes away so a restarted engine gets the full topology again.
 9. `Open Plugin` on the plugin → the real native editor opens; change something
    and hear the result.
 
+### MiniLab 3 hardware surface and expression strips
+
+Patch Bay and VST CONTROL Learn render the same `MiniLabControlSurface` layout
+from `src/renderer/js/ui/miniLabControlSurface.js`. Every CONTROL socket and
+Learn target uses the same stable physical identity. CONTROL is additive: a
+message is still sent through `MIDI OUT` when that cable is connected, whether
+or not the corresponding CONTROL socket is also connected.
+
+The CONTROL projection follows Arturia's documented factory messages:
+
+- K1–K8 and F1–F4 are continuous CC sources. Their Arturia/User and DAW-mode
+  factory CC assignments are recognized.
+- The main encoder is a continuous CC source and its click is a
+  momentary-or-toggle event, matching the MIDI Control Center mode choice.
+- Pitch Bend remains standard 14-bit MIDI Pitch Bend and additionally provides
+  a bipolar CONTROL source; Modulation remains MIDI CC 1 and additionally
+  provides a continuous CONTROL source.
+- Pads remain channel-10 note/velocity/poly-pressure sources and additionally
+  provide velocity/momentary/pressure CONTROL events for factory Bank A/B notes.
+  Documented pad control-mode CC 102–109 messages map to the same physical IDs.
+- Shift is exposed as a momentary event for its documented factory CC. Hold,
+  Octave-/Octave+, and locally selected pad functions are not exposed because
+  MiniHub has no documented, unique incoming message for those physical actions.
+
+Custom MIDI Control Center assignments always remain on the native MIDI path.
+MiniHub only adds CONTROL for documented messages it can identify safely; it
+does not guess that an arbitrary custom CC belongs to a particular control.

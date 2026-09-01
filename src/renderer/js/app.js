@@ -2,30 +2,42 @@ import { createHub } from './core/hub.js';
 import { buildSidebar } from './ui/sidebar.js';
 import { buildHeader } from './ui/header.js';
 import { buildSettingsModal } from './ui/settingsModal.js';
-import { homeModule } from './modules/home/homeModule.js';
+import { createHomeModule } from './modules/home/homeModule.js';
 import { createMiniLabModule } from './modules/minilab/minilabModule.js';
 import { createRoutingModule } from './modules/routing/routingModule.js';
 import { createAudioOutputModule } from './modules/audioOutput/audioOutputModule.js';
+import { createSequencerModule } from './modules/sequencer/sequencerModule.js';
 import { setupEngineSync } from './core/engineSync.js';
+import { setupMasterOutput } from './core/masterOutput.js';
 import { setupMidiRouting } from './core/midiRouting.js';
+import { setupControlRouting } from './core/controlRouting.js';
 import { setupChainSync } from './core/chainSync.js';
 import { BUILD_STAMP } from './core/buildStamp.js';
-import { isMiniLabName, isPerformanceInputName } from './midi/minilab.js';
 
 async function main() {
   const hub = createHub(window.hubAPI);
+  const mark = (name) => hub.diagnostics.log(`startup:${name} rendererMs=${Math.round(performance.now())}`);
+  mark('renderer-main-start');
   hub.diagnostics.log('renderer: startup begin');
   hub.diagnostics.log(`renderer: build ${BUILD_STAMP.stamp}`);
 
   // Persisted settings (selected ports).
+  mark('settings-load-start');
   await hub.settings.load();
+  mark('settings-load-complete');
+  mark('recent-project-lookup');
+  mark('project-manager-init-start');
+  hub.project.bootstrap();
+  mark('project-manager-init-complete');
 
   // Register modules — the sidebar auto-populates from these.
-  hub.modules.register(homeModule);
+  hub.modules.register(createHomeModule(hub));
   hub.modules.register(createMiniLabModule(hub));
   hub.modules.register(createRoutingModule(hub));
   // Native/system Audio Output node + editor (non-deletable, non-copyable).
   hub.modules.register(createAudioOutputModule(hub));
+  hub.sequencer.load();
+  hub.modules.register(createSequencerModule(hub));
 
   // Restore persisted dynamic node instances (registers their modules +
   // routing nodes). Must run before restoring connections so nodes exist.
@@ -33,6 +45,11 @@ async function main() {
 
   // Restore persisted routing connections (nodes must exist first).
   hub.graph.restore(hub.settings.get('graphConnections'));
+  // The first Sequencer publication happened before the Patch Bay cables were
+  // restored. Republish now so persisted per-track destinations are audible
+  // even when the native engine was already running before this renderer.
+  hub.sequencer.syncNative();
+  hub.project.finishBootstrap();
 
   // UI shell.
   const sidebarEl = document.getElementById('sidebar');
@@ -44,7 +61,6 @@ async function main() {
   buildSidebar(hub, sidebarEl, contentEl);
   buildHeader(hub, statusEl);
   buildSettingsModal(hub, modalRoot, settingsButton);
-
   // Native audio engine client + graph sync. Initialized BEFORE any module is
   // activated so event listeners are always registered before a command can
   // trigger a response (no missed events).
@@ -53,77 +69,31 @@ async function main() {
   // run. Modules read those cached values instead of each issuing their own
   // requests when they happen to be opened.
   hub.engine.init();
+  setupMasterOutput(hub);
   const syncRouting = setupEngineSync(hub);
   // MIDI reaches the graph for the whole app lifetime, not just while the
   // MiniLab page happens to be mounted.
   setupMidiRouting(hub);
+  setupControlRouting(hub);
   // Replay persisted VST chains into the engine once it has a plugin registry
   // (engine restart / renderer reload leaves the engine with no chains).
   setupChainSync(hub, syncRouting);
 
-  // Start on Home.
-  hub.modules.activate('home', contentEl);
+  // A successfully created/loaded project opens its workspace. Ordinary cold
+  // launch still starts on Home and does not restore the recent project.
+  hub.modules.activate(hub.project.initialModule || 'home', contentEl);
+  mark('home-first-render');
 
   // MIDI layer.
   await hub.midi.init();
   console.info('[midi] state:', hub.midi.state);
 
-  // Restore previously selected ports.
-  restoreSelection(hub);
-
-  // If a MiniLab is present and nothing selected yet, auto-select its input.
-  if (!hub.midi.selectedInputId && hub.midi.isMiniLabConnected()) {
-    const id = hub.midi.findMiniLabInputId();
-    if (id) {
-      hub.midi.selectInput(id);
-      hub.settings.set('selectedInputId', id);
-    }
-  }
-
-
-  // Restore the persisted audio output configuration once the engine is ready.
-  restoreAudioConfig(hub);
-}
-
-/**
- * Restore the persisted port selection, correcting one specific stale case.
- *
- * A MiniLab exposes several inputs and only some of them carry what you play.
- * An earlier heuristic scored them all identically, so the first enumerated
- * port - the MCU/HUI control surface - could be persisted as "the" input, and
- * every key press was then filtered out as coming from an unselected device.
- *
- * Only a selection that PROVABLY cannot deliver notes is overridden; a working
- * choice (including a deliberate non-MiniLab one) is always left alone.
- */
-function restoreSelection(hub) {
-  let inId = hub.settings.get('selectedInputId');
+  // Input restoration occurs inside port enumeration so startup and hot-plug
+  // use the same stable-identity path. With no preference, select the best
+  // MiniLab performance port once and remember it.
+  hub.midi.autoSelectMiniLabInput();
   const outId = hub.settings.get('selectedOutputId');
-
-  const persisted = inId ? hub.midi.getInput(inId) : null;
-  if (persisted && isMiniLabName(persisted.name) && !isPerformanceInputName(persisted.name)) {
-    const better = hub.midi.findMiniLabInputId();
-    if (better && better !== inId) {
-      hub.diagnostics.log(
-        `midi: corrected stale input ${inId} ${JSON.stringify(persisted.name)}`
-        + ` -> ${better} ${JSON.stringify((hub.midi.getInput(better) || {}).name || '?')}`
-        + ' (previous port cannot send played notes)'
-      );
-      inId = better;
-      hub.settings.set('selectedInputId', inId);
-    }
-  }
-
-  if (inId) hub.midi.selectInput(inId);
   if (outId) hub.midi.selectOutput(outId);
-}
-
-function restoreAudioConfig(hub) {
-  const cfg = hub.settings.get('audioOutputConfig');
-  if (!cfg || !cfg.deviceName) return;
-  const sampleRate = cfg.sampleRate || 48000;
-  const bufferSize = cfg.bufferSize || 0;
-  hub.engine.selectDevice({ name: cfg.deviceName }, sampleRate, bufferSize);
 }
 
 window.addEventListener('DOMContentLoaded', () => {
