@@ -11,6 +11,11 @@
  * connected here in `hub.graph` (VST AUDIO OUT -> Audio Output AUDIO IN).
  */
 import { icon } from '../../ui/icons.js';
+import {
+  MASTER_OUTPUT_KEY,
+  normalizeMasterOutput,
+  updateMasterOutput
+} from '../../core/masterOutput.js';
 
 const NODE_ID = 'audio-output';
 
@@ -18,6 +23,10 @@ const SAMPLE_RATES = [44100, 48000, 88200, 96000];
 const BUFFER_SIZES = [128, 256, 512, 1024];
 
 const CONFIG_KEY = 'audioOutputConfig';
+
+const meterPercent = (db) => Math.max(0, Math.min(100, ((Number(db) || -100) + 60) / 60 * 100));
+const formatDb = (db, floor = -100) => Number.isFinite(Number(db)) && Number(db) > floor
+  ? `${Number(db).toFixed(1)} dBFS` : '−∞ dBFS';
 
 /** Deduplicate engine output devices by name, preferring WASAPI low latency. */
 function dedupeDevices(devices) {
@@ -35,6 +44,7 @@ export function createAudioOutputModule(hub) {
   let container = null;
   let subs = [];
   let els = {};
+  const pathTelemetry = new Map();
 
   function engineStateText() {
     const s = hub.engine.state;
@@ -48,6 +58,7 @@ export function createAudioOutputModule(hub) {
     const devices = dedupeDevices(hub.engine.devices);
     const st = engineStateText();
     const cfg = hub.settings.get(CONFIG_KEY) || {};
+    const master = normalizeMasterOutput(hub.settings.get(MASTER_OUTPUT_KEY));
 
     container.innerHTML = `
       <div class="panel">
@@ -106,6 +117,62 @@ export function createAudioOutputModule(hub) {
           </div>
           <div id="ao-error" class="ao-error"></div>
         </div>
+      </div>
+
+      <div class="panel mt-16 master-output-panel">
+        <div class="row">
+          <div>
+            <h2 class="panel-title">Master Output</h2>
+            <p class="muted m-0">Final signal shared by monitoring and Master export.</p>
+          </div>
+          <span class="spacer"></span>
+          <span id="float-mix-badge" class="pill ok">Linear float sum · no auto gain</span>
+        </div>
+        <div class="master-output-grid mt-14">
+          <div class="master-gain-control">
+            <div class="row">
+              <label for="master-gain">Master Gain</label>
+              <output id="master-gain-value" class="mono">${master.gainDb.toFixed(1)} dB</output>
+            </div>
+            <input id="master-gain" class="range" type="range" min="-60" max="12" step="0.1" value="${master.gainDb}">
+            <div class="master-scale"><span>−60</span><span>0</span><span>+12 dB</span></div>
+          </div>
+          <div class="master-meters" aria-label="Master output meters">
+            <div class="master-meter-row">
+              <span class="master-channel">L</span>
+              <span class="master-meter-track"><i id="master-meter-l"></i></span>
+              <output id="master-peak-l" class="mono">−∞ dBFS</output>
+            </div>
+            <div class="master-meter-row">
+              <span class="master-channel">R</span>
+              <span class="master-meter-track"><i id="master-meter-r"></i></span>
+              <output id="master-peak-r" class="mono">−∞ dBFS</output>
+            </div>
+          </div>
+          <div class="master-safety">
+            <button id="master-clip" class="master-clip" type="button" title="Reset persistent clip indicator">CLIP</button>
+            <div class="stat">
+              <span class="stat-label">Master pre-gain peak</span>
+              <span id="master-pre-gain-peak" class="stat-value mono">−∞ dBFS</span>
+            </div>
+            <div class="stat">
+              <span class="stat-label">Automatic gain reduction</span>
+              <span id="automatic-gain-reduction" class="stat-value mono">OFF</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel mt-16">
+        <div class="row">
+          <div>
+            <h2 class="panel-title">Gain staging diagnostics</h2>
+            <p class="muted m-0">Temporary per-node telemetry sampled off the audio callback.</p>
+          </div>
+          <span class="spacer"></span>
+          <span id="audio-runtime-summary" class="mono muted">Waiting for callback telemetry…</span>
+        </div>
+        <div id="audio-path-diagnostics" class="node-safety-diagnostics mt-14"></div>
       </div>`;
 
     els = {
@@ -119,13 +186,33 @@ export function createAudioOutputModule(hub) {
       currentDevice: container.querySelector('#ao-current-device'),
       currentSr: container.querySelector('#ao-current-sr'),
       currentBuf: container.querySelector('#ao-current-buf'),
-      error: container.querySelector('#ao-error')
+      error: container.querySelector('#ao-error'),
+      masterGain: container.querySelector('#master-gain'),
+      masterGainValue: container.querySelector('#master-gain-value'),
+      floatMixBadge: container.querySelector('#float-mix-badge'),
+      meterLeft: container.querySelector('#master-meter-l'),
+      meterRight: container.querySelector('#master-meter-r'),
+      peakLeft: container.querySelector('#master-peak-l'),
+      peakRight: container.querySelector('#master-peak-r'),
+      clip: container.querySelector('#master-clip'),
+      preGainPeak: container.querySelector('#master-pre-gain-peak'),
+      automaticGainReduction: container.querySelector('#automatic-gain-reduction'),
+      runtimeSummary: container.querySelector('#audio-runtime-summary'),
+      pathDiagnostics: container.querySelector('#audio-path-diagnostics')
     };
 
     fillDeviceSelect(devices, cfg.deviceName);
 
     els.apply.addEventListener('click', applyConfig);
-    els.refresh.addEventListener('click', () => hub.engine.listDevices());
+    els.refresh.addEventListener('click', () => hub.hardware.refreshAudioDevices());
+    els.masterGain?.addEventListener('input', () => {
+      const gainDb = Number(els.masterGain.value);
+      els.masterGainValue.textContent = `${gainDb.toFixed(1)} dB`;
+      updateMasterOutput(hub, { gainDb });
+    });
+    els.clip?.addEventListener('click', () => {
+      hub.engine.resetMasterClip();
+    });
 
     // Subscribe to engine events for live status.
     subs.push(
@@ -134,7 +221,12 @@ export function createAudioOutputModule(hub) {
         fillDeviceSelect(dedupeDevices(hub.engine.devices), hub.settings.get(CONFIG_KEY)?.deviceName);
       }),
       hub.events.on('engine:deviceState', (msg) => updateDeviceState(msg)),
-      hub.events.on('engine:state', updateEngineState)
+      hub.events.on('engine:state', updateEngineState),
+      hub.events.on('hardware:audio', (status) => updateHardwareStatus(status)),
+      hub.events.on('engine:masterMeter', updateMasterMeter),
+      hub.events.on('engine:audioPathTelemetry', updateAudioPathTelemetry),
+      hub.events.on('engine:audioRuntimeTelemetry', updateAudioRuntimeTelemetry),
+      hub.events.on('master:changed', updateMasterState)
     );
 
     updateEngineState();
@@ -142,6 +234,93 @@ export function createAudioOutputModule(hub) {
     // opening this panel renders from that cache instead of issuing its own
     // round trip every time.
     if (hub.engine.deviceState) updateDeviceState(hub.engine.deviceState);
+    if (hub.engine.masterMeter) updateMasterMeter(hub.engine.masterMeter);
+    updateHardwareStatus(hub.hardware.audioStatus);
+  }
+
+  function updateMasterState(state) {
+    if (!els.masterGain) return;
+    const master = normalizeMasterOutput(state);
+    els.masterGain.value = String(master.gainDb);
+    els.masterGainValue.textContent = `${master.gainDb.toFixed(1)} dB`;
+  }
+
+  function updateMasterMeter(meter) {
+    if (!els.meterLeft || !meter) return;
+    const leftDb = Number.isFinite(Number(meter.peakLeftDb)) ? Number(meter.peakLeftDb) : -100;
+    const rightDb = Number.isFinite(Number(meter.peakRightDb)) ? Number(meter.peakRightDb) : -100;
+    const observation = meter.audioOutputObservation || {};
+    els.meterLeft.style.width = `${meterPercent(leftDb)}%`;
+    els.meterRight.style.width = `${meterPercent(rightDb)}%`;
+    els.peakLeft.textContent = formatDb(leftDb);
+    els.peakRight.textContent = formatDb(rightDb);
+    els.clip.classList.toggle('active', meter.clip === true);
+    els.clip.setAttribute('aria-pressed', meter.clip === true ? 'true' : 'false');
+    els.preGainPeak.textContent = formatDb(Number(meter.preGainPeakDb));
+    els.automaticGainReduction.textContent = meter.automaticGainReduction === true ? 'ON' : 'OFF';
+    pathTelemetry.set('graph:audio-output', {
+      ...observation, scope: 'graph', nodeId: 'audio-output', role: 'output',
+      gainCoefficient: Number(meter.gainCoefficient) || 0,
+      name: 'Audio Output', receivedAt: Date.now()
+    });
+    renderPathDiagnostics();
+  }
+
+  function updateAudioPathTelemetry(message) {
+    if (!message?.nodeId) return;
+    const key = `${message.scope || 'node'}:${message.nodeId}:${message.instanceId || ''}`;
+    pathTelemetry.set(key, { ...message, receivedAt: Date.now() });
+    renderPathDiagnostics();
+  }
+
+  function updateAudioRuntimeTelemetry(message) {
+    if (!els.runtimeSummary || !message) return;
+    const duration = Math.max(0, Number(message.callbackMilliseconds) || 0);
+    const deadline = Math.max(0, Number(message.deadlineMilliseconds) || 0);
+    const cpu = Math.max(0, Number(message.audioCpuPercent) || 0);
+    const misses = Math.max(0, Number(message.totalDeadlineMisses) || 0);
+    const underruns = Math.max(0, Number(message.totalEstimatedSchedulingUnderruns) || 0);
+    els.runtimeSummary.textContent = `Callback ${duration.toFixed(2)} / ${deadline.toFixed(2)} ms · CPU ${cpu.toFixed(0)}% · deadline ${misses} · underrun est. ${underruns}`;
+  }
+
+  function renderPathDiagnostics() {
+    if (!els.pathDiagnostics) return;
+    const now = Date.now();
+    const records = [...pathTelemetry.values()]
+      .filter((record) => now - (record.receivedAt || now) < 5000)
+      .sort((a, b) => String(a.nodeId).localeCompare(String(b.nodeId))
+        || String(a.instanceId || '').localeCompare(String(b.instanceId || '')));
+    els.pathDiagnostics.innerHTML = '';
+    const append = (text, className = '') => {
+      const cell = document.createElement('span');
+      cell.textContent = text;
+      if (className) cell.className = className;
+      els.pathDiagnostics.appendChild(cell);
+    };
+    for (const label of ['Node / VST', 'Input', 'Output', 'Static gain', 'Auto GR', 'Maximum', 'Inputs'])
+      append(label, 'node-safety-heading');
+    if (!records.length) {
+      const empty = document.createElement('span');
+      empty.className = 'muted node-safety-empty';
+      empty.textContent = 'No active audio node telemetry yet.';
+      els.pathDiagnostics.appendChild(empty);
+      return;
+    }
+    const peakDb = (gain) => formatDb(gain > 0 ? 20 * Math.log10(gain) : -100);
+    for (const record of records) {
+      const identity = record.instanceId
+        ? `${record.name || record.nodeId} · ${record.instanceId}`
+        : (record.name || record.nodeId);
+      append(identity, 'node-safety-name');
+      append(peakDb(Number(record.inputPeak) || 0), 'mono');
+      append(peakDb(Number(record.outputPeak) || 0), 'mono');
+      append((Number(record.gainCoefficient) || 0).toFixed(3), 'mono');
+      append(record.automaticGainReduction === true ? 'ON' : 'OFF', 'mono');
+      append(peakDb(Number(record.maximumObservedPeak) || 0), 'mono');
+      append(Array.isArray(record.inputGainCoefficients)
+        ? record.inputGainCoefficients.map((gain) => Number(gain).toFixed(3)).join(', ')
+        : '—', 'mono');
+    }
   }
 
   function fillDeviceSelect(devices, selectedName) {
@@ -157,16 +336,21 @@ export function createAudioOutputModule(hub) {
       opt.textContent = d.isWASAPI ? `${d.name} (WASAPI)` : `${d.name} (${d.type})`;
       els.device.appendChild(opt);
     }
+    if (selectedName && !devices.some((device) => device.name === selectedName)) {
+      const unavailable = document.createElement('option');
+      unavailable.value = selectedName;
+      unavailable.textContent = `${selectedName} (preferred — unavailable)`;
+      els.device.appendChild(unavailable);
+    }
     els.device.value = selectedName || '';
   }
 
-  function applyConfig() {
+  async function applyConfig() {
     const deviceName = els.device.value;
     if (!deviceName) return;
     const sampleRate = Number(els.sampleRate.value);
     const bufferSize = Number(els.buffer.value);
-    hub.settings.set(CONFIG_KEY, { deviceName, sampleRate, bufferSize });
-    hub.engine.selectDevice({ name: deviceName }, sampleRate, bufferSize);
+    await hub.hardware.applyAudioPreference({ deviceName, sampleRate, bufferSize });
   }
 
   function updateDeviceState(msg) {
@@ -189,6 +373,19 @@ export function createAudioOutputModule(hub) {
     if (els.error) els.error.textContent = hub.engine.error || '';
   }
 
+  function updateHardwareStatus(status) {
+    if (!els.error || !status) return;
+    if (status.state === 'preferred-unavailable') {
+      els.error.textContent = 'Preferred output is unavailable; the current runtime device is unchanged.';
+    } else if (status.state === 'restore-failed') {
+      els.error.textContent = status.reason || 'Could not restore the preferred output.';
+    } else if (status.state === 'restoring') {
+      els.error.textContent = 'Restoring preferred audio output…';
+    } else if (!hub.engine.deviceState?.error) {
+      els.error.textContent = '';
+    }
+  }
+
   function mount(el) {
     container = el;
     hub.diagnostics.log(`audioOutput: mount devices=${hub.engine.devices.length} engine=${hub.engine.state}`);
@@ -198,6 +395,7 @@ export function createAudioOutputModule(hub) {
   function unmount() {
     subs.forEach((u) => u());
     subs = [];
+    pathTelemetry.clear();
     container = null;
     els = {};
   }
@@ -205,11 +403,11 @@ export function createAudioOutputModule(hub) {
   return {
     id: 'audio-output',
     name: 'Audio Output',
-    navEntry: { label: 'Audio Output', icon: 'speaker' },
+    navEntry: { label: 'Audio Output', icon: 'speaker', group: 'system', fixed: true },
     routingNode: {
       id: NODE_ID,
       name: 'Audio Output',
-      type: 'system',
+      type: 'audio-output',
       inputs: [{ id: 'audio-in', type: 'audio', label: 'AUDIO IN' }],
       outputs: []
     },

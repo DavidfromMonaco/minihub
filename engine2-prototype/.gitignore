@@ -1,0 +1,5 @@
+/build*/
+/artifacts/*
+!/artifacts/.gitkeep
+/third_party/
+

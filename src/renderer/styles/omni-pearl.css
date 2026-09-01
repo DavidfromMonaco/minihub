@@ -1,0 +1,967 @@
+/* ============================================================================
+ * OMNI PEARL - shared visual language for MiniLab Hub "hardware" surfaces.
+ *
+ * A module opts in by putting `omni-pearl` on the root element it renders into
+ * the dark Hub shell; nothing here leaks outside that subtree. Every colour,
+ * shadow, radius and metal gradient is a token defined ONCE below, so a future
+ * Morpher / Metronome / Omnibox skin reuses the same surface
+ * language instead of inventing new values.
+ *
+ * Layer order:
+ *   1. tokens      (--op-*)
+ *   2. primitives  module frame, panels, labels, wells, control strip
+ *   3. controls    selects, knobs, switches, buttons
+ *   4. arpeggiator piano roll + velocity lane built on the primitives
+ *
+ * CSP note: `style-src 'self'` - no inline styles anywhere. Anything that must
+ * vary per value is expressed through SVG geometry attributes (percentages,
+ * dasharray, transform), never through a `style=` attribute.
+ * ========================================================================== */
+
+/* ============================== 1. tokens ================================= */
+
+.omni-pearl {
+  /* --- surfaces ---------------------------------------------------------- */
+  --op-bg: #edeae6;
+  --op-surface: #fbfaf9;
+  --op-surface-2: #f4f2ef;
+  --op-surface-raised: linear-gradient(180deg, #ffffff 0%, #f6f4f1 100%);
+  --op-surface-metal: linear-gradient(180deg, #ffffff 0%, #eceae6 52%, #e2ded8 100%);
+  --op-recess: linear-gradient(180deg, #eae7e2 0%, #f5f3f0 12%, #f8f6f4 100%);
+  --op-well: #f7f6f4;
+
+  /* --- borders ----------------------------------------------------------- */
+  --op-border: #e2ded8;
+  --op-border-strong: #d2ccc4;
+  --op-hairline: rgba(90, 78, 64, 0.09);
+  --op-grid-line: rgba(90, 78, 64, 0.07);
+  --op-grid-line-strong: rgba(90, 78, 64, 0.16);
+
+  /* --- text -------------------------------------------------------------- */
+  --op-text: #3b3833;
+  --op-text-dim: #857e75;
+  --op-text-faint: #aca49a;
+  --op-text-on-accent: #ffffff;
+
+  /* --- accent ------------------------------------------------------------ */
+  --op-orange: #f07d1d;
+  --op-orange-hover: #ff9038;
+  --op-orange-active: #d96a0f;
+  --op-orange-deep: #c85f08;
+  --op-orange-soft: rgba(240, 125, 29, 0.16);
+  --op-orange-tint: rgba(240, 125, 29, 0.07);
+  --op-orange-line: rgba(240, 125, 29, 0.45);
+  --op-orange-grad: linear-gradient(180deg, #ff9436 0%, #f07d1d 55%, #e06f10 100%);
+
+  /* --- depth ------------------------------------------------------------- */
+  --op-shadow-1: 0 1px 2px rgba(70, 58, 44, 0.07);
+  --op-shadow-2: 0 2px 6px rgba(70, 58, 44, 0.08), 0 1px 1px rgba(70, 58, 44, 0.05);
+  --op-shadow-3: 0 10px 30px rgba(70, 58, 44, 0.11), 0 2px 6px rgba(70, 58, 44, 0.06);
+  --op-bevel: inset 0 1px 0 rgba(255, 255, 255, 0.95);
+  --op-inset-1: inset 0 1px 2px rgba(70, 58, 44, 0.09);
+  --op-inset-2: inset 0 2px 5px rgba(70, 58, 44, 0.13), inset 0 -1px 0 rgba(255, 255, 255, 0.7);
+  --op-ring: 0 0 0 2px rgba(240, 125, 29, 0.35);
+
+  /* --- geometry ---------------------------------------------------------- */
+  --op-radius-lg: 16px;
+  --op-radius: 10px;
+  --op-radius-sm: 7px;
+  --op-radius-pill: 999px;
+  --op-gap: 14px;
+
+  /* Reserved scrollbar width. The piano roll ALWAYS reserves it and the
+     velocity lane pads by the same amount, so their columns stay aligned
+     whether or not the roll actually overflows vertically. */
+  --op-scrollbar: 10px;
+  --op-roll-gutter: 86px;
+  --op-roll-row: 21px;
+  --op-step-min: 30px;
+
+  color: var(--op-text);
+  font-size: 13px;
+}
+
+/* ============================ 2. primitives =============================== */
+
+.omni-pearl.op-module {
+  display: flex;
+  flex-direction: column;
+  gap: var(--op-gap);
+  padding: 16px 16px 14px;
+  border: 1px solid var(--op-border-strong);
+  border-radius: var(--op-radius-lg);
+  background: linear-gradient(180deg, #f8f6f4 0%, var(--op-bg) 100%);
+  box-shadow: var(--op-shadow-3), var(--op-bevel);
+}
+
+.op-module-header {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 0 2px 2px;
+}
+
+.op-module-glyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  color: var(--op-orange);
+}
+
+.op-module-title {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--op-text);
+}
+
+.op-spacer {
+  flex: 1 1 auto;
+}
+
+.op-label {
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--op-text-dim);
+  white-space: nowrap;
+}
+
+.op-label.accent {
+  color: var(--op-orange);
+}
+
+.op-hint {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--op-text-faint);
+  font-size: 11px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.op-panel {
+  border: 1px solid var(--op-border);
+  border-radius: var(--op-radius);
+  background: var(--op-surface-raised);
+  box-shadow: var(--op-shadow-2), var(--op-bevel);
+}
+
+.op-panel-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 36px;
+  padding: 6px 10px 6px 13px;
+  border-bottom: 1px solid var(--op-hairline);
+}
+
+/* Recessed instrument well: everything "behind glass" sits on this. */
+.op-well {
+  border: 1px solid var(--op-border-strong);
+  border-radius: var(--op-radius-sm);
+  background: var(--op-well);
+  box-shadow: var(--op-inset-1);
+}
+
+/* ---------- control strip ---------- */
+.op-strip {
+  display: flex;
+  align-items: stretch;
+  flex-wrap: wrap;
+  padding: 4px 2px;
+  border: 1px solid var(--op-border);
+  border-radius: var(--op-radius);
+  background: var(--op-surface-metal);
+  box-shadow: var(--op-shadow-2), var(--op-bevel);
+}
+
+.op-strip-cell {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 9px;
+  min-width: 0;
+  padding: 12px 16px 13px;
+}
+
+.op-strip-cell + .op-strip-cell::before {
+  content: "";
+  position: absolute;
+  top: 12px;
+  bottom: 12px;
+  left: 0;
+  width: 1px;
+  background: linear-gradient(180deg, transparent, var(--op-hairline) 22%, var(--op-hairline) 78%, transparent);
+}
+
+/* Machined-plate corner tick, straight from the reference bezel. */
+.op-strip-cell::after {
+  content: "";
+  position: absolute;
+  top: 8px;
+  right: 9px;
+  width: 7px;
+  height: 7px;
+  border-top: 1px solid var(--op-border-strong);
+  border-right: 1px solid var(--op-border-strong);
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+.op-strip-cell--grow {
+  flex: 1 1 200px;
+}
+
+.op-strip-cell--wide {
+  flex: 1 1 150px;
+}
+
+.op-strip-cell--end {
+  margin-left: auto;
+  align-items: center;
+}
+
+/* ============================= 3. controls ================================ */
+
+/* ---------- select ---------- */
+.op-select {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: 38px;
+  min-width: 0;
+  padding: 0 30px 0 13px;
+  border: 1px solid var(--op-border-strong);
+  border-radius: var(--op-radius-sm);
+  background: var(--op-surface-raised);
+  box-shadow: var(--op-shadow-1), var(--op-bevel);
+  color: var(--op-text);
+  font-size: 13.5px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.op-select--value {
+  justify-content: center;
+  min-width: 86px;
+  padding-right: 26px;
+}
+
+.op-select-text {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.op-select-chevron {
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  display: block;
+  width: 8px;
+  height: 8px;
+  margin-top: -6px;
+  border-right: 1.6px solid var(--op-text-dim);
+  border-bottom: 1.6px solid var(--op-text-dim);
+  transform: rotate(45deg);
+  pointer-events: none;
+}
+
+/* The REAL control. Kept in the DOM (accessibility, keyboard, and the existing
+   change handling) but rendered by the pearl surface stacked above it. */
+.op-native {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  font: inherit;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+/* Visible flavour: the native select paints its own selected text inside the
+   pearl box, so a value change needs no synchronisation at all. */
+.op-select-native {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  padding: 0 30px 0 12px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 500;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.op-select-native:focus {
+  outline: none;
+}
+
+.op-select:hover {
+  border-color: var(--op-orange-line);
+}
+
+.op-select:has(select:focus-visible) {
+  border-color: var(--op-orange);
+  box-shadow: var(--op-ring), var(--op-bevel);
+}
+
+/* ---------- knob ---------- */
+.op-knob {
+  position: relative;
+  flex: 0 0 auto;
+  width: 58px;
+  height: 58px;
+}
+
+.op-knob--sm {
+  width: 50px;
+  height: 50px;
+}
+
+.op-knob-body {
+  position: absolute;
+  inset: 7px;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 50% 14%, #ffffff 0%, rgba(255, 255, 255, 0) 62%),
+    conic-gradient(from 210deg, #ffffff, #e6e1da 24%, #ffffff 48%, #e4dfd8 74%, #ffffff);
+  box-shadow:
+    0 2px 4px rgba(70, 58, 44, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    inset 0 -2px 3px rgba(70, 58, 44, 0.12);
+}
+
+.op-knob-body::after {
+  content: "";
+  position: absolute;
+  inset: 5px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 22%, #ffffff 0%, #f7f5f2 55%, #eae6e1 100%);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.75), 0 1px 2px rgba(70, 58, 44, 0.1);
+}
+
+.op-knob-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.op-knob-arc-track {
+  fill: none;
+  stroke: var(--op-border-strong);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  opacity: 0.8;
+}
+
+.op-knob-arc {
+  fill: none;
+  stroke: var(--op-orange);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+}
+
+.op-knob-pointer line {
+  stroke: var(--op-text);
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  opacity: 0.7;
+}
+
+.op-knob-value {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--op-text);
+  font-size: 15px;
+  font-weight: 600;
+  pointer-events: none;
+}
+
+.op-knob-mount {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  border-radius: var(--op-radius-pill);
+}
+
+.op-knob-mount:has(.op-native:focus-visible) {
+  box-shadow: var(--op-ring);
+}
+
+.op-knob-mount:hover .op-knob-body {
+  filter: brightness(1.02);
+}
+
+/* ---------- switch ---------- */
+.op-switch {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  width: 62px;
+  height: 30px;
+  cursor: pointer;
+}
+
+.op-switch-track {
+  position: absolute;
+  inset: 0;
+  border: 1px solid var(--op-border-strong);
+  border-radius: var(--op-radius-pill);
+  background: var(--op-surface-2);
+  box-shadow: var(--op-inset-2);
+  transition: background 0.16s ease, border-color 0.16s ease;
+}
+
+.op-switch-thumb {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 25%, #ffffff, #efece8);
+  box-shadow: 0 1px 3px rgba(70, 58, 44, 0.32), inset 0 1px 0 #fff;
+  transition: transform 0.16s ease;
+}
+
+.op-switch .op-native:checked ~ .op-switch-track {
+  background: var(--op-orange-grad);
+  border-color: var(--op-orange-deep);
+}
+
+.op-switch .op-native:checked ~ .op-switch-track .op-switch-thumb {
+  transform: translateX(32px);
+}
+
+.op-switch .op-native:focus-visible ~ .op-switch-track {
+  box-shadow: var(--op-ring), var(--op-inset-2);
+}
+
+/* ---------- buttons ---------- */
+.op-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 30px;
+  padding: 0 13px;
+  border: 1px solid var(--op-border-strong);
+  border-radius: var(--op-radius-sm);
+  background: var(--op-surface-raised);
+  box-shadow: var(--op-shadow-1), var(--op-bevel);
+  color: var(--op-text-dim);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.op-btn:hover {
+  color: var(--op-text);
+}
+
+.op-btn:active {
+  box-shadow: var(--op-inset-1);
+}
+
+.op-btn--danger:hover {
+  color: #b3352c;
+  border-color: rgba(179, 53, 44, 0.45);
+}
+
+.op-iconbtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid var(--op-border-strong);
+  border-radius: var(--op-radius-sm);
+  background: var(--op-surface-raised);
+  box-shadow: var(--op-shadow-1), var(--op-bevel);
+  color: var(--op-text-dim);
+  cursor: pointer;
+}
+
+.op-iconbtn:hover {
+  color: var(--op-orange);
+  border-color: var(--op-orange-line);
+}
+
+.op-iconbtn:disabled {
+  opacity: 0.4;
+  box-shadow: none;
+  cursor: default;
+}
+
+.op-iconbtn.active {
+  border-color: var(--op-orange-deep);
+  background: var(--op-orange-grad);
+  color: var(--op-text-on-accent);
+}
+
+/* ============================ 4. arpeggiator ============================== */
+
+.op-arp-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--op-gap);
+  min-height: 0;
+}
+
+.op-arp-pattern,
+.op-arp-velocity {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* ONE template for the roll and the velocity lane: their alignment is
+   structural instead of two piles of matching magic widths. */
+.omni-pearl .arp-roll.arp-steps-4,
+.omni-pearl .arp-velocity-grid.arp-steps-4 {
+  grid-template-columns: var(--op-roll-gutter) repeat(4, minmax(var(--op-step-min), 1fr));
+}
+
+.omni-pearl .arp-roll.arp-steps-8,
+.omni-pearl .arp-velocity-grid.arp-steps-8 {
+  grid-template-columns: var(--op-roll-gutter) repeat(8, minmax(var(--op-step-min), 1fr));
+}
+
+.omni-pearl .arp-roll.arp-steps-16,
+.omni-pearl .arp-velocity-grid.arp-steps-16 {
+  grid-template-columns: var(--op-roll-gutter) repeat(16, minmax(var(--op-step-min), 1fr));
+}
+
+.omni-pearl .arp-roll.arp-steps-32,
+.omni-pearl .arp-velocity-grid.arp-steps-32 {
+  grid-template-columns: var(--op-roll-gutter) repeat(32, minmax(var(--op-step-min), 1fr));
+}
+
+.omni-pearl .arp-roll-scroll {
+  height: clamp(230px, 42vh, 560px);
+  margin: 10px 10px 0;
+  overflow-x: auto;
+  overflow-y: scroll; /* always reserve --op-scrollbar (see token comment) */
+  border: 1px solid var(--op-border-strong);
+  border-radius: var(--op-radius-sm);
+  background: var(--op-recess);
+  box-shadow: var(--op-inset-1);
+}
+
+.omni-pearl .arp-roll {
+  position: relative;
+  display: grid;
+  grid-auto-rows: var(--op-roll-row);
+  min-width: max-content;
+}
+
+.omni-pearl .arp-roll-corner,
+.omni-pearl .arp-roll-step {
+  position: sticky;
+  top: 0;
+  z-index: 8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: calc(var(--op-roll-row) + 5px);
+  border-bottom: 1px solid var(--op-border-strong);
+  background: linear-gradient(180deg, #ffffff 0%, #f3f1ed 100%);
+  box-shadow: inset 1px 0 0 var(--op-grid-line);
+  color: var(--op-text-dim);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.omni-pearl .arp-roll-corner {
+  left: 0;
+  z-index: 10;
+  justify-content: flex-start;
+  padding-left: 12px;
+  border-right: 1px solid var(--op-border-strong);
+  color: var(--op-orange);
+  font-size: 9.5px;
+  letter-spacing: 0.13em;
+}
+
+.omni-pearl .arp-roll-step.beat {
+  box-shadow: inset 1px 0 0 var(--op-grid-line-strong);
+}
+
+.omni-pearl .arp-roll-step.current {
+  background: linear-gradient(180deg, #fff4e8 0%, #ffe5cb 100%);
+  box-shadow: inset 0 -2px 0 var(--op-orange);
+  color: var(--op-orange-deep);
+}
+
+/* ---------- pitch gutter: a real key bed ---------- */
+.omni-pearl .arp-pitch-label {
+  position: sticky;
+  left: 0;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 0 0 11px;
+  border-right: 1px solid var(--op-border-strong);
+  border-bottom: 1px solid var(--op-grid-line);
+  background: linear-gradient(90deg, #ffffff 0%, #fbfaf8 70%, #f1eeea 100%);
+  color: var(--op-text);
+  font-size: 10.5px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+/* The key strip that meets the grid, exactly like a piano roll. */
+.omni-pearl .arp-pitch-label::after {
+  content: "";
+  position: absolute;
+  top: 1px;
+  right: 0;
+  bottom: 1px;
+  width: 26px;
+  border-left: 1px solid var(--op-grid-line);
+  background: linear-gradient(180deg, #ffffff, #f2efeb);
+}
+
+.omni-pearl .arp-pitch-label.black-key {
+  background: linear-gradient(90deg, #fbfaf8 0%, #f5f3f0 70%, #edeae6 100%);
+  color: var(--op-text-dim);
+}
+
+.omni-pearl .arp-pitch-label.black-key::after {
+  border-left: 0;
+  background: linear-gradient(180deg, #4a453f, #322e29);
+}
+
+.omni-pearl .arp-pitch-label.root-row {
+  box-shadow: inset 3px 0 0 var(--op-orange);
+  color: var(--op-orange-deep);
+  font-weight: 700;
+}
+
+.omni-pearl .arp-pitch-name {
+  min-width: 26px;
+}
+
+/* Scale membership is guidance only - the row stays fully editable. */
+.omni-pearl .arp-pitch-label:not(.in-scale) .arp-pitch-name {
+  opacity: 0.55;
+}
+
+.omni-pearl .arp-pitch-offset {
+  margin-left: auto;
+  margin-right: 32px;
+  color: var(--op-text-faint);
+  font-size: 9px;
+}
+
+/* ---------- cells ---------- */
+.omni-pearl .arp-roll-cell {
+  position: relative;
+  width: 100%;
+  height: var(--op-roll-row);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  overflow: visible;
+  border: 0;
+  border-bottom: 1px solid var(--op-grid-line);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: inset 1px 0 0 var(--op-grid-line);
+  cursor: crosshair;
+}
+
+.omni-pearl .arp-roll-cell.beat {
+  box-shadow: inset 1px 0 0 var(--op-grid-line-strong);
+}
+
+.omni-pearl .arp-roll-cell.black-row {
+  background: rgba(90, 78, 64, 0.035);
+}
+
+.omni-pearl .arp-roll-cell.in-scale {
+  background: rgba(240, 125, 29, 0.05);
+}
+
+.omni-pearl .arp-roll-cell.black-row.in-scale {
+  background: rgba(240, 125, 29, 0.085);
+}
+
+.omni-pearl .arp-roll-cell.root-row {
+  border-bottom-color: var(--op-orange-line);
+}
+
+.omni-pearl .arp-roll-cell:hover {
+  background: var(--op-orange-soft);
+}
+
+/* ---------- notes ---------- */
+.omni-pearl .arp-roll-note {
+  position: absolute;
+  top: 3px;
+  left: 1px;
+  z-index: 5;
+  height: 15px;
+  overflow: visible;
+  cursor: grab;
+}
+
+.omni-pearl .arp-note-body {
+  fill: var(--op-orange);
+  stroke: var(--op-orange-deep);
+  stroke-width: 0.75;
+}
+
+.omni-pearl .arp-note-gloss {
+  fill: rgba(255, 255, 255, 0.32);
+}
+
+.omni-pearl .arp-roll-note.selected .arp-note-body {
+  fill: var(--op-orange-hover);
+  stroke: #8f4405;
+  stroke-width: 1.4;
+}
+
+.omni-pearl .arp-note-resize {
+  fill: rgba(255, 255, 255, 0.001);
+  cursor: ew-resize;
+}
+
+.omni-pearl .arp-roll-note:hover .arp-note-resize {
+  fill: rgba(255, 255, 255, 0.5);
+}
+
+/* ---------- velocity ---------- */
+.omni-pearl .arp-velocity {
+  margin: 8px 10px 10px;
+  padding-right: var(--op-scrollbar); /* mirrors the roll's reserved scrollbar */
+  overflow-x: auto;
+  overflow-y: hidden;
+  border: 1px solid var(--op-border-strong);
+  border-radius: var(--op-radius-sm);
+  background: var(--op-recess);
+  box-shadow: var(--op-inset-1);
+}
+
+.omni-pearl .arp-velocity-grid {
+  display: grid;
+  grid-auto-rows: 96px;
+  min-width: max-content;
+}
+
+.omni-pearl .arp-velocity-axis {
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: space-between;
+  padding: 3px 10px 3px 0;
+  border-right: 1px solid var(--op-border-strong);
+  background: linear-gradient(90deg, #ffffff 0%, #fbfaf8 100%);
+  color: var(--op-text-faint);
+  font-size: 9.5px;
+}
+
+.omni-pearl .arp-velocity-step {
+  position: relative;
+  width: 100%;
+  height: 96px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: inset 1px 0 0 var(--op-grid-line);
+  cursor: ns-resize;
+}
+
+.omni-pearl .arp-velocity-step.beat {
+  box-shadow: inset 1px 0 0 var(--op-grid-line-strong);
+}
+
+.omni-pearl .arp-velocity-step:hover {
+  background: var(--op-orange-tint);
+}
+
+.omni-pearl .arp-velocity-step.selected {
+  background: var(--op-orange-soft);
+}
+
+.omni-pearl .arp-velocity-step.current {
+  background: rgba(240, 125, 29, 0.12);
+}
+
+.omni-pearl .arp-velocity-step.inactive .arp-velocity-bar {
+  opacity: 0.26;
+}
+
+/* An <svg> is a replaced element: `inset: 0` alone would leave it at its
+   default 300x150 intrinsic size and overflow the lane, so size it explicitly. */
+.omni-pearl .arp-velocity-bar {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.omni-pearl .arp-velocity-fill {
+  fill: var(--op-orange);
+}
+
+.omni-pearl .arp-velocity-cap {
+  fill: rgba(255, 255, 255, 0.5);
+}
+
+.omni-pearl .arp-velocity-step small {
+  position: absolute;
+  right: 0;
+  bottom: 2px;
+  left: 0;
+  z-index: 2;
+  color: var(--op-text-dim);
+  font-size: 9px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.omni-pearl .arp-velocity-step:hover small,
+.omni-pearl .arp-velocity-step.selected small {
+  opacity: 1;
+}
+
+/* ---------- selected-step inspector ---------- */
+.omni-pearl .arp-note-inspector {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 14px;
+  min-height: 40px;
+  padding: 7px 13px;
+  border-top: 1px solid var(--op-hairline);
+  color: var(--op-text-dim);
+  font-size: 12px;
+}
+
+.omni-pearl .arp-note-inspector strong {
+  color: var(--op-orange-deep);
+}
+
+.omni-pearl .arp-note-inspector > span {
+  color: var(--op-text);
+  font-weight: 500;
+}
+
+.omni-pearl .arp-note-inspector label {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.omni-pearl input[type="range"] {
+  width: 130px;
+  height: 4px;
+  border-radius: var(--op-radius-pill);
+  background: var(--op-border-strong);
+  box-shadow: var(--op-inset-1);
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.omni-pearl input[type="range"]::-webkit-slider-thumb {
+  width: 15px;
+  height: 15px;
+  border: 1px solid var(--op-orange-deep);
+  border-radius: 50%;
+  background: var(--op-orange-grad);
+  box-shadow: 0 1px 2px rgba(70, 58, 44, 0.3);
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.omni-pearl input[type="checkbox"]:not(.op-native) {
+  accent-color: var(--op-orange);
+}
+
+/* ---------- scrollbars ---------- */
+.omni-pearl ::-webkit-scrollbar {
+  width: var(--op-scrollbar);
+  height: var(--op-scrollbar);
+}
+
+.omni-pearl ::-webkit-scrollbar-track {
+  background: var(--op-surface-2);
+}
+
+.omni-pearl ::-webkit-scrollbar-thumb {
+  border: 2px solid var(--op-surface-2);
+  border-radius: var(--op-radius-pill);
+  background: var(--op-border-strong);
+}
+
+.omni-pearl ::-webkit-scrollbar-thumb:hover {
+  background: #bdb5aa;
+}
+
+.omni-pearl ::-webkit-scrollbar-corner {
+  background: var(--op-surface-2);
+}
+
+/* ---------- responsive ---------- */
+@media (max-width: 1100px) {
+  .omni-pearl {
+    --op-roll-gutter: 72px;
+  }
+  .op-strip-cell {
+    padding: 10px 12px 11px;
+  }
+  .op-strip-cell--end {
+    margin-left: 0;
+  }
+}
+
+@media (max-width: 860px) {
+  .omni-pearl {
+    --op-roll-gutter: 62px;
+    --op-step-min: 26px;
+  }
+  .omni-pearl.op-module {
+    padding: 12px 10px 10px;
+  }
+  .op-knob {
+    width: 50px;
+    height: 50px;
+  }
+  .op-module-title {
+    font-size: 17px;
+  }
+}

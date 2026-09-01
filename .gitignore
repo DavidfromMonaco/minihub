@@ -1,11 +1,38 @@
+# --- Dependances ---
 node_modules/
+
+# --- Sortie applicative ---
 dist/
 out/
 *.log
 
-# Native audio engine build artifacts
+# --- Arbres de build natifs -------------------------------------------------
+# Toutes les variantes CMake/Ninja/Visual Studio, quel que soit le suffixe
+# (build, build-asan, build-ninja, build-clip-editing-vs3, ...). ~9 Go cumules.
 native/audio-engine/build/
+native/audio-engine/build-*/
 
-# Vendored JUCE SDK (126 MB) - fetch/extract it locally, never commit it.
-native/third_party/JUCE/
-native/third_party/*.zip
+# --- SDK vendorises ---------------------------------------------------------
+# Recuperes/extraits localement, jamais commites : JUCE 126 Mo, VST3 SDK 502 Mo,
+# PortAudio, LAME. Voir README pour la procedure de recuperation.
+native/third_party/
+
+# --- Prototypes : builds et captures ----------------------------------------
+# Les SOURCES des prototypes sont versionnees (elles tiennent en quelques Ko) ;
+# seuls leurs arbres de build, SDK et captures sont exclus.
+engine2-prototype/build*/
+engine2-prototype/third_party/
+engine2-prototype/artifacts/
+# Telemetrie Visual Studio (VSApplicationInsights) deposee pendant les builds.
+engine2-prototype/.tmp/
+tracktion-engine-prototype/build*/
+tracktion-engine-prototype/third_party/
+tracktion-engine-prototype/artifacts/
+
+# --- Sorties de diagnostic (gauntlets, profils Chromium, rendus audio) ------
+artifacts/
+
+# --- Donnees utilisateur ----------------------------------------------------
+# Projets .minihub personnels. L'emplacement normal est
+# Documents/MiniHub/Projects ; ceux-ci restent sur le disque, hors versionnement.
+Saves/

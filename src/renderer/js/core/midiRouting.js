@@ -24,6 +24,8 @@ function panicMessages(channel) {
 
 export function setupMidiRouting(hub) {
   const offMessage = hub.events.on('midi:message', (msg) => {
+    // CONTROL is additive: never remove a physical event from its native MIDI
+    // path merely because MiniHub can also expose it as CONTROL.
     hub.graph.emitData(NODE_ID, 'midi-out', msg);
   });
 

@@ -56,14 +56,32 @@ test('offset default is 0 and setInputOffset persists', async () => {
   assert.deepEqual(settings.get('inputOffsets'), {});
 });
 
-test('messages from non-selected input are ignored', () => {
+test('non-selected input is isolated from live routing but remains available to armed recording', () => {
   const settings = mockSettings();
   const events = new EventBus();
   const mm = new MidiManager(events, settings);
   mm.inputs.set('in1', { id: 'in1', name: 'Other', manufacturer: '' });
   mm.selectedInputId = 'in1';
   let count = 0;
+  const recording = [];
   events.on('midi:message', () => count++);
+  events.on('midi:inputMessage', (message) => recording.push(message));
   mm._onMessage('in2', [0x90, 60, 100], 100);
   assert.equal(count, 0);
+  assert.equal(recording.length, 1);
+  assert.equal(recording[0].sourceId, 'in2');
+});
+
+test('no selected MIDI input means no physical port enters live Patch Bay routing', () => {
+  const settings = mockSettings();
+  const events = new EventBus();
+  const mm = new MidiManager(events, settings);
+  mm.inputs.set('in1', { id: 'in1', name: 'Unselected Controller', manufacturer: '' });
+  let live = 0;
+  let observed = 0;
+  events.on('midi:message', () => live++);
+  events.on('midi:inputMessage', () => observed++);
+  mm._onMessage('in1', [0x90, 60, 100], 100);
+  assert.equal(live, 0, 'unselected hardware cannot impersonate minilab-3.midi-out');
+  assert.equal(observed, 1, 'diagnostic observation remains available without becoming a route');
 });

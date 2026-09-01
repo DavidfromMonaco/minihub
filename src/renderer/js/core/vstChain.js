@@ -66,6 +66,45 @@ export function getVstRole(roleId) {
 }
 
 /**
+ * Deterministic family grouping for the VST picker.
+ *
+ * Families are ordered INSTRUMENTS, AUDIO EFFECTS, MIDI EFFECTS,
+ * UTILITIES/ANALYZERS, OTHER/UNKNOWN. Classification is driven by the
+ * scanner-provided `role` metadata — never by filename. Each family is sorted
+ * alphabetically by plugin name, and empty families are dropped so the picker
+ * only shows categories that actually contain plugins.
+ */
+export const PLUGIN_FAMILIES = [
+  { id: 'instruments', label: 'INSTRUMENTS', roles: ['instrument'] },
+  { id: 'audio-effects', label: 'AUDIO EFFECTS', roles: ['audio-effect'] },
+  { id: 'midi-effects', label: 'MIDI EFFECTS', roles: ['midi-effect'] },
+  { id: 'utilities', label: 'UTILITIES / ANALYZERS', roles: ['utility', 'analyzer'] },
+  { id: 'other', label: 'OTHER / UNKNOWN', roles: [] }
+];
+
+/** Group scanned plugins into ordered, alphabetized, non-empty families. */
+export function groupPluginsByFamily(plugins) {
+  const buckets = PLUGIN_FAMILIES.map((f) => ({ ...f, plugins: [] }));
+  const other = buckets[buckets.length - 1];
+  for (const p of plugins || []) {
+    const role = String((p && p.role) || '').toLowerCase();
+    let placed = false;
+    for (const bucket of buckets) {
+      if (bucket.roles.includes(role)) {
+        bucket.plugins.push(p);
+        placed = true;
+        break;
+      }
+    }
+    if (!placed) other.plugins.push(p);
+  }
+  for (const bucket of buckets) {
+    bucket.plugins.sort((a, b) => String(a.name).localeCompare(String(b.name)));
+  }
+  return buckets.filter((b) => b.plugins.length > 0);
+}
+
+/**
  * Deep-duplicate a VST chain `content` object ({ plugins: [] }) for a new
  * node. Preserves plugin order, role, bypass and configuration state, but
  * generates NEW internal plugin-instance IDs so the copy is fully independent.
@@ -73,7 +112,10 @@ export function getVstRole(roleId) {
  */
 export function duplicateVstContent(content) {
   const src = content && Array.isArray(content.plugins) ? content.plugins : [];
-  const copy = { plugins: [] };
+  // External CONTROL cables are not duplicated, and copied plugins receive
+  // fresh instance ids. Starting without bindings prevents the new node from
+  // inheriting a stale target that only looks similar to the source chain.
+  const copy = { plugins: [], controlBindings: [] };
   const chain = new VstChain(copy);
   // Seed the copy's ID sequence above the source's max so every copied plugin
   // gets a fresh, distinct instance ID (never reused from the source).
@@ -81,6 +123,9 @@ export function duplicateVstContent(content) {
   for (const p of src) {
     const m = /^plugin-(\d+)$/.exec(String(p.id));
     if (m) maxSeq = Math.max(maxSeq, Number(m[1]));
+  }
+  if (Number.isSafeInteger(content?.nextPluginInstanceSeq)) {
+    maxSeq = Math.max(maxSeq, content.nextPluginInstanceSeq);
   }
   chain._seq = maxSeq;
   for (const p of src) {
@@ -111,7 +156,10 @@ export class VstChain {
     if (!Array.isArray(content.plugins)) content.plugins = [];
     this.content = content;
     this.onChange = typeof onChange === 'function' ? onChange : null;
-    this._seq = 0;
+    this._seq = Number.isSafeInteger(this.content.nextPluginInstanceSeq)
+      && this.content.nextPluginInstanceSeq >= 0
+      ? this.content.nextPluginInstanceSeq
+      : 0;
     for (const p of this.content.plugins) {
       const m = /^plugin-(\d+)$/.exec(String(p.id));
       if (m) this._seq = Math.max(this._seq, Number(m[1]));
@@ -184,6 +232,10 @@ export class VstChain {
   }
 
   _changed() {
+    // Persist the high-water mark independently of the live plugin list. This
+    // is the tombstone that prevents a deleted highest-numbered ID from being
+    // reused after a remount or application restart.
+    this.content.nextPluginInstanceSeq = this._seq;
     if (this.onChange) this.onChange();
   }
 }

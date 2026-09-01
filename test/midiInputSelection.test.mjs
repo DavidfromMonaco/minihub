@@ -163,10 +163,11 @@ test('a Note On with velocity 0 is forwarded as the Note Off it is', async () =>
   assert.deepEqual(data, [0x90, 60, 0], 'raw bytes are forwarded untouched');
 });
 
-test('every input is routed when nothing is explicitly selected', async () => {
+test('no physical input is routed when nothing is explicitly selected', async () => {
   const { hub, api } = await routedHub(null);
   hub.midi._onMessage('input-2', new Uint8Array([0x90, 60, 100]), 0);
-  assert.equal(notesReaching(api).length, 1);
+  assert.equal(notesReaching(api).length, 0,
+    'an unselected physical port must not impersonate the visible MiniLab graph source');
 });
 
 // ---- hot-plug -----------------------------------------------------------------

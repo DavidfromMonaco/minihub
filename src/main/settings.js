@@ -6,8 +6,10 @@ const path = require('path');
 
 const DEFAULTS = {
   selectedInputId: null,
+  midiInputPreference: null,
   selectedOutputId: null,
   inputOffsets: {}, // inputId -> timing offset in ms
+  audioOutputConfig: null,
   graphConnections: [] // [{ from: {nodeId, portId}, to: {nodeId, portId} }]
 };
 
@@ -45,4 +47,31 @@ function saveSettings(settings) {
   }
 }
 
-module.exports = { loadSettings, saveSettings, DEFAULTS };
+function applyPluginStateChunk(settings, message) {
+  if (!settings || !message || typeof message.state !== 'string') return false;
+  const instances = settings.nodeInstances && settings.nodeInstances.instances;
+  if (!Array.isArray(instances)) return false;
+
+  const node = instances.find((item) => item && item.id === message.chainId && item.type === 'vst');
+  const plugins = node && node.content && node.content.plugins;
+  if (!Array.isArray(plugins)) return false;
+
+  const plugin = plugins.find((item) => item &&
+    item.id === message.instanceId && item.pluginId === message.pluginId);
+  if (!plugin) return false;
+  plugin.state = message.state;
+  return true;
+}
+
+function persistPluginStateChunk(message) {
+  const settings = loadSettings();
+  return applyPluginStateChunk(settings, message) && saveSettings(settings);
+}
+
+module.exports = {
+  loadSettings,
+  saveSettings,
+  applyPluginStateChunk,
+  persistPluginStateChunk,
+  DEFAULTS
+};

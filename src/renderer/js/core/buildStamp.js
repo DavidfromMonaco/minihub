@@ -5,9 +5,9 @@
  */
 export const BUILD_STAMP = {
   version: '0.1.0',
-  build: 'dev-20260818',
-  timestamp: '2026-08-18T12:00:00Z',
-  stamp: 'mlh-dev-20260818-01'
+  build: 'full-application-gauntlet-20260824',
+  timestamp: '2026-08-24T02:10:52Z',
+  stamp: 'mlh-full-application-gauntlet-20260824-01'
 };
 
 export function buildStampLabel() {

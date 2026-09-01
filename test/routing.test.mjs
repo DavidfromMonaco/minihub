@@ -33,6 +33,26 @@ const { GraphViewport } = await import('../src/renderer/js/core/graphViewport.js
 const { GRID_SIZE } = await import('../src/renderer/js/core/grid.js');
 const { NodeInstanceManager } = await import('../src/renderer/js/core/nodeInstances.js');
 
+test('Front/Rear view swaps cable layer order without changing topology', () => {
+  const hub = makeHub({ graphViewport: { x: 0, y: 0, zoom: 1 } });
+  seedGraph(hub);
+  hub.graph.connect('src', 'midi-out', 'dst', 'midi-in');
+  const { container, svg } = makeContainer();
+  const mod = createRoutingModule(hub);
+  mod.mount(container);
+  const cables = findClass(svg, 'cables');
+  const nodes = findClass(svg, 'nodes');
+  assert.ok(svg.children.indexOf(cables) < svg.children.indexOf(nodes), 'Front keeps cables behind panels');
+  const before = hub.graph.connections.length;
+  assert.equal(mod.setRearView(true), true);
+  assert.ok(svg.children.indexOf(cables) > svg.children.indexOf(nodes), 'Rear raises cables above panels');
+  assert.equal(cables.classList.contains('rear'), true);
+  assert.equal(hub.graph.connections.length, before, 'view swap does not mutate graph');
+  mod.setRearView(false);
+  assert.ok(svg.children.indexOf(cables) < svg.children.indexOf(nodes));
+  mod.unmount();
+});
+
 // ---- fixtures ---------------------------------------------------------------
 function seedGraph(hub) {
   hub.graph.addNode({
@@ -65,6 +85,139 @@ test('routing module registers through the module system', () => {
   assert.equal(mod.navEntry.label, 'Routing');
   assert.equal(typeof mod.mount, 'function');
   assert.equal(typeof mod.unmount, 'function');
+});
+
+test('double-clicking a dynamic Patch Bay node opens its detailed editor', () => {
+  const hub=makeHub({graphViewport:{x:0,y:0,zoom:1}});
+  hub.modules=new ModuleSystem(hub);hub.nodes=new NodeInstanceManager(hub);
+  const arp=hub.nodes.create('arpeggiator');
+  const activated=[];hub.modules.activate=(id,el)=>activated.push([id,el]);
+  const {container,svg}=makeContainer();const mod=createRoutingModule(hub);mod.mount(container);
+  const nodes=findClass(svg,'nodes');
+  const stack=[...nodes.children];let node=null;
+  while(stack.length){const candidate=stack.pop();if(candidate.dataset?.nodeId===arp.id){node=candidate;break;}stack.push(...candidate.children);}
+  assert.ok(node,'Arpeggiator visual node rendered');
+  fire(nodes,'dblclick',{target:node});
+  assert.deepEqual(activated,[[arp.id,container]]);
+  mod.unmount();
+});
+
+function findNodeEl(svg,nodeId){
+  const stack=[...findClass(svg,'nodes').children];
+  while(stack.length){const candidate=stack.pop();
+    if(candidate.dataset?.nodeId===nodeId)return candidate;
+    stack.push(...candidate.children);}
+  return null;
+}
+function findClassDeep(el,className){
+  const stack=[...el.children];
+  while(stack.length){const candidate=stack.pop();
+    if(candidate._classSet?.has(className))return candidate;
+    stack.push(...candidate.children);}
+  return null;
+}
+
+test('an Arpeggiator card carries an OPEN control that reaches its editor in one click',()=>{
+  const hub=makeHub({graphViewport:{x:0,y:0,zoom:1}});
+  hub.modules=new ModuleSystem(hub);hub.nodes=new NodeInstanceManager(hub);
+  const arp=hub.nodes.create('arpeggiator');
+  const activated=[];hub.modules.activate=(id,el)=>activated.push([id,el]);
+  const {container,svg}=makeContainer();const mod=createRoutingModule(hub);mod.mount(container);
+  const node=findNodeEl(svg,arp.id);
+  const open=findClassDeep(node,'node-open-control');
+  assert.ok(open,'the card exposes an OPEN control');
+  fire(svg,'pointerdown',{target:open,button:0,clientX:0,clientY:0});
+  assert.deepEqual(activated,[[arp.id,container]],'one click opens the editor');
+  mod.unmount();
+});
+
+// ---- VST OPEN button: contextual native-editor vs VST-page navigation -------
+function makeVstHub(primaryStatus) {
+  const hub = makeHub({ graphViewport: { x: 0, y: 0, zoom: 1 } });
+  hub.modules = new ModuleSystem(hub);
+  hub.nodes = new NodeInstanceManager(hub);
+  const opened = [];
+  hub.engine = {
+    getInstanceStatus: () => primaryStatus,
+    openEditor: (chainId, instanceId) => opened.push([chainId, instanceId])
+  };
+  return { hub, opened };
+}
+
+function openControlFor(svg, nodeId) {
+  const node = findNodeEl(svg, nodeId);
+  return findClassDeep(node, 'node-open-control');
+}
+
+test('VST OPEN with a ready primary plugin opens the native editor and stays on the Patch Bay', () => {
+  const { hub, opened } = makeVstHub('ready');
+  const vst = hub.nodes.create('vst');
+  const chain = hub.nodes.getChain(vst.id);
+  chain.append({ pluginId: 'analog-lab-v', name: 'Analog Lab V', role: 'instrument' });
+  const activated = [];
+  hub.modules.activate = (id, el) => activated.push([id, el]);
+  const { container, svg } = makeContainer();
+  const mod = createRoutingModule(hub); mod.mount(container);
+  const open = openControlFor(svg, vst.id);
+  fire(svg, 'pointerdown', { target: open, button: 0, clientX: 0, clientY: 0 });
+  assert.deepEqual(opened, [[vst.id, chain.plugins[0].id]], 'native editor opened for the primary plugin');
+  assert.deepEqual(activated, [], 'stays on Routing / Patch Bay (no navigation)');
+  mod.unmount();
+});
+
+test('VST OPEN with an empty chain navigates to the VST page', () => {
+  const { hub, opened } = makeVstHub('ready');
+  const vst = hub.nodes.create('vst');
+  const activated = [];
+  hub.modules.activate = (id, el) => activated.push([id, el]);
+  const { container, svg } = makeContainer();
+  const mod = createRoutingModule(hub); mod.mount(container);
+  const open = openControlFor(svg, vst.id);
+  fire(svg, 'pointerdown', { target: open, button: 0, clientX: 0, clientY: 0 });
+  assert.deepEqual(opened, [], 'no native editor opened for an empty chain');
+  assert.deepEqual(activated, [[vst.id, container]], 'navigates to the VST page');
+  mod.unmount();
+});
+
+test('VST OPEN with a not-ready primary plugin navigates to the VST page', () => {
+  const { hub, opened } = makeVstHub('loading');
+  const vst = hub.nodes.create('vst');
+  const chain = hub.nodes.getChain(vst.id);
+  chain.append({ pluginId: 'analog-lab-v', name: 'Analog Lab V', role: 'instrument' });
+  const activated = [];
+  hub.modules.activate = (id, el) => activated.push([id, el]);
+  const { container, svg } = makeContainer();
+  const mod = createRoutingModule(hub); mod.mount(container);
+  const open = openControlFor(svg, vst.id);
+  fire(svg, 'pointerdown', { target: open, button: 0, clientX: 0, clientY: 0 });
+  assert.deepEqual(opened, [], 'no native editor opened for a non-ready plugin');
+  assert.deepEqual(activated, [[vst.id, container]], 'navigates to the VST page');
+  mod.unmount();
+});
+
+test('pressing a node without moving it twice opens the editor; a drag does not',()=>{
+  const hub=makeHub({graphViewport:{x:0,y:0,zoom:1}});
+  hub.modules=new ModuleSystem(hub);hub.nodes=new NodeInstanceManager(hub);
+  const arp=hub.nodes.create('arpeggiator');
+  const activated=[];hub.modules.activate=(id,el)=>activated.push([id,el]);
+  const {container,svg}=makeContainer();const mod=createRoutingModule(hub);mod.mount(container);
+  const node=findNodeEl(svg,arp.id);
+  const press=()=>{fire(svg,'pointerdown',{target:node,button:0,clientX:10,clientY:10,pointerId:1});
+    fire(svg,'pointerup',{target:node,button:0,clientX:10,clientY:10,pointerId:1});};
+  press();
+  assert.deepEqual(activated,[],'a single press only selects');
+  press();
+  assert.deepEqual(activated,[[arp.id,container]],'the second press opens the editor');
+  // A press that MOVES the node is a drag, never a request to open it.
+  activated.length=0;
+  fire(svg,'pointerdown',{target:node,button:0,clientX:10,clientY:10,pointerId:1});
+  fire(svg,'pointermove',{target:node,clientX:90,clientY:70,pointerId:1});
+  fire(svg,'pointerup',{target:node,clientX:90,clientY:70,pointerId:1});
+  fire(svg,'pointerdown',{target:node,button:0,clientX:90,clientY:70,pointerId:1});
+  fire(svg,'pointermove',{target:node,clientX:150,clientY:120,pointerId:1});
+  fire(svg,'pointerup',{target:node,clientX:150,clientY:120,pointerId:1});
+  assert.deepEqual(activated,[],'dragging a node twice never opens it');
+  mod.unmount();
 });
 
 // ---- graph -> visual mapping -------------------------------------------------
@@ -299,6 +452,11 @@ test('port elements carry the correct node id for cable drag', () => {
   const minilab = nodesLayer.children.find((c) => c.dataset.nodeId === 'minilab-3');
   const vst = nodesLayer.children.find((c) => c.dataset.nodeId === 'vst-001');
   assert.ok(minilab && vst, 'both nodes should render');
+  const viewSwitch = findClass(minilab, 'view-side-switch');
+  assert.ok(viewSwitch, 'Front/Rear control lives inside the MiniLab node');
+  assert.equal(viewSwitch.children.find((child) => child._classSet.has('view-side-switch-label')).textContent, 'Rear View');
+  fire(svg, 'pointerdown', { target: viewSwitch, button: 0 });
+  assert.equal(mod.isRearView(), true, 'node-local control switches to Rear view');
 
   const minilabOut = minilab.children.find((c) => c.dataset.side === 'output');
   const vstIn = vst.children.find((c) => c.dataset.side === 'input');

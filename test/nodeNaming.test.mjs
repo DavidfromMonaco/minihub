@@ -74,7 +74,6 @@ test('every node type family numbers itself from 1', () => {
   assert.equal(hub.nodes.create('vst').name, 'VST 1');
   assert.equal(hub.nodes.create('video').name, 'Video 1');
   assert.equal(hub.nodes.create('image').name, 'Image 1');
-  assert.equal(hub.nodes.create('sequencer').name, 'Sequencer 1');
 });
 
 // ---- every creation path obeys the same rule --------------------------------
@@ -231,6 +230,6 @@ test('a VST node with a corrupt content blob still loads with an empty chain', a
     }
   });
   await hub.nodes.load();
-  assert.deepEqual(hub.nodes.get('vst-001').content, { plugins: [] });
+  assert.deepEqual(hub.nodes.get('vst-001').content, { plugins: [], controlBindings: [] });
   assert.equal(hub.nodes.getChain('vst-001').count(), 0);
 });

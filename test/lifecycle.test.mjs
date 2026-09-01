@@ -184,8 +184,7 @@ test('deleting a VST node stops its chain in the engine exactly once', async () 
   hub.nodes.delete(node.id);
 
   const off = api.sent.filter((m) => m.type === 'setChainOutputEnabled' && m.chainId === node.id);
-  assert.equal(off.length, 1, 'no duplicated teardown commands');
-  assert.equal(off[0].enabled, false);
+  assert.equal(off.length, 0, 'obsolete output gate is not used');
   assert.equal(api.sent.filter((m) => m.type === 'removeInstance').length, 1);
 });
 
@@ -224,12 +223,22 @@ test('the sidebar does rebuild when the set of modules changes', () => {
   const sidebarEl = makeEl('nav');
   buildSidebar(hub, sidebarEl, makeEl('main'));
 
-  const before = sidebarEl.children.length;
+  // No modules yet -> no groups rendered.
+  assert.equal(sidebarEl.children.length, 0);
+
   const node = hub.nodes.create('vst');
-  assert.equal(sidebarEl.children.length, before + 1, 'new node appears in the nav');
+  // The NODES group appears with its section label + the new node.
+  const labels = sidebarEl.children
+    .filter((c) => c._classSet.has('sidebar-group-label'))
+    .map((c) => c.textContent);
+  assert.deepEqual(labels, ['NODES'], 'only the dynamic-node group is added');
+  const nodeItems = sidebarEl.children.filter(
+    (c) => c._classSet.has('nav-item') && c.getAttribute('data-module-id') === node.id
+  );
+  assert.equal(nodeItems.length, 1, 'new node appears in the nav');
 
   hub.nodes.delete(node.id);
-  assert.equal(sidebarEl.children.length, before, 'and disappears when deleted');
+  assert.equal(sidebarEl.children.length, 0, 'empty NODES group disappears when deleted');
 });
 
 // ---- engine chatter -----------------------------------------------------------
@@ -237,7 +246,7 @@ test('the sidebar does rebuild when the set of modules changes', () => {
 const { setupEngineSync } = await import('../src/renderer/js/core/engineSync.js');
 const { createAudioOutputModule } = await import('../src/renderer/js/modules/audioOutput/audioOutputModule.js');
 
-test('chain enable flags are published only when they actually change', async () => {
+test('audio execution graph is published only when AUDIO topology changes', async () => {
   const api = mockApi();
   const hub = createHub(api);
   await hub.engine.init();
@@ -245,9 +254,7 @@ test('chain enable flags are published only when they actually change', async ()
   const node = hub.nodes.create('vst');
   setupEngineSync(hub);
 
-  const enableCmds = () => api.sent.filter(
-    (m) => m.type === 'setChainMidiEnabled' || m.type === 'setChainOutputEnabled'
-  ).length;
+  const enableCmds = () => api.sent.filter((m) => m.type === 'syncAudioGraph').length;
 
   const afterInitial = enableCmds();
   hub.graph.connect(node.id, 'audio-out', 'audio-output', 'audio-in');
@@ -279,12 +286,15 @@ test('an engine restart re-publishes the routing topology', async () => {
 
   api.emitState({ state: 'error', error: 'engine crashed' });
   api.emitState({ state: 'running', error: null });
+  assert.ok(
+    api.sent.some((m) => m.type === 'syncAudioGraph' && m.nodes.find((n)=>n.id==='audio-output')?.inputs.some((i)=>i.sourceNodeId===node.id)),
+    'the running transition immediately re-sends topology to the empty engine'
+  );
+  assert.ok(api.sent.some((m) => m.type === 'syncMidiGraph'),
+    'the running transition immediately restores the native MIDI execution plan');
   api.sent.length = 0;
   sync();
-  assert.ok(
-    api.sent.some((m) => m.type === 'setChainOutputEnabled' && m.chainId === node.id && m.enabled === true),
-    'after a restart the engine knows nothing, so the topology must be re-sent'
-  );
+  assert.equal(api.sent.length, 0, 'the restored topology is cached after successful restart publication');
 });
 
 test('the engine client warms up once per engine run, not once per module', async () => {
@@ -293,15 +303,15 @@ test('the engine client warms up once per engine run, not once per module', asyn
   await hub.engine.init();
 
   const warmup = () => api.sent.filter(
-    (m) => m.type === 'listDevices' || m.type === 'getDeviceState' || m.type === 'scanVst3'
+    (m) => m.type === 'hello' || m.type === 'listDevices' || m.type === 'getDeviceState' || m.type === 'scanVst3'
   ).length;
-  assert.equal(warmup(), 3, 'init pulls devices, device state and the registry once');
+  assert.equal(warmup(), 4, 'init pulls capabilities, devices, device state and the registry once');
 
   // Opening the Audio Output panel must not re-issue them.
   const mod = createAudioOutputModule(hub);
   hub.modules.register(mod);
   mod.mount(makePanelContainer(AUDIO_OUTPUT_IDS));
-  assert.equal(warmup(), 3, 'a module reads the cached state instead of re-requesting');
+  assert.equal(warmup(), 4, 'a module reads the cached state instead of re-requesting');
   mod.unmount();
 });
 
@@ -325,6 +335,33 @@ test('engine state and caches are invalidated when the engine goes away', async 
   api.sent.length = 0;
   api.emitState({ state: 'running', error: null });
   const types = api.sent.map((m) => m.type);
-  assert.ok(types.includes('listDevices') && types.includes('getDeviceState') && types.includes('scanVst3'),
+  assert.ok(types.includes('hello') && types.includes('listDevices') && types.includes('getDeviceState') && types.includes('scanVst3'),
     'coming back up re-pulls everything the renderer needs');
+});
+
+test('a renderer reload over an already-running engine re-requests export capabilities', async () => {
+  const api = mockApi();
+  const first = createHub(api);
+  await first.engine.init();
+  first.engine.dispose();
+  api.sent.length = 0;
+
+  const reloaded = createHub(api);
+  const seen = [];
+  reloaded.events.on('engine:sequencerExportCapabilities', (value) => seen.push(value));
+  await reloaded.engine.init();
+  assert.ok(api.sent.some((message) => message.type === 'hello'),
+    'reload cannot rely on the native startup hello that the old renderer consumed');
+
+  api.emitEvent({
+    type: 'hello',
+    sequencerExportCapabilities: {
+      formats: ['wav', 'mp3', 'ogg'],
+      mp3Available: true,
+      oggQualityOptions: ['Low', 'High']
+    }
+  });
+  assert.equal(reloaded.engine.exportCapabilities.mp3Available, true);
+  assert.deepEqual(reloaded.engine.exportCapabilities.oggQualityOptions, ['Low', 'High']);
+  assert.equal(seen.length, 1);
 });

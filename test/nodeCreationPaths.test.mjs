@@ -131,18 +131,45 @@ test('toolbar and context menu produce equivalent nodes', () => {
   );
 });
 
+test('hierarchical OmniBox menu creates every registered functional family', () => {
+  const expected = [
+    ['Arpeggiator','arpeggiator',['midi-in'],['midi-out']],
+    ['Sequencer','sequencer',['midi-in','audio-in'],['midi-out','audio-out']],
+    ['Audio Input','audio-input',[],['audio-out']],
+    ['Mixer','mixer',['audio-in-1'],['audio-out']],
+    ['Morpher','morpher',['audio-in-1'],['audio-out']],
+    ['VST','vst',['midi-in','audio-in','ctrl-in'],['audio-out']]
+  ];
+  for (const [label,type,inputs,outputs] of expected) {
+    const hub=setupHub();const {container,svg}=makeContainer();createRoutingModule(hub).mount(container);
+    fireContextMenu(svg,240,180);assert.ok(clickMenuLabel(label),`OmniBox hierarchy offers ${label}`);
+    const instance=hub.nodes.list()[0], graphNode=hub.graph.getNode(instance.id);
+    assert.equal(instance.type,type);assert.deepEqual(graphNode.inputs.map((p)=>p.id),inputs);assert.deepEqual(graphNode.outputs.map((p)=>p.id),outputs);
+    assert.ok(hub.settings.get('graphLayout')[instance.id],`${label} uses context insertion positioning`);
+  }
+});
+
+test('Arpeggiator menu creation uses native defaults and persisted instance model', () => {
+  const hub=setupHub();const {container,svg}=makeContainer();createRoutingModule(hub).mount(container);
+  fireContextMenu(svg,320,220);assert.ok(clickMenuLabel('Arpeggiator'));
+  const arp=hub.nodes.list()[0], stored=hub.settings.get('nodeInstances').instances[0];
+  assert.equal(arp.id,'arpeggiator-001');assert.equal(stored.type,'arpeggiator');
+  assert.equal(arp.content.mode,'Up');assert.equal(arp.content.rate,'1/16');assert.equal(arp.content.customPattern.length,32);
+  assert.deepEqual(stored.content,arp.content);
+});
+
 test('every node type can be created from the toolbar with correct naming', () => {
   const hub = setupHub();
   const { container, newBtn, newType } = makeContainer();
   createRoutingModule(hub).mount(container);
 
-  for (const type of ['vst', 'video', 'image', 'sequencer']) {
+  for (const type of ['vst', 'video', 'image']) {
     newType.value = type;
     [...newBtn._listeners['click']].forEach((fn) => fn());
   }
 
   assert.deepEqual(
     hub.nodes.list().map((n) => n.name),
-    ['VST 1', 'Video 1', 'Image 1', 'Sequencer 1']
+    ['VST 1', 'Video 1', 'Image 1']
   );
 });
