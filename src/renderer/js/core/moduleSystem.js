@@ -81,7 +81,16 @@ export class ModuleSystem {
     return [...this.modules.values()];
   }
 
-  /** Remove a module (e.g. a deleted dynamic node instance). */
+  /**
+   * Remove a module (e.g. a deleted dynamic node instance).
+   *
+   * Exactly undoes `register`, routing node included. It used to undo only
+   * half of it: `register` added `routingNode` to the graph but `unregister`
+   * left it there, so every caller had to remember `hub.graph.removeNode()`
+   * separately. Forgetting it leaves a node with no module behind it — still
+   * drawn in the Patch Bay, still cabled, still published to the native engine,
+   * and impossible to open.
+   */
   unregister(id) {
     const module = this.modules.get(id);
     if (!module) return false;
@@ -93,6 +102,9 @@ export class ModuleSystem {
       }
     }
     this.modules.delete(id);
+    if (module.routingNode && this.hub.graph) {
+      this.hub.graph.removeNode(module.routingNode.id);
+    }
     if (this.activeId === id) this.activeId = null;
     this.hub.events.emit('module:unregistered', id);
     return true;

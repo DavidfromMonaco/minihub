@@ -1,10 +1,8 @@
 import { SequencerModel, defaultSequencerState } from './sequencerModel.js';
 import { normalizeTempo } from './tempoControl.js';
+import { AUDIO_INPUT_NODE_ID, MINILAB_NODE_ID, SEQUENCER_NODE_ID } from './systemNodes.js';
 
 const STATE_KEY = 'sequencerState';
-const SEQUENCER_NODE_ID = 'sequencer';
-const MINILAB_NODE_ID = 'minilab-3';
-const AUDIO_INPUT_NODE_ID = 'audio-input';
 const LEGACY_DEVICE_INPUT_ID = 'device-input';
 const EXPORT_STALL_TIMEOUT_MS = 60000;
 

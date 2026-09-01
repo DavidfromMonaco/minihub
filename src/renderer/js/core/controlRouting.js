@@ -1,6 +1,6 @@
 import { decodeMiniLabControl } from '../midi/minilabControls.js';
+import { MINILAB_NODE_ID } from './systemNodes.js';
 
-const NODE_ID = 'minilab-3';
 
 /**
  * Additively project documented MiniLab performance messages into typed
@@ -11,6 +11,6 @@ export function setupControlRouting(hub) {
   return hub.events.on('midi:message', (msg) => {
     const control = decodeMiniLabControl(msg);
     if (!control) return;
-    hub.graph.emitData(NODE_ID, control.sourcePortId, control);
+    hub.graph.emitData(MINILAB_NODE_ID, control.sourcePortId, control);
   });
 }

@@ -11,6 +11,7 @@
  * and grows when a node exposes more ports.
  */
 import { miniLabPatchPortPosition } from '../ui/miniLabControlSurface.js';
+import { MINILAB_NODE_ID } from './systemNodes.js';
 
 export const NODE_WIDTH = 200;
 export const IDENTITY_H = 88; // upper identity/content area height
@@ -34,7 +35,7 @@ export function identityHeight(node) {
 }
 
 export function nodeHeight(node) {
-  if (node.id === 'minilab-3') return MINILAB_NODE_HEIGHT;
+  if (node.id === MINILAB_NODE_ID) return MINILAB_NODE_HEIGHT;
   return identityHeight(node) + dockHeight(node);
 }
 
@@ -49,7 +50,7 @@ export function portY(node, index) {
  * endpoints, hit areas, and bounds.
  */
 export function nodeGeometry(node, pos) {
-  if (node.id === 'minilab-3') {
+  if (node.id === MINILAB_NODE_ID) {
     const controls = node.outputs.filter((port) => port.type === 'control');
     const outputs = controls.map((port) => {
       const point = miniLabPatchPortPosition(port.id);

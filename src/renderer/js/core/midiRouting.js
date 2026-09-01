@@ -11,7 +11,8 @@
  * The MiniLab module still renders its own monitor/keyboard from the same
  * event; it just no longer owns the routing.
  */
-const NODE_ID = 'minilab-3';
+
+import { MINILAB_NODE_ID } from './systemNodes.js';
 
 /** CC 123 (All Notes Off) then CC 120 (All Sound Off), for one channel. */
 function panicMessages(channel) {
@@ -26,7 +27,7 @@ export function setupMidiRouting(hub) {
   const offMessage = hub.events.on('midi:message', (msg) => {
     // CONTROL is additive: never remove a physical event from its native MIDI
     // path merely because MiniHub can also expose it as CONTROL.
-    hub.graph.emitData(NODE_ID, 'midi-out', msg);
+    hub.graph.emitData(MINILAB_NODE_ID, 'midi-out', msg);
   });
 
   // The controller vanished (or the user switched inputs) while notes were
@@ -36,7 +37,7 @@ export function setupMidiRouting(hub) {
   const offPanic = hub.events.on('midi:panic', () => {
     for (let channel = 1; channel <= 16; channel += 1) {
       for (const msg of panicMessages(channel)) {
-        hub.graph.emitData(NODE_ID, 'midi-out', msg);
+        hub.graph.emitData(MINILAB_NODE_ID, 'midi-out', msg);
       }
     }
   });

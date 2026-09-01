@@ -16,8 +16,7 @@ import {
   normalizeMasterOutput,
   updateMasterOutput
 } from '../../core/masterOutput.js';
-
-const NODE_ID = 'audio-output';
+import { AUDIO_OUTPUT_NODE_ID } from '../../core/systemNodes.js';
 
 const SAMPLE_RATES = [44100, 48000, 88200, 96000];
 const BUFFER_SIZES = [128, 256, 512, 1024];
@@ -259,7 +258,7 @@ export function createAudioOutputModule(hub) {
     els.preGainPeak.textContent = formatDb(Number(meter.preGainPeakDb));
     els.automaticGainReduction.textContent = meter.automaticGainReduction === true ? 'ON' : 'OFF';
     pathTelemetry.set('graph:audio-output', {
-      ...observation, scope: 'graph', nodeId: 'audio-output', role: 'output',
+      ...observation, scope: 'graph', nodeId: AUDIO_OUTPUT_NODE_ID, role: 'output',
       gainCoefficient: Number(meter.gainCoefficient) || 0,
       name: 'Audio Output', receivedAt: Date.now()
     });
@@ -401,11 +400,11 @@ export function createAudioOutputModule(hub) {
   }
 
   return {
-    id: 'audio-output',
+    id: AUDIO_OUTPUT_NODE_ID,
     name: 'Audio Output',
     navEntry: { label: 'Audio Output', icon: 'speaker', group: 'system', fixed: true },
     routingNode: {
-      id: NODE_ID,
+      id: AUDIO_OUTPUT_NODE_ID,
       name: 'Audio Output',
       type: 'audio-output',
       inputs: [{ id: 'audio-in', type: 'audio', label: 'AUDIO IN' }],

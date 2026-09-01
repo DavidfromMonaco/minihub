@@ -3,6 +3,7 @@ import {
   getMiniLabControlSource,
   getMiniLabControlSourceByPort
 } from '../midi/minilabControls.js';
+import { MINILAB_NODE_ID } from './systemNodes.js';
 
 export const CONTROL_BINDING_VERSION = 1;
 const MAX_PLUGIN_ID_LENGTH = 2048;
@@ -90,7 +91,7 @@ export class ControlBindingManager {
   connectedSources(nodeId) {
     const byId = new Map();
     for (const connection of this.hub.graph.connectionsTo(nodeId, 'ctrl-in')) {
-      if (connection.from.nodeId !== 'minilab-3') continue;
+      if (connection.from.nodeId !== MINILAB_NODE_ID) continue;
       const source = getMiniLabControlSourceByPort(connection.from.portId);
       if (source) byId.set(source.id, source);
     }
@@ -101,7 +102,7 @@ export class ControlBindingManager {
     const source = getMiniLabControlSource(sourceControlId);
     if (!source) return false;
     return this.hub.graph.connectionsTo(nodeId, 'ctrl-in').some((connection) => (
-      connection.from.nodeId === 'minilab-3' && connection.from.portId === source.portId
+      connection.from.nodeId === MINILAB_NODE_ID && connection.from.portId === source.portId
     ));
   }
 
@@ -367,7 +368,7 @@ export class ControlBindingManager {
     } else if (pending && change?.type === 'disconnect'
         && change.to?.nodeId === pending.nodeId && change.to?.portId === 'ctrl-in') {
       const source = getMiniLabControlSource(pending.sourceControlId);
-      if (source && change.from?.nodeId === 'minilab-3' && change.from?.portId === source.portId) {
+      if (source && change.from?.nodeId === MINILAB_NODE_ID && change.from?.portId === source.portId) {
         this.cancelLearn(pending.nodeId, pending.sourceControlId, 'source-disconnected');
       }
     }

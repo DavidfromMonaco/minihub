@@ -1,3 +1,5 @@
+import { PROJECT_KEY_SET } from './projectKeys.js';
+
 /**
  * Renderer-side settings store backed by the main process via IPC.
  * Persists selected MIDI ports and other basic user preferences.
@@ -44,7 +46,8 @@ export class SettingsStore {
 
   applicationData() {
     if (!this.projectMode) return this.data;
-    const projectKeys = new Set(['nodeInstances', 'graphConnections', 'graphLayout', 'graphViewport', 'transportBpm', 'sequencerState', 'masterOutput']);
-    return Object.fromEntries(Object.entries(this.data).filter(([key]) => !projectKeys.has(key)));
+    return Object.fromEntries(
+      Object.entries(this.data).filter(([key]) => !PROJECT_KEY_SET.has(key))
+    );
   }
 }

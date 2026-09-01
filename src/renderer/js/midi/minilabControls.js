@@ -1,4 +1,5 @@
 import { isMiniLabName, isPerformanceInputName } from './minilab.js';
+import { MINILAB_NODE_ID } from '../core/systemNodes.js';
 
 const source = (value) => Object.freeze(value);
 
@@ -38,7 +39,7 @@ export function getMiniLabControlSource(id) { return BY_ID.get(id) || null; }
 export function getMiniLabControlSourceByPort(id) { return BY_PORT.get(id) || null; }
 
 function result(item, msg, normalizedValue, extra = {}) {
-  return { type: 'control', sourceControlId: item.id, sourceNodeId: 'minilab-3',
+  return { type: 'control', sourceControlId: item.id, sourceNodeId: MINILAB_NODE_ID,
     sourcePortId: item.portId, label: item.label, semantics: item.semantics,
     normalizedValue, rawValue: msg.value ?? msg.velocity ?? msg.bend, ...extra };
 }

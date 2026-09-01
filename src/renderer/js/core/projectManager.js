@@ -1,6 +1,6 @@
 import { DEFAULT_MASTER_OUTPUT, MASTER_OUTPUT_KEY, normalizeMasterOutput } from './masterOutput.js';
+import { PROJECT_KEYS } from './projectKeys.js';
 
-const PROJECT_KEYS = ['nodeInstances', 'graphConnections', 'graphLayout', 'graphViewport', 'transportBpm', 'sequencerState', MASTER_OUTPUT_KEY];
 const STAGED_KEY = 'minihub.stagedProject';
 export const PROJECT_WORKSPACE_MODULE = 'routing';
 const newId = () => globalThis.crypto?.randomUUID?.() || `project-${Date.now()}-${Math.random().toString(36).slice(2)}`;

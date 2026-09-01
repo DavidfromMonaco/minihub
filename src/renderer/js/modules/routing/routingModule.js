@@ -48,6 +48,7 @@ import {
   portTypeInfo
 } from './routingCore.js';
 import { appendMiniLabControlSurfaceSvg } from '../../ui/miniLabControlSurface.js';
+import { MINILAB_NODE_ID } from '../../core/systemNodes.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
@@ -221,7 +222,7 @@ export function createRoutingModule(hub) {
 
       g.appendChild(clipped);
 
-      if (node.id === 'minilab-3') {
+      if (node.id === MINILAB_NODE_ID) {
         const connectedPortIds = new Set(cables
           .filter((cable) => cable.from.nodeId === node.id)
           .map((cable) => cable.from.portId));
@@ -244,7 +245,7 @@ export function createRoutingModule(hub) {
         g.appendChild(buildPort(port, 'input', 0, portY(node, i), node.id));
       });
       // Outputs on the right (I/O dock).
-      if (node.id !== 'minilab-3') node.outputs.forEach((port, i) => {
+      if (node.id !== MINILAB_NODE_ID) node.outputs.forEach((port, i) => {
           g.appendChild(buildPort(port, 'output', NODE_WIDTH, portY(node, i), node.id));
         });
 

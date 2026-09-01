@@ -1,6 +1,7 @@
 import { escapeHtml } from '../../core/html.js';
 import { SEQUENCER_LIMITS, SNAP_STEPS } from '../../core/sequencerModel.js';
 import { bindTempoInput } from '../../core/tempoControl.js';
+import { MINILAB_NODE_ID } from '../../core/systemNodes.js';
 
 const TRACK_HEADER = 360;
 const TRACK_HEIGHT = 140;
@@ -124,7 +125,7 @@ function routeSummary(hub, track, sequencerId) {
   const inputCables = hub.graph.connectionsTo(sequencerId, track.type === 'midi' ? 'midi-in' : 'audio-in');
   const outputCables = hub.graph.connectionsFrom(sequencerId, track.type === 'midi' ? 'midi-out' : 'audio-out');
   const inputMatches = track.type === 'midi'
-    ? inputCables.some((connection) => connection.from.nodeId === 'minilab-3'
+    ? inputCables.some((connection) => connection.from.nodeId === MINILAB_NODE_ID
         && connection.from.portId === 'midi-out') && track.inputId === hub.midi.selectedInputId
     : inputCables.some((connection) => connection.from.nodeId === track.inputId);
   const outputMatches = outputCables.some((connection) => connection.to.nodeId === track.outputId);

@@ -620,13 +620,15 @@ export class NodeInstanceManager {
         this.hub.engine.removeInstance(id, plugin.id);
       }
     }
-    // Remove routing node (graph cleans up its connections) and layout entry.
-    this.hub.graph.removeNode(id);
     this.layout.remove(id);
     // A fixed module (currently Sequencer) is the project-wide editor for data
     // that outlives its Patch Bay routing presence. Removing that node must not
     // make the editor — and therefore its Stop control / arrangement — vanish.
-    if (!getNodeType(instance.type)?.fixedModuleId) this.hub.modules.unregister(id);
+    // Its routing node has no module to unregister, so it is dropped directly;
+    // every other node leaves through `unregister`, which now removes the
+    // routing node it registered (the graph cleans up its own connections).
+    if (getNodeType(instance.type)?.fixedModuleId) this.hub.graph.removeNode(id);
+    else this.hub.modules.unregister(id);
     this.instances.delete(id);
     this._persist();
     return true;

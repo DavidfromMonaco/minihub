@@ -1,11 +1,11 @@
 import { describeMessage, noteName } from '../../midi/parseMidi.js';
 import { MINILAB_CONTROL_SOURCES } from '../../midi/minilabControls.js';
 import { escapeHtml } from '../../core/html.js';
+import { MINILAB_NODE_ID } from '../../core/systemNodes.js';
 
 const KEY_BASE = 36; // C2 — 25 keys up to C4, matching the MiniLab 3
 const KEY_COUNT = 25;
 const MONITOR_MAX = 120;
-const NODE_ID = 'minilab-3'; // routing graph node id
 const BLACK_NOTES = new Set([1, 3, 6, 8, 10]);
 
 function isBlack(note) {
@@ -340,7 +340,7 @@ export function createMiniLabModule(hub) {
     name: 'MiniLab 3',
     navEntry: { label: 'MiniLab 3', icon: 'keyboard', group: 'system', fixed: true },
     routingNode: {
-      id: NODE_ID,
+      id: MINILAB_NODE_ID,
       name: 'MiniLab 3',
       type: 'midi-output',
       inputs: [

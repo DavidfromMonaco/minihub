@@ -127,6 +127,36 @@ test('deleting an instance removes module, routing node, and connections', () =>
   assert.equal(hub.graph.connections().length, 0);
 });
 
+test('unregister undoes register: the routing node leaves with the module', () => {
+  // The symmetry future modules rely on. `register` adds `routingNode` to the
+  // graph, so `unregister` must remove it; when it did not, deleting a node
+  // left a module-less node still drawn, still cabled, still published to the
+  // engine. Exercised directly on ModuleSystem, not through NodeInstanceManager,
+  // so the guarantee holds for any module that declares a routing node.
+  const hub = makeFullHub();
+  hub.modules.register({
+    id: 'probe',
+    name: 'Probe',
+    routingNode: { id: 'probe', name: 'Probe', type: 'vst', inputs: [{ id: 'midi-in', type: 'midi' }], outputs: [] }
+  });
+  hub.graph.addNode({ id: 'src', name: 'Src', outputs: [{ id: 'o', type: 'midi' }] });
+  hub.graph.connect('src', 'o', 'probe', 'midi-in');
+  assert.ok(hub.graph.getNode('probe'), 'registered in the graph');
+
+  assert.equal(hub.modules.unregister('probe'), true);
+  assert.equal(hub.modules.get('probe'), undefined);
+  assert.equal(hub.graph.getNode('probe'), undefined, 'routing node removed with the module');
+  assert.equal(hub.graph.connections().length, 0, 'its cables went with it');
+});
+
+test('unregistering a module without a routing node touches no graph node', () => {
+  const hub = makeFullHub();
+  hub.graph.addNode({ id: 'keep', name: 'Keep', outputs: [] });
+  hub.modules.register({ id: 'ui-only', name: 'UI only' });
+  assert.equal(hub.modules.unregister('ui-only'), true);
+  assert.ok(hub.graph.getNode('keep'), 'unrelated nodes are untouched');
+});
+
 test('native MiniLab cannot be deleted through dynamic-node deletion', () => {
   const hub = makeFullHub();
   hub.graph.addNode({ id: 'minilab-3', name: 'MiniLab 3', outputs: [{ id: 'midi-out', type: 'midi' }] });

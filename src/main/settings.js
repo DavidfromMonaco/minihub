@@ -4,13 +4,29 @@ const { app } = require('electron');
 const fs = require('fs');
 const path = require('path');
 
+// APPLICATION-scoped settings only: preferences that belong to this machine and
+// survive across projects. Project state (nodes, cables, layout, viewport,
+// tempo, sequencer, master) lives in the .minihub file, is stripped on the way
+// out by `SettingsStore.applicationData()` and cleared on launch by
+// `ProjectManager.bootstrap()`. The authoritative list of those keys is
+// `PROJECT_KEYS` in src/renderer/js/core/projectKeys.js; main is CommonJS and
+// cannot import that ES module, so the rule is stated instead: nothing below
+// may appear in PROJECT_KEYS, and vice versa.
+//
+// `graphConnections` used to be declared here, which was the visible symptom of
+// the confusion: it is project state, and the default `[]` it injected was
+// discarded moments later by the bootstrap that deletes every project key.
 const DEFAULTS = {
   selectedInputId: null,
   midiInputPreference: null,
   selectedOutputId: null,
   inputOffsets: {}, // inputId -> timing offset in ms
-  audioOutputConfig: null,
-  graphConnections: [] // [{ from: {nodeId, portId}, to: {nodeId, portId} }]
+  audioOutputConfig: null, // { deviceName, sampleRate, bufferSize }
+  vstCatalog: [], // last successful VST3 scan, reused before the next scan
+  metronomeEnabled: false,
+  metronomeVolume: 0.35,
+  recentProjectPath: null,
+  recentProjectName: null
 };
 
 function settingsPath() {
