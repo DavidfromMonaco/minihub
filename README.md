@@ -284,7 +284,7 @@ owns musical timing and audio-critical work.
 The retired Recorder UI/protocol/node no longer exists. Its reusable threaded
 WAV primitive was reduced to `AudioTakeWriter` and is owned by armed Sequencer
 audio tracks. Current documented limitations are in
-`SEQUENCER_IMPLEMENTATION_REPORT.md`.
+`docs/reports/SEQUENCER_IMPLEMENTATION_REPORT.md`.
 
 Still outside the current scope: sends, sidechains, automation, preset
 management, minimap, undo/redo, automatic graph layout and node groups.
