@@ -24,10 +24,27 @@ export class SettingsStore {
 
   async set(key, value) {
     this.data[key] = value;
+    this.onSet?.(key, value);
     try {
-      await this.api.saveSettings(this.data);
+      await this.api.saveSettings(this.applicationData());
     } catch (err) {
       console.error(`[settings] failed to save "${key}":`, err);
     }
+  }
+
+  /** Update related preferences with one atomic settings snapshot. */
+  async setMany(values) {
+    Object.assign(this.data, values || {});
+    try {
+      await this.api.saveSettings(this.applicationData());
+    } catch (err) {
+      console.error('[settings] failed to save preference group:', err);
+    }
+  }
+
+  applicationData() {
+    if (!this.projectMode) return this.data;
+    const projectKeys = new Set(['nodeInstances', 'graphConnections', 'graphLayout', 'graphViewport', 'transportBpm', 'sequencerState', 'masterOutput']);
+    return Object.fromEntries(Object.entries(this.data).filter(([key]) => !projectKeys.has(key)));
   }
 }

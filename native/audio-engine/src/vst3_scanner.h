@@ -3,6 +3,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 
 #include <map>
+#include <atomic>
 #include <string>
 #include <vector>
 
@@ -44,13 +45,29 @@ public:
     /** Scan the standard locations (out of process). Pure: touches no member
      *  state, so it is safe to run on a worker thread while the message thread
      *  keeps serving commands. */
-    static std::vector<PluginRecord> scanAll();
+    static std::vector<PluginRecord> scanAll(const std::atomic<bool>* cancelled = nullptr);
 
     /** Install a scan result as the registry. Message thread only. */
     void setRecords(std::vector<PluginRecord> records);
 
     /** Scan a single `.vst3` file in-process. Used by the child `--scan-file` mode. */
     static std::vector<PluginRecord> scanFile(const juce::String& path);
+
+    /** Scan one `.vst3` file in a disposable helper process. Parent-engine
+     *  code must use this entry point: a malformed plug-in may fault while
+     *  merely reporting its classes/metadata. */
+    static std::vector<PluginRecord> scanFileIsolated(
+        const juce::String& path,
+        const std::atomic<bool>* cancelled = nullptr,
+        juce::uint32 timeoutMs = 30000);
+
+    /** Encode/decode the private, versioned helper-result document. The parent
+     *  reads this from a dedicated temporary file, never from plugin-controlled
+     *  stdout. Public so the native regression helper can exercise the exact
+     *  production protocol. */
+    static juce::String serializeScanResult(const std::vector<PluginRecord>& records);
+    static bool deserializeScanResult(const juce::String& json,
+                                      std::vector<PluginRecord>& records);
 
     /** Enumerate `.vst3` files under the given search paths (no plugin loading). */
     static juce::StringArray findVst3Files(const juce::FileSearchPath& paths);

@@ -1,4 +1,5 @@
 import { describeMessage, noteName } from '../../midi/parseMidi.js';
+import { MINILAB_CONTROL_SOURCES } from '../../midi/minilabControls.js';
 import { escapeHtml } from '../../core/html.js';
 
 const KEY_BASE = 36; // C2 — 25 keys up to C4, matching the MiniLab 3
@@ -158,8 +159,12 @@ export function createMiniLabModule(hub) {
   function refreshPorts() {
     const inputs = hub.midi.listInputs();
     const outputs = hub.midi.listOutputs();
+    const preference = hub.midi.inputPreferenceStatus();
+    const unavailableLabel = preference.preference && !preference.available
+      ? `— ${preference.preference.name || preference.preference.id} (preferred — unavailable) —`
+      : '— No input —';
 
-    fillSelect(els.input, inputs, hub.midi.selectedInputId, '— No input —');
+    fillSelect(els.input, inputs, hub.midi.selectedInputId, unavailableLabel);
     fillSelect(els.output, outputs, hub.midi.selectedOutputId, '— No output —');
 
     const connected = hub.midi.selectedInputId !== null;
@@ -171,10 +176,11 @@ export function createMiniLabModule(hub) {
     els.manufacturer.textContent = input && input.manufacturer ? input.manufacturer : '—';
 
     const anyMiniLab = hub.midi.isMiniLabConnected();
-    els.status.textContent = anyMiniLab
-      ? 'MiniLab detected'
-      : 'No MiniLab detected';
-    els.status.className = 'pill ' + (anyMiniLab ? 'ok' : 'off');
+    const preferredUnavailable = preference.preference && !preference.available;
+    els.status.textContent = preferredUnavailable
+      ? 'Preferred MIDI input unavailable'
+      : (anyMiniLab ? 'MiniLab detected' : 'No MiniLab detected');
+    els.status.className = 'pill ' + (anyMiniLab && !preferredUnavailable ? 'ok' : 'off');
 
     refreshTiming();
   }
@@ -232,8 +238,7 @@ export function createMiniLabModule(hub) {
 
   function onInputSelect() {
     const id = els.input.value || null;
-    hub.midi.selectInput(id);
-    hub.settings.set('selectedInputId', id);
+    hub.midi.selectInput(id, { remember: true });
     refreshPorts();
   }
 
@@ -246,14 +251,12 @@ export function createMiniLabModule(hub) {
 
   function connect() {
     const id = hub.midi.findMiniLabInputId() || hub.midi.listInputs()[0]?.id || null;
-    hub.midi.selectInput(id);
-    hub.settings.set('selectedInputId', id);
+    hub.midi.selectInput(id, { remember: true });
     refreshPorts();
   }
 
   function disconnect() {
-    hub.midi.selectInput(null);
-    hub.settings.set('selectedInputId', null);
+    hub.midi.selectInput(null, { remember: true });
     refreshPorts();
   }
 
@@ -335,12 +338,26 @@ export function createMiniLabModule(hub) {
   return {
     id: 'minilab',
     name: 'MiniLab 3',
-    navEntry: { label: 'MiniLab 3', icon: 'keyboard' },
+    navEntry: { label: 'MiniLab 3', icon: 'keyboard', group: 'system', fixed: true },
     routingNode: {
       id: NODE_ID,
       name: 'MiniLab 3',
-      inputs: [],
-      outputs: [{ id: 'midi-out', type: 'midi', label: 'MIDI Out' }]
+      type: 'midi-output',
+      inputs: [
+        { id: 'midi-in', type: 'midi', label: 'Hardware MIDI In' }
+      ],
+      outputs: [
+        { id: 'midi-out', type: 'midi', label: 'MIDI Out' },
+        ...MINILAB_CONTROL_SOURCES.map((source) => ({
+          id: source.portId,
+          type: 'control',
+          label: source.label
+        }))
+      ],
+      onInput: (portId, data) => {
+        if (portId !== 'midi-in' || !Array.isArray(data?.raw)) return;
+        hub.midi?.send(data.raw);
+      }
     },
     mount,
     unmount

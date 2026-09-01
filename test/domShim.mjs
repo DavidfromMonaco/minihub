@@ -32,7 +32,7 @@ export function makeEl(tag) {
   Object.defineProperty(el, 'classList', {
     get: () => ({
       add: (...c) => c.forEach((x) => el._classSet.add(x)),
-      remove: (c) => el._classSet.delete(c),
+      remove: (...c) => c.forEach((x) => el._classSet.delete(x)),
       toggle: (c, force) => {
         if (force === undefined) {
           if (el._classSet.has(c)) el._classSet.delete(c);
@@ -138,10 +138,14 @@ export function fire(el, type, init = {}) {
     clientY: init.clientY ?? 0,
     pointerId: init.pointerId ?? 1,
     ctrlKey: init.ctrlKey ?? false,
+    metaKey: init.metaKey ?? false,
+    shiftKey: init.shiftKey ?? false,
     key: init.key,
     deltaY: init.deltaY ?? 0,
-    preventDefault() {},
-    stopPropagation() {}
+    defaultPrevented: false,
+    propagationStopped: false,
+    preventDefault() { this.defaultPrevented = true; },
+    stopPropagation() { this.propagationStopped = true; }
   };
   const listeners = el._listeners[type];
   if (listeners) [...listeners].forEach((fn) => fn(evt));

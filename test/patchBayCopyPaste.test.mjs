@@ -23,7 +23,7 @@ installDom();
 const { createRoutingModule } = await import('../src/renderer/js/modules/routing/routingModule.js');
 const { ModuleSystem } = await import('../src/renderer/js/core/moduleSystem.js');
 const { NodeInstanceManager } = await import('../src/renderer/js/core/nodeInstances.js');
-const { listNodeTypes } = await import('../src/renderer/js/core/nodeTypes.js');
+const { listOmniBoxCategories } = await import('../src/renderer/js/core/nodeTypes.js');
 const {
   nodeGeometry,
   nodeHeight,
@@ -277,15 +277,44 @@ test('Paste is disabled when the clipboard is empty', () => {
   mod.unmount();
 });
 
-test('New Node submenu uses the Node Type Registry', () => {
+test('OmniBox submenu uses populated registry families', () => {
   const hub = setupHub({ withMinilab: false });
   const { container, svg, mod } = mount(hub);
   fire(svg, 'contextmenu', { target: svg, clientX: 100, clientY: 80 });
   const menu = findClass(container, 'node-context-menu');
   const sub = findClass(menu, 'ctx-sub');
-  const labels = [...sub.children].map((c) => c.textContent);
-  const registryLabels = listNodeTypes().map((t) => t.label);
-  assert.deepEqual(labels, registryLabels, 'submenu driven by registry');
+  const categories = [...sub.children].map((wrap) => ({
+    label: wrap.children[0].textContent.trim().split(/\s+/)[0],
+    types: [...wrap.children[1].children].map((item) => item.textContent)
+  }));
+  assert.deepEqual(categories, listOmniBoxCategories().map((category) => ({
+    label: category.label, types: category.types.map((type) => type.label)
+  })), 'hierarchy driven by populated registry families');
+  mod.unmount();
+});
+
+test('nested OmniBox keeps exactly one active submenu path per level', () => {
+  const hub = setupHub({ withMinilab: false });
+  const { container, svg, mod } = mount(hub);
+  fire(svg, 'contextmenu', { target: svg, clientX: 100, clientY: 80 });
+  const menu = findClass(container, 'node-context-menu');
+  const rootWrap = menu.children.find((child) => child._classSet.has('ctx-submenu'));
+  const categories = rootWrap.children.find((child) => child._classSet.has('ctx-sub'));
+  const [midi, audio, plugin] = categories.children;
+
+  assert.equal(rootWrap._classSet.has('ctx-expanded'), false, 'root starts collapsed');
+  assert.ok([midi, audio, plugin].every((item) => !item._classSet.has('ctx-expanded')),
+    'no category child starts exposed');
+
+  fire(rootWrap, 'pointerenter');
+  assert.equal(rootWrap._classSet.has('ctx-expanded'), true, 'hover opens only OmniBox categories');
+  fire(midi, 'pointerenter');
+  assert.equal(midi._classSet.has('ctx-expanded'), true, 'MIDI child opens');
+
+  fire(audio, 'pointerenter');
+  assert.equal(midi._classSet.has('ctx-expanded'), false, 'moving to Audio closes MIDI child');
+  assert.equal(audio._classSet.has('ctx-expanded'), true, 'Audio child opens');
+  assert.equal(plugin._classSet.has('ctx-expanded'), false, 'unrelated Plugin child remains closed');
   mod.unmount();
 });
 
@@ -296,7 +325,8 @@ test('created node appears at the context world position', () => {
   fire(svg, 'contextmenu', { target: svg, clientX: 100, clientY: 100 });
   const menu = findClass(container, 'node-context-menu');
   const sub = findClass(menu, 'ctx-sub');
-  const vstItem = [...sub.children].find((c) => c.textContent === 'VST');
+  const pluginCategory = [...sub.children].find((c) => c.children[0].textContent.includes('Plugin'));
+  const vstItem = [...pluginCategory.children[1].children].find((c) => c.textContent === 'VST');
   [...vstItem._listeners['click']].forEach((fn) => fn());
   const created = hub.nodes.get('vst-002');
   assert.ok(created, 'node created from submenu');
@@ -365,6 +395,25 @@ test('redesigned node geometry produces correct cable endpoints', () => {
   // Ports live inside the I/O dock (below the identity area).
   assert.ok(geo.inputs[0].y >= 200 + IDENTITY_H, 'input in dock');
   assert.ok(geo.outputs[0].y >= 200 + IDENTITY_H, 'output in dock');
+});
+
+test('MiniLab MIDI OUT uses one canonical socket center for drag and cables', () => {
+  const node = {
+    id: 'minilab-3',
+    inputs: [{ id: 'midi-in', type: 'midi' }],
+    outputs: [{ id: 'midi-out', type: 'midi' }]
+  };
+  const moved = nodeGeometry(node, { x: 137, y: 91 });
+  const socket = moved.outputs.find((item) => item.port.id === 'midi-out');
+  assert.deepEqual({ x: socket.x, y: socket.y }, { x: 137 + NODE_WIDTH, y: 91 + 146 });
+  assert.deepEqual(
+    { x: moved.inputs[0].x, y: moved.inputs[0].y },
+    { x: 137, y: 91 + 146 },
+    'declared hardware MIDI input remains visible and cable-addressable'
+  );
+  // Viewport zoom/pan never enters canonical world geometry; SVG viewBox
+  // transforms this same point for both temporary and committed paths.
+  assert.deepEqual(nodeGeometry(node, { x: 137, y: 91 }).outputs[0], socket);
 });
 
 test('fit/reset includes the complete redesigned node bounds', () => {

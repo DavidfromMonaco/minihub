@@ -29,6 +29,45 @@ test('connect rejects duplicates', () => {
   assert.throws(() => hub.graph.connect('a', 'o', 'b', 'i'), /already exists/);
 });
 
+test('connect rejects manual audio feedback cycles before native sync', () => {
+  const hub = makeHub();
+  for (const id of ['a', 'b', 'c']) hub.graph.addNode({
+    id,
+    inputs: [{ id: 'audio-in', type: 'audio' }],
+    outputs: [{ id: 'audio-out', type: 'audio' }]
+  });
+  hub.graph.connect('a', 'audio-out', 'b', 'audio-in');
+  hub.graph.connect('b', 'audio-out', 'c', 'audio-in');
+  assert.throws(
+    () => hub.graph.connect('c', 'audio-out', 'a', 'audio-in'),
+    /AUDIO connection would create a feedback cycle/
+  );
+  assert.equal(hub.graph.connections().length, 2,
+    'rejected Patch Bay cable is neither visible nor persisted');
+});
+
+test('independent hardware MIDI source/sink ports do not form a false feedback cycle', () => {
+  const hub = makeHub();
+  const delivered = [];
+  hub.graph.addNode({
+    id: 'minilab-3', type: 'midi-output',
+    inputs: [{ id: 'midi-in', type: 'midi' }],
+    outputs: [{ id: 'midi-out', type: 'midi' }],
+    onInput: (_portId, data) => delivered.push(data)
+  });
+  hub.graph.addNode({
+    id: 'sequencer', type: 'sequencer',
+    inputs: [{ id: 'midi-in', type: 'midi' }],
+    outputs: [{ id: 'midi-out', type: 'midi' }],
+    onInput: (_portId, data) => hub.graph.emitData('sequencer', 'midi-out', data)
+  });
+  assert.equal(hub.graph.connect('minilab-3', 'midi-out', 'sequencer', 'midi-in'), true);
+  assert.equal(hub.graph.connect('sequencer', 'midi-out', 'minilab-3', 'midi-in'), true);
+  hub.graph.emitData('minilab-3', 'midi-out', { raw: [0x90, 60, 100] });
+  assert.deepEqual(delivered, [{ raw: [0x90, 60, 100] }],
+    'route terminates at hardware sink without recursion');
+});
+
 test('fan-out is allowed (one output to many inputs)', () => {
   const hub = makeHub();
   seed(hub);

@@ -25,9 +25,9 @@ function makeFullHub(settingsData = {}) {
 }
 
 // ---- Node Type Registry -----------------------------------------------------
-test('registry exposes the four initial types', () => {
+test('registry exposes all user-creatable routing types', () => {
   const ids = listNodeTypes().map((t) => t.id).sort();
-  assert.deepEqual(ids, ['image', 'sequencer', 'video', 'vst']);
+  assert.deepEqual(ids, ['arpeggiator', 'audio-input', 'image', 'mixer', 'morpher', 'sequencer', 'video', 'vst']);
   assert.ok(getNodeType('vst'));
   assert.equal(getNodeType('nope'), null);
 });
@@ -37,14 +37,14 @@ test('VST type uses the centralized orange accent', () => {
   assert.equal(NODE_TYPES.vst.accent, '--accent-vst');
 });
 
-test('VST type declares MIDI IN, AUDIO IN, AUDIO OUT', () => {
+test('VST type declares MIDI IN, AUDIO IN, CTRL IN, AUDIO OUT', () => {
   const ports = getNodeType('vst').ports;
-  assert.deepEqual(ports.inputs.map((p) => p.id), ['midi-in', 'audio-in']);
+  assert.deepEqual(ports.inputs.map((p) => p.id), ['midi-in', 'audio-in', 'ctrl-in']);
   assert.deepEqual(ports.outputs.map((p) => p.id), ['audio-out']);
 });
 
-test('video/image/sequencer declare no speculative ports yet', () => {
-  for (const id of ['video', 'image', 'sequencer']) {
+test('video/image placeholders declare no speculative ports', () => {
+  for (const id of ['video', 'image']) {
     assert.deepEqual(getNodeType(id).ports.inputs, []);
     assert.deepEqual(getNodeType(id).ports.outputs, []);
   }
@@ -66,7 +66,6 @@ test('display names are deterministic per type', () => {
   const hub = makeFullHub();
   assert.equal(hub.nodes.create('video').name, 'Video 1');
   assert.equal(hub.nodes.create('image').name, 'Image 1');
-  assert.equal(hub.nodes.create('sequencer').name, 'Sequencer 1');
 });
 
 test('IDs are never reused after deletion', () => {
@@ -88,7 +87,7 @@ test('node type is immutable', () => {
   assert.equal(inst.type, 'vst');
   assert.equal(getNodeType(inst.type).id, 'vst');
   // A VST instance starts with an empty plugin chain.
-  assert.deepEqual(inst.content, { plugins: [] });
+  assert.deepEqual(inst.content, { plugins: [], controlBindings: [] });
 });
 
 // ---- Hub integration --------------------------------------------------------
@@ -109,7 +108,7 @@ test('VST instance registers a routing node with the type ports', () => {
   const node = hub.graph.getNode(inst.id);
   assert.ok(node);
   assert.equal(node.type, 'vst');
-  assert.deepEqual(node.inputs.map((p) => p.id), ['midi-in', 'audio-in']);
+  assert.deepEqual(node.inputs.map((p) => p.id), ['midi-in', 'audio-in', 'ctrl-in']);
   assert.deepEqual(node.outputs.map((p) => p.id), ['audio-out']);
 });
 
@@ -232,6 +231,59 @@ test('reload continues the ID counter (no reuse across sessions)', async () => {
   assert.equal(c.id, 'vst-002');
 });
 
+test('reload migrates legacy Arpeggiator degree data once and persists the chromatic form', async () => {
+  const legacy={instances:[{id:'arpeggiator-001',type:'arpeggiator',ordinal:1,content:{
+    root:0,scale:'Natural Minor / Aeolian',mode:'Custom',rate:'1/16',patternLength:8,randomSeed:9,
+    customPattern:Array.from({length:32},(_,index)=>({degree:index===0?3:1,octave:index===0?1:0,velocity:90,gate:.7,rest:false,tie:false}))
+  }}],idSeq:{arpeggiator:1}};
+  const hub=makeFullHub({nodeInstances:legacy});
+  await hub.nodes.load();
+  const loaded=hub.nodes.get('arpeggiator-001');
+  assert.equal(loaded.content.customPattern[0].semitoneOffset,15);
+  assert.equal(loaded.content.customPatternVersion,2);
+  const saved=hub.settings.get('nodeInstances').instances[0].content;
+  assert.equal(saved.customPattern[0].semitoneOffset,15);
+  assert.equal('degree' in saved.customPattern[0],false);
+});
+
+test('reload migrates legacy Sequencer identity across instance, cables, and layout', async () => {
+  const legacyId = 'sequencer-007';
+  const hub = makeFullHub({
+    nodeInstances: { instances: [{ id: legacyId, type: 'sequencer', ordinal: 1, content: null }], idSeq: { sequencer: 7 } },
+    graphConnections: [
+      { from: { nodeId: 'minilab-3', portId: 'midi-out' }, to: { nodeId: legacyId, portId: 'midi-in' } },
+      { from: { nodeId: legacyId, portId: 'audio-out' }, to: { nodeId: 'mixer-001', portId: 'audio-in-1' } }
+    ],
+    graphLayout: { [legacyId]: { x: 321, y: 654 }, 'mixer-001': { x: 700, y: 80 } }
+  });
+  await hub.nodes.load();
+
+  assert.equal(hub.nodes.get(legacyId), null);
+  assert.equal(hub.nodes.get('sequencer')?.id, 'sequencer');
+  assert.equal(hub.settings.get('nodeInstances').instances[0].id, 'sequencer',
+    'canonical instance identity is persisted immediately');
+  const migratedConnections = hub.settings.get('graphConnections');
+  assert.equal(migratedConnections[0].to.nodeId, 'sequencer');
+  assert.equal(migratedConnections[1].from.nodeId, 'sequencer');
+  assert.deepEqual(hub.settings.get('graphLayout').sequencer, { x: 321, y: 654 });
+  assert.equal(legacyId in hub.settings.get('graphLayout'), false);
+});
+
+test('reload materialises a legacy saved Audio Input route as an explicit persisted node', async () => {
+  const hub = makeFullHub({
+    nodeInstances: { instances: [], idSeq: {} },
+    graphConnections: [
+      { from: { nodeId: 'audio-input', portId: 'audio-out' }, to: { nodeId: 'sequencer', portId: 'audio-in' } }
+    ],
+    graphLayout: { 'audio-input': { x: 120, y: 240 } }
+  });
+  await hub.nodes.load();
+
+  assert.equal(hub.nodes.get('audio-input')?.type, 'audio-input');
+  assert.ok(hub.graph.getNode('audio-input'));
+  assert.equal(hub.settings.get('nodeInstances').instances.filter((node) => node.type === 'audio-input').length, 1);
+});
+
 // ---- separation of concerns -------------------------------------------------
 test('instance state is separate from routing and layout', () => {
   const hub = makeFullHub();
@@ -252,7 +304,6 @@ test('creating empty dynamic nodes does not alter existing MIDI routing', () => 
   hub.nodes.create('vst');
   hub.nodes.create('video');
   hub.nodes.create('image');
-  hub.nodes.create('sequencer');
 
   assert.deepEqual(hub.graph.serialize(), before);
   assert.equal(hub.graph.connections().length, 1);

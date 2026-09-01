@@ -28,9 +28,8 @@ export function buildSettingsModal(hub, rootEl, openButton) {
 
     rootEl.querySelector('#close-settings').addEventListener('click', hide);
     rootEl.querySelector('#reset-settings').addEventListener('click', async () => {
-      await hub.settings.set('selectedInputId', null);
+      hub.midi.selectInput(null, { remember: true });
       await hub.settings.set('selectedOutputId', null);
-      hub.midi.selectInput(null);
       hub.midi.selectOutput(null);
       hub.events.emit('midi:ports', {
         inputs: hub.midi.listInputs(),

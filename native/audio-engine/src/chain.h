@@ -49,10 +49,22 @@ public:
     // ---- message-thread read (takes the lock, allocates) ----
     std::vector<PluginInstance*> copyPlugins() const;
 
+    /** Message-thread-only lookup. It deliberately does not take `lock_`:
+     *  message-thread mutations are serialized, and a read/read traversal with
+     *  the audio callback is safe. Taking the lock here could make the audio
+     *  callback's try-lock drop an otherwise healthy block. */
     PluginInstance* find(const juce::String& instanceId);
 
     // Lock-free MIDI injection (control thread -> audio callback).
     void pushMidi(const juce::MidiBuffer& buffer);
+    /** Queue only if the destination still belongs to the epoch captured by
+     *  the producer. A concurrent Stop increments the epoch and rejects a
+     *  stale callback before it can enqueue a post-Stop Note On. */
+    void pushMidi(const juce::MidiBuffer& buffer, uint32_t expectedEpoch);
+    uint32_t midiEpoch() const noexcept
+    {
+        return midiEpoch_.load(std::memory_order_acquire);
+    }
     void pullMidi(juce::MidiBuffer& dest, int numSamples);
     /** Drop every queued event without emitting it (audio thread). */
     void discardQueuedMidi();
@@ -72,9 +84,15 @@ public:
     bool outputEnabled() const { return outputEnabled_.load(std::memory_order_relaxed); }
     void setOutputEnabled(bool b) { outputEnabled_.store(b, std::memory_order_relaxed); }
 
-    void prepareToPlay(double sampleRate, int blockSize);
+    void prepareToPlay(double sampleRate, int blockSize, bool offline = false);
+    void setPlayHead(juce::AudioPlayHead* playHead);
     void reset();
-    void processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi);
+    void processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi,
+                      float instrumentGain = 1.0f,
+                      float* peakBeforeInstrumentGain = nullptr,
+                      float* peakAfterInstrumentGain = nullptr);
+    /** Sum of the serial VST3 processor latencies. Control thread only. */
+    int latencySamples() const;
 
 private:
     juce::String chainId_;
@@ -83,6 +101,7 @@ private:
     std::atomic<bool> midiEnabled_{false};
     std::atomic<bool> outputEnabled_{false};
     std::atomic<bool> panicPending_{false};
+    juce::AudioPlayHead* playHead_ = nullptr;
 
     // Reused across blocks so the audio callback never allocates a MidiBuffer.
     static constexpr int kMidiScratchBytes = 8192;
@@ -96,9 +115,14 @@ private:
         int samplePos = 0;
         uint8_t bytes[3] = {};
         int numBytes = 0;
+        uint32_t epoch = 0;
     };
     juce::AbstractFifo midiFifo_{kFifoSize};
     std::array<MidiEvent, kFifoSize> midiEvents_{};
+    std::atomic<uint32_t> midiEpoch_{1};
+    // Audio-thread-owned registry. Explicit Note Offs are emitted from this
+    // state before CC123/CC120 so instruments that ignore either CC still stop.
+    std::array<uint16_t, 16 * 128> activeNotes_{};
 };
 
 } // namespace mlh

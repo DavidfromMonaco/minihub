@@ -1,15 +1,41 @@
 'use strict';
 
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { installConsoleStreamGuards } = require('./consoleStreamGuard');
+installConsoleStreamGuards();
+
+const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+// Electron's GPU subprocess exits with STATUS_DLL_NOT_FOUND (0xc0000135) on
+// the supported Windows runtime used for MiniHub, before the renderer can
+// finish loading. MiniHub's UI does not depend on WebGL; select Chromium's
+// software renderer synchronously, as required before app.ready, so ordinary
+// shortcut launches do not need an undocumented command-line workaround.
+if (process.platform === 'win32') {
+  app.commandLine.appendSwitch('in-process-gpu');
+  app.disableHardwareAcceleration();
+}
 const path = require('path');
-const { loadSettings, saveSettings } = require('./settings');
+const { FORMATS: AUDIO_EXPORT_FORMATS, audioExportFormat, audioExportFilePath } = require('./audioExportPath');
+const { loadSettings, saveSettings, persistPluginStateChunk } = require('./settings');
 const { EngineProcess } = require('./engine');
 const diagnostics = require('./diagnostics');
+const { isValidSetVstParameterCommand } = require('./vstParameterCommand');
+const { isValidSetVstParameterLearnCommand } = require('./vstParameterLearnCommand');
+const { isValidSelectDeviceCommand } = require('./audioDeviceCommand');
+const { readProject, writeProjectAtomic } = require('./projectFiles');
+const { ALLOWED_ENGINE_COMMANDS } = require('./engineCommandPolicy');
+const { ClipEditorWindows } = require('./clipEditorWindows');
+const { installProjectCloseGuard } = require('./projectCloseGuard');
 
 let mainWindow = null;
 let engine = null;
+let engineRestartAttempts = 0;
+let clipEditorWindows = null;
+let projectCloseGuard = null;
+const processStartedAt = Date.now() - Math.round(process.uptime() * 1000);
+const startupMark = (name) => diagnostics.log(`startup:${name} elapsedMs=${Date.now() - processStartedAt}`);
 
 function createWindow() {
+  startupMark('browser-window-create-start');
   mainWindow = new BrowserWindow({
     width: 1240,
     height: 820,
@@ -17,6 +43,10 @@ function createWindow() {
     minHeight: 620,
     backgroundColor: '#191b1e',
     title: 'MiniLab Hub',
+    // Custom app icon (window + taskbar). On Windows the packaged exe already
+    // carries the same icon via rcedit; this also covers dev mode (`npm start`)
+    // where no custom exe resource exists.
+    icon: path.join(__dirname, '../../build/icon.ico'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -24,8 +54,33 @@ function createWindow() {
       sandbox: false
     }
   });
+  projectCloseGuard = installProjectCloseGuard({
+    window: mainWindow,
+    dialog,
+    log: (line) => diagnostics.log(line)
+  });
 
   mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
+  if (!clipEditorWindows) {
+    clipEditorWindows = new ClipEditorWindows({
+      BrowserWindow, ipcMain, path, mainWindow,
+      preloadPath: path.join(__dirname, 'clipEditorPreload.js'),
+      editorHtmlPath: path.join(__dirname, '../renderer/clip-editor.html'),
+      log: (line) => {
+        console.log(`[clip-editor] ${line}`);
+        diagnostics.log(`clip-editor:${line}`);
+      }
+    });
+    clipEditorWindows.bind();
+  } else {
+    clipEditorWindows.setMainWindow(mainWindow);
+  }
+  startupMark('renderer-load-start');
+  mainWindow.webContents.once('dom-ready', () => startupMark('dom-ready'));
+  mainWindow.webContents.once('did-finish-load', () => startupMark('renderer-load-complete'));
+  mainWindow.on('focus', () => {
+    if (engine) engine.send({ v: 1, type: 'foregroundEditors' });
+  });
 
   // Relay renderer console messages to the main-process log so native-engine and
   // renderer issues are visible in one place. Electron >= 37 passes a single
@@ -38,6 +93,9 @@ function createWindow() {
   });
 
   mainWindow.on('closed', () => {
+    clipEditorWindows?.closeAll('main-window-closed');
+    projectCloseGuard?.dispose();
+    projectCloseGuard = null;
     mainWindow = null;
   });
 }
@@ -48,11 +106,26 @@ function startEngine() {
   if (engine) return;
   engine = new EngineProcess({
     onEvent: (msg) => {
-      console.log(`[engine:event] ${msg.type}${msg.count !== undefined ? ' count=' + msg.count : ''}`);
-      diagnostics.log(`engine:event ${msg.type}${msg.count !== undefined ? ' count=' + msg.count : ''}`);
+      // Native state capture must survive application shutdown. The renderer
+      // may already be gone when the final forced capture arrives, so Electron
+      // persists the complete chunk against the same stable plugin identity.
+      if (msg.type === 'pluginState') persistPluginStateChunk(msg);
+      const eventDetails = msg.type === 'instanceStatus'
+        ? ` chain=${String(msg.chainId || '').slice(0, 128)} instance=${String(msg.instanceId || '').slice(0, 64)} generation=${Number.isSafeInteger(msg.generation) ? msg.generation : '?'} status=${String(msg.status || '').slice(0, 32)}`
+        : (msg.type === 'hello' && msg.nativeProcess
+          ? ` role=${String(msg.nativeProcess.role || '').slice(0, 16)} pid=${Number(msg.nativeProcess.pid) || '?'} parentPid=${Number(msg.nativeProcess.parentPid) || '?'} createdAt=${String(msg.nativeProcess.createdAt || '').slice(0, 64)} audioDeviceOpen=${msg.nativeProcess.audioDeviceOpen === true} lifetime=${String(msg.nativeProcess.lifetime || '').slice(0, 32)} reason=${String(msg.nativeProcess.reason || '').slice(0, 128)}`
+        : (msg.type === 'error'
+          ? ` code=${String(msg.code || '').slice(0, 64)} message=${String(msg.message || '').slice(0, 256)}`
+          : (msg.count !== undefined ? ' count=' + msg.count : '')));
+      console.log(`[engine:event] ${msg.type}${eventDetails}`);
+      diagnostics.log(`engine:event ${msg.type}${eventDetails}`);
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('engine:event', msg);
       }
+    },
+    onStderr: (text) => {
+      const bounded = String(text).replace(/[\r\n]+/g, ' ').slice(0, 4096);
+      diagnostics.log(`engine:stderr ${bounded}`);
     },
     onStateChange: (state, error) => {
       console.log(`[engine] state: ${state}${error ? ' — ' + error : ''}`);
@@ -60,8 +133,21 @@ function startEngine() {
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('engine:state', { state, error });
       }
+      if (state === 'running') engineRestartAttempts = 0;
+      if (state === 'error' && engineRestartAttempts < 2) {
+        const failed = engine;
+        engineRestartAttempts += 1;
+        setTimeout(() => {
+          if (engine !== failed || failed?.child) return;
+          engine = null;
+          diagnostics.log(`engine: bounded restart attempt=${engineRestartAttempts}`);
+          startEngine();
+        }, 250);
+      }
     }
   });
+  diagnostics.log(`engine:resolved-executable path=${engine.exePath} sha256=${engine.executableSha256()}`);
+  startupMark('engine-process-launch');
   engine.start();
 }
 
@@ -69,10 +155,23 @@ async function stopEngine() {
   if (!engine) return;
   const e = engine;
   engine = null;
+  await e.capturePluginStates();
+  // pluginState events are forwarded before the completion marker; allow the
+  // renderer's settings IPC writes already in flight to commit.
+  await new Promise((resolve) => setTimeout(resolve, 100));
   await e.shutdown();
 }
 
-app.whenReady().then(() => {
+const hasSingleInstanceLock = app.requestSingleInstanceLock();
+if (!hasSingleInstanceLock) app.quit();
+else app.on('second-instance', () => {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show(); mainWindow.focus();
+});
+
+if (hasSingleInstanceLock) app.whenReady().then(() => {
+  startupMark('electron-ready');
   diagnostics.logStartupInfo();
   createWindow();
   startEngine();
@@ -87,6 +186,14 @@ app.on('window-all-closed', () => {
 });
 
 app.on('before-quit', async (event) => {
+  // app.quit() fires before BrowserWindow's close event. Route a dirty quit
+  // through the same Cancel/Discard guard before stopping the native engine;
+  // otherwise Cancel would leave the application open with audio shut down.
+  if (mainWindow && !mainWindow.isDestroyed() && projectCloseGuard?.isDirty()) {
+    event.preventDefault();
+    mainWindow.close();
+    return;
+  }
   if (engine) {
     event.preventDefault();
     await stopEngine();
@@ -97,11 +204,86 @@ app.on('before-quit', async (event) => {
 // --- Settings IPC -----------------------------------------------------------
 ipcMain.handle('settings:load', () => loadSettings());
 ipcMain.handle('settings:save', (_event, settings) => saveSettings(settings));
+ipcMain.on('project:dirty-state', (event, dirty) => {
+  // Only the canonical main renderer may control the BrowserWindow close
+  // guard. Clip Editors and stale WebContents cannot clear this state.
+  if (!mainWindow || mainWindow.isDestroyed() || event.sender !== mainWindow.webContents) return;
+  projectCloseGuard?.setDirty(dirty === true);
+});
+
+function projectsDirectory() {
+  return path.join(app.getPath('documents'), 'MiniHub', 'Projects');
+}
+ipcMain.handle('project:default-directory', () => projectsDirectory());
+ipcMain.handle('project:pick-open', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    defaultPath: projectsDirectory(), properties: ['openFile'],
+    filters: [{ name: 'MiniHub Project', extensions: ['minihub'] }]
+  });
+  return result.canceled ? null : result.filePaths[0];
+});
+ipcMain.handle('project:pick-save', async (_event, name) => {
+  const safeName = String(name || 'Untitled').replace(/[<>:"/\\|?*]/g, '-');
+  const result = await dialog.showSaveDialog(mainWindow, {
+    defaultPath: path.join(projectsDirectory(), `${safeName}.minihub`),
+    filters: [{ name: 'MiniHub Project', extensions: ['minihub'] }]
+  });
+  return result.canceled ? null : result.filePath;
+});
+ipcMain.handle('audio:pick-save', async (_event, name, requestedFormat) => {
+  const format = audioExportFormat(requestedFormat);
+  const definition = AUDIO_EXPORT_FORMATS[format];
+  const safeName = String(name || 'MiniHub Take').replace(/[<>:"/\\|?*]/g, '-');
+  const result = await dialog.showSaveDialog(mainWindow, { defaultPath: path.join(app.getPath('music'), `${safeName}.${definition.extension}`), filters: [{ name: definition.label, extensions: [definition.extension] }] });
+  return result.canceled ? null : audioExportFilePath(result.filePath, format);
+});
+ipcMain.handle('audio:pick-open', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    defaultPath: app.getPath('music'), properties: ['openFile'],
+    filters: [{ name: 'Audio', extensions: ['wav', 'mp3', 'aif', 'aiff', 'flac', 'ogg'] }]
+  });
+  return result.canceled ? null : result.filePaths[0];
+});
+ipcMain.handle('audio:commit-take', (_event, sourcePath, name) => {
+  try {
+    const fs = require('fs');
+    if (typeof sourcePath !== 'string' || !fs.statSync(sourcePath).isFile()) throw new Error('Recorded take does not exist');
+    const safeName = String(name || 'MiniHub Take').replace(/[<>:"/\\|?*]/g, '-');
+    const directory = path.join(app.getPath('music'), 'MiniHub Recordings');
+    fs.mkdirSync(directory, { recursive: true });
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const destination = path.join(directory, `${safeName}-${stamp}.wav`);
+    fs.copyFileSync(sourcePath, destination, fs.constants.COPYFILE_EXCL);
+    return { ok: true, filePath: destination };
+  } catch (error) { return { ok: false, error: error.message }; }
+});
+ipcMain.handle('project:read', (_event, filePath) => {
+  try { return { ok: true, project: readProject(filePath), filePath }; }
+  catch (error) { return { ok: false, error: error.message }; }
+});
+ipcMain.handle('project:write', (_event, filePath, project) => {
+  try { writeProjectAtomic(filePath, project); return { ok: true, filePath }; }
+  catch (error) { return { ok: false, error: error.message }; }
+});
+ipcMain.handle('engine:capture-states', async () => {
+  if (!engine) return { ok: false, reason: 'engine-not-started' };
+  return { ok: await engine.capturePluginStates() };
+});
 
 // --- Diagnostics IPC --------------------------------------------------------
 ipcMain.handle('diagnostics:log', (_event, line) => {
   diagnostics.log(String(line));
   return true;
+});
+ipcMain.handle('diagnostics:provenance', () => diagnostics.runtimeProvenance());
+
+ipcMain.handle('window:focus-main', () => {
+  if (!mainWindow || mainWindow.isDestroyed()) return false;
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+  mainWindow.webContents.focus();
+  return mainWindow.isFocused();
 });
 
 // --- Engine IPC -------------------------------------------------------------
@@ -109,33 +291,40 @@ ipcMain.handle('diagnostics:log', (_event, line) => {
 // The renderer may only ask for commands the protocol actually defines. This
 // keeps the exposed IPC surface a fixed, reviewable list rather than "whatever
 // object the renderer serializes", without changing the protocol itself.
-const ALLOWED_ENGINE_COMMANDS = new Set([
-  'hello',
-  'listDevices',
-  'selectDevice',
-  'getDeviceState',
-  'scanVst3',
-  'listPlugins',
-  'createInstance',
-  'removeInstance',
-  'reorderChain',
-  'setBypass',
-  'midi',
-  'setChainMidiEnabled',
-  'setChainOutputEnabled',
-  'openEditor',
-  'closeEditor',
-  'getState',
-  'setState'
-  // 'shutdown' is deliberately absent: the engine lifecycle belongs to the
-  // main process, not to the renderer.
-]);
-
 ipcMain.handle('engine:command', (_event, msg) => {
   const type = msg && msg.type;
+  const validId = (value, pattern, maxLength) => typeof value === 'string'
+    && value.length > 0
+    && value.length <= maxLength
+    && pattern.test(value);
   if (!ALLOWED_ENGINE_COMMANDS.has(type)) {
     console.log('[engine:command] REJECTED unknown-command:', type);
     return { ok: false, reason: 'unknown-command' };
+  }
+  if (type === 'getVstParameters') {
+    if (!msg || msg.v !== 1
+        || !validId(msg.requestId, /^[A-Za-z0-9._:-]+$/, 160)
+        || !validId(msg.chainId, /^[A-Za-z][A-Za-z0-9_-]*$/, 128)
+        || !validId(msg.instanceId, /^plugin-[1-9][0-9]*$/, 64)) {
+      return { ok: false, reason: 'invalid-request' };
+    }
+  }
+  if (type === 'selectDevice' && !isValidSelectDeviceCommand(msg)) {
+    return { ok: false, reason: 'invalid-request' };
+  }
+  if (type === 'setVstParameter') {
+    if (!isValidSetVstParameterCommand(msg)) {
+      return { ok: false, reason: 'invalid-request' };
+    }
+  }
+  if (type === 'setVstParameterLearn') {
+    if (!isValidSetVstParameterLearnCommand(msg)) {
+      return { ok: false, reason: 'invalid-request' };
+    }
+  }
+  if (type === 'sequencerQuiesce'
+      && !validId(msg.requestId, /^quiesce-[A-Za-z0-9._:-]+$/, 160)) {
+    return { ok: false, reason: 'invalid-request' };
   }
   if (!engine) {
     console.log('[engine:command] REJECTED engine-not-started:', type);
