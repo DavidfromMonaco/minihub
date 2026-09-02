@@ -1,7 +1,10 @@
 # MiniHub — Feuille de route
 
-Document de pilotage unique : ce qui a été fait, ce qu'il reste à faire.
-Pour comprendre l'application et son code, voir [BLUEPRINT.md](BLUEPRINT.md).
+Document de pilotage : ce qui a été fait, ce qu'il reste à faire.
+Point d'entrée du dépôt : [AGENTS.md](AGENTS.md). Architecture et code :
+[ARCHITECTURE.md](ARCHITECTURE.md). Périmètre produit : [INTENT.md](INTENT.md).
+Choix contre-intuitifs : [DECISIONS.md](DECISIONS.md). Chantiers longs :
+[PLANS.md](PLANS.md).
 
 **État actuel** — branche `master`, commit `f4ec31f`.
 553 tests JS au vert, 3 952 vérifications natives au vert, build Release propre
@@ -72,8 +75,15 @@ Quatre duplications qui piégeaient l'ajout d'un module.
   qu'ils contenaient ne pesait que 4 Mo ; tout le reste était regénérable.
 - `dist/` resynchronisé. Le manifeste de provenance déclarait `gitHead 601ec70`
   avec `worktreeDirty: true` — il ment donc moins désormais.
-- Cette documentation : `BLUEPRINT.md` + `ROADMAP.md` remplacent 25 fichiers
-  Markdown éparpillés à la racine.
+- Cette documentation : `ARCHITECTURE.md` (alors nommé `BLUEPRINT.md`) +
+  `ROADMAP.md` remplacent 25 fichiers Markdown éparpillés à la racine.
+- Jeu documentaire destiné aux agents : `AGENTS.md` (carte et règles),
+  `CLAUDE.md` (import, Claude Code ne lit pas `AGENTS.md` seul), `INTENT.md`
+  (périmètre produit), `DECISIONS.md` (registre des choix), `PLANS.md` +
+  `plans/` (chantiers longs). `BLUEPRINT.md` renommé `ARCHITECTURE.md`.
+  `scripts/check-invariants.mjs` (`npm run check`) rend mécaniques sept des
+  douze invariants ; sa capacité à détecter a été vérifiée par sonde.
+  **Reste à trancher** : les six questions ouvertes d'`INTENT.md` §9.
 
 ---
 
@@ -113,7 +123,7 @@ Sous-tâches :
   demande de toucher les trois.
 - remonter `NATIVE_VALUE_COALESCE_MS` (déclaré au milieu du bloc d'imports,
   ligne 54) et le regroupement d'écritures dans l'utilitaire partagé.
-- documenter le contrat d'éditeur dans le BLUEPRINT une fois stabilisé.
+- documenter le contrat d'éditeur dans ARCHITECTURE.md une fois stabilisé.
 
 **Bénéfice attendu** : un nouveau type de nœud = un nouveau dossier + une ligne
 dans la table, sans toucher au registre.
@@ -157,7 +167,7 @@ la même logique.
 **Identité côté C++** — `native/audio-engine/src/midi_output.h:56`
 code en dur `id == "minilab-3"` dans `isPhysicalMidiDestination()`. C'est la
 contrepartie native de ce que le point 3 a unifié côté JS ; l'invariant 7 du
-BLUEPRINT n'est donc pas encore complet.
+ARCHITECTURE.md n'est donc pas encore complet.
 
 **Échappement** — `src/renderer/js/core/nodeInstances.js:240`
 interpole `${instance.name}` sans `escapeHtml`, seule exception parmi les
@@ -166,11 +176,30 @@ mais à aligner.
 
 ### 6. Cohérence visuelle et nommage
 
-**Deux systèmes de design coexistent.** `base.css` (1 486 lignes, langage
-`.panel`/`.btn`, utilisé par 9 fichiers) et `omni-pearl.css` (967 lignes,
-langage `op-*`, utilisé par le **seul** arpégiateur). `clip-editor.html` ne
-charge même pas le second. Migration à moitié faite : il faut trancher lequel un
-nouveau module doit utiliser, puis converger.
+**Deux systèmes de design coexistent, et c'est délibéré.** `base.css`
+(1 486 lignes, langage `.panel`/`.btn`) habille la **coquille sombre** : entête,
+barre latérale, Patch Bay, modales. `omni-pearl.css` (967 lignes, langage
+`op-*`) est un langage **clair, façade d'appareil**, destiné aux surfaces
+d'instrument posées dans cette coquille. Son entête le documente : un module y
+souscrit en posant la classe `omni-pearl` sur sa racine, et « rien ne fuit hors
+de ce sous-arbre ».
+
+Mesure au 2026-09-02 : `op-` n'est employé que par **trois** fichiers —
+`ui/omniPearl.js` (la bibliothèque, 18 classes), `core/arpeggiatorEditor.js`
+(23) et `core/nodeInstances.js` (7, pour monter la coquille de l'arpégiateur).
+Ce n'est donc pas une migration inachevée mais un **système amorcé** : un seul
+module sur N porte la façade prévue pour eux tous.
+
+**Tranché le 2026-09-02** ([DECISIONS.md](DECISIONS.md) D-012) : confinement et
+non empilement — un module choisit un vocabulaire pour tout son sous-arbre, la
+coquille n'est jamais habillée, il n'y a au plus qu'une façade, et par défaut un
+nouveau module utilise `base.css`. Deux de ces règles sont mécaniques
+(`npm run check` : `faceplate scope`, `one faceplate`).
+
+Il ne reste donc **aucun travail obligatoire** ici. Étendre la façade aux autres
+éditeurs de nœuds (Mixer, Morpher, VST) reste possible, éditeur par éditeur, et
+relève du goût : la bibliothèque `ui/omniPearl.js` est générique et le prévoit
+explicitement.
 
 **Quatre noms pour un même produit** : « MiniLab Hub » (titre de fenêtre,
 README), « MiniHub » (exécutable, `dist/MiniHub`, extension `.minihub`,
@@ -193,7 +222,8 @@ Sans engagement ni priorité — noté pour ne pas l'oublier.
   vides ; rien ne les implémente.
 - Le README annonçait « sends, sidechains, automation, gestion de presets,
   minimap, annuler/refaire, disposition automatique du graphe, groupes de
-  nœuds » comme hors périmètre. Ils le restent.
+  nœuds » comme hors périmètre. Ils le restent, **sauf la gestion de
+  presets** : ce refus est levé, voir [INTENT.md](INTENT.md) §8.
 - Les dix scripts `runtime-*-gauntlet.mjs` sont des harnais ponctuels liés à des
   investigations closes. À regrouper sous `scripts/gauntlets/` ou à retirer une
   fois leur usage confirmé caduc.

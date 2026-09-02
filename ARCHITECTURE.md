@@ -1,9 +1,14 @@
-# MiniHub — Blueprint technique
+# MiniHub — Architecture technique
 
-Document de référence unique de l'application. Il décrit ce qu'est MiniHub, son
-architecture matérielle, logicielle et visuelle, et la carte complète du code.
-Objectif : qu'un développeur ou un agent IA puisse intervenir sur n'importe
-quelle partie du projet après avoir lu ce seul fichier.
+Référence technique de l'application : architecture matérielle, logicielle et
+visuelle, et carte complète du code. Objectif : qu'un développeur ou un agent IA
+puisse intervenir sur n'importe quelle partie du projet à partir de ce seul
+fichier.
+
+**Ne pas le lire en entier par réflexe.** Le point d'entrée du dépôt est
+[AGENTS.md](AGENTS.md), qui renvoie ici section par section selon la tâche.
+Pour le périmètre produit, voir [INTENT.md](INTENT.md) ; pour le pourquoi des
+choix contre-intuitifs, [DECISIONS.md](DECISIONS.md).
 
 Les noms de fichiers, symboles, événements et commandes sont donnés
 littéralement — ils sont directement recherchables dans le code.

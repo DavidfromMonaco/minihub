@@ -1,0 +1,353 @@
+# MiniHub — Registre des décisions
+
+Ce que le code fait d'apparemment étrange, et **pourquoi**. Chaque entrée
+correspond à un choix qui a coûté du temps à établir et qu'une lecture naïve du
+code invite à défaire.
+
+**Avant de « corriger » quelque chose qui te semble absurde dans ce projet,
+cherche-le ici.** Si tu ne le trouves pas et que tu tranches, ajoute l'entrée.
+
+**Règles du registre**
+
+- **Ajout seulement.** Une entrée n'est jamais réécrite ni supprimée. Une
+  décision qui change est marquée `dépassée par D-xxx`, et la nouvelle entrée
+  explique ce qui a changé dans le monde.
+- Une entrée sans **preuve dans le code** n'est pas une décision, c'est une
+  opinion : elle n'a pas sa place ici.
+- Le champ **ce qui justifierait de revenir dessus** est obligatoire. Une
+  décision qu'aucun fait ne pourrait invalider est un dogme, pas une décision.
+- Ce registre dit *pourquoi*. [ARCHITECTURE.md](ARCHITECTURE.md) dit *comment*.
+  [INTENT.md](INTENT.md) dit *pour qui*.
+
+---
+
+## D-001 — Le rendu GPU est désactivé sous Windows
+
+**Statut** : en vigueur · antérieure au point de retour `c3c00c9`
+
+**Contexte** — Le sous-processus GPU d'Electron sortait en
+`STATUS_DLL_NOT_FOUND` sur la machine cible. L'application ne démarrait pas, et
+le symptôme ne se reproduit pas sur une machine de développement standard.
+
+**Décision** — `app.commandLine.appendSwitch('in-process-gpu')` puis
+`app.disableHardwareAcceleration()` au tout début du processus principal.
+
+**Conséquence** — L'interface ne peut pas utiliser WebGL, ni aucune technique
+dont le coût suppose une accélération matérielle. Le Patch Bay est dessiné en
+SVG et en DOM, et doit le rester.
+
+**Ce qui justifierait de revenir dessus** — Un changement de machine cible, ou
+une version d'Electron où le sous-processus GPU démarre. À vérifier en retirant
+les deux lignes et en lançant `npm start` sur la machine de l'utilisateur, pas
+ailleurs.
+
+**Preuve dans le code** — `src/main/main.js:13-14`
+
+---
+
+## D-002 — Un seul back-end audio : WASAPI, imposé à la compilation
+
+**Statut** : en vigueur · antérieure à `c3c00c9`
+
+**Contexte** — Plusieurs flux audio concurrents produisaient des artefacts et
+des conflits de périphérique. Désactiver les back-ends au démarrage ne suffit
+pas : rien n'empêche un chemin de code d'en rouvrir un.
+
+**Décision** — ASIO, DirectSound, WMME et WDMKS sont compilés **hors** de
+PortAudio (`PA_USE_ASIO OFF`, etc.). Un second flux devient impossible par
+construction, pas par discipline.
+
+**Conséquence** — Aucun support ASIO, jamais, sans recompiler. La latence
+plancher est celle de WASAPI en mode partagé ou exclusif. Bloc cible 256
+échantillons, plafond 4096.
+
+**Ce qui justifierait de revenir dessus** — Un besoin de latence que WASAPI
+exclusif ne tient pas, mesuré et non supposé. Rouvrir ASIO impose alors de
+prouver qu'un seul flux reste ouvert à tout instant.
+
+**Preuve dans le code** — `native/audio-engine/CMakeLists.txt:25-29`
+
+---
+
+## D-003 — Aucune étape de build pour le JavaScript
+
+**Statut** : en vigueur · antérieure à `c3c00c9`
+
+**Contexte** — Un bundler ajoute une étape entre ce qui est écrit et ce qui
+s'exécute, donc une source d'écart supplémentaire dans une application qui a
+déjà trois processus et deux langages.
+
+**Décision** — Le renderer est en ES modules natifs
+(`src/renderer/package.json` porte `{"type":"module"}`), le processus principal
+reste en CommonJS. Aucun bundler, aucune transpilation, aucun framework.
+
+**Conséquence** — Les 553 tests importent directement les modules du renderer
+sans étape de build, ce qui rend la suite quasi instantanée (~5 s). En échange :
+pas de JSX, pas de TypeScript, pas d'import de paquet npm dans le renderer, et
+la frontière CommonJS / ESM doit être respectée à la lettre.
+
+**Ce qui justifierait de revenir dessus** — Rien de connu. Ce serait un
+changement d'identité du projet, pas une optimisation ; voir INTENT.md.
+
+**Preuve dans le code** — `src/renderer/package.json`, `package.json` (aucune
+`dependencies`)
+
+---
+
+## D-004 — La topologie audio et les valeurs audio empruntent deux chemins
+
+**Statut** : en vigueur · antérieure à `c3c00c9`
+
+**Contexte** — Un curseur `range` émet un événement `input` par pixel de
+glissement. Router ces valeurs par `syncAudioGraph` recompilait le graphe natif
+des dizaines de fois par seconde — **jusqu'à 37 recompilations par seconde
+relevées dans le journal** — et remettait à zéro chaque ligne de retard PDC en
+plein flux audio.
+
+**Décision** — `audioTopologyKey(nodes)` décrit la *forme* du graphe : une
+différence impose une recompilation. `audioNodeValues(nodes)` décrit les valeurs
+éditées en continu (niveaux, mutes, master, pas du Morpher) : elles sont
+appliquées **en place** sur le plan déjà publié. Les écritures sont en outre
+regroupées côté UI toutes les 120 ms.
+
+**Conséquence** — Ajouter un réglage continu à un nœud oblige à choisir
+explicitement son camp. Le mettre dans la clé de topologie « parce que c'est
+plus simple » réintroduit le défaut, silencieusement : il ne se voit qu'à
+l'oreille et dans le journal.
+
+**Ce qui justifierait de revenir dessus** — Une recompilation native devenue
+assez bon marché pour être faite par image, mesurée sous charge VST réelle.
+
+**Preuve dans le code** — `src/renderer/js/core/engineSync.js`,
+`src/renderer/js/core/nodeInstances.js:54` (`NATIVE_VALUE_COALESCE_MS = 120`)
+
+---
+
+## D-005 — La détection de cycles ignore les nœuds `midi-output`
+
+**Statut** : en vigueur · antérieure à `c3c00c9`
+
+**Contexte** — Le MiniLab est représenté par **deux facettes matérielles
+indépendantes** : sa sortie MIDI provient du clavier, et ce qu'il reçoit sur son
+entrée MIDI n'est jamais réémis par sa sortie. Traiter ces deux ports comme une
+traversée interne fabriquait un faux cycle, et le monitoring matériel
+`MiniLab → Sequencer → MiniLab` était refusé à tort.
+
+**Décision** — `Graph._wouldCreateCycle()` n'explore pas les arêtes sortantes
+d'un nœud de type `midi-output`.
+
+**Conséquence** — Un vrai cycle passant par un nœud `midi-output` ne serait pas
+détecté. C'est acceptable parce qu'un tel nœud est un point terminal matériel :
+il n'existe aucun chemin de retour interne.
+
+**Ce qui justifierait de revenir dessus** — Un type de nœud `midi-output` qui
+réémettrait réellement ce qu'il reçoit. Il faudrait alors distinguer les
+terminaux matériels des relais, pas retirer l'exception.
+
+**Preuve dans le code** — `src/renderer/js/core/graph.js:115-121`
+
+---
+
+## D-006 — L'identité d'un nœud est séparée de sa numérotation
+
+**Statut** : en vigueur · établie au commit `92f6b12` (« Pass 1 »)
+
+**Contexte** — Confondre les deux fait survivre des câbles vers un nœud
+supprimé, ou fait pointer une chaîne native vers le mauvais plugin.
+
+**Décision** — L'`id` (`vst-011`) est stable, unique à jamais, et **jamais
+réutilisé** après suppression : c'est la clé des câbles, positions, modules et
+chaînes natives. L'`ordinal` (« VST 2 ») est de l'**affichage seul** ; un
+nouveau nœud prend le plus petit entier libre de sa famille, et les nœuds
+existants ne sont jamais renumérotés.
+
+**Conséquence** — Après suppression de « VST 2 » alors que dix nœuds existent,
+un nouveau nœud s'affichera « VST 2 » tout en portant l'id `vst-011`. C'est
+voulu. Le `name` est dérivé et n'est pas persisté séparément.
+
+**Ce qui justifierait de revenir dessus** — Rien. C'est l'invariant 4.
+
+**Preuve dans le code** — `src/renderer/js/core/nodeInstances.js`
+
+---
+
+## D-007 — La surface IPC est une liste blanche fixe, pas un passe-plat
+
+**Statut** : en vigueur · antérieure à `c3c00c9`
+
+**Contexte** — Un pont IPC qui relaie « n'importe quel objet sérialisé par le
+renderer » n'est pas relisible : on ne peut pas savoir, en lisant le processus
+principal, ce que le moteur natif peut recevoir.
+
+**Décision** — Toute commande moteur passe par `ipcMain.handle('engine:command')`
+qui applique `ALLOWED_ENGINE_COMMANDS`, puis un validateur dédié pour les
+commandes sensibles (`selectDevice`, `setVstParameter`, `setVstParameterLearn`).
+
+**Conséquence** — Ajouter une commande moteur impose de toucher la liste blanche.
+C'est le point du dispositif : la surface exposée reste une liste finie et
+lisible d'un coup d'œil.
+
+**Ce qui justifierait de revenir dessus** — Rien de connu.
+
+**Preuve dans le code** — `src/main/engineCommandPolicy.js`,
+`src/main/audioDeviceCommand.js`, `src/main/vstParameterCommand.js`,
+`src/main/vstParameterLearnCommand.js`
+
+---
+
+## D-008 — Une identité partagée est déclarée à un seul endroit
+
+**Statut** : **partiellement appliquée** · établie au commit `f4ec31f`
+
+**Contexte** — `'minilab-3'` était redéclaré dans **neuf modules** sous trois
+noms différents, `'audio-output'` dans trois. La liste des clés de projet
+existait en double. Le mode de panne est silencieux : une copie oubliée lors
+d'un renommage ne lève aucune erreur, le graphe cesse simplement de
+correspondre et le MIDI arrête de router.
+
+**Décision** — `core/systemNodes.js` détient les identifiants de nœuds système,
+`core/projectKeys.js` la liste des clés de projet. Les `DEFAULTS` du processus
+principal n'en contiennent aucune.
+
+**Conséquence** — Un littéral d'identité partagée dans un module est désormais
+un défaut, pas un raccourci. `npm run check` le refuse.
+
+**Reste ouvert** — La contrepartie C++ n'est pas unifiée :
+`isPhysicalMidiDestination()` code encore `id == "minilab-3"` en dur.
+L'invariant 7 est donc incomplet côté natif. Voir ROADMAP §5.
+
+**Ce qui justifierait de revenir dessus** — Rien. Le travail restant est de
+l'étendre, pas de le défaire.
+
+**Preuve dans le code** — `src/renderer/js/core/systemNodes.js`,
+`src/renderer/js/core/projectKeys.js`, `src/main/settings.js:19-30`,
+et la violation restante `native/audio-engine/src/midi_output.h:49`
+
+---
+
+## D-009 — Les réglages sont écrits de façon atomique
+
+**Statut** : en vigueur · antérieure à `c3c00c9`
+
+**Contexte** — Les réglages sont sauvegardés à **chaque** modification du graphe
+ou de la disposition. Une coupure en pleine écriture laissait un JSON tronqué,
+que `loadSettings` écartait silencieusement — emportant avec lui tous les nœuds
+et tous les câbles.
+
+**Décision** — Écriture dans un fichier `.tmp` puis `renameSync` sur la cible.
+
+**Conséquence** — Le pire cas est de perdre la dernière écriture, jamais l'état
+antérieur. Tout nouveau chemin d'écriture de fichier utilisateur doit adopter le
+même motif.
+
+**Ce qui justifierait de revenir dessus** — Rien.
+
+**Preuve dans le code** — `src/main/settings.js:45-53`
+
+---
+
+## D-010 — Un seul document d'architecture, non fragmenté
+
+**Statut** : en vigueur · 2026-09-02, prolonge le commit `b115b41`
+
+**Contexte** — Le projet est passé de 26 fichiers Markdown épars à deux
+documents. Le réflexe suivant — éclater l'architecture en `docs/` pour la
+« divulgation progressive » — recréerait mécaniquement le problème résolu : des
+fichiers qui divergent, dont aucun ne fait autorité.
+
+**Décision** — `ARCHITECTURE.md` reste **un seul document**, avec sa table des
+matières. La divulgation progressive se fait par **routage depuis `AGENTS.md`**
+(« tu touches au séquenceur → lis §9 »), pas par découpage. `docs/` accueille ce
+qui n'est pas du texte de référence : aujourd'hui les images de
+`design-references/`.
+
+**Conséquence** — `ARCHITECTURE.md` est long (~41 Ko) et ne doit jamais être
+chargé en entier par réflexe. `AGENTS.md`, lui, reste court et se lit
+intégralement.
+
+**Ce qui justifierait de revenir dessus** — Un document devenu assez gros pour
+qu'aucun agent n'en trouve la bonne section, mesuré sur des sessions réelles et
+non supposé.
+
+**Preuve dans le code** — `AGENTS.md` §3, `ARCHITECTURE.md` (table des matières)
+
+---
+
+## D-011 — Les invariants sont vérifiés mécaniquement
+
+**Statut** : en vigueur · 2026-09-02
+
+**Contexte** — ARCHITECTURE §13 énonce douze invariants. Un invariant qui
+n'existe qu'en prose est un invariant qu'un agent enfreint de bonne foi, sans
+qu'aucun signal ne le contredise.
+
+**Décision** — `scripts/check-invariants.mjs` (`npm run check`) traduit en
+échecs mécaniques ceux des invariants qui sont vérifiables statiquement.
+Node stdlib, zéro dépendance, cohérent avec D-003. Les invariants non
+vérifiables statiquement restent couverts par les tests et la relecture : le
+thread audio (invariant 3), la symétrie register/unregister (5), et
+l'échappement avant `innerHTML` (9) — pour ce dernier, toute heuristique
+testée signalait une vingtaine de lignes de journal et de titres de fenêtre
+parfaitement légitimes.
+
+**Conséquence** — `npm run check` fait partie de la définition de « fini ».
+Un invariant nouvellement énoncé dans ARCHITECTURE §13 doit s'accompagner soit
+d'une règle dans le vérificateur, soit d'un test, soit d'une justification
+écrite de son absence.
+
+**Ce qui justifierait de revenir dessus** — Un vérificateur qui produirait assez
+de faux positifs pour qu'on prenne l'habitude de l'ignorer. Le remède serait de
+retirer la règle fautive, pas l'outil.
+
+**Preuve dans le code** — `scripts/check-invariants.mjs`, `package.json`
+(script `check`)
+
+---
+
+## D-012 — Une coquille, au plus une façade, jamais mélangées
+
+**Statut** : en vigueur · 2026-09-02
+
+**Contexte** — Le dépôt porte deux feuilles de style aux palettes opposées :
+`base.css` sombre et `omni-pearl.css` claire. Lues de loin, elles ressemblent à
+une migration abandonnée, et le réflexe est de vouloir « unifier » — soit en
+fusionnant les deux, soit en supprimant la seconde.
+
+Les deux réflexes sont faux. `base.css` habille la **coquille** (entête, barre
+latérale, Patch Bay, câbles, modales) ; `omni-pearl.css` est une **façade
+d'appareil** destinée aux surfaces d'instrument posées dans cette coquille, avec
+sa bibliothèque de composants générique (`ui/omniPearl.js` : potentiomètres,
+sélecteurs, interrupteurs, boutons-icônes, tous construits autour de vrais
+éléments de formulaire pour préserver le clavier et les lecteurs d'écran).
+
+La supprimer coûterait la réécriture complète de l'arpégiateur **plus** l'ajout
+à `base.css` des primitives qu'on viendrait d'en retirer : `base.css` n'a ni
+potentiomètre, ni interrupteur, ni grille pas-à-pas.
+
+**Décision** — Trois règles.
+
+1. **Confinement, pas empilement.** `.omni-pearl` redéfinit son propre jeu
+   complet de tokens et ne consomme aucune variable de `base.css`. Un module
+   choisit un vocabulaire pour **tout son sous-arbre** ; les deux ne se
+   mélangent jamais. La coquille n'est jamais habillée.
+2. **Une coquille, au plus une façade.** Un nouveau look étend ou remplace
+   `omni-pearl` ; il ne s'y ajoute pas.
+3. **Une classe de façade seulement là où sa feuille est chargée.**
+   `clip-editor.html` ne charge que `base.css`.
+
+**Conséquence** — L'étendue de la façade se décide éditeur par éditeur et non
+en bloc ; par défaut un nouveau module utilise `base.css`. Les deux dernières
+règles sont mécaniques : `npm run check` refuse une troisième feuille de style,
+et refuse une classe `op-` dans le Clip Editor. Cette seconde règle **lit** le
+document plutôt que de le supposer : elle se désarme d'elle-même le jour où
+`clip-editor.html` chargera la façade. Comportement vérifié par sonde dans les
+trois sens.
+
+**Ce qui justifierait de revenir dessus** — Un besoin réel de deux façades
+simultanées, c'est-à-dire deux familles de surfaces d'instrument dont l'aspect
+doit différer. À ce jour il n'en existe qu'une.
+
+**Preuve dans le code** — `src/renderer/styles/omni-pearl.css:1-19` (l'intention
+d'origine, écrite par son auteur), `src/renderer/js/ui/omniPearl.js:1-16`,
+`scripts/check-invariants.mjs` (règles `faceplate scope` et `one faceplate`),
+`AGENTS.md` §6
