@@ -6,8 +6,8 @@ Point d'entrée du dépôt : [AGENTS.md](AGENTS.md). Architecture et code :
 Choix contre-intuitifs : [DECISIONS.md](DECISIONS.md). Chantiers longs :
 [PLANS.md](PLANS.md).
 
-**État actuel** — branche `master`, commit `f4ec31f`.
-553 tests JS au vert, 3 952 vérifications natives au vert, build Release propre
+**État actuel** — branche `master`, commit `1b0e3d5`.
+586 tests JS au vert, 3 952 vérifications natives au vert, build Release propre
 (0 erreur, 0 avertissement), `dist/` synchronisé avec les sources.
 
 L'objectif de toute cette passe est la **consolidation avant ajout de nouveaux
@@ -91,7 +91,18 @@ Quatre duplications qui piégeaient l'ajout d'un module.
 
 ### 4. Éclater `nodeInstances.js` — le vrai chantier
 
-**C'est ce qui bloque réellement l'ajout de modules.**
+**Ce n'est plus ce qui bloque l'ajout d'un module — mesuré le 2026-09-03.**
+`core/nodeEditors.js` et `core/disposers.js` existent (conservés de D-013), et
+**tous** les gestionnaires partagés de `mount()` filtrent sur un `type.id`
+explicite : lignes 693, 853, 1008, 1019, 1043, 1082, 1089. Un type **nouveau**
+les traverse donc sans les toucher, et son éditeur tient dans son propre dossier
+plus un `registerNodeEditor()`. Le coût résiduel est de deux ou trois branches à
+ajouter dans `defaultContentFor()` et la normalisation de contenu.
+
+Ce qui reste vrai, et qui reste le chantier : **les quatre éditeurs qui
+précèdent la couture** (VST, Arpégiateur, Mixer, Morpher) sont toujours
+co-propriétaires des bugs les uns des autres, et toute modification de l'un
+d'eux se paie dans du code partagé avec les trois autres.
 
 [nodeInstances.js](src/renderer/js/core/nodeInstances.js) fait 1 143 lignes et
 est devenu un fichier-dieu. Son `_registerModule()` contient un `mount()` de
@@ -211,6 +222,43 @@ répertoire `%APPDATA%` sont des chemins existants chez l'utilisateur.
 lignes compressées quasi illisibles : `nodeInstances.js:316-323` et `341-355`,
 `engineSync.js:35`, `engineClient.js:655`. À homogénéiser au fil des passages,
 sans passe cosmétique dédiée.
+
+---
+
+### 7. Le nœud Matrix — remplacer le Morpher comme direction produit
+
+**Spécification** : `SPECIFICATION_MATRIX_MINIHUB.md` (cible fonctionnelle
+complète, révisée le 2026-09-03 contre le code réel).
+
+Un nœud de contrôle unique par projet, qui gouverne les nœuds auxquels il est
+câblé par un lien `control` : scènes, états cibles, rampes, règles de sortie à
+seed reproductible. Il ne produit aucun son ; il gouverne le setup qui en
+produit.
+
+Trois décisions ont été prises avant toute ligne de code, parce que chacune
+rendait le chantier impossible ou faux si elle était découverte en cours de
+route :
+
+- **D-016** — `automation` sort de la liste « hors périmètre » d'[INTENT.md](INTENT.md)
+  §6, dans la forme précise d'un nœud Matrix. La piste d'automation de DAW,
+  elle, reste refusée. Voir [INTENT.md](INTENT.md) §8 bis ;
+- **D-017** — la Matrix compte son propre temps musical, au tempo global. La
+  cadencer sur la **position** du Transport la gelait dès qu'une scène arrêtait
+  le séquenceur, et la rembobinait à chaque `Restart` ;
+- **D-018** — un seul Learn armé dans l'application, avec un propriétaire nommé.
+  Deux systèmes Learn indépendants s'annulaient silencieusement.
+
+Trois mécanismes que la spécification supposait existants et qui sont **à
+construire** : l'étage de gain post-chaîne d'un nœud VST (§7.2 — `masterLevel`
+n'est appliqué que sur les `mixer`), la visibilité d'un `ctrl-in` sur un nœud à
+entrées dynamiques (§4.3 — `nodeInstances.js:289`), et un runtime bi-contexte
+live/export (§9.1).
+
+**Plan d'exécution** : [plans/active/noeud-matrix.md](plans/active/noeud-matrix.md)
+— 23 étapes sur quatre phases, chacune avec sa commande de vérification.
+
+Le Morpher n'est pas supprimé — il sort du menu d'ajout et reste fonctionnel en
+`legacy` (§12). Sa suppression définitive est un chantier séparé.
 
 ---
 

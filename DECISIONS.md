@@ -510,3 +510,145 @@ déplaçable avec son audio ; ce serait une autre décision, pas un réglage.
 `fallbackDirectory`, `directories:*`),
 `src/renderer/js/ui/settingsModal.js` (`FOLDER_ROWS`),
 `test/recentDirectories.test.cjs`, `test/settingsDirectories.test.mjs`
+
+---
+
+## D-016 — L'automation entre dans le périmètre, sous la forme d'un nœud Matrix
+
+**Statut** : en vigueur · 2026-09-03 · **décidé, pas encore implémenté**
+
+**Contexte** — `automation` figurait dans la liste « hors périmètre par défaut »
+d'[INTENT.md](INTENT.md) §6. Or le §3 du même document désigne « jouer de la
+musique générative en direct » comme l'un des **deux usages qui définissent le
+produit**. Les deux lignes se contredisaient depuis l'origine : un setup
+incapable de changer d'état tout seul dans le temps ne joue pas de musique
+générative, il joue une boucle.
+
+**Décision** — Le refus est levé, dans la forme précise d'un nœud **Matrix** :
+unique par projet, ajouté à la main, qui ne gouverne que les nœuds auxquels il
+est réellement câblé par un lien `control`. Reste refusé, sans changement : la
+piste d'automation du séquenceur (ligne, points, courbe dessinée sur
+l'arrangement), le langage de script, la génération par modèle.
+
+La frontière tient en une phrase : la Matrix **gouverne des nœuds**, elle ne
+**dessine pas des courbes sur un temps**.
+
+**Conséquence** — [INTENT.md](INTENT.md) §6 perd le mot `automation` et gagne un
+§8 bis qui porte la levée et ses limites. Le Morpher cesse d'être proposé à la
+création, sans être supprimé (§12 de la spécification).
+
+**Ce qui justifierait de revenir dessus** — Que la Matrix se mette à exiger une
+piste d'automation dans l'arrangement pour être utilisable. Ce serait le signe
+que le modèle « scènes + règles » ne suffit pas, et donc que ce qui était
+vraiment voulu est l'automation de DAW du §6 — laquelle reste refusée. La levée
+serait alors à annuler, pas à élargir.
+
+**Preuve dans le code** — l'absence, aujourd'hui : aucun type `matrix` dans
+`src/renderer/js/core/nodeTypes.js`, aucun port `control` en entrée ailleurs que
+`vst.ctrl-in`. La contradiction qui a motivé la levée est lisible telle quelle
+dans `INTENT.md` §3 contre `INTENT.md` §6 avant ce commit.
+
+---
+
+## D-017 — La Matrix compte son propre temps musical, au tempo global
+
+**Statut** : en vigueur · 2026-09-03 · **décidé, pas encore implémenté**
+
+**Contexte** — La spécification demandait deux choses incompatibles. Les scènes,
+fades et rampes devaient être cadencés par la position PPQ du Transport (§9.2),
+et une action d'entrée de scène devait pouvoir **arrêter** le séquenceur (§4.1,
+critère d'acceptation §15.B).
+
+Or `Transport::advance()` sort immédiatement quand le transport ne joue pas :
+
+```cpp
+void advance(int n) noexcept { if(!processingPlaying()||n<=0)return; ... }
+```
+
+Une scène qui arrête le séquenceur gèle donc l'horloge de la Matrix elle-même :
+sa durée ne s'écoule jamais, ses règles de sortie ne se déclenchent jamais, un
+« Next Scene à la prochaine mesure » n'arrive jamais. Et le défaut est double —
+`seekPpq()` rembobine le PPQ, donc une action `Restart`, en remettant
+l'arrangement à zéro, remettrait aussi à zéro la progression de la scène qui
+vient de la déclencher. Asservir la Matrix au PPQ du Transport casse exactement
+les deux actions pour lesquelles elle existe.
+
+**Décision** — La Matrix possède **son propre compteur** de temps musical, dans
+le moteur natif, avancé par le compteur d'échantillons du callback. Elle ne
+rembobine jamais et ne s'arrête que sur un Stop de la Matrix.
+
+**Ce compteur n'est pas une seconde horloge : c'est un second compteur sur la
+même horloge.** Son tempo est relu à chaque bloc dans le `Transport` global.
+Deux conséquences, et ce sont précisément celles qui étaient voulues :
+
+- **aucune dérive possible.** La Matrix et le séquenceur avancent du même
+  `quarterNotesPerSample`, issu du même BPM et du même compteur d'échantillons.
+  Leurs mesures ont la même longueur, à l'échantillon près ;
+- **phase commune par construction.** C'est la Matrix qui lance le séquenceur,
+  sur une de ses propres frontières de mesure. Les deux partent alignés et
+  avancent au même rythme, donc ils restent alignés. Un séquenceur branché en
+  aval est synchronisé sans qu'aucun mécanisme de resynchronisation n'existe.
+
+Un changement de BPM pendant une rampe déplace sa fin exactement comme le
+demande §7.1, puisque le BPM est relu à chaque bloc et non figé au départ.
+
+**Ce que ça n'est pas** — Ce n'est pas un timer JavaScript : l'interdiction du
+§9.2 visait la gigue et la dérive du renderer, et elle est intégralement
+respectée. Ce n'est pas non plus un second `Transport` au sens de l'export : la
+Matrix ne fournit aucun `AudioPlayHead` à aucun plugin.
+
+**Ce qui justifierait de revenir dessus** — Un usage où le séquenceur, et non la
+Matrix, serait le maître : l'utilisateur lance l'arrangement à la main et veut
+que les scènes se mettent en pause avec lui. Ce serait un interrupteur « suivre
+le transport » par projet — un ajout à cette décision, pas son annulation.
+
+**Preuve dans le code** — `native/audio-engine/src/transport.h` : `advance()`,
+`seekPpq()`, `processingPlaying()`. Le précédent d'un second contexte temporel
+indépendant existe déjà : `offlineExportTransport_` dans
+`native/audio-engine/src/sequencer.h`.
+
+---
+
+## D-018 — Un seul Learn armé dans l'application, avec un propriétaire nommé
+
+**Statut** : en vigueur · 2026-09-03 · **décidé, pas encore implémenté**
+
+**Contexte** — `ControlBindingManager` détient **un** `pendingLearn`, au
+singulier, pour toute l'application, et le moteur natif supersède sa demande
+d'armement de façon atomique. La spécification Matrix demandait un second
+système Learn (§5) en se protégeant uniquement de l'écrasement des *mappings*
+MiniLab (§5.2) — pas de celui de l'*armement*. Deux systèmes indépendants qui
+arment le même plugin : le second annule silencieusement le premier, et
+l'utilisateur voit une capture partir dans la mauvaise ligne.
+
+Second défaut, dans l'existant : `armLearn()` ne sait pas viser une instance
+choisie. Il échoue en `multiple-plugin-targets` sauf si exactement un plugin est
+prêt, ou exactement un éditeur est ouvert. La Matrix, elle, a besoin que
+l'utilisateur désigne l'instance (§5.1 étape 2).
+
+**Décision** — Un **arbitre de Learn partagé** : une seule demande armée à la
+fois dans l'application, portant l'identité de son propriétaire
+(`minilab` | `matrix`). Armer depuis la Matrix annule explicitement un armement
+MiniLab en cours, et réciproquement — visiblement, jamais en silence. L'arbitre
+gagne l'armement par instance explicite, dont les deux clients bénéficient.
+
+Les **persistances restent séparées** : les mappings MiniLab restent dans
+`controlBindings` du nœud VST, ceux de la Matrix dans le contenu du nœud Matrix.
+C'est l'armement qui est partagé, pas le carnet d'adresses.
+
+**Conséquence** — La phase 2 du chantier Matrix contient un refactor de
+l'existant, pas seulement un ajout. C'est assumé : l'alternative était de
+dupliquer ~300 lignes aux règles de validation subtilement divergentes, dans un
+domaine — l'identité d'un paramètre VST3 vivant — où une divergence subtile
+écrit dans le mauvais plugin.
+
+**Ce qui justifierait de revenir dessus** — Que le moteur natif accepte
+plusieurs armements simultanés, distingués par `learnId`, sur des instances
+différentes. L'arbitre deviendrait un registre à N entrées ; le principe d'un
+propriétaire nommé resterait.
+
+**Preuve dans le code** — `src/renderer/js/core/controlBindings.js` :
+`this.pendingLearn` (singulier), `armLearn()` et ses échecs
+`multiple-plugin-targets` / `multiple-plugin-editors-open`, le commentaire
+« The native engine also supersedes its previous operation atomically ».
+Côté natif : `PluginInstance::armParameterLearn`, `activeLearnId_`.

@@ -13,7 +13,7 @@ choix contre-intuitifs, [DECISIONS.md](DECISIONS.md).
 Les noms de fichiers, symboles, événements et commandes sont donnés
 littéralement — ils sont directement recherchables dans le code.
 
-**État de référence** : commit `f4ec31f`, 553 tests JS + 3 952 vérifications
+**État de référence** : commit `1b0e3d5`, 586 tests JS + 3 952 vérifications
 natives au vert. Pour ce qui reste à faire, voir [ROADMAP.md](ROADMAP.md).
 
 ---
@@ -841,7 +841,7 @@ d'une capture forcée à l'extinction.
 | `audio_signal_meter.{h,cpp}` | télémétrie de frontière |
 | `realtime_drops.h` | compteurs de blocs sautés |
 
-### `test/` — 553 tests
+### `test/` — 586 tests
 
 Exécutés par le lanceur intégré de Node (`node:test`), sans dépendance. Ils
 importent directement les modules du renderer. `domShim.mjs` fournit le DOM
@@ -885,7 +885,7 @@ l'application réelle par CDP.
 
 ```bash
 npm install            # Electron + rcedit
-npm test               # 553 tests, lanceur Node intégré, ~5 s
+npm test               # 586 tests, lanceur Node intégré, ~5 s
 npm run build:native   # moteur natif Release (CMake + MSBuild)
 npm run build:native:tests
 npm run sync:dist      # promeut src/ + moteur vers dist/MiniHub

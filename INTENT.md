@@ -98,14 +98,14 @@ multi-plateforme proposée « au cas où » est à refuser.
 - **Pas un clone de DAW.** Une fonctionnalité ne se justifie jamais par « les
   autres DAW l'ont ». Elle se justifie par l'un des deux usages du §3.
 
-**Hors périmètre par défaut** : sends, sidechains, automation, minimap,
-annuler/refaire, disposition automatique du graphe, groupes de nœuds. Les types
-de nœuds `video` et `image` existent dans le registre avec des ports vides ;
-**rien ne doit les implémenter** tant que cette ligne n'a pas changé.
+**Hors périmètre par défaut** : sends, sidechains, minimap, annuler/refaire,
+disposition automatique du graphe, groupes de nœuds. Les types de nœuds `video`
+et `image` existent dans le registre avec des ports vides ; **rien ne doit les
+implémenter** tant que cette ligne n'a pas changé.
 
 Le refus n'est pas définitif par principe : il est définitif **par défaut**.
 Lever un de ces refus se fait ici, explicitement, avec sa raison — comme la
-gestion de presets l'a été au §8.
+gestion de presets l'a été au §8, et l'automation au §8 bis.
 
 ## 7. Le réseau : autorisé, confiné
 
@@ -148,6 +148,41 @@ Ce qui le rouvrirait légitimement est autre chose, et D-013 le nomme : **rappel
 une configuration MiniHub** — une chaîne VST plus un arpégiateur plus des
 mappings MiniLab, recallable dans un autre projet. Aucun plugin ne fera jamais
 ça, et ça ne traverse aucun réseau.
+
+## 8 bis. Refus levé : l'automation, sous la forme d'un nœud Matrix
+
+**Statut : tranché le 2026-09-03. Dans le périmètre.**
+
+`automation` figurait au §6 depuis l'origine. Le refus est levé, pour une raison
+qui était déjà écrite ailleurs dans ce document : le §3 désigne **« jouer de la
+musique générative en direct »** comme l'un des deux usages qui *définissent* le
+produit. Un setup qui ne peut pas changer d'état tout seul dans le temps ne joue
+pas de musique générative — il joue une boucle. Le refus contredisait donc le §3
+depuis le début ; ce qui manquait, c'était de s'en apercevoir.
+
+Ce qui est levé est **précisément délimité**, et pas un mot de plus :
+
+- un nœud **Matrix**, unique par projet, ajouté à la main, qui gouverne les
+  nœuds auxquels il est **réellement câblé** par un lien `control` ;
+- des scènes, des états cibles, des rampes et des règles de sortie à seed
+  reproductible.
+
+Ce qui **reste** hors périmètre, et que la Matrix ne doit jamais devenir :
+
+- pas de **piste d'automation** dans le séquenceur — ni ligne, ni point, ni
+  courbe dessinée sur l'arrangement. C'est l'automation de DAW du §6, et elle
+  reste refusée ;
+- pas de langage de script (§6, « pas une plateforme extensible ») ;
+- pas de génération par modèle ou par réseau (§7) ;
+- pas de seconde DAW dans l'application.
+
+La différence tient en une phrase : la Matrix **gouverne des nœuds**, elle ne
+**dessine pas des courbes sur un temps**. Une demande qui la ferait glisser vers
+la seconde forme rouvre le refus du §6, elle ne prolonge pas cette levée.
+
+Spécification cible : `SPECIFICATION_MATRIX_MINIHUB.md`. Décisions :
+[DECISIONS.md](DECISIONS.md) D-016 (la levée), D-017 (l'horloge), D-018 (le
+Learn partagé).
 
 ## 9. Arbitrages
 

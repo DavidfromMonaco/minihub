@@ -139,7 +139,7 @@ périmètre produit ; ici, les interdits techniques :
 
 ```bash
 npm install              # Electron + rcedit
-npm test                 # 553 tests JS, lanceur node:test, ~5 s
+npm test                 # 586 tests JS, lanceur node:test, ~5 s
 npm run check            # verificateur d'invariants (Node stdlib, ~1 s)
 npm run build:native     # moteur natif Release (CMake + MSBuild)
 npm run build:native:tests
