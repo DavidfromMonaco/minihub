@@ -1,0 +1,41 @@
+# Verification JS uniquement.
+#
+# Le moteur natif n'est PAS construit ici : il exige ~682 Mo de SDK
+# (JUCE, VST3, PortAudio, LAME) qui ne sont volontairement pas versionnes.
+# `npm run build:native` et les quatre binaires de test natifs restent donc a
+# lancer localement, et font toujours partie de la definition de "fini"
+# (AGENTS.md section 8).
+#
+# Runner Windows parce que c'est la seule plateforme supportee (INTENT.md
+# section 5) : verifier sur Linux prouverait quelque chose que personne
+# n'execute.
+
+name: verify
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  js:
+    runs-on: windows-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Installer
+        run: npm ci
+
+      - name: Invariants
+        run: npm run check
+
+      - name: Tests
+        run: npm test
