@@ -415,3 +415,98 @@ rien d'existant.
 **Preuve dans le code** — l'absence : aucun fichier `preset*` sous `src/`,
 `loadPresetChunks` absent d'`engineCommandPolicy.js`, aucun type de port
 `preset` dans `routingCore.js`. Le chantier retiré : commit `b1cb405`.
+
+---
+
+## D-014 — Fermer MiniHub sauvegarde ; la question ne se pose qu'une fois
+
+**Statut** : en vigueur · 2026-09-03
+
+**Contexte** — Toute fermeture d'un projet modifié ouvrait la même boîte :
+« Discard changes / Cancel ». Elle apparaissait exactement au moment où
+l'utilisateur a déjà décidé de partir, et son unique bouton d'action détruisait
+le travail. Une boîte qui surgit à chaque sortie et dont on clique toujours le
+même bouton n'est plus lue : elle enseigne un réflexe, puis emporte une session
+le jour où ce réflexe se trompe.
+
+**Décision** — À la fermeture, un projet qui possède **déjà un fichier** est
+écrit à sa place, sans rien demander — le modèle des stations de travail
+(DaVinci Resolve). Un projet **jamais enregistré** est le seul cas qui pose une
+vraie question, celle de la destination : la boîte devient « Save… / Quit
+without saving / Cancel », défaut sur Save.
+
+La sauvegarde appartient au renderer (capture des états VST3, instantané,
+écriture atomique) : la fermeture est donc un **aller-retour IPC** borné à 20 s.
+Tout ce qui n'est pas une sauvegarde confirmée — refus, échec d'écriture,
+renderer devenu muet — rouvre un dialogue explicite. Rien ne se ferme en silence
+sur une perte, et un renderer bloqué ne peut pas condamner la fenêtre.
+
+**Conséquence** — Fermer n'est plus un moyen d'annuler. MiniHub n'a pas
+d'historique d'édition : une suppression malheureuse suivie d'une sortie est
+définitive. Le garde-fou disponible est `Save As` **avant** l'expérience
+risquée, pas la croix de la fenêtre après.
+
+**Ce qui justifierait de revenir dessus** — Un dispositif qui rende la sortie
+réversible : historique d'annulation persistant, ou versions successives du
+`.minihub` conservées à chaque sauvegarde automatique. Tant qu'aucun des deux
+n'existe, l'écriture reste préférable à la boîte, parce qu'elle perd moins.
+
+**Preuve dans le code** — `src/main/projectCloseGuard.js`,
+`src/main/main.js` (`requestProjectSave`, `PROJECT_SAVE_TIMEOUT_MS`),
+`src/renderer/js/core/projectManager.js` (`saveForClose`, `bindCloseSave`),
+`test/projectCloseGuard.test.cjs`
+
+---
+
+## D-015 — Aucun fichier n'atterrit dans un dossier que l'utilisateur n'a pas choisi
+
+**Statut** : en vigueur · 2026-09-03
+
+**Contexte** — Deux défauts de même nature. Chaque sélecteur repartait de son
+dossier d'origine (`Documents/MiniHub/Projects`, `Musique`) : un utilisateur
+dont les mixdowns vont sur un autre disque refaisait la même navigation à
+chaque export. Pire, les prises enregistrées étaient **classées sans aucun
+choix** dans `Musique/MiniHub Recordings` — un dossier que rien dans l'interface
+ne nommait, et que l'utilisateur devait deviner.
+
+**Décision** — Quatre mémoires distinctes — projet, export audio, import audio,
+prises — dans `recentDirectories` (préférences applicatives), alimentées de deux
+façons selon qu'il existe un sélecteur ou non :
+
+- **avec sélecteur** (projet, export, import) : le dossier retenu est celui du
+  fichier que l'utilisateur vient de choisir, et le sélecteur suivant s'y ouvre ;
+- **sans sélecteur** (prises) : une prise est classée à l'instant où elle se
+  termine, donc son dossier se choisit **une fois** dans Settings, pas après
+  chaque prise.
+
+Les dossiers d'origine ne sont plus que des points de départ : repli au premier
+usage, ou quand le dossier mémorisé a disparu (disque débranché, dossier
+supprimé). Le panneau Settings affiche les trois **destinations** — prises,
+exports, projets — avec leur chemin complet, un bouton pour en changer et un
+bouton pour les ouvrir. Un dossier d'écriture qui n'est nommé nulle part est un
+dossier que l'utilisateur doit chercher ; c'est le défaut d'origine, et il ne se
+corrige pas en mémorisant mieux.
+
+Des mémoires séparées, parce qu'un « dernier dossier » unique enverrait le
+prochain export dans le dossier de projets dès qu'un projet vient d'être ouvert.
+
+**Conséquence** — Le processus principal devient l'auteur d'une clé de
+`settings.json`, ce qui crée un piège : le renderer réécrit le fichier **en
+entier** depuis la copie qu'il a chargée au démarrage, où tout dossier retenu
+depuis n'existe pas. `saveSettings` réimpose donc cette clé depuis le disque à
+chaque écriture venue du renderer (`carryDirectoryMemory`). Ce report n'est pas
+une redondance : le supprimer efface silencieusement la mémoire de tous les
+sélecteurs à la première modification de préférence.
+
+**Ce qui justifierait de revenir dessus** — Un modèle où le renderer cesserait
+d'écrire l'objet de préférences entier ; le report deviendrait alors inutile,
+mais pas la mémoire elle-même. Pour les prises, un dossier **par projet** (à la
+manière d'un dossier média de session) si un jour un projet doit être
+déplaçable avec son audio ; ce serait une autre décision, pas un réglage.
+
+**Preuve dans le code** — `src/main/recentDirectories.js`,
+`src/main/settings.js` (`saveSettings`, `rememberDirectory`,
+`rememberDirectoryOfFile`), `src/main/main.js` (`effectiveDirectory`,
+`fallbackDirectory`, `directories:*`),
+`src/renderer/js/ui/settingsModal.js` (`FOLDER_ROWS`),
+`test/recentDirectories.test.cjs`, `test/settingsDirectories.test.mjs`

@@ -11,6 +11,7 @@ export class ProjectManager {
     Object.assign(this, { hub, api, currentProjectPath: null, currentProjectName: 'Untitled', projectId: newId(), createdAt: new Date().toISOString(), dirty: false, _loading: true, _transitionPending: false });
   }
   bootstrap() {
+    this.bindCloseSave();
     this.hub.settings.projectMode = true;
     let staged = null;
     const navigation = performance.getEntriesByType?.('navigation')?.[0];
@@ -43,10 +44,17 @@ export class ProjectManager {
   publish() {
     const state = { currentProjectPath: this.currentProjectPath, currentProjectName: this.currentProjectName, dirty: this.dirty };
     this.hub.events.emit('project:identity', state);
-    // The BrowserWindow owns the operating-system close button. Keep its
-    // close guard synchronized with the renderer's canonical project identity
-    // instead of trying to infer dirty state from settings writes in main.
-    try { this.api.projectSetDirty?.(state.dirty); } catch (_) {}
+    // The BrowserWindow owns the operating-system close button. Keep its close
+    // guard synchronized with the renderer's canonical project identity: what
+    // is unsaved, what it is called, and whether it already has a file to be
+    // written back into without asking anyone.
+    try {
+      this.api.projectSetCloseState?.({
+        dirty: state.dirty,
+        hasFile: typeof state.currentProjectPath === 'string' && state.currentProjectPath !== '',
+        name: state.currentProjectName
+      });
+    } catch (_) {}
   }
   _blockWhileRecording(action = 'change project') {
     if (!this.hub.sequencer?.recording) return false;
@@ -74,36 +82,84 @@ export class ProjectManager {
   snapshot({ name = this.currentProjectName } = {}) {
     return { format: 'minihub-project', version: 1, projectId: this.projectId, name, createdAt: this.createdAt, modifiedAt: new Date().toISOString(), graph: { connections: this.hub.graph.serialize(), layout: this.hub.settings.get('graphLayout') || {}, viewport: this.hub.settings.get('graphViewport') || null }, nodeInstances: this.hub.settings.get('nodeInstances') || { instances: [], idSeq: {} }, transport: { bpm: Number(this.hub.settings.get('transportBpm')) || 120 }, master: normalizeMasterOutput(this.hub.settings.get(MASTER_OUTPUT_KEY)), sequencer: this.hub.sequencer?.model.snapshot() || this.hub.settings.get('sequencerState') || null };
   }
+  /** Save / Save As driven by the user: failures are reported on screen. */
   async save(as = false) {
+    return (await this._save({ as })).ok;
+  }
+  /**
+   * Save the project and say what happened.
+   *
+   * `interactive` is what separates a Save the user asked for from the one the
+   * main process runs on the way out: while the window is closing an alert()
+   * would sit behind the dialog the close guard already owns, so the failure
+   * travels back as a reason for that guard to show instead.
+   *
+   * `cancelled` is the one outcome that is not a failure. The user dismissed
+   * the file picker, which is a step back into the application, never an
+   * instruction to close it without the project.
+   */
+  async _save({ as = false, interactive = true } = {}) {
+    const refuse = (reason, message) => {
+      this.hub.events?.emit?.('project:save-error', { reason, message });
+      if (interactive) globalThis.alert?.(message);
+      return { ok: false, reason: message };
+    };
     let capture;
     try {
       capture = await this.api.capturePluginStates();
     } catch (error) {
-      const message = `Could not capture VST state before saving: ${error?.message || String(error)}`;
-      this.hub.events?.emit?.('project:save-error', { reason: 'plugin-state-capture-failed', message });
-      globalThis.alert?.(message);
-      return false;
+      return refuse('plugin-state-capture-failed',
+        `Could not capture VST state before saving: ${error?.message || String(error)}`);
     }
     if (capture !== true && capture?.ok !== true) {
       const reason = capture?.reason || 'audio engine did not confirm state capture';
-      const message = `Could not capture VST state before saving: ${reason}`;
-      this.hub.events?.emit?.('project:save-error', { reason: 'plugin-state-capture-failed', message });
-      globalThis.alert?.(message);
-      return false;
+      return refuse('plugin-state-capture-failed', `Could not capture VST state before saving: ${reason}`);
     }
     // Native emits every state chunk before its completion marker. Give those
     // already-enqueued renderer events one turn before taking the snapshot.
     await new Promise((r) => setTimeout(r, 80));
     let filePath = as ? null : this.currentProjectPath;
     if (!filePath) filePath = await this.api.projectPickSave(this.currentProjectName);
-    if (!filePath) return false;
+    if (!filePath) return { ok: false, reason: 'cancelled' };
     const nextProjectName = (!this.currentProjectPath || as)
       ? (filePath.split(/[\\/]/).pop().replace(/\.minihub$/i, '') || this.currentProjectName)
       : this.currentProjectName;
     const result = await this.api.projectWrite(filePath, this.snapshot({ name: nextProjectName }));
-    if (!result?.ok) { alert(`Could not save project: ${result?.error || 'unknown error'}`); return false; }
+    if (!result?.ok) {
+      return refuse('project-write-failed', `Could not save project: ${result?.error || 'unknown error'}`);
+    }
     this.currentProjectPath = filePath; this.currentProjectName = nextProjectName; this.dirty = false;
-    await this.hub.settings.setMany({ recentProjectPath: filePath, recentProjectName: this.currentProjectName }); this.publish(); return true;
+    await this.hub.settings.setMany({ recentProjectPath: filePath, recentProjectName: this.currentProjectName }); this.publish();
+    return { ok: true, reason: '' };
+  }
+  /**
+   * Answer the close-time save request from the main process.
+   *
+   * MiniHub does not ask whether to keep an afternoon of work when the window
+   * closes: a project that already has a file is written where it lives, and
+   * one that has never been saved reaches the picker through the same path.
+   * Nothing here may open a modal of its own -- the close guard owns those.
+   */
+  async saveForClose() {
+    if (!this.dirty) return { ok: true, reason: '' };
+    return this._save({ interactive: false });
+  }
+  /** Serve close-time save requests for as long as this renderer lives. */
+  bindCloseSave() {
+    if (typeof this.api.onProjectSaveRequest !== 'function') return () => {};
+    return this.api.onProjectSaveRequest(async (request) => {
+      let outcome;
+      try {
+        outcome = await this.saveForClose();
+      } catch (error) {
+        outcome = { ok: false, reason: `Unexpected error while saving: ${error?.message || String(error)}` };
+      }
+      try {
+        this.api.projectSaveResult?.({
+          requestId: request?.requestId, ok: outcome?.ok === true, reason: outcome?.reason || ''
+        });
+      } catch (_) {}
+    });
   }
   async load(filePath = null) {
     if (this._blockWhileRecording('load a project')) return false;

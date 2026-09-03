@@ -567,6 +567,42 @@ body {
 .modal .kv .v {
   font-family: var(--mono);
 }
+/* A destination folder: its name, what MiniHub does with it, and the path in
+   full. The path wraps instead of being clipped -- a truncated path is exactly
+   the "where did my file go" problem this panel exists to remove. */
+.modal .folder {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+.modal .folder .folder-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.modal .folder .k {
+  color: var(--text-dim);
+}
+.modal .folder .folder-buttons {
+  display: flex;
+  gap: 6px;
+}
+.modal .folder .folder-buttons .btn {
+  padding: 2px 8px;
+  font-size: 12px;
+}
+.modal .folder .folder-path {
+  font-family: var(--mono);
+  font-size: 12px;
+  margin-top: 4px;
+  word-break: break-all;
+}
+.modal .folder .folder-hint {
+  color: var(--text-dim);
+  font-size: 11px;
+  margin-top: 2px;
+}
 
 /* ---------- Misc ---------- */
 .row {

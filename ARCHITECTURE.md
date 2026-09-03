@@ -664,7 +664,25 @@ machine et survit d'un projet à l'autre :
 
 `selectedInputId`, `midiInputPreference`, `selectedOutputId`, `inputOffsets`,
 `audioOutputConfig`, `vstCatalog`, `metronomeEnabled`, `metronomeVolume`,
-`recentProjectPath`, `recentProjectName`.
+`recentProjectPath`, `recentProjectName`, `recentDirectories`.
+
+Toutes ces clés sont écrites par le renderer, **sauf une**.
+`recentDirectories` — le dossier utilisé pour `project`, `audioExport`,
+`audioImport` et `audioRecordings`
+([recentDirectories.js](src/main/recentDirectories.js)) — est produite par le
+processus principal, puisque les sélecteurs de fichiers vivent là.
+
+Deux voies l'alimentent : un sélecteur retient le dossier du fichier choisi
+(`rememberDirectoryOfFile`) ; une destination **sans** sélecteur — les prises,
+classées à la fin de l'enregistrement — se choisit dans Settings
+(`directories:choose` → `rememberDirectory`). `effectiveDirectory(purpose)` dans
+[main.js](src/main/main.js) est le seul point de lecture : mémoire d'abord,
+dossier d'origine (`fallbackDirectory`) en repli.
+
+Or le renderer réécrit `settings.json` **en entier** depuis la copie chargée à
+son démarrage : tout dossier retenu depuis en est absent. `saveSettings`
+réimpose donc cette clé depuis le disque à chaque écriture venue du renderer.
+Voir [DECISIONS.md](DECISIONS.md) D-015 — le report n'est pas une redondance.
 
 ### État de projet
 
@@ -687,6 +705,31 @@ rester unique :
   dernière session ;
 - `SettingsStore.applicationData()` les **retire** avant écriture, pour que
   l'état de projet ne fuie jamais dans les préférences machine.
+
+### Fermeture d'un projet modifié
+
+Fermer la fenêtre **sauvegarde**. Le processus principal possède l'événement de
+fermeture ([projectCloseGuard.js](src/main/projectCloseGuard.js)) mais pas le
+projet : seul le renderer sait capturer l'état des VST3 et construire un
+instantané valide. La fermeture est donc un aller-retour, dans cet ordre :
+
+1. le renderer publie son identité de projet à chaque `publish()` — *modifié*,
+   *nom*, et *possède déjà un fichier* ;
+2. à la fermeture, un projet propre passe sans un mot ;
+3. un projet modifié **qui a un fichier** déclenche `project:save-request` ; la
+   fenêtre ne se ferme qu'une fois la réponse reçue, dans une limite de 20 s ;
+4. un projet **jamais enregistré** est le seul à ouvrir une boîte : « Save… /
+   Quit without saving / Cancel » ;
+5. tout ce qui n'est pas une sauvegarde confirmée — échec d'écriture, moteur
+   absent, renderer muet — ouvre le dialogue explicite « Close without saving /
+   Cancel ». Le sélecteur refermé par l'utilisateur (`cancelled`) fait
+   exception : il annule la fermeture sans second dialogue.
+
+`app.on('before-quit')` route un `app.quit()` par le même chemin **avant**
+d'arrêter le moteur natif : la capture d'état exige un moteur vivant, et une
+fermeture annulée ne doit pas laisser l'application ouverte sans audio.
+
+Voir [DECISIONS.md](DECISIONS.md) D-014 pour ce que ce choix coûte.
 
 ### Bascule de projet
 
@@ -725,8 +768,9 @@ d'une capture forcée à l'extinction.
 | `engineCommandPolicy.js` | liste blanche des commandes moteur |
 | `audioDeviceCommand.js`, `vstParameterCommand.js`, `vstParameterLearnCommand.js` | validateurs IPC purs |
 | `settings.js` | préférences applicatives, écriture atomique |
+| `recentDirectories.js` | dernier dossier retenu par sélecteur, et son report |
 | `projectFiles.js` | lecture/écriture validée des `.minihub` |
-| `projectCloseGuard.js` | garde de fermeture sur projet modifié |
+| `projectCloseGuard.js` | fermeture : sauvegarde automatique, dialogue en dernier recours |
 | `clipEditorWindows.js` | fenêtres Clip Editor et validation de leurs requêtes |
 | `clipEditorPreload.js` | pont du Clip Editor |
 | `diagnostics.js` | journal de démarrage, rotation à 4 Mo, empreintes |

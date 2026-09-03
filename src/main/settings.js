@@ -3,6 +3,7 @@
 const { app } = require('electron');
 const fs = require('fs');
 const path = require('path');
+const { withDirectory, withDirectoryOfFile, carryDirectoryMemory } = require('./recentDirectories');
 
 // APPLICATION-scoped settings only: preferences that belong to this machine and
 // survive across projects. Project state (nodes, cables, layout, viewport,
@@ -26,7 +27,8 @@ const DEFAULTS = {
   metronomeEnabled: false,
   metronomeVolume: 0.35,
   recentProjectPath: null,
-  recentProjectName: null
+  recentProjectName: null,
+  recentDirectories: {} // purpose -> last folder chosen in a picker; see recentDirectories.js
 };
 
 function settingsPath() {
@@ -42,14 +44,24 @@ function loadSettings() {
   }
 }
 
-function saveSettings(settings) {
+/**
+ * Write the application preferences.
+ *
+ * `owner` says who produced the object. The renderer sends its whole in-memory
+ * copy, taken at launch, so anything main recorded since then (the picker
+ * folders) is missing from it and would be erased; those keys are carried over
+ * from the file instead. Main's own writes are already built on a fresh read
+ * and are taken as-is.
+ */
+function saveSettings(settings, { owner = 'renderer' } = {}) {
+  const next = owner === 'main' ? settings : carryDirectoryMemory(settings, loadSettings());
   // Atomic write: settings are saved on every graph/layout change, so a crash
   // (or a power cut) mid-write used to leave a truncated JSON file, which
   // loadSettings then silently discarded along with every node and cable.
   const target = settingsPath();
   const tmp = `${target}.tmp`;
   try {
-    fs.writeFileSync(tmp, JSON.stringify(settings, null, 2), 'utf8');
+    fs.writeFileSync(tmp, JSON.stringify(next, null, 2), 'utf8');
     fs.renameSync(tmp, target);
     return true;
   } catch (err) {
@@ -61,6 +73,22 @@ function saveSettings(settings) {
     }
     return false;
   }
+}
+
+/** Record `directory` as the folder MiniHub uses for `purpose` from now on. */
+function rememberDirectory(purpose, directory) {
+  const settings = loadSettings();
+  const next = withDirectory(settings, purpose, directory);
+  if (next === settings) return false;
+  return saveSettings(next, { owner: 'main' });
+}
+
+/** Same, from a file the user picked in a dialog: its folder is what matters. */
+function rememberDirectoryOfFile(purpose, filePath) {
+  const settings = loadSettings();
+  const next = withDirectoryOfFile(settings, purpose, filePath);
+  if (next === settings) return false;
+  return saveSettings(next, { owner: 'main' });
 }
 
 function applyPluginStateChunk(settings, message) {
@@ -81,12 +109,14 @@ function applyPluginStateChunk(settings, message) {
 
 function persistPluginStateChunk(message) {
   const settings = loadSettings();
-  return applyPluginStateChunk(settings, message) && saveSettings(settings);
+  return applyPluginStateChunk(settings, message) && saveSettings(settings, { owner: 'main' });
 }
 
 module.exports = {
   loadSettings,
   saveSettings,
+  rememberDirectory,
+  rememberDirectoryOfFile,
   applyPluginStateChunk,
   persistPluginStateChunk,
   DEFAULTS

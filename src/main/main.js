@@ -3,7 +3,7 @@
 const { installConsoleStreamGuards } = require('./consoleStreamGuard');
 installConsoleStreamGuards();
 
-const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 // Electron's GPU subprocess exits with STATUS_DLL_NOT_FOUND (0xc0000135) on
 // the supported Windows runtime used for MiniHub, before the renderer can
 // finish loading. MiniHub's UI does not depend on WebGL; select Chromium's
@@ -15,7 +15,8 @@ if (process.platform === 'win32') {
 }
 const path = require('path');
 const { FORMATS: AUDIO_EXPORT_FORMATS, audioExportFormat, audioExportFilePath } = require('./audioExportPath');
-const { loadSettings, saveSettings, persistPluginStateChunk } = require('./settings');
+const { loadSettings, saveSettings, rememberDirectory, rememberDirectoryOfFile, persistPluginStateChunk } = require('./settings');
+const { PURPOSES: DIRECTORY_PURPOSES, isKnownPurpose, rememberedDirectory } = require('./recentDirectories');
 const { createEngineEventTrace } = require('./engineEventTrace');
 const { EngineProcess } = require('./engine');
 const diagnostics = require('./diagnostics');
@@ -58,6 +59,7 @@ function createWindow() {
   projectCloseGuard = installProjectCloseGuard({
     window: mainWindow,
     dialog,
+    requestSave: requestProjectSave,
     log: (line) => diagnostics.log(line)
   });
 
@@ -212,52 +214,142 @@ app.on('before-quit', async (event) => {
 // --- Settings IPC -----------------------------------------------------------
 ipcMain.handle('settings:load', () => loadSettings());
 ipcMain.handle('settings:save', (_event, settings) => saveSettings(settings));
-ipcMain.on('project:dirty-state', (event, dirty) => {
+ipcMain.on('project:close-state', (event, state) => {
   // Only the canonical main renderer may control the BrowserWindow close
   // guard. Clip Editors and stale WebContents cannot clear this state.
   if (!mainWindow || mainWindow.isDestroyed() || event.sender !== mainWindow.webContents) return;
-  projectCloseGuard?.setDirty(dirty === true);
+  projectCloseGuard?.setProjectState(state);
+});
+
+// The renderer owns the project file: only it can capture VST state and build a
+// valid snapshot, so a close-time save is a round trip rather than a call. The
+// wait is bounded because a renderer that has stopped answering must not be
+// able to wedge the application open with no way out but the task manager.
+const PROJECT_SAVE_TIMEOUT_MS = 20000;
+const pendingProjectSaves = new Map();
+let projectSaveSequence = 0;
+
+function requestProjectSave(mode) {
+  return new Promise((resolve) => {
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      resolve({ ok: false, reason: 'The project window is already gone.' });
+      return;
+    }
+    const requestId = `close-save-${++projectSaveSequence}`;
+    const settle = (outcome) => {
+      if (!pendingProjectSaves.delete(requestId)) return;
+      clearTimeout(timer);
+      diagnostics.log(`project:save-request ${requestId} mode=${mode} ok=${outcome.ok === true} reason=${outcome.reason || ''}`);
+      resolve(outcome);
+    };
+    const timer = setTimeout(
+      () => settle({ ok: false, reason: 'The project window stopped answering.' }),
+      PROJECT_SAVE_TIMEOUT_MS
+    );
+    pendingProjectSaves.set(requestId, settle);
+    mainWindow.webContents.send('project:save-request', { requestId, mode });
+  });
+}
+
+ipcMain.on('project:save-result', (event, result) => {
+  if (!mainWindow || mainWindow.isDestroyed() || event.sender !== mainWindow.webContents) return;
+  const settle = pendingProjectSaves.get(result?.requestId);
+  if (!settle) return;
+  settle({ ok: result?.ok === true, reason: String(result?.reason || '').slice(0, 256) });
 });
 
 function projectsDirectory() {
   return path.join(app.getPath('documents'), 'MiniHub', 'Projects');
 }
+
+// Where MiniHub puts a kind of file when the user has never said otherwise.
+// These are starting points, not destinations: every one of them is replaced by
+// the user's own folder as soon as they choose one.
+function fallbackDirectory(purpose) {
+  if (purpose === 'project') return projectsDirectory();
+  if (purpose === 'audioRecordings') return path.join(app.getPath('music'), 'MiniHub Recordings');
+  return app.getPath('music');
+}
+
+// The folder actually used. A picker opens here, and a recorded take is filed
+// here. The built-in folder above applies only when there is no memory yet, or
+// when the remembered one has since been deleted or unplugged.
+function effectiveDirectory(purpose) {
+  return rememberedDirectory(loadSettings(), purpose) || fallbackDirectory(purpose);
+}
+
+// Seeing and changing those folders without having to trigger an export first:
+// a destination the user cannot name is a destination they cannot find again.
+ipcMain.handle('directories:list', () => Object.fromEntries(
+  DIRECTORY_PURPOSES.map((purpose) => [purpose, effectiveDirectory(purpose)])
+));
+ipcMain.handle('directories:choose', async (_event, purpose) => {
+  if (!isKnownPurpose(purpose)) return null;
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: 'Choose a folder',
+    defaultPath: effectiveDirectory(purpose),
+    properties: ['openDirectory', 'createDirectory']
+  });
+  if (result.canceled) return null;
+  rememberDirectory(purpose, result.filePaths[0]);
+  return result.filePaths[0];
+});
+ipcMain.handle('directories:open', async (_event, purpose) => {
+  if (!isKnownPurpose(purpose)) return false;
+  const directory = effectiveDirectory(purpose);
+  // A folder MiniHub has only ever promised does not exist yet: nothing has
+  // been written there. Create it rather than opening the file manager on an
+  // error the user cannot act on.
+  try { require('fs').mkdirSync(directory, { recursive: true }); } catch (_) {}
+  return (await shell.openPath(directory)) === '';
+});
 ipcMain.handle('project:default-directory', () => projectsDirectory());
 ipcMain.handle('project:pick-open', async () => {
   const result = await dialog.showOpenDialog(mainWindow, {
-    defaultPath: projectsDirectory(), properties: ['openFile'],
+    defaultPath: effectiveDirectory('project'), properties: ['openFile'],
     filters: [{ name: 'MiniHub Project', extensions: ['minihub'] }]
   });
-  return result.canceled ? null : result.filePaths[0];
+  if (result.canceled) return null;
+  rememberDirectoryOfFile('project', result.filePaths[0]);
+  return result.filePaths[0];
 });
 ipcMain.handle('project:pick-save', async (_event, name) => {
   const safeName = String(name || 'Untitled').replace(/[<>:"/\\|?*]/g, '-');
   const result = await dialog.showSaveDialog(mainWindow, {
-    defaultPath: path.join(projectsDirectory(), `${safeName}.minihub`),
+    defaultPath: path.join(effectiveDirectory('project'), `${safeName}.minihub`),
     filters: [{ name: 'MiniHub Project', extensions: ['minihub'] }]
   });
-  return result.canceled ? null : result.filePath;
+  if (result.canceled) return null;
+  rememberDirectoryOfFile('project', result.filePath);
+  return result.filePath;
 });
 ipcMain.handle('audio:pick-save', async (_event, name, requestedFormat) => {
   const format = audioExportFormat(requestedFormat);
   const definition = AUDIO_EXPORT_FORMATS[format];
   const safeName = String(name || 'MiniHub Take').replace(/[<>:"/\\|?*]/g, '-');
-  const result = await dialog.showSaveDialog(mainWindow, { defaultPath: path.join(app.getPath('music'), `${safeName}.${definition.extension}`), filters: [{ name: definition.label, extensions: [definition.extension] }] });
-  return result.canceled ? null : audioExportFilePath(result.filePath, format);
+  const result = await dialog.showSaveDialog(mainWindow, { defaultPath: path.join(effectiveDirectory('audioExport'), `${safeName}.${definition.extension}`), filters: [{ name: definition.label, extensions: [definition.extension] }] });
+  if (result.canceled) return null;
+  // Remember the folder the user chose, not the one Electron proposed: the
+  // next export opens there instead of walking back to Music every time.
+  const filePath = audioExportFilePath(result.filePath, format);
+  rememberDirectoryOfFile('audioExport', filePath);
+  return filePath;
 });
 ipcMain.handle('audio:pick-open', async () => {
   const result = await dialog.showOpenDialog(mainWindow, {
-    defaultPath: app.getPath('music'), properties: ['openFile'],
+    defaultPath: effectiveDirectory('audioImport'), properties: ['openFile'],
     filters: [{ name: 'Audio', extensions: ['wav', 'mp3', 'aif', 'aiff', 'flac', 'ogg'] }]
   });
-  return result.canceled ? null : result.filePaths[0];
+  if (result.canceled) return null;
+  rememberDirectoryOfFile('audioImport', result.filePaths[0]);
+  return result.filePaths[0];
 });
 ipcMain.handle('audio:commit-take', (_event, sourcePath, name) => {
   try {
     const fs = require('fs');
     if (typeof sourcePath !== 'string' || !fs.statSync(sourcePath).isFile()) throw new Error('Recorded take does not exist');
     const safeName = String(name || 'MiniHub Take').replace(/[<>:"/\\|?*]/g, '-');
-    const directory = path.join(app.getPath('music'), 'MiniHub Recordings');
+    const directory = effectiveDirectory('audioRecordings');
     fs.mkdirSync(directory, { recursive: true });
     const stamp = new Date().toISOString().replace(/[:.]/g, '-');
     const destination = path.join(directory, `${safeName}-${stamp}.wav`);

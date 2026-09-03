@@ -487,12 +487,112 @@ test('approved dirty New and Load carry one explicit discard authorization into 
   }
 });
 
-test('project identity publication synchronizes the main-process close guard', () => {
-  const dirtyStates = [];
+test('project identity publication tells the close guard what to save and where', () => {
+  const published = [];
   const hub = { events: { emit() {} } };
-  const manager = new ProjectManager(hub, { projectSetDirty(value) { dirtyStates.push(value); } });
+  const manager = new ProjectManager(hub, { projectSetCloseState(state) { published.push(state); } });
   manager.publish();
   manager.dirty = true;
   manager.publish();
-  assert.deepEqual(dirtyStates, [false, true]);
+  manager.currentProjectPath = 'C:/Projects/Session 4.minihub';
+  manager.currentProjectName = 'Session 4';
+  manager.publish();
+  assert.deepEqual(published, [
+    { dirty: false, hasFile: false, name: 'Untitled' },
+    { dirty: true, hasFile: false, name: 'Untitled' },
+    { dirty: true, hasFile: true, name: 'Session 4' }
+  ]);
+});
+
+test('a close-time save on a project with a file writes it in place, with no picker and no alert', async () => {
+  const oldAlert = globalThis.alert;
+  const alerts = [];
+  Object.defineProperty(globalThis, 'alert', { configurable: true, value: (message) => alerts.push(message) });
+  const written = [];
+  try {
+    const hub = {
+      events: { emit() {} },
+      graph: { serialize: () => [] },
+      settings: { get: () => null, async setMany() {} },
+      sequencer: { model: { snapshot: () => null } }
+    };
+    const api = {
+      capturePluginStates: async () => ({ ok: true }),
+      projectPickSave: async () => { throw new Error('a project with a file must not open a picker'); },
+      async projectWrite(filePath) { written.push(filePath); return { ok: true }; }
+    };
+    const manager = new ProjectManager(hub, api);
+    Object.assign(manager, {
+      currentProjectPath: 'C:/Projects/Session 4.minihub', currentProjectName: 'Session 4', dirty: true, _loading: false
+    });
+
+    assert.deepEqual(await manager.saveForClose(), { ok: true, reason: '' });
+    assert.deepEqual(written, ['C:/Projects/Session 4.minihub']);
+    assert.equal(manager.dirty, false);
+    assert.deepEqual(alerts, [], 'the close guard owns the dialogs while the window is closing');
+  } finally {
+    if (oldAlert === undefined) delete globalThis.alert;
+    else Object.defineProperty(globalThis, 'alert', { configurable: true, value: oldAlert });
+  }
+});
+
+test('a close-time save reports a dismissed picker as cancelled, and a failure as its message', async () => {
+  const oldAlert = globalThis.alert;
+  const alerts = [];
+  Object.defineProperty(globalThis, 'alert', { configurable: true, value: (message) => alerts.push(message) });
+  try {
+    const hub = {
+      events: { emit() {} },
+      graph: { serialize: () => [] },
+      settings: { get: () => null, async setMany() {} },
+      sequencer: { model: { snapshot: () => null } }
+    };
+    const cancelled = new ProjectManager(hub, {
+      capturePluginStates: async () => ({ ok: true }),
+      projectPickSave: async () => null,
+      projectWrite: async () => { throw new Error('nothing may be written after a cancelled picker'); }
+    });
+    Object.assign(cancelled, { dirty: true, _loading: false });
+    assert.deepEqual(await cancelled.saveForClose(), { ok: false, reason: 'cancelled' });
+    assert.equal(cancelled.dirty, true);
+
+    const failed = new ProjectManager(hub, {
+      capturePluginStates: async () => ({ ok: false, reason: 'engine-not-started' }),
+      projectWrite: async () => ({ ok: true })
+    });
+    Object.assign(failed, { currentProjectPath: 'C:/Projects/Session 4.minihub', dirty: true, _loading: false });
+    const outcome = await failed.saveForClose();
+    assert.equal(outcome.ok, false);
+    assert.match(outcome.reason, /engine-not-started/);
+    assert.equal(failed.dirty, true);
+    assert.deepEqual(alerts, [], 'a close-time failure travels back as a reason, not as a modal');
+  } finally {
+    if (oldAlert === undefined) delete globalThis.alert;
+    else Object.defineProperty(globalThis, 'alert', { configurable: true, value: oldAlert });
+  }
+});
+
+test('the close-time save request is always answered, even when saving throws', async () => {
+  const hub = { events: { emit() {} } };
+  let handler;
+  const results = [];
+  const api = {
+    onProjectSaveRequest(callback) { handler = callback; return () => {}; },
+    projectSaveResult(result) { results.push(result); },
+    capturePluginStates: async () => { throw new Error('engine gone'); }
+  };
+  const manager = new ProjectManager(hub, api);
+  manager.bindCloseSave();
+  Object.assign(manager, { dirty: true, _loading: false });
+
+  await handler({ requestId: 'close-save-1', mode: 'save' });
+  assert.equal(results.length, 1);
+  assert.equal(results[0].requestId, 'close-save-1');
+  assert.equal(results[0].ok, false);
+  assert.match(results[0].reason, /engine gone/);
+
+  manager.dirty = false;
+  await handler({ requestId: 'close-save-2', mode: 'save' });
+  assert.deepEqual(results[1], { requestId: 'close-save-2', ok: true, reason: '' },
+    'a clean project answers immediately instead of rewriting the file');
 });
