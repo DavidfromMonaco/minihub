@@ -331,6 +331,8 @@ export function createRoutingModule(hub) {
       jack.appendChild(svgEl('rect', { x: -5, y: -5, width: 10, height: 10, rx: 2 }));
     } else if (info.shape === 'triangle') {
       jack.appendChild(svgEl('polygon', { points: '0,-6 5.5,4 -5.5,4' }));
+    } else if (info.shape === 'diamond') {
+      jack.appendChild(svgEl('polygon', { points: '0,-6 6,0 0,6 -6,0' }));
     } else {
       jack.appendChild(svgEl('circle', { r: 5 }));
     }
@@ -1230,6 +1232,7 @@ export function createRoutingModule(hub) {
             <span class="legend-item type-midi"><i class="jack-dot square"></i>MIDI</span>
             <span class="legend-item type-audio"><i class="jack-dot circle"></i>AUDIO</span>
             <span class="legend-item type-control"><i class="jack-dot triangle"></i>CTRL</span>
+            <span class="legend-item type-preset"><i class="jack-dot diamond"></i>PRESET</span>
           </span>
           <span class="viewport-controls">
             <span id="routing-zoom" class="zoom-readout">100%</span>

@@ -184,7 +184,7 @@ test('internal chain changes never alter hub.graph', () => {
   assert.equal(hub.graph.connections().length, 1);
   // The routing node still exposes the same structural ports.
   const node = hub.graph.getNode(inst.id);
-  assert.deepEqual(node.inputs.map((p) => p.id), ['midi-in', 'audio-in', 'ctrl-in']);
+  assert.deepEqual(node.inputs.map((p) => p.id), ['midi-in', 'audio-in', 'ctrl-in', 'preset-in']);
   assert.deepEqual(node.outputs.map((p) => p.id), ['audio-out']);
 });
 

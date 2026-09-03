@@ -10,7 +10,7 @@
  * testable in Node without a DOM.
  */
 
-export const PORT_TYPES = ['midi', 'audio', 'control'];
+export const PORT_TYPES = ['midi', 'audio', 'control', 'preset'];
 
 /**
  * Secondary distinction for each port type (beyond color) so ports are not
@@ -24,6 +24,8 @@ export function portTypeInfo(type) {
       return { label: 'AUDIO', shape: 'circle', className: 'audio' };
     case 'control':
       return { label: 'CTRL', shape: 'triangle', className: 'control' };
+    case 'preset':
+      return { label: 'PRESET', shape: 'diamond', className: 'preset' };
     default:
       return { label: String(type).toUpperCase(), shape: 'circle', className: '' };
   }

@@ -9,6 +9,9 @@
 #include "var_util.h"
 #include "vst3_scanner.h"
 
+#include <public.sdk/source/vst/utility/memoryibstream.h>
+#include <public.sdk/source/vst/vstpresetfile.h>
+
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -1314,6 +1317,67 @@ void crossTrackLevelIsolation()
     std::cerr<<"[cross-track] crossTrackLevelIsolation\n";testInternalSineCrossTrackIsolation(true);testInternalSineCrossTrackIsolation(false);testAudioClipCrossTrackIsolation();testDeterministicVstCrossTrackIsolation();if(const char* commercial=std::getenv("MLH_RUN_COMMERCIAL_ISOLATION");commercial&&std::string(commercial)=="1")testCommercialVstCrossTrackIsolation();
 }
 
+/**
+ * The `.vstpreset` container, written by the SDK itself.
+ *
+ * `src/main/presetFile.js` parses this format from a transcription of
+ * `vstpresetfile.cpp`. A transcription error would be invisible to its own
+ * tests -- reader and writer would agree on the same wrong layout -- and would
+ * only surface on the first preset a user downloads. So the authority writes
+ * one here, and the JS side is checked against those exact bytes
+ * (`test/fixtures/sdk-written.vstpreset`, regenerated with
+ * `mlh_native_tests.exe --preset-fixture <path>`).
+ *
+ * It also pins the claim the whole matching scheme rests on: the 32 characters
+ * a preset header carries are the same 32 the scanner records as `classId`.
+ */
+void testVstPresetContainerMatchesTheSdk(const juce::String& fixturePath)
+{
+    using namespace Steinberg;
+
+    // Massive X, exactly as mlh-vst3-scanner reported it.
+    const char* kClassId = "5653544E6924486D6173736976652078";
+    FUID classId;
+    expect(classId.fromString(kClassId), "scanner class id parses as an FUID");
+
+    char8 roundTrip[33] = {0};
+    classId.toString(roundTrip);
+    expect(juce::String(roundTrip) == juce::String(kClassId),
+           "a scanner class id survives FUID round-trip unchanged");
+
+    const juce::String component("minihub-component-chunk");
+    const juce::String controller("minihub-controller-chunk");
+
+    ResizableMemoryIBStream componentStream, controllerStream, file;
+    int32 written = 0;
+    componentStream.write((void*) component.toRawUTF8(),
+                          (int32) component.getNumBytesAsUTF8(), &written);
+    controllerStream.write((void*) controller.toRawUTF8(),
+                           (int32) controller.getNumBytesAsUTF8(), &written);
+    int64 seeked = 0;
+    componentStream.seek(0, IBStream::kIBSeekSet, &seeked);
+    controllerStream.seek(0, IBStream::kIBSeekSet, &seeked);
+
+    expect(Vst::PresetFile::savePreset(&file, classId, &componentStream, &controllerStream),
+           "the SDK writes a preset container");
+
+    const auto* bytes = static_cast<const juce::uint8*>(file.getData());
+    const auto size = file.getCursor();
+    expect(size > 48, "the container is larger than its header");
+    expect(size > 4 && std::memcmp(bytes, "VST3", 4) == 0, "the container opens with VST3");
+    expect(size >= 40 && juce::String(juce::CharPointer_ASCII(
+               reinterpret_cast<const char*>(bytes) + 8), 32) == juce::String(kClassId),
+           "the class id sits at offset 8, unchanged");
+
+    if (fixturePath.isEmpty())
+        return;
+    const juce::File out(fixturePath);
+    out.getParentDirectory().createDirectory();
+    expect(out.replaceWithData(bytes, size), "the fixture is written to disk");
+    std::cerr << "[preset-fixture] wrote " << size << " bytes -> "
+              << out.getFullPathName() << '\n';
+}
+
 } // namespace
 
 int main(int argc, char** argv)
@@ -1337,7 +1401,15 @@ int main(int argc, char** argv)
     const bool runCore = runAll || mode == "--core";
     const bool runVst3 = runAll || mode == "--vst3-e2e";
     const bool runCrossTrack = runAll || mode == "--cross-track-isolation";
+    if (mode == "--preset-fixture")
+    {
+        testVstPresetContainerMatchesTheSdk(argc > 2 ? juce::String::fromUTF8(argv[2]) : juce::String());
+        std::cerr << (failures == 0 ? "preset fixture written" : "preset fixture FAILED") << '\n';
+        return failures == 0 ? 0 : 1;
+    }
     if (runCore) {
+    std::cerr << "[core] vstpreset-container\n";
+    testVstPresetContainerMatchesTheSdk({});
     std::cerr << "[core] noisy-plugin-isolation\n";
     testNoisyPluginHelperResultIsolation();
     std::cerr << "[core] gesture-required\n";

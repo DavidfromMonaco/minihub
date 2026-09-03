@@ -98,6 +98,11 @@ public:
 
     const juce::String& instanceId() const { return instanceId_; }
     const juce::String& pluginId() const { return pluginId_; }
+    /** VST3 component class UID, or empty when the scan could not read it.
+     *  This is what a downloaded preset declares, so it is what lets the engine
+     *  refuse a preset meant for another plugin before its bytes ever reach
+     *  one. See vst3_scanner.h. */
+    const juce::String& classId() const { return classId_; }
     const juce::String& name() const { return name_; }
     const juce::String& role() const { return role_; }
     bool isInstrument() const { return isInstrument_; }
@@ -139,6 +144,9 @@ public:
 
     juce::var getState() const;
     bool setState(const juce::var& state, juce::String& error);
+    bool setStateChunks(const juce::MemoryBlock& component,
+                        const juce::MemoryBlock& controller,
+                        juce::String& error);
     bool takeStateSnapshotIfDue(juce::var& state, bool force = false);
     juce::var getParameters() const;
     bool setParameterNormalized(const juce::String& parameterId,
@@ -160,6 +168,10 @@ private:
                                  int numSamples, bool copiedToPluginInstance,
                                  const Vst3AudioBufferLayoutTrace&) noexcept;
 
+    bool applyStateBlocks(const juce::MemoryBlock& component,
+                          const juce::MemoryBlock& controller,
+                          juce::String& error);
+
     bool beginRealtimeRead() noexcept;
     void endRealtimeRead() noexcept;
     void beginControlMutation() const noexcept;
@@ -169,6 +181,7 @@ private:
     juce::String chainId_;
     juce::String instanceId_;
     juce::String pluginId_;
+    juce::String classId_;
     juce::String name_;
     juce::String role_;
     bool isInstrument_ = false;

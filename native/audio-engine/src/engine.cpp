@@ -496,6 +496,7 @@ void Engine::handleCommand(const juce::var& msg)
     else if (type == "closeEditor") cmdCloseEditor(msg);
     else if (type == "getState") cmdGetState(msg);
     else if (type == "setState") cmdSetState(msg);
+    else if (type == "loadPresetChunks") cmdLoadPresetChunks(msg);
     else if (type == "getVstParameters") cmdGetVstParameters(msg);
     else if (type == "setVstParameter") cmdSetVstParameter(msg);
     else if (type == "setVstParameterLearn") cmdSetVstParameterLearn(msg);
@@ -1089,6 +1090,7 @@ void Engine::sendPlugins()
     {
         juce::var p = makeObject();
         setProp(p, "pluginId", r.pluginId);
+        setProp(p, "classId", r.classId);
         setProp(p, "name", r.name);
         setProp(p, "manufacturer", r.manufacturer);
         setProp(p, "category", r.category);
@@ -2086,6 +2088,66 @@ void Engine::cmdSetState(const juce::var& msg)
     setProp(out, "type", "stateApplied");
     setProp(out, "chainId", chainId);
     setProp(out, "instanceId", instanceId);
+    ipc_.send(out);
+}
+
+/**
+ * Load a .vstpreset into a live plugin, as raw component/controller chunks.
+ *
+ * These bytes are the least trusted thing that reaches the engine: everything
+ * else it loads was chosen by the user from their own disk, while a preset may
+ * have been downloaded. Three gates stand before the plugin sees them -- the
+ * instance identity, the engine's own generation check, and the component class
+ * UID. The UID gate is the one that matters here: feeding a plugin a preset
+ * written for a different plugin is how a well-behaved plugin gets pushed into
+ * undefined behaviour, and the renderer's check is not a place to rely on.
+ *
+ * When the catalog holds no UID for this instance the gate cannot judge, so it
+ * steps aside rather than refusing every preset for an older catalog entry.
+ */
+void Engine::cmdLoadPresetChunks(const juce::var& msg)
+{
+    const juce::String chainId = msg["chainId"].toString();
+    const juce::String instanceId = msg["instanceId"].toString();
+    PluginInstance* inst = requireInstance(chainId, instanceId);
+    if (inst == nullptr)
+        return;
+    if ((msg.hasProperty("pluginId") && msg["pluginId"].toString() != inst->pluginId())
+        || (msg.hasProperty("generation") && (juce::int64)msg["generation"] != inst->generation()))
+    {
+        sendError("preset-stale", "Preset target identity is stale");
+        return;
+    }
+
+    const juce::String classId = msg["classId"].toString();
+    if (inst->classId().isNotEmpty() && classId.compareIgnoreCase(inst->classId()) != 0)
+    {
+        sendError("preset-class-mismatch",
+                  "Preset class " + classId + " does not belong to " + inst->name());
+        return;
+    }
+
+    juce::MemoryBlock component, controller;
+    if (!component.fromBase64Encoding(msg["component"].toString()) || component.getSize() == 0)
+    {
+        sendError("preset-invalid", "Preset component chunk is missing or not base64");
+        return;
+    }
+    if (msg.hasProperty("controller"))
+        controller.fromBase64Encoding(msg["controller"].toString());
+
+    juce::String error;
+    if (!inst->setStateChunks(component, controller, error))
+    {
+        sendError("preset-invalid", error);
+        return;
+    }
+
+    juce::var out = makeObject();
+    setProp(out, "type", "presetApplied");
+    setProp(out, "chainId", chainId);
+    setProp(out, "instanceId", instanceId);
+    setProp(out, "classId", classId);
     ipc_.send(out);
 }
 

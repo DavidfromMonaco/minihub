@@ -88,6 +88,7 @@ private:
     void cmdCloseEditor(const juce::var& msg);
     void cmdGetState(const juce::var& msg);
     void cmdSetState(const juce::var& msg);
+    void cmdLoadPresetChunks(const juce::var& msg);
     void cmdGetVstParameters(const juce::var& msg);
     void cmdSetVstParameter(const juce::var& msg);
     void cmdSetVstParameterLearn(const juce::var& msg);

@@ -7,6 +7,9 @@ import { createMiniLabModule } from './modules/minilab/minilabModule.js';
 import { createRoutingModule } from './modules/routing/routingModule.js';
 import { createAudioOutputModule } from './modules/audioOutput/audioOutputModule.js';
 import { createSequencerModule } from './modules/sequencer/sequencerModule.js';
+// Imported for its side effect: the module registers the Preset node editor
+// in core/nodeEditors.js. A node type needs no other wiring here.
+import './modules/presets/presetEditor.js';
 import { setupEngineSync } from './core/engineSync.js';
 import { setupMasterOutput } from './core/masterOutput.js';
 import { setupMidiRouting } from './core/midiRouting.js';

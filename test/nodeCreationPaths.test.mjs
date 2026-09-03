@@ -138,7 +138,8 @@ test('hierarchical OmniBox menu creates every registered functional family', () 
     ['Audio Input','audio-input',[],['audio-out']],
     ['Mixer','mixer',['audio-in-1'],['audio-out']],
     ['Morpher','morpher',['audio-in-1'],['audio-out']],
-    ['VST','vst',['midi-in','audio-in','ctrl-in'],['audio-out']]
+    ['VST','vst',['midi-in','audio-in','ctrl-in','preset-in'],['audio-out']],
+    ['Preset','preset',[],['preset-out']]
   ];
   for (const [label,type,inputs,outputs] of expected) {
     const hub=setupHub();const {container,svg}=makeContainer();createRoutingModule(hub).mount(container);

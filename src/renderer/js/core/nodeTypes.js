@@ -13,6 +13,8 @@
  * Audio ports carry no samples in the renderer (the native engine owns audio),
  * but an audio connection is authoritative: it is what routes a VST chain to
  * the physical output. CONTROL ports carry normalized parameter-control data.
+ * PRESET ports carry nothing: the cable itself is the statement "this Preset
+ * node targets that VST node", and never reaches the native engine (graph.js).
  */
 
 export const NODE_TYPES = {
@@ -27,7 +29,8 @@ export const NODE_TYPES = {
       inputs: [
         { id: 'midi-in', type: 'midi', label: 'MIDI IN' },
         { id: 'audio-in', type: 'audio', label: 'AUDIO IN' },
-        { id: 'ctrl-in', type: 'control', label: 'CTRL IN' }
+        { id: 'ctrl-in', type: 'control', label: 'CTRL IN' },
+        { id: 'preset-in', type: 'preset', label: 'PRESET' }
       ],
       outputs: [{ id: 'audio-out', type: 'audio', label: 'AUDIO OUT' }]
     }
@@ -90,6 +93,20 @@ export const NODE_TYPES = {
         { id: 'midi-out', type: 'midi', label: 'MIDI OUT' },
         { id: 'audio-out', type: 'audio', label: 'AUDIO OUT' }
       ]
+    }
+  },
+  preset: {
+    id: 'preset',
+    label: 'Preset',
+    omniBoxCategory: 'Plugin',
+    accent: '--accent-preset',
+    icon: 'preset',
+    emptyLabel: 'Cable PRESET into a VST node to choose its presets',
+    // No input: a preset relation only ever runs from this node to a VST node,
+    // which is also why the graph never has to check it for cycles.
+    ports: {
+      inputs: [],
+      outputs: [{ id: 'preset-out', type: 'preset', label: 'PRESET' }]
     }
   },
   video: {

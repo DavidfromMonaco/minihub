@@ -23,6 +23,9 @@ const DEFAULTS = {
   inputOffsets: {}, // inputId -> timing offset in ms
   audioOutputConfig: null, // { deviceName, sampleRate, bufferSize }
   vstCatalog: [], // last successful VST3 scan, reused before the next scan
+  // Remote preset catalogues the user chose to consult. Empty by default:
+  // MiniHub contacts nothing until someone asks it to (INTENT.md section 7).
+  presetSources: [],
   metronomeEnabled: false,
   metronomeVolume: 0.35,
   recentProjectPath: null,

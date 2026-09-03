@@ -27,7 +27,7 @@ function makeFullHub(settingsData = {}) {
 // ---- Node Type Registry -----------------------------------------------------
 test('registry exposes all user-creatable routing types', () => {
   const ids = listNodeTypes().map((t) => t.id).sort();
-  assert.deepEqual(ids, ['arpeggiator', 'audio-input', 'image', 'mixer', 'morpher', 'sequencer', 'video', 'vst']);
+  assert.deepEqual(ids, ['arpeggiator', 'audio-input', 'image', 'mixer', 'morpher', 'preset', 'sequencer', 'video', 'vst']);
   assert.ok(getNodeType('vst'));
   assert.equal(getNodeType('nope'), null);
 });
@@ -37,10 +37,14 @@ test('VST type uses the centralized orange accent', () => {
   assert.equal(NODE_TYPES.vst.accent, '--accent-vst');
 });
 
-test('VST type declares MIDI IN, AUDIO IN, CTRL IN, AUDIO OUT', () => {
+test('VST type declares MIDI IN, AUDIO IN, CTRL IN, PRESET, AUDIO OUT', () => {
   const ports = getNodeType('vst').ports;
-  assert.deepEqual(ports.inputs.map((p) => p.id), ['midi-in', 'audio-in', 'ctrl-in']);
+  assert.deepEqual(ports.inputs.map((p) => p.id), ['midi-in', 'audio-in', 'ctrl-in', 'preset-in']);
   assert.deepEqual(ports.outputs.map((p) => p.id), ['audio-out']);
+  // PRESET is a configuration relation, not a signal path: it must never be
+  // typed as CONTROL, which controlRouting.js and controlBindings.js both read
+  // as a normalized value coming from the MiniLab.
+  assert.equal(ports.inputs.find((p) => p.id === 'preset-in').type, 'preset');
 });
 
 test('video/image placeholders declare no speculative ports', () => {
@@ -108,7 +112,7 @@ test('VST instance registers a routing node with the type ports', () => {
   const node = hub.graph.getNode(inst.id);
   assert.ok(node);
   assert.equal(node.type, 'vst');
-  assert.deepEqual(node.inputs.map((p) => p.id), ['midi-in', 'audio-in', 'ctrl-in']);
+  assert.deepEqual(node.inputs.map((p) => p.id), ['midi-in', 'audio-in', 'ctrl-in', 'preset-in']);
   assert.deepEqual(node.outputs.map((p) => p.id), ['audio-out']);
 });
 

@@ -245,6 +245,9 @@ export class EngineClient {
         this.events.emit('engine:plugins', this.plugins);
         break;
       }
+      case 'presetApplied':
+        this.events.emit('engine:presetApplied', msg);
+        break;
       case 'chainChanged': {
         const statuses = new Map();
         const generations = new Map();
@@ -648,6 +651,33 @@ export class EngineClient {
 
   getState(chainId, instanceId) {
     return this.command({ type: 'getState', chainId, instanceId });
+  }
+
+  /**
+   * Load a `.vstpreset` into a live plugin as its raw component/controller
+   * chunks, base64-encoded.
+   *
+   * Separate from `setState` on purpose: that path carries the JUCE binary-XML
+   * envelope `getState()` produced, while these chunks come straight out of a
+   * container file. Rebuilding that envelope here would mean reimplementing a
+   * JUCE internal (see `plugin_host.cpp`, `setStateChunks`).
+   *
+   * `classId` travels with the request so the engine can refuse a preset meant
+   * for another plugin. The checks below are for a useful answer, not for
+   * safety: the engine validates identity, generation and class again.
+   */
+  loadPresetChunks(chainId, instanceId, pluginId, classId, component, controller = null) {
+    if (this.state !== 'running') return Promise.resolve({ ok: false, reason: 'engine-not-running' });
+    if (this.getInstanceStatus(chainId, instanceId) !== 'ready') {
+      return Promise.resolve({ ok: false, reason: 'instance-not-ready' });
+    }
+    const generation = this.getInstanceGeneration(chainId, instanceId);
+    if (!Number.isSafeInteger(generation)) return Promise.resolve({ ok: false, reason: 'generation-unknown' });
+    const command = {
+      type: 'loadPresetChunks', chainId, instanceId, pluginId, generation, classId, component
+    };
+    if (typeof controller === 'string' && controller.length > 0) command.controller = controller;
+    return Promise.resolve(this.command(command));
   }
 
   setState(chainId, instanceId, state, pluginId = null, generation = null) {

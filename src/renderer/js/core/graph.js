@@ -6,13 +6,21 @@
  * source node through the graph to connected targets — modules never call
  * each other directly.
  *
- * Port types: 'midi' | 'audio' | 'control'.
+ * Port types: 'midi' | 'audio' | 'control' | 'preset'.
  *   midi     carries real MIDI events through `emitData` to connected nodes
  *   audio    carries no samples through this graph - audio never crosses the
  *            Electron boundary - but the connection is authoritative: a VST
  *            chain reaches the physical output only while its `audio-out` is
  *            connected to the Audio Output node (see engineSync.js)
  *   control  carries normalized semantic control values (for example K1..K8)
+ *   preset   carries no data at all. A preset edge is a CONFIGURATION
+ *            relation, not a signal path: it is how a Preset node names the
+ *            VST node it targets. It is deliberately absent from the
+ *            `supported` sets in engineSync.js, so plugging or unplugging one
+ *            never reaches the native engine and never recompiles the audio
+ *            plan (D-004). Overloading 'control' for this instead would feed
+ *            controlRouting.js and controlBindings.js a cable that carries no
+ *            normalized value, which is the reading they both assume.
  *
  * Routing state is fully independent of UI focus: changing which module is
  * visible never affects the graph.

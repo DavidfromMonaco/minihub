@@ -340,19 +340,39 @@ trous. Le `name` est dérivé et n'est pas persisté séparément.
 [graph.js](src/renderer/js/core/graph.js). Des nœuds déclarent des ports typés ;
 une connexion relie un port de sortie à un port d'entrée **de même type**.
 
-### Les trois types de port
+### Les quatre types de port
 
-| Type | Ce qui circule |
-|---|---|
-| `midi` | de vrais événements MIDI, via `emitData` vers les cibles connectées |
-| `audio` | **aucun échantillon** — la connexion est néanmoins l'autorité : une chaîne VST n'atteint la sortie physique que tant que son `audio-out` est câblé |
-| `control` | valeurs normalisées sémantiques (K1..K8, pads…) |
+| Type | Ce qui circule | Glyphe |
+|---|---|---|
+| `midi` | de vrais événements MIDI, via `emitData` vers les cibles connectées | carré |
+| `audio` | **aucun échantillon** — la connexion est néanmoins l'autorité : une chaîne VST n'atteint la sortie physique que tant que son `audio-out` est câblé | cercle |
+| `control` | valeurs normalisées sémantiques (K1..K8, pads…) | triangle |
+| `preset` | **rien du tout** — voir ci-dessous | losange |
+
+Le glyphe compte autant que la couleur : un port ne doit jamais être
+identifiable par sa seule teinte.
+
+**`preset` est un câble de configuration, pas un chemin de signal.** Il exprime
+« ce nœud Preset vise ce nœud VST », et rien ne transite dessus. Deux
+conséquences qui ne doivent pas être défaites :
+
+- il est **absent** des ensembles `supported` d'`engineSync.js`, donc câbler ou
+  décâbler un preset ne recompile jamais le plan audio (DECISIONS.md D-004).
+  `npm run check` refuse la moindre mention de `'preset'` dans ce fichier
+  (règle `preset stays out of the engine`) ;
+- il n'est **pas** typé `control`. `controlRouting.js` et `controlBindings.js`
+  lisent tous deux une donnée CONTROL comme une valeur normalisée venue du
+  MiniLab ; un câble qui n'en transporte aucune y serait un intrus silencieux.
 
 ### Règles appliquées à la connexion
 
 `connect()` refuse : un nœud inconnu, un port inconnu, des types incompatibles,
 un doublon, et un **cycle** pour les types `midi` et `audio`
 (`_wouldCreateCycle`).
+
+`control` et `preset` ne sont pas soumis à la détection de cycles : le premier
+n'a qu'une source (le MiniLab), le second qu'une direction (nœud Preset vers
+nœud VST), et un nœud Preset n'a aucune entrée.
 
 `emitData(nodeId, portId, data)` diffuse à toutes les cibles câblées.
 `emitDataTo(nodeId, portId, targetNodeId, data)` traverse **un seul** câble

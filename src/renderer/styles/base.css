@@ -31,6 +31,7 @@
   --midi: #4f8cff;
   --audio: #e0b04c;
   --control: #c77dff;
+  --preset: #5ad1b0;
 
   /* Node type accents (defined centrally; change in one place) */
   --accent-vst: #e08a3c; /* orange */
@@ -39,6 +40,7 @@
   --accent-sequencer: #a78bfa; /* soft violet */
   --accent-mixer: #38bdf8;
   --accent-morpher: #f472b6;
+  --accent-preset: #5ad1b0; /* same hue as the PRESET cable */
 
   /* Internal VST plugin role accents (mirror vstChain.js VST_ROLES) */
   --vst-role-instrument: #f5c451;
@@ -704,6 +706,11 @@ body {
   border-bottom: 9px solid var(--control);
   background: transparent;
 }
+.jack-dot.diamond {
+  border-radius: 2px;
+  background: var(--preset);
+  transform: rotate(45deg);
+}
 
 .routing-canvas {
   flex: 1;
@@ -794,11 +801,13 @@ body {
 .nav-item.accent-video .nav-accent { background: var(--accent-video); }
 .nav-item.accent-image .nav-accent { background: var(--accent-image); }
 .nav-item.accent-sequencer .nav-accent { background: var(--accent-sequencer); }
+.nav-item.accent-preset .nav-accent { background: var(--accent-preset); }
 
 .pill.accent-vst { color: var(--accent-vst); border-color: rgba(224, 138, 60, 0.4); }
 .pill.accent-video { color: var(--accent-video); border-color: rgba(63, 182, 201, 0.4); }
 .pill.accent-image { color: var(--accent-image); border-color: rgba(126, 201, 107, 0.4); }
 .pill.accent-sequencer { color: var(--accent-sequencer); border-color: rgba(167, 139, 250, 0.4); }
+.pill.accent-preset { color: var(--accent-preset); border-color: rgba(90, 209, 176, 0.4); }
 
 /* --- VST plugin chain / role cards --- */
 .empty-state {
@@ -820,6 +829,28 @@ body {
 .plugin-card + .plugin-card {
   margin-top: 8px;
 }
+/* Preset library rows. Same shell vocabulary as a plugin card: this is app
+   chrome, not an instrument faceplate (DECISIONS.md D-012). */
+.preset-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-raised);
+}
+.preset-row + .preset-row {
+  margin-top: 6px;
+}
+.preset-name {
+  font-weight: 600;
+}
+.preset-origin {
+  color: var(--text-faint);
+  font-size: 11px;
+}
+
 .plugin-role-dot {
   width: 9px;
   height: 9px;
@@ -895,6 +926,7 @@ body {
 .node-type-video .node-identity { fill: color-mix(in srgb, var(--accent-video) 18%, var(--bg-panel)); }
 .node-type-image .node-identity { fill: color-mix(in srgb, var(--accent-image) 18%, var(--bg-panel)); }
 .node-type-sequencer .node-identity { fill: color-mix(in srgb, var(--accent-sequencer) 18%, var(--bg-panel)); }
+.node-type-preset .node-identity { fill: color-mix(in srgb, var(--accent-preset) 18%, var(--bg-panel)); }
 .node-native .node-identity { fill: color-mix(in srgb, var(--accent) 18%, var(--bg-panel)); }
 
 /* Lower I/O dock: dark/neutral, holds the routing ports. */
@@ -913,6 +945,7 @@ body {
 .node-type-video .node-accent { fill: var(--accent-video); }
 .node-type-image .node-accent { fill: var(--accent-image); }
 .node-type-sequencer .node-accent { fill: var(--accent-sequencer); }
+.node-type-preset .node-accent { fill: var(--accent-preset); }
 .node-native .node-accent { fill: var(--accent); }
 
 .node-title {
@@ -959,6 +992,8 @@ body {
 .node-type-image .node-badge.family .node-badge-text { fill: var(--accent-image); }
 .node-type-sequencer .node-badge.family .node-badge-bg { fill: color-mix(in srgb, var(--accent-sequencer) 26%, var(--bg-panel)); stroke: var(--accent-sequencer); }
 .node-type-sequencer .node-badge.family .node-badge-text { fill: var(--accent-sequencer); }
+.node-type-preset .node-badge.family .node-badge-bg { fill: color-mix(in srgb, var(--accent-preset) 26%, var(--bg-panel)); stroke: var(--accent-preset); }
+.node-type-preset .node-badge.family .node-badge-text { fill: var(--accent-preset); }
 
 /* Type badge: EMPTY is neutral; VST roles use the centralized role colors. */
 .node-badge.type.empty .node-badge-bg { fill: var(--bg-panel); stroke: var(--text-faint); }
@@ -993,6 +1028,9 @@ body {
 }
 .type-control .jack {
   stroke: var(--control);
+}
+.type-preset .jack {
+  stroke: var(--preset);
 }
 
 .port:hover .jack {

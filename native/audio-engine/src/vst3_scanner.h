@@ -16,6 +16,25 @@ namespace mlh {
  */
 struct PluginRecord {
     juce::String pluginId;      // stable identity (file path)
+    /**
+     * VST3 component class UID: 32 ASCII hex characters, or empty when the
+     * module could not be read.
+     *
+     * `pluginId` is an absolute path on THIS machine, so it can never match a
+     * preset authored anywhere else. The class UID is the only plugin identity
+     * that is the same everywhere, which is what makes "offer only presets for
+     * the plugin actually loaded" possible at all.
+     *
+     * The string is written the way the SDK writes it into a .vstpreset
+     * header: on Windows COM_COMPATIBLE is 1, so `FUID::toString` and
+     * `VST3::UID::toString` (whose default `comFormat` is true here) produce
+     * the same 32 characters. A downloaded preset is therefore matched by
+     * plain string equality -- no byte reordering anywhere.
+     *
+     * Empty is normal, not an error: the catalog must never lose a plugin
+     * because its UID could not be read (invariant 12).
+     */
+    juce::String classId;
     juce::String name;
     juce::String manufacturer;
     juce::String category;

@@ -253,6 +253,33 @@ rule('no runtime dependency', () => {
   }
 });
 
+// --- Invariant 2: a preset edge never reaches the native engine ------------
+//
+// A `preset` cable states "this Preset node targets that VST node". It carries
+// no signal, so it must stay out of engineSync.js entirely: out of the
+// `supported` node-type sets, and out of the port filters that build the plans.
+//
+// The failure mode is silent and expensive. Let the preset node into
+// describeAudioGraph() and it joins audioTopologyKey(); from then on, merely
+// plugging or unplugging a preset cable recompiles the native audio plan and
+// resets every PDC delay line mid-stream -- the exact defect DECISIONS.md D-004
+// was written to remove, and one that is audible before it is ever visible.
+//
+// Exact by construction: the literal has no legitimate reason to appear in this
+// file, in either its node-type or its port-type meaning.
+rule('preset stays out of the engine', () => {
+  const file = 'src/renderer/js/core/engineSync.js';
+  read(file).split('\n').forEach((line, index) => {
+    if (isCommentLine(line)) return;
+    if (/'preset'|"preset"/.test(line)) {
+      fail(
+        'preset stays out of the engine',
+        `${file}:${index + 1} mentions 'preset'. A preset edge is a configuration relation, not a signal path (graph.js, D-004).`
+      );
+    }
+  });
+});
+
 // --- Report ---------------------------------------------------------------
 
 if (failures.length === 0) {

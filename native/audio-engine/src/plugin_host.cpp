@@ -1400,6 +1400,7 @@ bool PluginInstance::create(const PluginRecord& record, double sampleRate, int b
                             juce::String& error)
 {
     pluginId_ = record.pluginId;
+    classId_ = record.classId;
     name_ = record.name;
     role_ = record.role;
     isInstrument_ = record.isInstrument;
@@ -1762,26 +1763,70 @@ bool PluginInstance::setState(const juce::var& state, juce::String& error)
         error = "unsupported VST3 state document";
         return false;
     }
-    const auto decode = [&xml](const char* name, std::vector<Steinberg::uint8>& out)
+    const auto decode = [&xml](const char* name, juce::MemoryBlock& out)
     {
         auto* child = xml->getChildByName(name);
         if (!child) return false;
-        juce::MemoryBlock block;
-        if (!block.fromBase64Encoding(child->getAllSubText())) return false;
-        const auto* begin = static_cast<const Steinberg::uint8*>(block.getData());
-        out.assign(begin, begin + block.getSize());
-        return true;
+        return out.fromBase64Encoding(child->getAllSubText());
     };
-    std::vector<Steinberg::uint8> component, controller;
+    juce::MemoryBlock component, controller;
     if (!decode("IComponent", component))
     {
         error = "VST3 component state is missing";
         return false;
     }
     decode("IEditController", controller);
+    return applyStateBlocks(component, controller, error);
+}
+
+/**
+ * Apply a preset that arrived as raw VST3 chunks.
+ *
+ * A `.vstpreset` carries exactly this pair -- `Comp` and `Cont` -- so loading
+ * one is a transfer of bytes, not a translation of them.
+ *
+ * It deliberately does NOT reuse setState(): that entry point expects the JUCE
+ * binary-XML envelope `getState()` produces, and rebuilding that envelope on
+ * the JavaScript side would mean reimplementing
+ * `AudioProcessor::copyXmlToBinary` -- a magic number plus GZIP -- against a
+ * JUCE internal free to change under us. The envelope stays where JUCE owns it.
+ */
+bool PluginInstance::setStateChunks(const juce::MemoryBlock& component,
+                                    const juce::MemoryBlock& controller,
+                                    juce::String& error)
+{
+    if (component.getSize() == 0)
+    {
+        error = "VST3 component state is empty";
+        return false;
+    }
+    return applyStateBlocks(component, controller, error);
+}
+
+/** The half both state entry points share: hand the chunks to the plugin under
+ *  the control-mutation guard, then resynchronise the revision counters so the
+ *  freshly applied state is not immediately recaptured as a user edit. */
+bool PluginInstance::applyStateBlocks(const juce::MemoryBlock& component,
+                                      const juce::MemoryBlock& controller,
+                                      juce::String& error)
+{
+    if (!plugin_)
+    {
+        error = "plugin not loaded";
+        return false;
+    }
+    const auto toBytes = [](const juce::MemoryBlock& block)
+    {
+        std::vector<Steinberg::uint8> bytes;
+        if (block.getSize() == 0)
+            return bytes;
+        const auto* begin = static_cast<const Steinberg::uint8*>(block.getData());
+        bytes.assign(begin, begin + block.getSize());
+        return bytes;
+    };
     beginControlMutation();
     std::string nativeError;
-    const bool ok = plugin_->setState(component, controller, nativeError);
+    const bool ok = plugin_->setState(toBytes(component), toBytes(controller), nativeError);
     endControlMutation();
     if (!ok)
     {

@@ -1,6 +1,10 @@
 #include "vst3_scanner.h"
 
+#include <pluginterfaces/vst/ivstaudioprocessor.h>
+#include <public.sdk/source/vst/hosting/module.h>
+
 #include <iostream>
+#include <map>
 #if defined(_WIN32)
 #include <process.h>
 #else
@@ -27,6 +31,62 @@ juce::String classifyRole(const juce::PluginDescription& d)
     if (d.numInputChannels > 0)
         return "audio-effect";
     return "unknown";
+}
+
+/**
+ * Component class UIDs of one VST3 module, keyed by class name.
+ *
+ * JUCE cannot answer this. `PluginDescription` keeps only `uniqueId`, a 32-bit
+ * hash of the normalised TUID (`getHashForRange(getNormalisedTUID(info.cid))`
+ * in juce_VST3PluginFormatImpl.h), and a hash cannot be turned back into the
+ * 16 bytes a .vstpreset header carries. The SDK factory is read directly
+ * instead.
+ *
+ * Why not `Contents/Resources/moduleinfo.json`, which needs no module load at
+ * all: measured on the target machine on 2026-09-02, 50 of the 54 installed
+ * .vst3 are bare DLLs with no bundle to hold that file, and only one of the
+ * four real bundles ships it. Coverage would have been one plugin in 54.
+ *
+ * Cost, stated plainly: this opens the module a SECOND time, after JUCE has
+ * already opened it. A module that merely refuses to load is handled here and
+ * yields a record without a classId. A module that *faults* is not: an access
+ * violation is a structured exception, which `catch (...)` does not stop under
+ * MSVC, so the helper process dies and this file contributes nothing to the
+ * scan.
+ *
+ * That residual exposure is bounded and deliberate. JUCE's
+ * `findAllTypesForFile` has already loaded the module and walked its factory
+ * moments earlier -- strictly more work than this -- so a plugin surviving
+ * phase one and faulting in phase two is a narrow case. And when it happens,
+ * the scan comes back one plugin short, which `_acceptsCatalog` in
+ * engineClient.js refuses for any scan the user did not ask for: the previous
+ * catalog stands, so invariant 12 holds where it is stated.
+ *
+ * Writing the result before this step would not help. `scanFileIsolated`
+ * discards the result file whenever the child exits non-zero, and relaxing
+ * that rule would trade a narrow failure for a broad one.
+ */
+std::map<std::string, juce::String> readComponentClassIds(const juce::String& path)
+{
+    std::map<std::string, juce::String> ids;
+    try
+    {
+        std::string moduleError;
+        const auto module = VST3::Hosting::Module::create(path.toStdString(), moduleError);
+        if (!module)
+            return ids;
+        for (const auto& info : module->getFactory().classInfos())
+        {
+            if (info.category() != kVstAudioEffectClass)
+                continue;
+            ids.emplace(info.name(), juce::String(info.ID().toString()));
+        }
+    }
+    catch (...)
+    {
+        ids.clear();
+    }
+    return ids;
 }
 
 PluginRecord recordFromDescription(const juce::PluginDescription& d)
@@ -61,6 +121,7 @@ juce::var serializeRecord(const PluginRecord& rec)
     if (auto xml = rec.description.createXml())
         setProperty(value, "descriptionXml", xml->toString());
     setProperty(value, "pluginId", rec.pluginId);
+    setProperty(value, "classId", rec.classId);
     setProperty(value, "name", rec.name);
     setProperty(value, "manufacturer", rec.manufacturer);
     setProperty(value, "category", rec.category);
@@ -78,6 +139,9 @@ bool deserializeRecord(const juce::var& value, PluginRecord& rec)
         return false;
 
     rec.pluginId = value["pluginId"].toString();
+    // Absent in results produced before class UIDs existed: a missing property
+    // yields an empty string, which is the documented "unknown UID" value.
+    rec.classId = value["classId"].toString();
     rec.name = value["name"].toString();
     rec.manufacturer = value["manufacturer"].toString();
     rec.category = value["category"].toString();
@@ -172,11 +236,20 @@ std::vector<PluginRecord> Vst3Scanner::scanFile(const juce::String& path)
         return out;
     }
 
+    const auto classIds = readComponentClassIds(path);
     for (const auto* d : found)
     {
         if (d == nullptr)
             continue;
-        out.push_back(recordFromDescription(*d));
+        auto record = recordFromDescription(*d);
+        const auto byName = classIds.find(record.name.toStdString());
+        if (byName != classIds.end())
+            record.classId = byName->second;
+        else if (classIds.size() == 1)
+            // One audio-effect class in the module leaves no ambiguity, even
+            // when JUCE reports a name the factory spells differently.
+            record.classId = classIds.begin()->second;
+        out.push_back(std::move(record));
     }
     return out;
 }

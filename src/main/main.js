@@ -22,6 +22,12 @@ const diagnostics = require('./diagnostics');
 const { isValidSetVstParameterCommand } = require('./vstParameterCommand');
 const { isValidSetVstParameterLearnCommand } = require('./vstParameterLearnCommand');
 const { isValidSelectDeviceCommand } = require('./audioDeviceCommand');
+const { isValidLoadPresetChunksCommand } = require('./presetCommand');
+const {
+  defaultRoots, listPresets, readPresetChunks, savePresetFile,
+  readCatalogueCache, writeCatalogueCache
+} = require('./presetStore');
+const { fetchCatalogue, downloadEntry, normalizeEntry } = require('./presetSource');
 const { readProject, writeProjectAtomic } = require('./projectFiles');
 const { ALLOWED_ENGINE_COMMANDS } = require('./engineCommandPolicy');
 const { ClipEditorWindows } = require('./clipEditorWindows');
@@ -273,6 +279,138 @@ ipcMain.handle('project:write', (_event, filePath, project) => {
   try { writeProjectAtomic(filePath, project); return { ok: true, filePath }; }
   catch (error) { return { ok: false, error: error.message }; }
 });
+// --- Local preset library -------------------------------------------------
+//
+// The renderer has no disk, so the scan and the read happen here. Both are
+// bounded by the same roots, resolved once: `presetStore` re-validates every
+// path against them, because "read the preset at this path" arriving from the
+// renderer must never become "read this file".
+//
+// Reading returns base64 chunks to the renderer, which then issues the ordinary
+// `loadPresetChunks` engine command. Routing the bytes straight to the engine
+// from here would save one hop, but it would put a second path to the engine
+// beside `engine:command` -- and DECISIONS.md D-007 exists so that the surface
+// the engine can receive stays one readable list.
+let presetRoots = null;
+const resolvePresetRoots = () => {
+  if (presetRoots === null) presetRoots = defaultRoots({ userDataDir: app.getPath('userData') });
+  return presetRoots;
+};
+
+ipcMain.handle('presets:library', (_event, filter) => {
+  const requested = filter && typeof filter.classId === 'string' ? filter.classId : null;
+  if (requested !== null && !/^[0-9A-Fa-f]{32}$/.test(requested)) {
+    return { ok: false, reason: 'invalid-class-id' };
+  }
+  try {
+    return listPresets({ roots: resolvePresetRoots(), classId: requested });
+  } catch (err) {
+    return { ok: false, reason: 'scan-failed' };
+  }
+});
+
+/**
+ * A source declaration from settings, or null.
+ *
+ * Settings are a file the user can edit, so a declaration is validated here
+ * rather than trusted; `presetSource` validates the URL it actually fetches
+ * again.
+ */
+const validSource = (raw, index) => {
+  if (!raw || typeof raw !== 'object') return null;
+  const id = typeof raw.id === 'string' && raw.id.length > 0 && raw.id.length <= 64
+    ? raw.id
+    : `source-${index + 1}`;
+  if (raw.kind === 'index') {
+    return typeof raw.url === 'string' ? { id, kind: 'index', url: raw.url } : null;
+  }
+  if (raw.kind === 'github') {
+    return {
+      id,
+      kind: 'github',
+      owner: raw.owner,
+      repo: raw.repo,
+      path: raw.path,
+      ref: raw.ref,
+      plugin: typeof raw.plugin === 'string' ? raw.plugin : null,
+      vendor: typeof raw.vendor === 'string' ? raw.vendor : null
+    };
+  }
+  return null;
+};
+
+const configuredSources = () => {
+  const stored = loadSettings().presetSources;
+  return Array.isArray(stored)
+    ? stored.map(validSource).filter((source) => source !== null).slice(0, 20)
+    : [];
+};
+
+ipcMain.handle('presets:sources', () => ({ ok: true, sources: configuredSources() }));
+
+/**
+ * The remote catalogue: the cache by default, a refresh only when asked.
+ *
+ * Nothing here runs on its own. INTENT.md section 7 forbids an automatic update
+ * check, and the cache is what keeps the browser useful with the network down:
+ * a refresh that fails leaves the previous answer in place rather than emptying
+ * the list.
+ */
+ipcMain.handle('presets:catalogue', async (_event, options) => {
+  const roots = resolvePresetRoots();
+  if (!options || options.refresh !== true) {
+    return { ...readCatalogueCache({ roots }), refreshed: false };
+  }
+  const sources = configuredSources();
+  if (sources.length === 0) {
+    return { ok: true, entries: [], refreshedAt: null, refreshed: true, sources: 0 };
+  }
+
+  const entries = [];
+  const failures = [];
+  for (const source of sources) {
+    // eslint-disable-next-line no-await-in-loop
+    const answer = await fetchCatalogue(source);
+    if (answer.ok) entries.push(...answer.entries);
+    else failures.push({ source: source.id, reason: answer.reason });
+  }
+  if (entries.length === 0 && failures.length > 0) {
+    // Every source failed: keep what was remembered instead of wiping it.
+    return { ...readCatalogueCache({ roots }), refreshed: true, failures };
+  }
+  writeCatalogueCache({ roots }, entries);
+  return { ok: true, entries, refreshedAt: new Date().toISOString(), refreshed: true, failures };
+});
+
+/** Download one catalogue entry into MiniHub own preset store. */
+ipcMain.handle('presets:download', async (_event, raw) => {
+  // The renderer hands back an entry it was given; re-normalizing it means a
+  // tampered one cannot widen what gets fetched or where it lands.
+  const entry = normalizeEntry(raw, 'download');
+  if (!entry) return { ok: false, reason: 'invalid-entry' };
+
+  const downloaded = await downloadEntry(entry);
+  if (!downloaded.ok) return downloaded;
+
+  const saved = savePresetFile({
+    roots: resolvePresetRoots(),
+    vendor: entry.vendor,
+    plugin: entry.plugin,
+    fileName: entry.fileName,
+    bytes: downloaded.bytes
+  });
+  if (!saved.ok) return saved;
+  return { ok: true, path: saved.path, applicable: entry.applicable };
+});
+
+ipcMain.handle('presets:read', (_event, filePath) => {
+  try {
+    return readPresetChunks(filePath, { roots: resolvePresetRoots() });
+  } catch (err) {
+    return { ok: false, reason: 'read-failed' };
+  }
+});
+
 ipcMain.handle('engine:capture-states', async () => {
   if (!engine) return { ok: false, reason: 'engine-not-started' };
   return { ok: await engine.capturePluginStates() };
@@ -322,6 +460,12 @@ ipcMain.handle('engine:command', (_event, msg) => {
   }
   if (type === 'setVstParameter') {
     if (!isValidSetVstParameterCommand(msg)) {
+      return { ok: false, reason: 'invalid-request' };
+    }
+  }
+  if (type === 'loadPresetChunks') {
+    if (!isValidLoadPresetChunksCommand(msg)) {
+      console.log('[engine:command] REJECTED invalid-request: loadPresetChunks');
       return { ok: false, reason: 'invalid-request' };
     }
   }
