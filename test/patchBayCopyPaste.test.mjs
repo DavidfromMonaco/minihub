@@ -213,7 +213,12 @@ test('keyboard Paste uses pointer world position when over the canvas', () => {
 });
 
 test('keyboard Paste uses viewport center when pointer is not over the canvas', () => {
-  const hub = setupHub({ withMinilab: false, layout: { 'vst-001': { x: 500, y: 500 } } });
+  // The source sits far from the viewport centre on purpose. This test is about
+  // WHICH position paste chooses, not about the anti-stacking nudge: with the
+  // source at (500,500) the pasted copy overlapped it and resolveNodePos()
+  // legitimately displaced the result, so the assertion silently depended on
+  // how tall a VST node happens to be.
+  const hub = setupHub({ withMinilab: false, layout: { 'vst-001': { x: 2000, y: 2000 } } });
   hub.nodes.create('vst'); // vst-001
   const { svg, mod } = mount(hub);
   const layer = nodesLayerOf(svg);

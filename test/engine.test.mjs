@@ -79,6 +79,60 @@ test('an automatic scan never shrinks the VST catalog; an explicit rescan does',
   assert.equal(hub.engine.plugins.length, 2);
 });
 
+test('a catalog persisted before class UIDs existed survives and upgrades in place', async () => {
+  // Exactly what sits in settings.json on a machine that last scanned before
+  // `classId` was a field. Losing these entries on upgrade would be invariant
+  // 12 broken by the very change meant to enrich them.
+  const legacy = [
+    { pluginId: 'C:/VST3/Massive X.vst3', name: 'Massive X', manufacturer: 'Native Instruments', role: 'instrument' },
+    { pluginId: 'C:/VST3/Dexed.vst3', name: 'Dexed', manufacturer: 'Digital Suburban', role: 'instrument' }
+  ];
+  const api = mockApi({ vstCatalog: legacy });
+  const hub = createHub(api);
+  await hub.settings.load();
+  await hub.engine.init();
+
+  assert.equal(hub.engine.plugins.length, 2, 'a UID-less catalog still loads');
+  assert.equal(hub.engine.getPlugin('C:/VST3/Massive X.vst3').name, 'Massive X');
+  assert.equal(hub.engine.getPlugin('C:/VST3/Massive X.vst3').classId, undefined);
+
+  // A rescan of the same size carries the UIDs. `_acceptsCatalog` compares
+  // lengths, so an equal-sized result is accepted and the upgrade lands
+  // without the user having to ask for a rescan.
+  api.emitEvent({
+    type: 'plugins',
+    plugins: [
+      { ...legacy[0], classId: '565354FF4D61737369766558000000' + '00' },
+      { ...legacy[1], classId: '5653544465786564446578656400' + '0000' }
+    ]
+  });
+  assert.equal(hub.engine.plugins.length, 2);
+  assert.equal(hub.engine.getPlugin('C:/VST3/Dexed.vst3').classId.length, 32);
+  assert.equal(hub.settings.get('vstCatalog')[0].classId.length, 32);
+});
+
+test('a plugin whose class UID could not be read stays in the catalog', async () => {
+  // Reading a UID opens the module a second time; a plugin that refuses gives
+  // an empty classId. It must remain fully usable: manufacturer + name still
+  // identify it, and only the portable identity is missing.
+  const api = mockApi();
+  const hub = createHub(api);
+  await hub.engine.init();
+
+  api.emitEvent({
+    type: 'plugins',
+    plugins: [
+      { pluginId: 'C:/VST3/Old.vst3', name: 'Old', manufacturer: 'Acme', role: 'audio-effect', classId: '' },
+      { pluginId: 'C:/VST3/New.vst3', name: 'New', manufacturer: 'Acme', role: 'instrument', classId: 'A'.repeat(32) }
+    ]
+  });
+
+  assert.equal(hub.engine.plugins.length, 2);
+  const old = hub.engine.getPlugin('C:/VST3/Old.vst3');
+  assert.equal(old.classId, '');
+  assert.equal(old.name, 'Old', 'an unreadable UID must not cost the entry');
+});
+
 test('a running scan is visible: scanning state flips on request and on the result', async () => {
   const api = mockApi();
   const hub = createHub(api);

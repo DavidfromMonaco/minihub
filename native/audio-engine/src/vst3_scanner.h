@@ -16,6 +16,26 @@ namespace mlh {
  */
 struct PluginRecord {
     juce::String pluginId;      // stable identity (file path)
+    /**
+     * VST3 component class UID: 32 ASCII hex characters, or empty when the
+     * module could not be read.
+     *
+     * `pluginId` is an absolute path on THIS machine. It names a plugin here
+     * and nowhere else, which is exactly what INTENT.md section 2 forbids
+     * baking in: a catalog keyed on it cannot be carried to another machine,
+     * nor compared with anything recorded on one. The component class UID is
+     * the identity the plugin declares about itself, and it is the same
+     * everywhere.
+     *
+     * Written the way the SDK writes it: on Windows COM_COMPATIBLE is 1, so
+     * `FUID::toString` and `VST3::UID::toString` (whose default `comFormat`
+     * is true here) produce the same 32 characters. Whoever compares two of
+     * these compares plain strings -- no byte reordering anywhere.
+     *
+     * Empty is normal, not an error: the catalog must never lose a plugin
+     * because its UID could not be read (invariant 12).
+     */
+    juce::String classId;
     juce::String name;
     juce::String manufacturer;
     juce::String category;

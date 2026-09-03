@@ -46,13 +46,15 @@ import { MINILAB_CONTROL_SOURCES } from '../midi/minilabControls.js';
 import { miniLabControlSurfaceHtml } from '../ui/miniLabControlSurface.js';
 import { defaultArpeggiatorContent, normalizeArpeggiatorContent } from './arpeggiatorState.js';
 import { currentArpeggiatorStep, moveCustomNote, removeCustomNote, renderArpControlStrip, renderCustomPatternEditor, setCustomGateDuration, setCustomNote, syncArpControlStrip, velocityFromPointer } from './arpeggiatorEditor.js';
+import { icon } from '../ui/icons.js';
+import { getNodeEditor, registerNodeEditor } from './nodeEditors.js';
+import { createDisposers } from './disposers.js';
 
 /** Coalescing window for continuous native-value controls (Mixer / Morpher
  *  levels, mutes, master level, Morpher steps). Long enough to collapse a drag
  *  into a single settings write and a single native graph republish, short
  *  enough to stay imperceptible when the user simply clicks a slider. */
 const NATIVE_VALUE_COALESCE_MS = 120;
-import { icon } from '../ui/icons.js';
 
 const KEY = 'nodeInstances';
 
@@ -257,6 +259,26 @@ function renderVstEditor(instance, type, hub, statusMap, editorNotes) {
       </div>
     </div>`;
 }
+
+// The four editors that predate the registry still live in this file, and still
+// drive the DOM handlers shared inside mount(); only their rendering goes
+// through the table. Moving their behaviour out is ROADMAP §4. Registering them
+// here is what lets a NEW node type ship as its own folder plus one
+// registerNodeEditor() call, instead of a fifth branch in a nested ternary and
+// seven more `if (type.id !== 'x') return;` guards.
+registerNodeEditor('vst', {
+  render: ({ instance, type, hub, statusMap, editorNotes }) =>
+    renderVstEditor(instance, type, hub, statusMap, editorNotes)
+});
+registerNodeEditor('arpeggiator', {
+  render: ({ instance, type }) => renderArpeggiatorEditor(instance, type)
+});
+registerNodeEditor('mixer', {
+  render: ({ instance, type, hub }) => renderNativeAudioEditor(instance, type, hub)
+});
+registerNodeEditor('morpher', {
+  render: ({ instance, type, hub }) => renderNativeAudioEditor(instance, type, hub)
+});
 
 function buildRoutingNode(instance, hub) {
   const type = getNodeType(instance.type);
@@ -727,8 +749,11 @@ export class NodeInstanceManager {
         }));
 
         hub.diagnostics.log(`vst: mount ${instance.id} plugins=${hub.engine.plugins.length} engine=${hub.engine.state}`);
-        container.innerHTML = type.id === 'vst' ? renderVstEditor(instance, type, hub, statusMap, editorNotes)
-          : (type.id === 'arpeggiator' ? renderArpeggiatorEditor(instance,type) : ((type.id === 'mixer'||type.id === 'morpher') ? renderNativeAudioEditor(instance,type,hub) : renderGenericShell(instance, type)));
+        const editor = getNodeEditor(type.id);
+        const editorContext = { instance, type, hub, statusMap, editorNotes };
+        // A type with no registered editor is not an error: `video`, `image`
+        // and `audio-input` deliberately have none and show the generic shell.
+        container.innerHTML = editor ? editor.render(editorContext) : renderGenericShell(instance, type);
         afterArpRender(true);
 
         if (type.id === 'vst') {
@@ -1069,55 +1094,36 @@ export class NodeInstanceManager {
           if (e.target === velocity && roll.scrollLeft !== velocity.scrollLeft) roll.scrollLeft=velocity.scrollLeft;
         };
 
-        container.addEventListener('click', onClick);
-        container.addEventListener('input', onInput);
-        container.addEventListener('change', onInput);
-        container.addEventListener('pointerdown', onPointerDown);
-        container.addEventListener('pointermove', onPointerMove);
-        container.addEventListener('pointerup', onPointerUp);
-        container.addEventListener('pointercancel', onPointerUp);
-        container.addEventListener('keydown', onKeyDown);
-        container.addEventListener('scroll', onScroll, true);
+        // One registration site instead of three: the listener, its `module._onX`
+        // mirror and its removeEventListener() used to be written separately,
+        // and only the third could be forgotten silently. See disposers.js.
+        const disposers = createDisposers();
+        disposers.listen(container, 'click', onClick);
+        disposers.listen(container, 'input', onInput);
+        disposers.listen(container, 'change', onInput);
+        disposers.listen(container, 'pointerdown', onPointerDown);
+        disposers.listen(container, 'pointermove', onPointerMove);
+        disposers.listen(container, 'pointerup', onPointerUp);
+        disposers.listen(container, 'pointercancel', onPointerUp);
+        disposers.listen(container, 'keydown', onKeyDown);
+        disposers.listen(container, 'scroll', onScroll, true);
+        for (const unsubscribe of subs) disposers.add(unsubscribe);
+        // An editor that binds its own listeners never touches the shared
+        // handlers above, and hands back its own teardown so invariant 8 holds
+        // without this file knowing anything about that editor.
+        if (editor?.bind) disposers.add(editor.bind(container, editorContext));
 
-        // Store cleanup for unmount.
-        module._subs = subs;
-        module._container = container;
-        module._onClick = onClick;
-        module._onInput = onInput;
-        module._onPointerDown = onPointerDown;
-        module._onPointerMove = onPointerMove;
-        module._onPointerUp = onPointerUp;
-        module._onKeyDown = onKeyDown;
-        module._onScroll = onScroll;
+        module._disposers = disposers;
       },
       unmount() {
         if (module._flushNativeValues) {
           module._flushNativeValues();
           module._flushNativeValues = null;
         }
-        if (module._subs) {
-          module._subs.forEach((u) => u());
-          module._subs = [];
+        if (module._disposers) {
+          module._disposers.dispose();
+          module._disposers = null;
         }
-        if (module._container && module._onClick) {
-          module._container.removeEventListener('click', module._onClick);
-          module._container.removeEventListener('input', module._onInput);
-          module._container.removeEventListener('change', module._onInput);
-          module._container.removeEventListener('pointerdown', module._onPointerDown);
-          module._container.removeEventListener('pointermove', module._onPointerMove);
-          module._container.removeEventListener('pointerup', module._onPointerUp);
-          module._container.removeEventListener('pointercancel', module._onPointerUp);
-          module._container.removeEventListener('keydown', module._onKeyDown);
-          module._container.removeEventListener('scroll', module._onScroll, true);
-        }
-        module._container = null;
-        module._onClick = null;
-        module._onInput = null;
-        module._onPointerDown = null;
-        module._onPointerMove = null;
-        module._onPointerUp = null;
-        module._onKeyDown = null;
-        module._onScroll = null;
       }
     };
     this.hub.modules.register(module);

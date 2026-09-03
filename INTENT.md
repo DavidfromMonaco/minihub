@@ -109,11 +109,13 @@ gestion de presets l'a été au §8.
 
 ## 7. Le réseau : autorisé, confiné
 
-MiniHub **n'est pas une application hors ligne par principe**, contrairement à
-ce que l'état actuel du code laisse croire. Un module de presets universel est
-prévu (§8), et il consultera des sites spécialisés.
+MiniHub **n'est pas une application hors ligne par principe** : rien dans son
+architecture ne l'interdit. Mais **aucune fonctionnalité n'utilise le réseau
+aujourd'hui**, et aucune n'est prévue — le module de presets qui motivait cette
+section a été abandonné ([DECISIONS.md](DECISIONS.md) D-013).
 
-Les règles qui encadrent cet accès :
+Ce qui suit ne décrit donc pas un existant : c'est le cadre que devra respecter
+le premier usage du réseau, le jour où il y en aura un.
 
 - **L'application reste pleinement utilisable sans réseau.** Aucune
   fonctionnalité existante ne peut se mettre à en dépendre. Une absence de
@@ -129,29 +131,23 @@ Les règles qui encadrent cet accès :
 - **Aucune vérification de mise à jour automatique**, tant que la question de la
   distribution n'est pas tranchée (§2).
 
-## 8. Levée de refus : la gestion de presets
+## 8. Refus reconduit : la gestion de presets
 
-**Statut : décidée, non implémentée.**
+**Statut : tranché le 2026-09-03. Hors périmètre.**
 
-La gestion de presets figurait dans les fonctionnalités déclarées hors périmètre
-par le README archivé, position reconduite par la ROADMAP. **Ce refus est levé.**
+Ce refus avait été levé le 2026-09-02, et un ExecPlan a mené le chantier
+jusqu'à l'étape 8 sur 9 avant d'être arrêté. **Le refus est reconduit** ;
+[DECISIONS.md](DECISIONS.md) D-013 porte les mesures qui l'ont tranché, dont les
+deux qui suffisent : aucun fichier `.vstpreset` n'existe sur la machine, et le
+besoin est déjà servi deux fois — par le navigateur de presets de chaque VST3,
+et par `capturePluginStates` / `persistPluginStateChunk` qui persistent déjà
+l'état de chaque plugin dans le projet.
 
-Ce qui est voulu : un module de **presets universel**, s'appuyant sur la
-consultation de sites spécialisés — donc traversant le réseau, le processus
-principal et le renderer.
-
-Ce que ça implique, et qui n'est pas encore fait :
-
-- des commandes réseau en liste blanche côté processus principal, avec
-  validateurs, plutôt qu'un `fetch()` depuis le renderer que la CSP bloquerait ;
-- une politique de cache local, puisque §7 exige que l'application reste
-  utilisable hors ligne ;
-- l'articulation avec l'état VST3 déjà persisté (`capturePluginStates`,
-  `persistPluginStateChunk`) : un preset universel et un état de plugin natif ne
-  sont pas la même chose, et confondre les deux est le piège évident.
-
-C'est un chantier à trois étages, pas un module de plus. Il mérite un ExecPlan
-([PLANS.md](PLANS.md)) avant la première ligne de code.
+Ne pas rouvrir ce chantier sur l'argument « il existe des presets à récupérer ».
+Ce qui le rouvrirait légitimement est autre chose, et D-013 le nomme : **rappeler
+une configuration MiniHub** — une chaîne VST plus un arpégiateur plus des
+mappings MiniLab, recallable dans un autre projet. Aucun plugin ne fera jamais
+ça, et ça ne traverse aucun réseau.
 
 ## 9. Arbitrages
 

@@ -142,14 +142,24 @@ target_include_directories(mlh_audio_engine PRIVATE
 # Disposable metadata helper. It deliberately does not compile engine.cpp and
 # does not link juce_audio_devices, so scanning a VST3 cannot create a host-owned
 # WASAPI/ASIO client or masquerade as a second mlh-audio-engine process.
+#
+# It DOES load the VST3 SDK module loader, which reads a plugin's component
+# class UID from its factory -- the only plugin identity that is the same on
+# every machine, where the file path this helper otherwise reports is not.
+# That grants no new capability: this helper already loads the plugin binary
+# through JUCE, and `module_win32.cpp` opens a module and reads its factory. It
+# adds no audio device and no engine surface, so the two exclusions above stand
+# exactly as written.
 add_executable(mlh_vst3_scanner
     src/scanner_main.cpp
     src/vst3_scanner.h
-    src/vst3_scanner.cpp)
-target_include_directories(mlh_vst3_scanner PRIVATE src)
+    src/vst3_scanner.cpp
+    "${VST3_SDK_ROOT}/public.sdk/source/vst/hosting/module_win32.cpp")
+target_include_directories(mlh_vst3_scanner PRIVATE src "${VST3_SDK_ROOT}")
 target_link_libraries(mlh_vst3_scanner PRIVATE
     juce::juce_audio_processors
-    juce::juce_gui_basics)
+    juce::juce_gui_basics
+    sdk_hosting)
 target_compile_definitions(mlh_vst3_scanner PRIVATE
     JUCE_PLUGINHOST_VST3=1
     _CONSOLE)

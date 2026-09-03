@@ -222,8 +222,10 @@ Sans engagement ni priorité — noté pour ne pas l'oublier.
   vides ; rien ne les implémente.
 - Le README annonçait « sends, sidechains, automation, gestion de presets,
   minimap, annuler/refaire, disposition automatique du graphe, groupes de
-  nœuds » comme hors périmètre. Ils le restent, **sauf la gestion de
-  presets** : ce refus est levé, voir [INTENT.md](INTENT.md) §8.
+  nœuds » comme hors périmètre. **Ils le restent tous.** La gestion de presets
+  a fait exception du 2026-09-02 au 2026-09-03 : le chantier a été mené à
+  l'étape 8 sur 9 puis retiré, et le refus est reconduit
+  ([DECISIONS.md](DECISIONS.md) D-013).
 - Les dix scripts `runtime-*-gauntlet.mjs` sont des harnais ponctuels liés à des
   investigations closes. À regrouper sous `scripts/gauntlets/` ou à retirer une
   fois leur usage confirmé caduc.

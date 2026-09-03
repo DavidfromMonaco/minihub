@@ -351,3 +351,67 @@ doit différer. À ce jour il n'en existe qu'une.
 d'origine, écrite par son auteur), `src/renderer/js/ui/omniPearl.js:1-16`,
 `scripts/check-invariants.mjs` (règles `faceplate scope` et `one faceplate`),
 `AGENTS.md` §6
+
+
+---
+
+## D-013 — La gestion de presets reste hors périmètre
+
+**Statut** : en vigueur · 2026-09-03
+
+**Contexte** — Le refus avait été levé le 2026-09-02 ([INTENT.md](INTENT.md)
+§8), et un ExecPlan a mené le chantier jusqu'à l'étape 8 sur 9 : conteneur
+`.vstpreset` lu et écrit en JS pur, commande native `loadPresetChunks`, Class ID
+VST3 remonté du scanner, source disque, nœud Preset câblable, étage réseau avec
+index JSON signé. Environ 2 750 lignes, tests compris.
+
+Quatre mesures, prises le 2026-09-03, disent pourquoi ça ne mène nulle part :
+
+- **fichiers `.vstpreset` sur la machine : zéro.** Les deux répertoires
+  standards (`%LOCALAPPDATA%` et `%COMMONPROGRAMFILES%\VST3 Presets`)
+  n'existent même pas ;
+- **catalogues publics au format `minihub-preset-index` : zéro.** Le format est
+  né dans ce dépôt et n'a aucun producteur ;
+- **utilisateurs : un** (§2). Une banque communautaire suppose une communauté ;
+  ici le seul contributeur possible est aussi le seul lecteur ;
+- **le seul format applicable à chaud est le moins répandu.** `loadPresetChunks`
+  ne consomme que du `.vstpreset` ; les banques publiques réelles distribuent
+  du `.fxp`, du `.syx`, du `.vital`.
+
+S'y ajoute une redondance que la mesure ne montre pas : le besoin est **déjà
+servi deux fois**. Chaque VST3 embarque son propre navigateur de presets, et
+`capturePluginStates` / `persistPluginStateChunk` persistent déjà l'état de
+chaque plugin dans le projet. Le nœud Preset était le troisième dispositif à
+faire la même chose.
+
+**Décision** — Le refus est reconduit. Le code est retiré du tronc. Il n'est pas
+détruit : il vit dans le commit `b1cb405` de la branche `feat/presets-universels`,
+avec son ExecPlan et son journal.
+
+Deux étapes du chantier sont **conservées**, parce qu'elles ne relèvent pas du
+preset et corrigeaient de vrais défauts :
+
+- la couture d'éditeurs (`core/nodeEditors.js`, `core/disposers.js`), qui est
+  la sous-tâche que [ROADMAP.md](ROADMAP.md) §4 nomme ;
+- le `classId` VST3 dans le catalogue, qui donne enfin aux plugins une identité
+  portable là où `pluginId` était un chemin absolu propre à cette machine —
+  exactement ce que §2 interdit de coder en dur.
+
+**Conséquence** — §7 (le réseau) perd son unique consommateur prévu : ses règles
+restent écrites, mais comme cadre pour un usage futur, pas comme description
+d'un existant. Trois correctifs de sécurité en attente disparaissent avec le
+code qu'ils visaient, dont le canal `presets:download` qui acceptait n'importe
+quelle URL HTTPS. La liste blanche des commandes moteur reperd
+`loadPresetChunks`.
+
+**Ce qui justifierait de revenir dessus** — Pas l'abondance de presets : le
+besoin qu'ils servent est déjà couvert. Ce qui le justifierait, c'est le manque
+que ce chantier avait lui-même mis hors périmètre — **rappeler une configuration
+MiniHub** : une chaîne VST plus un arpégiateur plus des mappings MiniLab,
+recallable dans un autre projet. Aucun navigateur de plugin ne le fera jamais.
+C'est un autre modèle de données, il ne traverse aucun réseau, et il ne duplique
+rien d'existant.
+
+**Preuve dans le code** — l'absence : aucun fichier `preset*` sous `src/`,
+`loadPresetChunks` absent d'`engineCommandPolicy.js`, aucun type de port
+`preset` dans `routingCore.js`. Le chantier retiré : commit `b1cb405`.
