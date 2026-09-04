@@ -9,7 +9,7 @@ nothing in `src/` assumes which device is plugged in.
 entry of [plans/done/controller-profile.md](../done/controller-profile.md), which
 named the decoder's remaining dependency on `midi/minilab.js`.
 
-**Status** — steps 1 to 4 of 6 done.
+**Status** — steps 1 to 5 of 6 done.
 
 ## Context
 
@@ -82,7 +82,7 @@ D-021, D-022.
       the three sequencer error messages stop naming the device.
       Check: `sequencer*.test.mjs`, plus a test where a controller with another
       profile id is a legitimate recording source.
-- [ ] 5. The header names the connected device from the profile.
+- [x] 5. The header names the connected device from the profile.
       Check: new test — with a fixture profile named otherwise, the header says
       that name and no `ui/` file contains a device name as a string.
 - [ ] 6. A second profile as a **test fixture** proves the machinery is
@@ -275,3 +275,63 @@ node a cable leaves instead of comparing an id. 655 JS tests, 13 check rules,
 naming the device. It is not: its three comparisons are against
 `MINILAB_NODE_ID`, whose value came from the profile at step 3, and a control
 cable really does leave one specific node's control port. Nothing to do there.
+
+2026-09-04 — Step 5 done. Nothing under `src/renderer/js/core/` or
+`src/renderer/js/ui/` names a device any more, and a `npm run check` rule fails
+the build if one comes back. 661 JS tests (6 new in
+`test/headerDeviceStatus.test.mjs`), 14 check rules, `sync:dist` run.
+
+- **The header does not read the profile, and that is the point.** Reading
+  `LOADED_PROFILE.device.model` here would have been one line and untestable —
+  step 3 already had to write down that a profile-derived constant is fixed at
+  module load and no test can swap it. The header asks the network what the
+  controller node is called, so a fixture names a node `Vega 49` and the
+  assertion is on the real code path. It also settles a second question the plan
+  did not ask: the header and the sequencer's blocking messages now say the same
+  string because they read the same place, and a message that sends the user to
+  a card called something else is worse than a message that names nothing.
+- **The step as written was one file; it was four.** Naming the header from the
+  node would have changed nothing while the node's own name was the literal
+  `'MiniLab 3'` in `modules/minilab/minilabModule.js` — step 4's three messages
+  included, which had been reading that literal since the day they were fixed.
+  The name is now `DEVICE_NAME` there, one constant, and it carries the page
+  title, the nav entry, the status pill and the routing node. The Learn panel's
+  instruction (`core/nodeInstances.js`, "Select an observable control on the
+  MiniLab") was the fourth: it is in `core/`, it is prose the user acts on, and
+  the plan's Done-when covers it even though its Context did not list it.
+- **`device.model`, not the profile's `name`.** The profile is titled
+  "Arturia MiniLab 3" — the file's name for itself, which may carry a vendor or a
+  variant. What a status pill and a Patch Bay card have room for is the device,
+  and `device.model` keeps every visible string byte-identical to what shipped
+  yesterday. Both fields are required by the format, so neither can be missing.
+- **`core/controllerNode.js` answers null rather than a fallback name.** Two
+  hardware MIDI sources means naming one is a guess (D-022 says there is one, so
+  this is the defensive branch, not the common one). The phrase is left to each
+  caller: "your controller" reads as English inside the sequencer's sentence and
+  as gibberish inside "No ... detected", which is why a single shared fallback
+  string would have been wrong.
+- **`isCanonicalMidiIngress` now expresses its node half as `isControllerNode`.**
+  Same shape, one definition. The stricter form — the node must DECLARE a
+  `midi-out`, not merely be of type `midi-output` — changes no behaviour, and
+  `Network.connect()` is why: it refuses a connection from a port the node does
+  not declare, so no connection in any network can distinguish the two.
+- **A fourteenth check rule, `device name out of the shell`.** Its words come
+  from the shipped profiles, so it follows a profile rather than a list someone
+  maintains. What makes it exact is punctuation: once `_` and `-` count as word
+  characters, `MINILAB_NODE_ID`, `minilab-control-surface` and
+  `data-minilab-control-id` are single tokens and pass untouched, while prose
+  puts spaces around the device and does not. One subtraction, and it is not an
+  exception: MiniHub's own names contain the device's for historical reasons
+  (AGENTS.md §2), so `MiniLab Hub` is removed from a line before it is read.
+  Verified by breaking it on purpose — both a model and a vendor — before
+  restoring. The faceplate file the plan puts out of scope needed no exemption,
+  which is the sign the boundary is the right one.
+- **What is NOT proved.** That the *shipped* build follows a *different* profile
+  is still one property access at module load. `test/headerDeviceStatus.test.mjs`
+  asserts the end of the chain twice instead — against the literal
+  `'MiniLab 3 connected'`, which says what a user sees in this build, and against
+  `${LOADED_PROFILE.device.model}`, which says where it comes from. The fixture
+  tests are what prove the machinery is device-agnostic; these two are what fail
+  if a name is hardcoded back in or a profile is edited without anyone noticing
+  the whole shell follows it. The application has not been launched for this
+  step; the plan's real-application check remains owed at the end.

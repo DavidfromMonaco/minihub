@@ -1,6 +1,7 @@
 import { SequencerModel, defaultSequencerState } from './sequencerModel.js';
 import { normalizeTempo } from './tempoControl.js';
 import { AUDIO_INPUT_NODE_ID, SEQUENCER_NODE_ID } from './systemNodes.js';
+import { isControllerNode, controllerName } from './controllerNode.js';
 
 const STATE_KEY = 'sequencerState';
 const LEGACY_DEVICE_INPUT_ID = 'device-input';
@@ -11,16 +12,13 @@ const EXPORT_STALL_TIMEOUT_MS = 60000;
  *
  * It used to be `from.nodeId === MINILAB_NODE_ID`, which is the sequencer
  * holding an opinion about which keyboard is plugged in. What actually decides
- * is the kind of node the cable leaves: `midi-output` is MiniHub's word for a
- * hardware MIDI endpoint -- `network.js` exempts that type from cycle detection
- * for exactly that reason -- and `midi-out` is the side of such a node that
- * carries what the hardware sends. A controller under any profile id satisfies
- * both.
+ * is the kind of node the cable leaves -- `isControllerNode` in
+ * `core/controllerNode.js` is that shape, and a controller under any profile id
+ * satisfies it.
  *
- * The port check is not tidiness. A node representing an external MIDI
- * destination is the same type with a `midi-in` port and no `midi-out`, and
- * without the check the sequencer would accept a cable that can only ever run
- * the other way.
+ * The port check on this side is not tidiness either: it says the cable leaves
+ * the node by the side that carries what the hardware plays, so a cable drawn
+ * from any other output of the same node is not an ingress.
  *
  * Exported because `modules/sequencer/sequencerModule.js` asked the same
  * question with its own copy of the id comparison, and two answers to "is this
@@ -28,7 +26,7 @@ const EXPORT_STALL_TIMEOUT_MS = 60000;
  */
 export const isCanonicalMidiIngress = (network, connection) =>
   connection?.from?.portId === 'midi-out'
-  && network?.getNode(connection.from.nodeId)?.type === 'midi-output';
+  && isControllerNode(network?.getNode(connection.from.nodeId));
 
 function baseName(filePath) {
   return String(filePath || '').split(/[\\/]/).pop()?.replace(/\.[^.]+$/, '') || 'Audio Clip';
@@ -682,18 +680,14 @@ export class SequencerController {
    *
    * These messages spelled "MiniLab 3", which is the sequencer telling someone
    * with another keyboard to connect one he does not own. The node's own name is
-   * what he sees in the Patch Bay, so it is what the message says.
-   *
-   * Only when there is exactly one such node. Two hardware MIDI sources means
-   * naming one of them is a guess, and a message that guesses sends the user to
-   * the wrong card; DECISIONS.md D-022 says there is one until a second keyboard
-   * exists, so the plural case falls back to a phrase rather than to a coin
-   * toss.
+   * what he sees in the Patch Bay, so it is what the message says -- and the
+   * header now says the same string, from the same place. The phrase is this
+   * caller's own: `controllerName` answers null rather than guessing between two
+   * controllers, and "your controller" is what reads as English inside these
+   * sentences.
    */
   _midiSourceLabel() {
-    const sources = this.hub.network.listNodes().filter((node) => node.type === 'midi-output'
-      && node.outputs?.some((port) => port.id === 'midi-out'));
-    return sources.length === 1 ? sources[0].name : 'your controller';
+    return controllerName(this.hub.network) ?? 'your controller';
   }
 
   /** Human-readable reason why a take cannot start, or an empty string when ready. */

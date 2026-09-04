@@ -3,6 +3,23 @@ import { MINILAB_CONTROL_SOURCES } from '../../midi/minilabControls.js';
 import { MINILAB_SURFACE } from '../../ui/miniLabControlSurface.js';
 import { escapeHtml } from '../../core/html.js';
 import { MINILAB_NODE_ID } from '../../core/systemNodes.js';
+import { LOADED_PROFILE } from '../../midi/loadedProfile.js';
+
+/**
+ * What the user calls the thing on his desk, and the only place in `src/` that
+ * reads it. The header, the sequencer's blocking messages and the Learn panel
+ * all name the device from the routing node below (`core/controllerNode.js`),
+ * so this constant is the single point where a profile becomes a name on
+ * screen -- and the whole application follows a profile that says something
+ * else with nothing else edited.
+ *
+ * `device.model` rather than the profile's `name`: the profile is titled
+ * "Arturia MiniLab 3", which is the file's name for itself and may carry a
+ * variant or a vendor, while a Patch Bay card and a status pill have room for
+ * the device. Both fields are required by the format, so neither can be
+ * absent.
+ */
+const DEVICE_NAME = LOADED_PROFILE.device.model;
 
 const KEY_BASE = 36; // C2 — 25 keys up to C4, matching the MiniLab 3
 const KEY_COUNT = 25;
@@ -32,9 +49,9 @@ export function createMiniLabModule(hub) {
     container.innerHTML = `
       <div class="panel">
         <div class="row">
-          <h1 class="page-title">MiniLab 3</h1>
+          <h1 class="page-title">${escapeHtml(DEVICE_NAME)}</h1>
           <span class="spacer"></span>
-          <span id="ml-status" class="pill off">No MiniLab detected</span>
+          <span id="ml-status" class="pill off">No ${escapeHtml(DEVICE_NAME)} detected</span>
         </div>
       </div>
 
@@ -180,7 +197,7 @@ export function createMiniLabModule(hub) {
     const preferredUnavailable = preference.preference && !preference.available;
     els.status.textContent = preferredUnavailable
       ? 'Preferred MIDI input unavailable'
-      : (anyMiniLab ? 'MiniLab detected' : 'No MiniLab detected');
+      : (anyMiniLab ? `${DEVICE_NAME} detected` : `No ${DEVICE_NAME} detected`);
     els.status.className = 'pill ' + (anyMiniLab && !preferredUnavailable ? 'ok' : 'off');
 
     refreshTiming();
@@ -338,11 +355,11 @@ export function createMiniLabModule(hub) {
 
   return {
     id: 'minilab',
-    name: 'MiniLab 3',
-    navEntry: { label: 'MiniLab 3', icon: 'keyboard', group: 'system', fixed: true },
+    name: DEVICE_NAME,
+    navEntry: { label: DEVICE_NAME, icon: 'keyboard', group: 'system', fixed: true },
     routingNode: {
       id: MINILAB_NODE_ID,
-      name: 'MiniLab 3',
+      name: DEVICE_NAME,
       type: 'midi-output',
       surface: MINILAB_SURFACE,
       inputs: [

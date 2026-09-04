@@ -1,7 +1,8 @@
 import { bindTempoInput } from '../core/tempoControl.js';
+import { controllerName } from '../core/controllerNode.js';
 
 /**
- * Header device status. Reflects MiniLab connection state.
+ * Header device status. Reflects the controller's connection state.
  */
 export function buildHeader(hub, statusEl) {
   const projectEl = document.getElementById('project-identity');
@@ -41,16 +42,27 @@ export function buildHeader(hub, statusEl) {
   });
   hub.events.on('engine:transport',(state)=>{if(typeof state?.playing!=='boolean')return;playing=state.playing;renderTransport();});
   renderTransport();
+  // The device is named by its Patch Bay node, never by this file: a header
+  // that spells a model tells every other keyboard it is not detected. It is
+  // also the same string the sequencer's blocking messages use, which is the
+  // whole point of taking it from the same place -- one name, or the user is
+  // sent to look for a card that is called something else.
+  //
+  // `controllerName` answers null when there is no single node to name, and the
+  // generic wording is what a shell says when it has no name to say. Written
+  // with `textContent`, which is what keeps a name that now comes from a
+  // profile file out of the parser (invariant 9).
   const update = () => {
     const connected = hub.midi.isMiniLabConnected();
+    const device = controllerName(hub.network);
     if (hub.midi.state === 'unavailable') {
       statusEl.textContent = 'MIDI unavailable';
       statusEl.className = 'device-status idle';
     } else if (connected) {
-      statusEl.textContent = 'MiniLab 3 connected';
+      statusEl.textContent = device ? `${device} connected` : 'Controller connected';
       statusEl.className = 'device-status ok';
     } else {
-      statusEl.textContent = 'No MiniLab 3 detected';
+      statusEl.textContent = device ? `No ${device} detected` : 'No controller detected';
       statusEl.className = 'device-status idle';
     }
   };

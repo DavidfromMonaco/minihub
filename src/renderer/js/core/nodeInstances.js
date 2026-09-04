@@ -42,6 +42,7 @@ import { NetworkLayout } from './networkLayout.js';
 import { VstChain, getVstRole, duplicateVstContent, groupPluginsByFamily } from './vstChain.js';
 import { escapeHtml } from './html.js';
 import { normalizeControlBinding, normalizeControlBindings } from './controlBindings.js';
+import { controllerName } from './controllerNode.js';
 import { MINILAB_CONTROL_SOURCES } from '../midi/minilabControls.js';
 import { miniLabControlSurfaceHtml } from '../ui/miniLabControlSurface.js';
 import { defaultArpeggiatorContent, normalizeArpeggiatorContent } from './arpeggiatorState.js';
@@ -217,9 +218,14 @@ export function renderControlBindings(instance, hub, selectedControlId = null) {
   const target = binding
     ? `${binding.pluginName || binding.pluginInstanceId} · ${binding.parameterName || `ParamID ${binding.parameterId}`}`
     : (selectedConnected ? 'Unmapped' : 'Connect this control to CTRL IN in Patch Bay');
+  // Named from its Patch Bay node, like the header and the sequencer's
+  // messages: this sentence points at hardware the user has to touch, and it
+  // used to point at a MiniLab whoever else's keyboard is on the desk. Escaped
+  // because the name reaches innerHTML and now comes from a profile file.
+  const device = controllerName(hub.network);
   return `
     <div class="control-bindings-help muted">
-      Select an observable control on the MiniLab, then Arm Learning. Native MIDI behavior remains active while MiniHub opens and foregrounds the target OmniBox.
+      Select an observable control on ${device ? escapeHtml(device) : 'the controller'}, then Arm Learning. Native MIDI behavior remains active while MiniHub opens and foregrounds the target OmniBox.
     </div>
     ${miniLabControlSurfaceHtml({ states, selectedId: selected?.id || null })}
     <div class="control-learn-toolbar" data-selected-source-control-id="${selected?.id || ''}">

@@ -387,6 +387,62 @@ rule('shared decoder', () => {
   }
 });
 
+// --- The shell never names a device ----------------------------------------
+//
+// A header that says "No MiniLab 3 detected" tells a user with another keyboard
+// that his keyboard is broken. The shell -- core/ and ui/ -- therefore names the
+// controller from its routing node (`core/controllerNode.js`), which takes its
+// name from the loaded profile in `modules/minilab/minilabModule.js`. That is
+// one file allowed to spell a device, and it is the device's own page.
+//
+// The words come from the shipped profiles themselves, so the rule follows a
+// profile rather than a list someone has to maintain. What separates a name the
+// user READS from a name the CODE uses is punctuation: `MINILAB_NODE_ID`,
+// `minilab-control-surface` and `data-minilab-control-id` are single tokens once
+// a word may contain `_` and `-`, while prose puts spaces around the device.
+// So identifiers, CSS classes and data attributes pass untouched, and a sentence
+// does not.
+//
+// One subtraction, and it is not an exception to the rule: MiniHub's own names
+// (AGENTS.md section 2) contain the device's, for historical reasons that are
+// now on the user's disk. "MiniLab Hub" is this application, not the hardware.
+rule('device name out of the shell', () => {
+  const appNames = ['MiniLab Hub', 'MiniHub', 'minilab-hub', 'mlh'];
+  const words = new Set();
+  for (const file of profileFiles()) {
+    const profile = JSON.parse(read(file));
+    const naming = [profile?.name, profile?.device?.vendor, profile?.device?.model];
+    for (const text of naming) {
+      if (typeof text !== 'string') continue;
+      for (const word of text.split(/[^A-Za-z0-9]+/)) {
+        if (word.length >= 4) words.add(word.toLowerCase());
+      }
+    }
+  }
+  if (words.size === 0) {
+    fail('device name out of the shell', `no profile under ${PROFILE_DIR} names a device to look for.`);
+    return;
+  }
+  for (const dir of ['src/renderer/js/core', 'src/renderer/js/ui']) {
+    for (const file of walk(dir, ['.js'])) {
+      read(rel(file)).split('\n').forEach((line, index) => {
+        if (isCommentLine(line)) return;
+        let text = line;
+        for (const name of appNames) text = text.split(name).join(' ');
+        for (const token of text.split(/[^A-Za-z0-9_-]+/)) {
+          if (!words.has(token.toLowerCase())) continue;
+          fail(
+            'device name out of the shell',
+            `${rel(file)}:${index + 1} says '${token}'. The shell asks `
+            + '`controllerName(network)` for the device it is talking about; only '
+            + "the controller's own module reads that from the profile."
+          );
+        }
+      });
+    }
+  }
+});
+
 // --- No runtime dependency ------------------------------------------------
 rule('no runtime dependency', () => {
   const pkg = JSON.parse(read('package.json'));

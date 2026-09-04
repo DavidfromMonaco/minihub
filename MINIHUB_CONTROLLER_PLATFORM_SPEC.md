@@ -681,6 +681,7 @@ Les critères de la v1 étaient en prose. Ceux-ci sont des commandes.
 | `immutable control ids` | un `controlId` présent dans une révision publiée et absent de la suivante (§3.2) |
 | `no hardware literal` | `minilab-3` écrit en dur hors de `systemNodes.js` et du profil de référence |
 | `shared decoder` | an import reaching outside the shared set (`parseMidi.js`, `controllerProfile.js`, `portRoles.js`, `decodeControl.js`) — added while implementing §3.5, which named the artefact but nothing kept it copyable |
+| `device name out of the shell` | a device's own words (taken from the shipped profiles) written as prose under `core/` or `ui/` — the shell names the controller from its routing node, and only the controller's module reads that name from the profile. Identifiers, CSS classes and data attributes are single tokens and pass; MiniHub's own names (AGENTS.md §2) are subtracted first |
 
 ### Tests à ajouter
 
