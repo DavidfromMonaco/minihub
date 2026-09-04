@@ -1,7 +1,6 @@
 #include "midi_network.h"
 #include <algorithm>
 #include <cmath>
-#include <optional>
 #include <unordered_set>
 
 namespace mlh {
@@ -30,9 +29,17 @@ void ArpeggiatorRuntime::process(int samples,Transport& t,std::vector<MidiDestin
  output_.clear();const int available=fifo_.getNumReady();for(int k=0;k<available;++k){int a,b,c,d;fifo_.prepareToRead(1,a,b,c,d);if(b+d==0)break;auto&e=input_[(size_t)(b?a:c)];applyInput(juce::MidiMessage(e.bytes,e.size,0));fifo_.finishedRead(1);}
  if(!t.processingPlaying()||!t.playing()){if(wasPlaying_)panic(dest,hardware);wasPlaying_=false;lastStep_=std::numeric_limits<int64_t>::min();return;} wasPlaying_=true;
  const double delta=t.quarterNotesPerSample(),dur=stepQuarterNotes(config_.rate);if(samples<=0||delta<=0)return;
- std::optional<juce::MidiBuffer::Iterator> iterator;juce::MidiMessage scheduled;int scheduledSample=0;bool hasScheduled=false;if(scheduledInput){iterator.emplace(*scheduledInput);hasScheduled=iterator->getNextEvent(scheduled,scheduledSample);}
+ // Scheduled input is merged into the per-sample loop below rather than applied
+ // up front: an event has to take effect at its own sample, not at the start of
+ // the block. juce::MidiBuffer::Iterator is deprecated in JUCE 9 and its
+ // getNextEvent() copied a MidiMessage out on every call, including the calls
+ // that only advanced past events this block will not reach; the range iterator
+ // holds the same position and copies nothing until a message is actually
+ // applied. Default-constructed, the two compare equal, which is what makes a
+ // null scheduledInput an empty range rather than a special case.
+ juce::MidiBufferIterator scheduled{},scheduledEnd{};if(scheduledInput){scheduled=scheduledInput->begin();scheduledEnd=scheduledInput->end();}
  double previous=t.ppqAtSample(0);for(int sample=0;sample<samples;++sample){const double q=t.ppqAtSample(sample);const bool wrapped=sample>0&&q+1.0e-9<previous;if(wrapped){for(auto&a:active_)if(a.on){emit(juce::MidiMessage::noteOff(a.channel,a.note),sample);a.on=false;}lastStep_=std::numeric_limits<int64_t>::min();}
-  while(hasScheduled&&scheduledSample<=sample){applyInput(scheduled);hasScheduled=iterator->getNextEvent(scheduled,scheduledSample);}
+  while(scheduled!=scheduledEnd){const auto event=*scheduled;if(event.samplePosition>sample)break;applyInput(event.getMessage());++scheduled;}
   for(auto&a:active_)if(a.on&&!wrapped&&q+delta*.5>=a.endPpq){emit(juce::MidiMessage::noteOff(a.channel,a.note),sample);a.on=false;}
   const int64_t step=(int64_t)std::floor(q/dur+1.0e-9);const bool exact=std::abs(q-step*dur)<=delta*.55;bool trigger=false;if(lastStep_==std::numeric_limits<int64_t>::min()){lastStep_=step;trigger=exact;}else if(step!=lastStep_){lastStep_=step;trigger=true;}if(trigger){const int index=(int)((step%config_.patternLength+config_.patternLength)%config_.patternLength);int note=-1,vel=100,tiesAfter=0;float gate=.8f;bool tie=false,rest=false;if(config_.mode==5){const auto& st=config_.steps[(size_t)index];rest=st.rest;tie=st.tie;vel=st.velocity;gate=st.gate;if(heldCount_)note=semitoneOffsetToMidi(config_.root,st.semitoneOffset,held_[0]/12-1);for(int next=index+1;next<config_.patternLength&&config_.steps[(size_t)next].tie;++next)++tiesAfter;}else note=presetNote(step);if(!tie&&!rest&&note>=0){emit(juce::MidiMessage::noteOn(1,note,(juce::uint8)std::clamp(vel,1,127)),sample);for(auto&a:active_)if(!a.on){a={note,1,q+dur*(tiesAfter+std::clamp(gate,.05f,1.f)),true};break;}}}previous=q;}
  flush(dest,hardware,startMs,sampleRate);

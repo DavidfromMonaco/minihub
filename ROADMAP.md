@@ -7,16 +7,17 @@ Counter-intuitive choices: [DECISIONS.md](DECISIONS.md). Long workstreams:
 [PLANS.md](PLANS.md).
 
 **Current state** — branch `master`.
-678 JS tests green, 15 `npm run check` rules green, `dist/` synchronised with the
-sources. The native side is untouched since `73accf5`, where its 3,954 checks and
-a clean Release build were last verified.
+678 JS tests green, 15 `npm run check` rules green, 3,954 native checks green
+across the four test binaries, a Release build with **0 errors and 0 warnings**,
+`dist/` synchronised with the sources.
 
-One caveat on that build, recorded here so it stops being invisible: it reports
-**four `C4996` warnings** on the deprecated `juce::MidiBuffer::Iterator`, inside
-the arpeggiator's real-time path in `midi_network.cpp`. They predate D-019 — a
-cached object file had been hiding them, and renaming the source forced the
-recompile that surfaced them. Until they are fixed, "0 errors, 0 warnings" is
-true of an incremental build only.
+The caveat this line used to carry is gone, **fixed 2026-09-05**: the four
+`C4996` warnings on the deprecated `juce::MidiBuffer::Iterator`, in the
+arpeggiator's real-time path in `midi_network.cpp`, are the range iterator JUCE 9
+wants. "0 errors, 0 warnings" is now true of a **recompile** and not only of an
+incremental build — verified by touching the source to force it and reading the
+whole build log rather than its tail, which is what let those warnings hide
+behind a cached object file in the first place.
 
 The goal of this whole pass is **consolidation before new modules are added**.
 Items 1 to 3 removed the structural obstacles; item 4 is what is left before
@@ -414,7 +415,5 @@ No commitment, no priority — written down so they are not forgotten.
 - The ten `runtime-*-gauntlet.mjs` scripts are one-off harnesses tied to closed
   investigations. To be grouped under `scripts/gauntlets/` or removed once their
   use is confirmed obsolete.
-- Fix the four `C4996` deprecation warnings in `midi_network.cpp`: replace
-  `juce::MidiBuffer::Iterator` with modern JUCE iteration. It sits in the
-  arpeggiator's real-time path, so it deserves its own commit and its own native
-  run — `--core` plus `mlh_realtime_output_tests.exe`.
+~~Fix the four `C4996` deprecation warnings in `midi_network.cpp`~~ — **done
+  2026-09-05**, its own commit and the four native binaries, 3,954 checks.
