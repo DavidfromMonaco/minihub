@@ -1,5 +1,5 @@
 import { parseMidiMessage } from './parseMidi.js';
-import { isMiniLabName, isPerformanceInputName, miniLabScore } from './minilab.js';
+import { isMiniLabName, isPerformanceInputName, bestMiniLabInput } from './minilab.js';
 
 const MIDI_INPUT_PREFERENCE_KEY = 'midiInputPreference';
 
@@ -323,12 +323,9 @@ export class MidiManager {
     return value;
   }
 
-  /** Best-candidate MiniLab input port id, if any. */
+  /** Best-candidate controller input port id, if any. The rule is in portRoles.js. */
   findMiniLabInputId() {
-    const inputs = this.listInputs()
-      .filter((p) => isMiniLabName(p.name))
-      .sort((a, b) => miniLabScore(b.name) - miniLabScore(a.name));
-    return inputs.length ? inputs[0].id : null;
+    return bestMiniLabInput(this.listInputs())?.id ?? null;
   }
 
   /** Send a raw message to the selected output (future modules). */

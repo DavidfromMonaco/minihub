@@ -1,49 +1,51 @@
 /**
- * MiniLab 3 identification helpers.
+ * The three questions `MidiManager` asks about a MIDI port, answered by the
+ * loaded profile instead of by a regular expression.
  *
- * The MiniLab 3 does not expose one MIDI input - on Windows it exposes four,
- * and only some of them carry what you play:
+ * This file used to hold the ranking itself: `/minilab/i` for "is this the
+ * controller", `\b(mcu|hui|din\s*thru)\b` for "can it carry what is played",
+ * and a five-branch score for "which one do we arm". Those three regular
+ * expressions were the last place in the MIDI layer where the application knew
+ * a device by name -- Etape A turned the MiniLab 3 into a file, and left this
+ * behind because the profile field that replaces it, `device.ports[]`, was
+ * written and validated but read by nobody.
  *
- *   "Minilab3 MIDI"      keys, pads, encoders          <- performance MIDI
- *   "Minilab3 ALV"       dedicated Analog Lab channel  <- performance MIDI
- *   "Minilab3 MCU/HUI"   DAW control surface           <- transport/faders only
- *   "Minilab3 DIN THRU"  5-pin DIN pass-through        <- nothing of ours
- *
- * Scoring them all the same meant the first one enumerated (MCU/HUI) was
- * selected, and every key press was filtered out as coming from an unselected
- * input. Ports are therefore ranked by ROLE, not just by name matching.
+ * It is read now, by `portRoles.js`. What is left here is the adapter: the
+ * three exported names `MidiManager` calls, bound to the one profile that
+ * ships. The names are kept exactly as they were so that this change moves no
+ * caller; what changed is that none of them can answer without the profile.
  */
+import { resolvePortRole, isPerformancePort, bestPerformancePort } from './portRoles.js';
+import profile from './profiles/minilab-3.json' with { type: 'json' };
+
+/** True when the profile recognises this port as one of the controller's own. */
 export function isMiniLabName(name) {
-  return /minilab/i.test(name || '');
+  return resolvePortRole(profile, name) !== null;
 }
-
-export function isMiniLab3Name(name) {
-  return /minilab\s*3/i.test(name || '');
-}
-
-/** Ports that exist on the device but never carry played notes. */
-const CONTROL_ONLY = /\b(mcu|hui|din\s*thru|thru)\b/i;
 
 /**
  * True when a port can actually deliver what the user plays. A control-surface
- * or DIN-thru port cannot, no matter how much its name looks like a MiniLab.
+ * or pass-through port cannot, no matter how much its name looks like the
+ * device's.
  */
 export function isPerformanceInputName(name) {
-  return isMiniLabName(name) && !CONTROL_ONLY.test(name || '');
+  return isPerformancePort(profile, name);
 }
 
 /**
- * Rank a port for auto-selection. Higher wins.
- *   0  not a MiniLab
- *   1  MiniLab, but control-surface / DIN thru: cannot send played notes
- *   3  dedicated Analog Lab port: real performance MIDI, app-specific
- *   4  the plain musical port
- *   5  the plain musical port of a MiniLab 3
+ * Rank a port for auto-selection. Higher wins, 0 for a port the profile does
+ * not declare.
+ *
+ * The number is the profile's `priority` verbatim, which is why a rank now says
+ * nothing about whether a port may be armed: the MiniLab 3's pass-through port
+ * declares priority 0, the same as a stranger's keyboard. That question belongs
+ * to `role`, and `isPerformanceInputName` is where it is asked.
  */
 export function miniLabScore(name) {
-  const n = (name || '').toLowerCase();
-  if (!n.includes('minilab')) return 0;
-  if (CONTROL_ONLY.test(n)) return 1;
-  if (/\balv\b|analog\s*lab/.test(n)) return 3;
-  return n.includes('3') ? 5 : 4;
+  return resolvePortRole(profile, name)?.priority ?? 0;
+}
+
+/** Of these ports, the one to arm. See `bestPerformancePort`. */
+export function bestMiniLabInput(ports) {
+  return bestPerformancePort(profile, ports);
 }

@@ -148,7 +148,7 @@ with no change to the registry.
 Inventory established during the audit; everything below is verified.
 
 **Genuinely dead** (no reference in `src/` or `test/`): `buildStampLabel`,
-`isMiniLab3Name`, `PORT_TYPES`, and three `dispose()` that are never called
+`PORT_TYPES`, and three `dispose()` that are never called
 (`ControlBindingManager`, `HardwareConfigManager`, `SequencerController` — only
 `EngineClient`'s is used, in the tests).
 
@@ -157,7 +157,9 @@ Inventory established during the audit; everything below is verified.
 `PLUGIN_FAMILIES`, `knobArcDash`, `knobPointerTransform`, `pearlKnob`,
 `DOCK_MIN_H`, `PORT_ROW`, `PAD_BOTTOM`, `renderControlBindings`.
 `MINILAB_NODE_HEIGHT` left this list by disappearing (item 8, step 6), and
-`dockHeight` left it by acquiring a test.
+`dockHeight` left it by acquiring a test. `isMiniLab3Name` left the dead list
+the same way `MINILAB_NODE_HEIGHT` left this one: the port ranking became data,
+and the last regular expression that spelled a device name went with it.
 
 **Duplicates**:
 

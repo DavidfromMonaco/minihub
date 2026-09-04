@@ -80,10 +80,18 @@ par `midi-in` n'est jamais réémis par `midi-out`. C'est pourquoi
 détection de boucles — sans cela, un monitoring `MiniLab → Sequencer → MiniLab`
 serait faussement refusé (`src/renderer/js/core/graph.js:121`).
 
-L'identification du MiniLab et le choix du meilleur port de performance sont
-dans [minilab.js](src/renderer/js/midi/minilab.js) (`isMiniLabName`,
-`isPerformanceInputName`, `miniLabScore`). La surface de contrôle physique —
-8 potentiomètres, 8 pads, molettes — est décrite dans
+Which physical MIDI port belongs to the controller, and which of its ports can
+carry what is played, is decided by the loaded profile's `device.ports[]`. It is
+read by [portRoles.js](src/renderer/js/midi/portRoles.js), which imports nothing
+and takes the profile as an argument;
+[minilab.js](src/renderer/js/midi/minilab.js) is only the adapter binding those
+answers to the one profile that ships (`isMiniLabName`,
+`isPerformanceInputName`, `miniLabScore`, `bestMiniLabInput`). A
+`control-surface` or `ignore` port is never armed, however much its name looks
+like the device's: `priority` ranks, `role` forbids.
+
+La surface de contrôle physique — 8 potentiomètres, 8 pads, molettes — est
+décrite dans
 [minilabControls.js](src/renderer/js/midi/minilabControls.js)
 (`MINILAB_CONTROL_SOURCES`) et redessinée en SVG par
 [miniLabControlSurface.js](src/renderer/js/ui/miniLabControlSurface.js).
@@ -816,7 +824,8 @@ d'une capture forcée à l'extinction.
 
 `sidebar.js`, `header.js`, `settingsModal.js`, `icons.js`,
 `miniLabControlSurface.js`, `omniPearl.js` — et côté MIDI `midiManager.js`,
-`parseMidi.js`, `minilab.js`, `minilabControls.js`.
+`parseMidi.js`, `controllerProfile.js`, `portRoles.js`, `minilab.js`,
+`minilabControls.js`, plus `profiles/` (one JSON file per controller).
 
 ### `native/audio-engine/src/`
 

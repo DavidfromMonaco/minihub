@@ -9,7 +9,7 @@ nothing in `src/` assumes which device is plugged in.
 entry of [plans/done/controller-profile.md](../done/controller-profile.md), which
 named the decoder's remaining dependency on `midi/minilab.js`.
 
-**Status** — not started.
+**Status** — step 1 of 6 done.
 
 ## Context
 
@@ -63,7 +63,7 @@ D-021, D-022.
 
 ## Steps
 
-- [ ] 1. Port roles read from `device.ports`. A new dependency-free resolver
+- [x] 1. Port roles read from `device.ports`. A new dependency-free resolver
       scores a port name against the loaded profile; `midi/minilab.js` becomes a
       caller of it, keeping its exported names so nothing else moves.
       Check: `npm test` — `hardwarePersistence.test.mjs` and
@@ -115,3 +115,50 @@ Commit `8efe6a7` on `master` — Étape A finished, 631 JS tests, 12 check rules
 written: D-022 splits it, keeps the half that has a user, and refuses the plural
 until a second keyboard exists. The author confirmed the same day that he owns
 one controller.
+
+2026-09-04 — Step 1 done. `src/renderer/js/midi/portRoles.js` is the new
+dependency-free resolver; `midi/minilab.js` keeps its three exported names and
+holds nothing but the binding to the profile that ships. 646 JS tests (13 new in
+`test/portRoles.test.mjs`), 12 check rules, `sync:dist` run.
+
+Four things the step decided that the plan did not say:
+
+- **The specification does not define how `match.name` is compared**, and
+  equality is the wrong answer. Windows hands the same physical port back as
+  `Minilab3 MIDI` on one machine and `MIDIIN2 (Minilab3 MIDI)` on another, and
+  the same device is spelled `Minilab3` by its driver and `MiniLab 3` by its
+  manual. The rule is therefore: the physical name CONTAINS the declared one,
+  both lower-cased with whitespace removed. What it refuses is a fallback — a
+  port no declaration matches belongs to no profile, with no fuzzy resemblance
+  to the vendor or the model string, because a fallback is the old regular
+  expression coming back one device at a time. A profile may declare its own
+  catch-all if its author wants one; the longer declaration wins, so a catch-all
+  never swallows a specific port.
+- **`priority` cannot express "never", so `role` had to be enforced
+  separately.** The pass-through port declares priority 0 and so does a
+  stranger's keyboard. Ranking alone therefore arms the DIN THRU port whenever
+  it is the only one a machine enumerates — it is, after all, the best port
+  present — which is the original bug in its quietest form: an input is
+  selected, the header says connected, and no key press ever arrives.
+  `bestPerformancePort()` filters by `role` first. This is a **behaviour
+  change**, deliberate: specification §4.2 says a `control-surface` or `ignore`
+  port is never auto-selected, no existing test pinned the old answer, and two
+  new ones pin the new one.
+- **The ranking left `MidiManager` entirely.** `findMiniLabInputId()` was a
+  filter and a sort written in the manager; it is now one call. That is what
+  lets a test drive the real selection code with a foreign profile instead of
+  re-implementing the algorithm next to it — the test that proves the machinery
+  is device-agnostic now fails if the machinery changes, which a copy would not.
+- **`miniLabScore('Minilab3 DIN THRU')` returns 0 where it returned 1.** The
+  profile says priority 0; the distinction that mattered — can this port carry a
+  note — is `role` now, and nothing reads the number for that question.
+
+`isMiniLab3Name` went with the regular expressions. It was on the ROADMAP's
+"genuinely dead" list, and it was the last function whose body spelled a device
+name.
+
+One piece of evidence the tests cannot give, taken from the user's own disk
+rather than from a fixture: `%APPDATA%/minilab-hub/settings.json` holds
+`midiInputPreference.name = "Minilab3 MIDI"` — the port name this machine
+actually saw is the one the profile declares, verbatim. The real-application
+check the plan still owes is therefore not a blind one.
