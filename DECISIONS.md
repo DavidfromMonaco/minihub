@@ -810,12 +810,14 @@ armed Learn in the application, with a named owner — refactors
 wrong order, that refactor is paid twice. This comes after Étape A, and after or
 with D-018, never before.
 
-Because the panel goes away, one case has to be answered while building rather
-than after: **a plugin with no editor of its own, or an editor that refuses to
-open, would leave no way to bind it at all.** Either the bar can be opened on its
-own for such a plugin, or those plugins keep the in-app panel as a fallback. The
-answer is whichever costs less once the bar exists; it is not a reason to keep
-two interfaces for every other plugin.
+One case looked like a gap the removal would open, and it is not one. **A plugin
+with no editor of its own cannot be learned today either.** `armLearn()` will
+arm without an open editor when the chain holds a single ready plugin, but arming
+is not binding: a capture requires the native LEARN to observe a parameter
+gesture, and there is no way to make that gesture on a plugin that shows nothing.
+Removing the panel takes nothing away — a plugin you cannot touch has nothing to
+map. Author's answer, 2026-09-04, and the reason this entry states it rather than
+leaving it open.
 
 Settled while building, not in advance: stacking order against a plugin window
 that is itself always-on-top, behaviour across monitors at different DPI, what
