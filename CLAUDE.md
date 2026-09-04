@@ -1,7 +1,7 @@
 # CLAUDE.md
 
-Claude Code ne lit **pas** `AGENTS.md` de lui-même : il lit ce fichier. Celui-ci
-n'existe donc que pour importer la source unique, qui reste `AGENTS.md` pour tous
-les outils. Toute règle nouvelle s'écrit dans `AGENTS.md`, jamais ici.
+Claude Code does **not** read `AGENTS.md` on its own: it reads this file. This
+one therefore exists only to import the single source of truth, which remains
+`AGENTS.md` for every tool. Any new rule is written in `AGENTS.md`, never here.
 
 @AGENTS.md

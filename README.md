@@ -1,70 +1,70 @@
 # MiniHub
 
-Station de travail musicale de bureau (Windows), bâtie autour du contrôleur MIDI
-**Arturia MiniLab 3** : Patch Bay à câbles typés, hôte VST3 natif, séquenceur
-MIDI + audio cadencé à l'échantillon, nœuds Mixer / Morpher / Arpégiateur, et
-apprentissage des potentiomètres physiques vers les paramètres VST3.
+A desktop music workstation for Windows, built around the **Arturia MiniLab 3**
+MIDI controller: a Patch Bay of typed cables, a native VST3 host, a
+sample-accurate MIDI + audio sequencer, Mixer / Morpher / Arpeggiator nodes, and
+learning that binds physical knobs to VST3 parameters.
 
-Le **graphe** — et non l'interface affichée — décide de ce que l'on entend.
+The **graph** — not the page you happen to be looking at — decides what you hear.
 
 ---
 
-## État
+## Status
 
-Projet personnel en développement actif. Pas de version publiée, pas
-d'installateur. Il se construit et se lance depuis les sources.
+A personal project under active development. No published release, no installer.
+It builds and runs from source.
 
-## Prérequis
+## Requirements
 
 | | |
 |---|---|
-| Système | Windows 10/11 — **définitif**, pas de portage prévu |
-| Node.js | 20 ou plus récent |
-| Compilateur | Visual Studio 2022 ou 2026, charge de travail C++ desktop |
-| CMake | 3.22 ou plus récent |
-| Audio | une sortie WASAPI |
+| System | Windows 10/11 — **final**, no port planned |
+| Node.js | 20 or newer |
+| Compiler | Visual Studio 2022 or 2026, C++ desktop workload |
+| CMake | 3.22 or newer |
+| Audio | a WASAPI output |
 
-## Dépendances natives à récupérer
+## Native dependencies to fetch
 
-Environ **682 Mo**, jamais versionnés. À déposer sous `native/third_party/` :
+Roughly **682 MB**, never committed. Drop them under `native/third_party/`:
 
-| Dossier attendu | Quoi |
+| Expected folder | What |
 |---|---|
 | `native/third_party/JUCE` | JUCE 9 |
-| `native/third_party/vst3sdk` | SDK VST3 de Steinberg |
+| `native/third_party/vst3sdk` | Steinberg's VST3 SDK |
 | `native/third_party/portaudio` | PortAudio |
-| `native/third_party/lame` | LAME, avec `bin/lame.exe` |
+| `native/third_party/lame` | LAME, including `bin/lame.exe` |
 
-CMake s'arrête avec un message explicite si l'une manque — il n'y a pas d'échec
-silencieux à ce stade.
+CMake stops with an explicit message if one is missing — there is no silent
+failure at this stage.
 
-## Construire et lancer
+## Build and run
 
 ```bash
 npm install
 ```
 
-Configurer l'arbre natif **une seule fois** (seule étape non scriptée) :
+Configure the native tree **once** (the only unscripted step):
 
 ```bash
 cmake -S native/audio-engine -B native/audio-engine/build -A x64
 ```
 
-Ensuite :
+Then:
 
 ```bash
-npm start              # build natif + sync dist + lancement
+npm start              # native build + dist sync + launch
 ```
 
-## Vérifier
+## Verify
 
 ```bash
-npm test               # tests JS, lanceur node:test
-npm run check          # verificateur d'invariants
-npm run build:native   # doit passer 0 erreur 0 avertissement
+npm test               # JS tests, node:test runner
+npm run check          # invariant checker
+npm run build:native   # must pass with 0 errors, 0 warnings
 ```
 
-Après `npm run build:native:tests`, les quatre binaires natifs :
+After `npm run build:native:tests`, the four native binaries:
 
 ```bash
 native/audio-engine/build/Release/mlh_native_tests.exe --core
@@ -73,36 +73,38 @@ native/audio-engine/build/Release/mlh_native_tests.exe --cross-track-isolation
 native/audio-engine/build/Release/mlh_realtime_output_tests.exe
 ```
 
-**Une modification n'est finie que quand tout ce qui la concerne est vert.**
-Voir [AGENTS.md](AGENTS.md) §8.
+**A change is not finished until everything that touches it is green.**
+See [AGENTS.md](AGENTS.md) §8.
 
-## Diagnostic
+## Diagnosis
 
-Journal de démarrage :
-`%APPDATA%/minilab-hub/minilab-hub-startup.log`. C'est la première chose à lire
-quand le moteur ne démarre pas.
+Startup log: `%APPDATA%/minilab-hub/minilab-hub-startup.log`. It is the first
+thing to read when the engine will not start.
 
 ## Documentation
 
-Le dépôt se documente lui-même. Point d'entrée obligatoire pour un contributeur
-ou un agent : **[AGENTS.md](AGENTS.md)**.
+The repository documents itself. Mandatory entry point for a contributor or an
+agent: **[AGENTS.md](AGENTS.md)**.
 
-| Fichier | Ce qu'il contient |
+| File | What it holds |
 |---|---|
-| [AGENTS.md](AGENTS.md) | la carte — règles absolues, interdits, conventions, commandes |
-| [INTENT.md](INTENT.md) | ce que MiniHub doit être, et ne pas devenir |
-| [ARCHITECTURE.md](ARCHITECTURE.md) | l'architecture technique, par section |
-| [DECISIONS.md](DECISIONS.md) | ce qui a été tranché, et pourquoi |
-| [ROADMAP.md](ROADMAP.md) | ce qui reste à faire |
-| [PLANS.md](PLANS.md) | les chantiers longs, multi-sessions |
+| [AGENTS.md](AGENTS.md) | the map — absolute rules, prohibitions, conventions, commands |
+| [INTENT.md](INTENT.md) | what MiniHub must be, and must not become |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | the technical architecture, section by section |
+| [DECISIONS.md](DECISIONS.md) | what has been settled, and why |
+| [ROADMAP.md](ROADMAP.md) | what is left to do |
+| [PLANS.md](PLANS.md) | long, multi-session workstreams |
 
-## Nom
+## Name
 
-**MiniHub** est le nom du produit. `minilab-hub` (npm, `%APPDATA%`) et `mlh_`
-(cibles natives) sont historiques et **ne doivent pas être « corrigés »** : ce
-sont des chemins existants sur le disque des utilisateurs. **MiniLab** seul
-désigne le contrôleur matériel, jamais l'application. Voir AGENTS.md §2.
+**MiniHub** is the product name. `minilab-hub` (npm, `%APPDATA%`) and `mlh_`
+(native targets) are historical and **must not be "corrected"**: they are paths
+that already exist on users' disks. **MiniLab** alone always means the hardware
+controller, never the application. See AGENTS.md §2.
 
 ## Licence
 
-MIT — voir [LICENSE](LICENSE).
+MIT — see [LICENSE](LICENSE).
+
+MiniHub is an independent project, not affiliated with Arturia. MiniLab is a
+trademark of Arturia.

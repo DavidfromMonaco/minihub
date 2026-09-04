@@ -1,236 +1,225 @@
-# INTENT.md — ce que MiniHub doit être, et ne pas devenir
+# INTENT.md — what MiniHub must be, and must not become
 
-Ce document ne décrit **pas** le code. Il décrit l'intention à laquelle le code
-doit obéir, et surtout les directions dans lesquelles il ne doit pas partir.
+This document does **not** describe the code. It describes the intent the code
+must obey, and above all the directions it must not drift in.
 
-Un agent lit ce fichier **avant** de proposer quoi que ce soit. Une proposition
-techniquement bonne mais contraire à ce document est une mauvaise proposition.
+An agent reads this file **before** proposing anything. A technically good
+proposal that contradicts this document is a bad proposal.
 
-Quand ce document et une idée séduisante s'opposent, c'est ce document qui gagne
-— ou bien il est modifié explicitement, avec sa raison, et
-[DECISIONS.md](DECISIONS.md) enregistre le changement une fois le code écrit.
+When this document and an attractive idea collide, this document wins — or it is
+changed explicitly, with its reason, and [DECISIONS.md](DECISIONS.md) records the
+change once the code is written.
 
 ---
 
-## 1. En une phrase
+## 1. In one sentence
 
-MiniHub est un **bac à sable musical** bâti autour du contrôleur Arturia
-MiniLab 3, où le câblage d'un Patch Bay — et non l'interface affichée — décide
-de ce que l'on entend.
+MiniHub is a **musical sandbox** built around the Arturia MiniLab 3 controller,
+where the wiring of a Patch Bay — and not the interface on screen — decides what
+you hear.
 
-## 2. Pour qui
+## 2. Who it is for
 
-**Un utilisateur : son auteur.** Toutes les décisions se tranchent en faveur de
-cet usage-là, sur cette machine-là. Il n'y a pas d'utilisateur hypothétique dont
-il faudrait anticiper les besoins.
+**One user: its author.** Every decision is settled in favour of that use, on
+that machine. There is no hypothetical user whose needs must be anticipated.
 
-**Horizon de partage, conditionnel.** Si le produit devient assez bon pour
-apporter quelque chose à d'autres, il pourra être distribué. Ce n'est ni un
-objectif ni une échéance : c'est une possibilité qu'on garde ouverte.
-Conséquence pratique, et la seule : **ne pas coder en dur ce qui est propre à
-cette machine** — chemins absolus, noms de périphériques, identifiants de
-plugins, répertoires personnels. Tout le reste des contraintes de distribution
-(installateur, premier lancement, licences) est **hors périmètre tant que la
-décision n'est pas prise**.
+**A conditional horizon of sharing.** If the product becomes good enough to be
+worth something to other people, it may be distributed. That is neither a goal
+nor a deadline: it is a possibility kept open. The one practical consequence,
+and the only one: **do not hard-code what is specific to this machine** —
+absolute paths, device names, plugin identifiers, personal directories.
+Everything else about distribution (installer, first run, licensing) is **out of
+scope until the decision is made**.
 
-Ne pas confondre avec « préparer la distribution ». Ajouter aujourd'hui de la
-mécanique d'installation, de mise à jour ou d'onboarding serait travailler pour
-un utilisateur qui n'existe pas.
+Do not confuse this with "preparing for distribution". Adding installation,
+update or onboarding machinery today would be working for a user who does not
+exist.
 
-## 3. Les deux usages qui définissent le produit
+## 3. The two uses that define the product
 
-MiniHub doit tenir **les deux à la fois**. Une proposition qui sert l'un en
-dégradant l'autre est à rejeter ou à repenser.
+MiniHub must hold **both at once**. A proposal that serves one by degrading the
+other is to be rejected or rethought.
 
-| Usage | Ce que ça exige |
+| Use | What it demands |
 |---|---|
-| **Produire un morceau complet** | Le séquenceur, l'enregistrement et l'export doivent être assez solides et fidèles pour finir un titre sans autre logiciel. Timing exact, export sans surprise, projets qui se rouvrent intacts. |
-| **Jouer de la musique générative en direct** | Le graphe doit rester manipulable pendant que le son tourne. Aucune opération courante ne doit imposer une coupure audio, un rechargement, ou un état à reconstruire à la main. |
+| **Finish a complete track** | The sequencer, recording and export must be solid and faithful enough to finish a track with no other software. Exact timing, export without surprises, projects that reopen intact. |
+| **Play generative music live** | The graph must stay editable while sound is running. No routine operation may force an audio dropout, a reload, or a state rebuilt by hand. |
 
-La tension entre les deux est le cœur de l'architecture : c'est elle qui explique
-la séparation topologie / valeurs ([DECISIONS.md](DECISIONS.md) D-004), les
-chaînes VST `append-only` qui survivent aux plans, et l'interdiction absolue de
-bloquer le thread audio.
+The tension between the two is the heart of the architecture: it explains the
+topology/values split ([DECISIONS.md](DECISIONS.md) D-004), the append-only VST
+chains that outlive plans, and the absolute ban on blocking the audio thread.
 
-## 4. Ce que MiniHub est
+## 4. What MiniHub is
 
-- Un **Patch Bay** où l'on relie des nœuds par des câbles typés, et où le graphe
-  est l'unique autorité du routage.
-- Un **hôte VST3** natif : chaînes en série, éditeurs natifs, persistance de
-  l'état des plugins.
-- Un **séquenceur** d'arrangement MIDI + audio cadencé à l'échantillon, avec
-  enregistrement, export multi-format et éditeur de clips.
-- Un jeu de **nœuds de traitement** : Mixer, Morpher, Arpégiateur.
-- Un **apprentissage de contrôles** reliant potentiomètres et pads physiques aux
-  paramètres VST3.
+- A **Patch Bay** where nodes are joined by typed cables, and where the graph is
+  the sole routing authority.
+- A native **VST3 host**: serial chains, native editors, persistent plugin state.
+- A **sequencer** for sample-accurate MIDI + audio arrangement, with recording,
+  multi-format export and a clip editor.
+- A set of **processing nodes**: Mixer, Morpher, Arpeggiator.
+- **Control learning** that binds physical knobs and pads to VST3 parameters.
 
-## 5. Le matériel : le MiniLab est la référence, pas une prison
+## 5. The hardware: the MiniLab is the reference, not a cage
 
-Le MiniLab 3 est le **cas d'usage de référence** : c'est lui qui est modélisé,
-dessiné, testé, et c'est sur lui que les arbitrages se tranchent.
+The MiniLab 3 is the **reference use case**: it is what gets modelled, drawn and
+tested, and it is what trade-offs are settled against.
 
-Mais l'architecture ne doit **pas rendre impossible** un second contrôleur. Un
-identifiant matériel qui s'enracine dans le cœur du graphe est un défaut, pas
-une simplification — c'est ce que [DECISIONS.md](DECISIONS.md) D-008 a corrigé
-côté JS et n'a pas fini de corriger côté C++.
+But the architecture must **not make a second controller impossible**. A hardware
+identifier rooted in the core of the graph is a defect, not a simplification —
+that is what [DECISIONS.md](DECISIONS.md) D-008 fixed on the JS side and has not
+finished fixing on the C++ side.
 
-Nuance à ne pas franchir : **ne pas rendre impossible ≠ généraliser
-maintenant**. Écrire une couche d'abstraction pour des contrôleurs qui n'existent
-pas dans ce projet est du travail spéculatif.
+The distinction not to cross: **not making it impossible ≠ generalising now.**
+Writing an abstraction layer for controllers that do not exist in this project is
+speculative work.
 
-**Windows est définitif.** WASAPI, le format VST3 Windows, `%APPDATA%`, le
-stamping `rcedit` : ce sont des acquis, pas des dettes. Toute abstraction
-multi-plateforme proposée « au cas où » est à refuser.
+**Windows is final.** WASAPI, the Windows VST3 format, `%APPDATA%`, `rcedit`
+stamping: these are commitments, not debt. Any cross-platform abstraction
+proposed "just in case" is to be refused.
 
-## 6. Ce que MiniHub n'est pas, et ne devient pas
+## 6. What MiniHub is not, and does not become
 
-- **Pas un produit multi-utilisateur.** Aucun compte, aucun profil, aucune
-  synchronisation, aucun partage de projet entre machines.
-- **Pas un service.** Le démarrage ne dépend d'aucun serveur, d'aucune base de
-  données, d'aucun compte. L'application doit rester pleinement utilisable sans
-  réseau (voir §7).
-- **Pas une plateforme extensible.** Pas de système de greffons maison, pas de
-  langage de script utilisateur, pas d'API publique. Les greffons, ce sont les
-  VST3.
-- **Pas un projet à dépendances.** L'absence de bundler, de framework et de
-  dépendance runtime est un choix d'identité, pas un retard technique
+- **Not a multi-user product.** No accounts, no profiles, no sync, no sharing of
+  projects between machines.
+- **Not a service.** Startup depends on no server, no database, no account. The
+  application must stay fully usable with no network (see §7).
+- **Not an extensible platform.** No in-house plugin system, no user scripting
+  language, no public API. The plugins are VST3.
+- **Not a project with dependencies.** The absence of a bundler, a framework and
+  any runtime dependency is a choice of identity, not technical lag
   ([DECISIONS.md](DECISIONS.md) D-003).
-- **Pas un clone de DAW.** Une fonctionnalité ne se justifie jamais par « les
-  autres DAW l'ont ». Elle se justifie par l'un des deux usages du §3.
+- **Not a DAW clone.** A feature is never justified by "other DAWs have it". It
+  is justified by one of the two uses in §3.
 
-**Hors périmètre par défaut** : sends, sidechains, minimap, annuler/refaire,
-disposition automatique du graphe, groupes de nœuds. Les types de nœuds `video`
-et `image` existent dans le registre avec des ports vides ; **rien ne doit les
-implémenter** tant que cette ligne n'a pas changé.
+**Out of scope by default**: sends, sidechains, minimap, undo/redo, automatic
+graph layout, node groups. The `video` and `image` node types exist in the
+registry with empty ports; **nothing must implement them** until this line
+changes.
 
-Le refus n'est pas définitif par principe : il est définitif **par défaut**.
-Lever un de ces refus se fait ici, explicitement, avec sa raison — comme la
-gestion de presets l'a été au §8, et l'automation au §8 bis.
+The refusal is not permanent on principle: it is permanent **by default**.
+Lifting one of these is done here, explicitly, with its reason — as preset
+management was in §8, and automation in §8 bis.
 
-## 7. Le réseau : autorisé, confiné
+## 7. The network: allowed, confined
 
-MiniHub **n'est pas une application hors ligne par principe** : rien dans son
-architecture ne l'interdit. Mais **aucune fonctionnalité n'utilise le réseau
-aujourd'hui**, et aucune n'est prévue — le module de presets qui motivait cette
-section a été abandonné ([DECISIONS.md](DECISIONS.md) D-013).
+MiniHub **is not an offline application on principle**: nothing in its
+architecture forbids the network. But **no feature uses the network today**, and
+none is planned — the preset module that motivated this section was abandoned
+([DECISIONS.md](DECISIONS.md) D-013).
 
-Ce qui suit ne décrit donc pas un existant : c'est le cadre que devra respecter
-le premier usage du réseau, le jour où il y en aura un.
+What follows therefore does not describe anything that exists: it is the frame
+the first use of the network will have to respect, the day there is one.
 
-- **L'application reste pleinement utilisable sans réseau.** Aucune
-  fonctionnalité existante ne peut se mettre à en dépendre. Une absence de
-  connexion dégrade, elle n'empêche jamais de jouer ni d'ouvrir un projet.
-- **Aucune donnée de l'utilisateur ne sort.** Pas de télémétrie, pas de
-  statistiques d'usage, pas d'envoi de projet, pas de compte.
-- **Le réseau appartient au processus principal.** Le renderer n'a ni disque ni
-  réseau : sa CSP est `default-src 'self'` et ne doit pas être élargie. Toute
-  requête passe par une commande en liste blanche, avec son validateur, comme
-  tout le reste ([ARCHITECTURE.md](ARCHITECTURE.md) §4).
-- **Tout contenu distant est une valeur externe.** Il est validé avant d'entrer
-  dans l'état, et échappé avant d'atteindre `innerHTML` (invariant 9).
-- **Aucune vérification de mise à jour automatique**, tant que la question de la
-  distribution n'est pas tranchée (§2).
+- **The application stays fully usable with no network.** No existing feature may
+  start depending on it. A missing connection degrades; it never prevents playing
+  or opening a project.
+- **No user data leaves.** No telemetry, no usage statistics, no project upload,
+  no account.
+- **The network belongs to the main process.** The renderer has neither disk nor
+  network: its CSP is `default-src 'self'` and must not be widened. Every request
+  goes through an allow-listed command, with its validator, like everything else
+  ([ARCHITECTURE.md](ARCHITECTURE.md) §4).
+- **All remote content is an external value.** It is validated before entering
+  state, and escaped before reaching `innerHTML` (invariant 9).
+- **No automatic update check**, until the distribution question is settled (§2).
 
-## 8. Refus reconduit : la gestion de presets
+## 8. Refusal upheld: preset management
 
-**Statut : tranché le 2026-09-03. Hors périmètre.**
+**Status: settled 2026-09-03. Out of scope.**
 
-Ce refus avait été levé le 2026-09-02, et un ExecPlan a mené le chantier
-jusqu'à l'étape 8 sur 9 avant d'être arrêté. **Le refus est reconduit** ;
-[DECISIONS.md](DECISIONS.md) D-013 porte les mesures qui l'ont tranché, dont les
-deux qui suffisent : aucun fichier `.vstpreset` n'existe sur la machine, et le
-besoin est déjà servi deux fois — par le navigateur de presets de chaque VST3,
-et par `capturePluginStates` / `persistPluginStateChunk` qui persistent déjà
-l'état de chaque plugin dans le projet.
+This refusal was lifted on 2026-09-02, and an ExecPlan carried the workstream to
+step 8 of 9 before being stopped. **The refusal is upheld**;
+[DECISIONS.md](DECISIONS.md) D-013 holds the measurements that settled it,
+including the two that suffice: no `.vstpreset` file exists on the machine, and
+the need is already served twice — by each VST3's own preset browser, and by
+`capturePluginStates` / `persistPluginStateChunk`, which already persist every
+plugin's state inside the project.
 
-Ne pas rouvrir ce chantier sur l'argument « il existe des presets à récupérer ».
-Ce qui le rouvrirait légitimement est autre chose, et D-013 le nomme : **rappeler
-une configuration MiniHub** — une chaîne VST plus un arpégiateur plus des
-mappings MiniLab, recallable dans un autre projet. Aucun plugin ne fera jamais
-ça, et ça ne traverse aucun réseau.
+Do not reopen this on the argument "there are presets to recover". What would
+legitimately reopen it is something else, and D-013 names it: **recalling a
+MiniHub configuration** — a VST chain plus an arpeggiator plus MiniLab bindings,
+recallable in another project. No plugin will ever do that, and it crosses no
+network.
 
-## 8 bis. Refus levé : l'automation, sous la forme d'un nœud Matrix
+## 8 bis. Refusal lifted: automation, in the form of a Matrix node
 
-**Statut : tranché le 2026-09-03. Dans le périmètre.**
+**Status: settled 2026-09-03. In scope.**
 
-`automation` figurait au §6 depuis l'origine. Le refus est levé, pour une raison
-qui était déjà écrite ailleurs dans ce document : le §3 désigne **« jouer de la
-musique générative en direct »** comme l'un des deux usages qui *définissent* le
-produit. Un setup qui ne peut pas changer d'état tout seul dans le temps ne joue
-pas de musique générative — il joue une boucle. Le refus contredisait donc le §3
-depuis le début ; ce qui manquait, c'était de s'en apercevoir.
+`automation` sat in §6 from the start. The refusal is lifted, for a reason that
+was already written elsewhere in this document: §3 names **"play generative music
+live"** as one of the two uses that *define* the product. A setup that cannot
+change state on its own over time is not playing generative music — it is playing
+a loop. The refusal had therefore contradicted §3 from the beginning; what was
+missing was noticing it.
 
-Ce qui est levé est **précisément délimité**, et pas un mot de plus :
+What is lifted is **precisely bounded**, and not a word more:
 
-- un nœud **Matrix**, unique par projet, ajouté à la main, qui gouverne les
-  nœuds auxquels il est **réellement câblé** par un lien `control` ;
-- des scènes, des états cibles, des rampes et des règles de sortie à seed
-  reproductible.
+- a **Matrix** node, one per project, added by hand, governing the nodes it is
+  **actually wired to** by a `control` link;
+- scenes, target states, ramps and output rules with a reproducible seed.
 
-Ce qui **reste** hors périmètre, et que la Matrix ne doit jamais devenir :
+What **stays** out of scope, and what the Matrix must never become:
 
-- pas de **piste d'automation** dans le séquenceur — ni ligne, ni point, ni
-  courbe dessinée sur l'arrangement. C'est l'automation de DAW du §6, et elle
-  reste refusée ;
-- pas de langage de script (§6, « pas une plateforme extensible ») ;
-- pas de génération par modèle ou par réseau (§7) ;
-- pas de seconde DAW dans l'application.
+- no **automation lane** in the sequencer — no line, no point, no curve drawn on
+  the arrangement. That is the DAW automation of §6, and it stays refused;
+- no scripting language (§6, "not an extensible platform");
+- no model- or network-driven generation (§7);
+- no second DAW inside the application.
 
-La différence tient en une phrase : la Matrix **gouverne des nœuds**, elle ne
-**dessine pas des courbes sur un temps**. Une demande qui la ferait glisser vers
-la seconde forme rouvre le refus du §6, elle ne prolonge pas cette levée.
+The difference fits in one sentence: the Matrix **governs nodes**, it does not
+**draw curves over time**. A request that slides it towards the second form
+reopens the refusal in §6; it does not extend this lifting.
 
-Spécification cible : `SPECIFICATION_MATRIX_MINIHUB.md`. Décisions :
-[DECISIONS.md](DECISIONS.md) D-016 (la levée), D-017 (l'horloge), D-018 (le
-Learn partagé).
+Target specification: `SPECIFICATION_MATRIX_MINIHUB.md`. Decisions:
+[DECISIONS.md](DECISIONS.md) D-016 (the lifting), D-017 (the clock), D-018 (the
+shared Learn).
 
-## 9. Arbitrages
+## 9. Trade-offs
 
-**La règle de conduite, non négociable :** quand une demande entre en conflit
-avec l'architecture existante, **le dire avant de construire**, en nommant ce
-qui casserait — « si ce module est fait comme ça, ceci se casse, donc voilà
-comment le repenser ». Ne jamais construire d'abord et signaler ensuite. Ne
-jamais construire en silence en espérant que ça passe.
+**The rule of conduct, non-negotiable:** when a request conflicts with the
+existing architecture, **say so before building**, naming what would break — "if
+this module is built that way, this breaks, so here is how to rethink it". Never
+build first and report afterwards. Never build in silence hoping it slips
+through.
 
-**L'ordre par défaut**, quand deux qualités s'opposent :
+**The default order**, when two qualities collide:
 
-1. **Ne pas casser ce qui marche.** Une régression sur un chemin audio coûte
-   plus que n'importe quelle fonctionnalité gagnée.
-2. **Solidité et lisibilité** du code existant.
-3. **Fonctionnalités nouvelles.**
-4. **Élégance visuelle.**
+1. **Do not break what works.** A regression on an audio path costs more than any
+   feature gained.
+2. **Solidity and readability** of the existing code.
+3. **New features.**
+4. **Visual elegance.**
 
-*L'auteur confirme la préférence pour la solidité ; l'ordre exact des rangs 3 et
-4 reste à valider par l'usage.*
+*The author confirms the preference for solidity; the exact order of ranks 3 and
+4 remains to be validated by use.*
 
-Corollaire déjà appliqué dans ce dépôt : une passe de consolidation passe avant
-un nouveau module, et un invariant énoncé doit devenir un test ou une règle de
-`npm run check` — sinon ce n'est qu'un vœu.
+A corollary already applied in this repository: a consolidation pass comes before
+a new module, and a stated invariant must become a test or an `npm run check`
+rule — otherwise it is only a wish.
 
-## 10. À quoi ressemble un échec
+## 10. What failure looks like
 
-- Le graphe cesse d'être l'autorité : ce qu'on entend dépend de la page ouverte.
-- Le thread audio se met à bloquer, et les décrochages deviennent « normaux ».
-- Jouer en direct impose une coupure audio pour changer quoi que ce soit.
-- Ajouter un type de nœud redevient un chantier de plusieurs fichiers partagés.
-- Une dépendance, un bundler ou un framework entre dans le renderer.
-- L'application cesse de fonctionner sans réseau.
-- La documentation se remet à mentir : `dist/` diverge de `src/`, un invariant
-  énoncé n'est plus vrai, une décision est défaite sans entrée dans
+- The graph stops being the authority: what you hear depends on the open page.
+- The audio thread starts blocking, and dropouts become "normal".
+- Playing live requires an audio dropout to change anything.
+- Adding a node type becomes a multi-file workstream again.
+- A dependency, a bundler or a framework enters the renderer.
+- The application stops working without a network.
+- The documentation starts lying again: `dist/` diverges from `src/`, a stated
+  invariant is no longer true, a decision is undone with no entry in
   [DECISIONS.md](DECISIONS.md).
 
-## 11. Questions ouvertes
+## 11. Open questions
 
-Ces points ne sont **pas tranchés**. Tant qu'ils le restent, un agent ne doit ni
-les supposer résolus, ni engager de travail qui en dépend.
+These are **not settled**. While they remain open, an agent must neither assume
+them resolved nor start work that depends on them.
 
-1. **Seuil de performance non négociable** — existe-t-il un objectif chiffré
-   (par exemple tenir un bloc de 256 échantillons avec N plugins chargés) qui,
-   s'il n'est plus atteint, doit bloquer une évolution ?
-2. **Rangs 3 et 4 du §9** — fonctionnalités avant élégance visuelle, ou
-   l'inverse ?
+1. **A non-negotiable performance threshold** — is there a numeric target (say,
+   holding a 256-sample block with N plugins loaded) that, once missed, must
+   block a change?
+2. **Ranks 3 and 4 of §9** — features before visual elegance, or the reverse?
 
-Le langage visuel, lui, **n'est plus une question ouverte** : le modèle est
-tranché ([DECISIONS.md](DECISIONS.md) D-012 — une coquille `base.css`, au plus
-une façade `omni-pearl`, jamais mélangées, par défaut `base.css`). Reste un
-choix esthétique éditeur par éditeur, qui ne bloque plus rien.
+The visual language is **no longer an open question**: the model is settled
+([DECISIONS.md](DECISIONS.md) D-012 — one `base.css` shell, at most one
+`omni-pearl` faceplate, never mixed, `base.css` by default). What remains is an
+aesthetic choice made editor by editor, and it blocks nothing.

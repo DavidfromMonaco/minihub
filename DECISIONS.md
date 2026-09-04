@@ -652,3 +652,49 @@ propriétaire nommé resterait.
 `multiple-plugin-targets` / `multiple-plugin-editors-open`, le commentaire
 « The native engine also supersedes its previous operation atomically ».
 Côté natif : `PluginInstance::armParameterLearn`, `activeLearnId_`.
+
+---
+
+## D-019 — Every document is in English, like the code
+
+**Status**: in force · 2026-09-04
+
+**Context** — Until today AGENTS.md §6 split the repository in two: English for
+code, comments, docstrings and identifiers; accented French for `.md` documents.
+That split was coherent while the only reader was the author. Three facts
+changed it. The repository is public and MIT-licensed. The public site
+(`minihub.site`) was decided in English, without discussion. And the documents
+are the *only* way to understand this project: the architecture is not derivable
+from the code — it is written in ARCHITECTURE.md, and the reasons live here.
+
+A contributor who lands on a public repository and cannot read why the audio
+thread never blocks does not read the code more carefully. They open a pull
+request that breaks invariant 3.
+
+**Decision** — Everything is in English: code and `.md` documents alike. The
+split in AGENTS.md §6 is removed, not softened.
+
+The vocabulary is **not invented for the occasion**: it is taken from the code,
+which was already English. `scripts/check-invariants.mjs` already names the
+concepts — `shell` and `faceplate` for the two stylesheets, `renderer
+isolation`, `project keys`, `system node ids`, `module boundary`. Translating
+towards any other term would have created a fifth naming layer, the failure mode
+D-008 exists to prevent.
+
+**Consequence** — Commit messages before 2026-09-04 stay in French. They are
+history: rewriting them would change every hash for no gain. File names do not
+change either, which is what keeps this cheap — the 62 inter-document links
+point at file names, never at section anchors, so no link breaks.
+
+`npm run check` enforces nothing here: no rule reads a `.md` file. This decision
+therefore rests on review, not on a command — which makes it weaker than the
+others in this register, and it is worth saying so plainly.
+
+**What would justify revisiting it** — A contributor base that reads French
+better than English, or documents so tied to French phrasing that the English
+version loses precision. Neither is true today: these documents are technical,
+and their vocabulary was already English underneath.
+
+**Proof in the code** — `AGENTS.md` §6, `scripts/check-invariants.mjs` rule
+names, and the `minihub-site` repository, written in English from its first
+commit.
