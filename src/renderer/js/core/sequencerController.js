@@ -1,13 +1,34 @@
 import { SequencerModel, defaultSequencerState } from './sequencerModel.js';
 import { normalizeTempo } from './tempoControl.js';
-import { AUDIO_INPUT_NODE_ID, MINILAB_NODE_ID, SEQUENCER_NODE_ID } from './systemNodes.js';
+import { AUDIO_INPUT_NODE_ID, SEQUENCER_NODE_ID } from './systemNodes.js';
 
 const STATE_KEY = 'sequencerState';
 const LEGACY_DEVICE_INPUT_ID = 'device-input';
 const EXPORT_STALL_TIMEOUT_MS = 60000;
 
-const isCanonicalMidiIngress = (connection) => connection?.from?.nodeId === MINILAB_NODE_ID
-  && connection?.from?.portId === 'midi-out';
+/**
+ * A cable carrying what is PLAYED into the sequencer.
+ *
+ * It used to be `from.nodeId === MINILAB_NODE_ID`, which is the sequencer
+ * holding an opinion about which keyboard is plugged in. What actually decides
+ * is the kind of node the cable leaves: `midi-output` is MiniHub's word for a
+ * hardware MIDI endpoint -- `network.js` exempts that type from cycle detection
+ * for exactly that reason -- and `midi-out` is the side of such a node that
+ * carries what the hardware sends. A controller under any profile id satisfies
+ * both.
+ *
+ * The port check is not tidiness. A node representing an external MIDI
+ * destination is the same type with a `midi-in` port and no `midi-out`, and
+ * without the check the sequencer would accept a cable that can only ever run
+ * the other way.
+ *
+ * Exported because `modules/sequencer/sequencerModule.js` asked the same
+ * question with its own copy of the id comparison, and two answers to "is this
+ * the controller's cable" disagree the day a profile changes.
+ */
+export const isCanonicalMidiIngress = (network, connection) =>
+  connection?.from?.portId === 'midi-out'
+  && network?.getNode(connection.from.nodeId)?.type === 'midi-output';
 
 function baseName(filePath) {
   return String(filePath || '').split(/[\\/]/).pop()?.replace(/\.[^.]+$/, '') || 'Audio Clip';
@@ -467,7 +488,7 @@ export class SequencerController {
       this._syncQueued = false;
       const state = this.model.snapshot();
       const incomingMidi = this.hub.network.connectionsTo('sequencer', 'midi-in')
-        .filter(isCanonicalMidiIngress);
+        .filter((connection) => isCanonicalMidiIngress(this.hub.network, connection));
       const incomingAudio = new Set(this.hub.network.connectionsTo('sequencer', 'audio-in')
         .map((connection) => connection.from.nodeId));
       const routedMidi = new Set(this.hub.network.connectionsFrom('sequencer', 'midi-out').map((connection) => connection.to.nodeId));
@@ -491,7 +512,8 @@ export class SequencerController {
   }
 
   _liveDestinationIds() {
-    if (!this.hub.network.connectionsTo(SEQUENCER_NODE_ID, 'midi-in').some(isCanonicalMidiIngress)) return [];
+    if (!this.hub.network.connectionsTo(SEQUENCER_NODE_ID, 'midi-in')
+      .some((connection) => isCanonicalMidiIngress(this.hub.network, connection))) return [];
     const selectedInputId = this.hub.midi.selectedInputId;
     const connected = new Set(this.hub.network.connectionsFrom(SEQUENCER_NODE_ID, 'midi-out')
       .map((connection) => connection.to.nodeId));
@@ -649,10 +671,29 @@ export class SequencerController {
     if (track.type === 'midi') {
       return track.inputId === this.hub.midi.selectedInputId
         && this.hub.network.connectionsTo(SEQUENCER_NODE_ID, 'midi-in')
-          .some(isCanonicalMidiIngress);
+          .some((connection) => isCanonicalMidiIngress(this.hub.network, connection));
     }
     return this.hub.network.connectionsTo(SEQUENCER_NODE_ID, 'audio-in')
       .some((connection) => connection.from.nodeId === track.inputId);
+  }
+
+  /**
+   * What to call the hardware MIDI source in a message the user has to act on.
+   *
+   * These messages spelled "MiniLab 3", which is the sequencer telling someone
+   * with another keyboard to connect one he does not own. The node's own name is
+   * what he sees in the Patch Bay, so it is what the message says.
+   *
+   * Only when there is exactly one such node. Two hardware MIDI sources means
+   * naming one of them is a guess, and a message that guesses sends the user to
+   * the wrong card; DECISIONS.md D-022 says there is one until a second keyboard
+   * exists, so the plural case falls back to a phrase rather than to a coin
+   * toss.
+   */
+  _midiSourceLabel() {
+    const sources = this.hub.network.listNodes().filter((node) => node.type === 'midi-output'
+      && node.outputs?.some((port) => port.id === 'midi-out'));
+    return sources.length === 1 ? sources[0].name : 'your controller';
   }
 
   /** Human-readable reason why a take cannot start, or an empty string when ready. */
@@ -674,16 +715,18 @@ export class SequencerController {
 
     const armedMidi = armed.filter((track) => track.type === 'midi');
     if (armedMidi.length) {
+      const source = this._midiSourceLabel();
       if (!this.hub.midi.selectedInputId) {
-        return 'No MIDI input is detected or selected. Connect MiniLab 3, then choose it in the track Input field.';
+        return `No MIDI input is detected or selected. Connect ${source}, then choose it in the track Input field.`;
       }
       if (armedMidi.every((track) => !track.inputId)) {
         return 'Choose the detected MIDI port in the armed track Input field.';
       }
-      if (!this.hub.network.connectionsTo(SEQUENCER_NODE_ID, 'midi-in').some(isCanonicalMidiIngress)) {
-        return 'Connect MiniLab 3 MIDI OUT to Sequencer MIDI IN in Patch Bay.';
+      if (!this.hub.network.connectionsTo(SEQUENCER_NODE_ID, 'midi-in')
+        .some((connection) => isCanonicalMidiIngress(this.hub.network, connection))) {
+        return `Connect ${source}'s MIDI OUT to Sequencer MIDI IN in Patch Bay.`;
       }
-      return 'The armed MIDI track Input must match the selected MiniLab MIDI port.';
+      return `The armed MIDI track Input must match the MIDI port selected for ${source}.`;
     }
 
     if (armed.every((track) => !track.inputId)) {

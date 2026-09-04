@@ -17,7 +17,6 @@ function rig(initial = {}) {
     outputs: [{ id: 'midi-out', type: 'midi' }, { id: 'audio-out', type: 'audio' }],
     onInput: (_portId, message) => controller.receiveMidiInput(message)
   });
-  network.addNode({ id: 'midi-source', name: 'MIDI Source', type: 'midi-output', inputs: [], outputs: [{ id: 'midi-out', type: 'midi' }] });
   network.addNode({ id: 'vst-001', name: 'VST 1', type: 'vst', inputs: [{ id: 'midi-in', type: 'midi' }, { id: 'audio-in', type: 'audio' }], outputs: [{ id: 'audio-out', type: 'audio' }], onInput: (_portId, message) => commands.push({ type: 'liveMidi', chainId: 'vst-001', message }) });
   network.addNode({ id: 'minilab-3', name: 'MiniLab 3', type: 'midi-output', inputs: [{ id: 'midi-in', type: 'midi' }], outputs: [{ id: 'midi-out', type: 'midi' }] });
   network.addNode({ id: 'audio-input', name: 'Audio Input', type: 'audio-input', inputs: [], outputs: [{ id: 'audio-out', type: 'audio' }] });
@@ -233,7 +232,7 @@ test('record readiness explains each missing step instead of silently disabling 
   hub.midi.selectedInputId = 'selected-midi';
   assert.match(controller.recordBlockReason(), /Choose the detected MIDI port/);
   controller.setTrack(track.id, { inputId: 'selected-midi' });
-  assert.match(controller.recordBlockReason(), /Connect MiniLab 3 MIDI OUT/);
+  assert.match(controller.recordBlockReason(), /Connect MiniLab 3's MIDI OUT/);
   hub.network.connect('minilab-3', 'midi-out', 'sequencer', 'midi-in');
   assert.equal(controller.recordBlockReason(), '');
   assert.equal(controller.startRecording(), true);
@@ -370,7 +369,7 @@ test('Record cannot start while a project replacement owns the transition lock',
   assert.match(messages[0], /changing project/);
 });
 
-test('a rogue MIDI cable cannot impersonate the canonical MiniLab recording ingress', async () => {
+test('an arpeggiator MIDI OUT cannot impersonate a hardware recording ingress', async () => {
   const { controller, hub, commands } = rig();
   hub.network.addNode({
     id: 'rogue-arp', type: 'arpeggiator', inputs: [],
@@ -385,7 +384,44 @@ test('a rogue MIDI cable cannot impersonate the canonical MiniLab recording ingr
   const native = commands.filter((command) => command.type === 'syncSequencer').at(-1);
   assert.equal(native.project.tracks.find((item) => item.id === track.id).inputId, '');
   assert.equal(controller.startRecording(), false,
-    'record remains gated until minilab-3.midi-out is visibly connected');
+    'record stays gated until a hardware MIDI source is visibly connected');
+});
+
+/**
+ * DECISIONS.md D-022, and step 4 of the one-other-controller plan: the sequencer
+ * stops recognising its recording source by name.
+ *
+ * A friend's keyboard registers a routing node under his own profile's id, so
+ * every gate that used to read `from.nodeId === 'minilab-3'` has to open for a
+ * node it has never heard of -- and the message that tells him what to connect
+ * has to name his keyboard rather than one he does not own. The MiniLab node is
+ * removed here rather than left alongside: with two hardware sources present,
+ * naming one of them would be a guess, and D-022 says there is one.
+ */
+test('a controller that is not the MiniLab is a legitimate recording source', async () => {
+  const { controller, hub, commands } = rig();
+  hub.network.removeNode('minilab-3');
+  hub.network.addNode({
+    id: 'vega-49', name: 'Vega 49', type: 'midi-output',
+    inputs: [{ id: 'midi-in', type: 'midi' }],
+    outputs: [{ id: 'midi-out', type: 'midi' }]
+  });
+  const track = controller.model.addTrack('midi');
+  hub.midi.selectedInputId = 'selected-midi';
+  controller.model.updateTrack(track.id, { armed: true, inputId: 'selected-midi' });
+
+  assert.match(controller.recordBlockReason(), /Connect Vega 49's MIDI OUT/,
+    'the message names the node the user can see, not a device MiniHub assumes he owns');
+
+  hub.network.connect('vega-49', 'midi-out', 'sequencer', 'midi-in');
+  assert.equal(controller.recordBlockReason(), '', 'nothing is left to explain');
+  assert.equal(controller.hasInputRoute(controller.model.state.tracks[0]), true);
+  assert.equal(controller.startRecording(), true);
+
+  await new Promise((resolve) => queueMicrotask(resolve));
+  const native = commands.filter((command) => command.type === 'syncSequencer').at(-1);
+  assert.equal(native.project.tracks.find((item) => item.id === track.id).inputId, 'selected-midi',
+    'the native sequencer is told the take has a live input, not an empty one');
 });
 
 test('changing or deleting the last track destination removes only its obsolete route', () => {

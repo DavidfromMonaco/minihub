@@ -9,7 +9,7 @@ nothing in `src/` assumes which device is plugged in.
 entry of [plans/done/controller-profile.md](../done/controller-profile.md), which
 named the decoder's remaining dependency on `midi/minilab.js`.
 
-**Status** — steps 1 to 3 of 6 done.
+**Status** — steps 1 to 4 of 6 done.
 
 ## Context
 
@@ -78,7 +78,7 @@ D-021, D-022.
       the module reads it from the profile and a test pins the two equal.
       Check: `npm test` + `npm run check`, and
       `test/projectCompatibility.test.mjs` still opens the old project whole.
-- [ ] 4. `isCanonicalMidiIngress` accepts the controller node rather than one id;
+- [x] 4. `isCanonicalMidiIngress` accepts the controller node rather than one id;
       the three sequencer error messages stop naming the device.
       Check: `sequencer*.test.mjs`, plus a test where a controller with another
       profile id is a legitimate recording source.
@@ -233,3 +233,45 @@ opens the pre-profile project whole, unchanged.
   assertion costs the whole suite a warning and an experimental API. It is read,
   not run. Step 4 is where the same question becomes testable, because
   `isCanonicalMidiIngress` takes its node as an argument.
+
+2026-09-04 — Step 4 done. `isCanonicalMidiIngress` asks the network what kind of
+node a cable leaves instead of comparing an id. 655 JS tests, 13 check rules,
+`sync:dist` run.
+
+- **The right question was already in the codebase, under another name.**
+  `midi-output` is MiniHub's word for a hardware MIDI endpoint — `network.js`
+  exempts that type from cycle detection for exactly that reason, and
+  `sequencerController.js` already used it to decide where to send raw MIDI. So
+  ingress is `type === 'midi-output' && portId === 'midi-out'`, and no new
+  marker property was invented. The port half is not tidiness: a node
+  representing an external MIDI *destination* is the same type with a `midi-in`
+  and no `midi-out`, and without it the sequencer would accept a cable that can
+  only run the other way.
+- **The same question had a second, private answer.**
+  `modules/sequencer/sequencerModule.js` decided "is the input cable connected"
+  with its own copy of the id comparison, so the Patch Bay summary and the
+  Record button would have disagreed the day a profile changed. The predicate is
+  exported and both call it. Not in the step as written; leaving it would have
+  been a half-migration with no test that notices.
+- **The three messages name the node, not a device.** They said "MiniLab 3",
+  which is the sequencer telling someone with another keyboard to connect one he
+  does not own. They now name the routing node, which is what he sees in the
+  Patch Bay — and only when there is exactly one hardware MIDI source, because
+  naming one of two would send him to the wrong card. The plural falls back to
+  "your controller". Every render site already passes these strings through
+  `escapeHtml` or `textContent`, which matters now that the text can come from a
+  profile file.
+- **A dead fixture node stopped being dead.** `test/sequencer.test.mjs` declared
+  a `midi-source` node of type `midi-output` that nothing referenced. Under the
+  new rule it is a second hardware source, which made every ingress assertion in
+  the file ambiguous and the block message fall back to the generic phrase. It
+  was removed rather than worked around.
+- **One existing test changed meaning for the better.** "a rogue MIDI cable
+  cannot impersonate the canonical MiniLab recording ingress" used an
+  arpeggiator's `midi-out`; it passed before because the id did not match, and
+  passes now because the type does not. Renamed to say what it actually proves.
+
+`core/controlBindings.js` was listed in this plan's Context as a fourth place
+naming the device. It is not: its three comparisons are against
+`MINILAB_NODE_ID`, whose value came from the profile at step 3, and a control
+cable really does leave one specific node's control port. Nothing to do there.
