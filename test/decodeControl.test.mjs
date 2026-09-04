@@ -121,3 +121,64 @@ test('two profiles never share one lookup table', () => {
     assert.equal(decodeControl(PEDALS, cc(74, 64, 'Pedals In')).control.label, 'Sustain');
   }
 });
+
+// ---- what a binding declares about its travel ---------------------------------
+
+/**
+ * A profile that never met the validator, which is the case the decoder has to
+ * survive rather than the one it would like: the built-in profile ships without
+ * being validated (see `minilabControls.js`), and `range` is a field a stranger
+ * writes. Two of these bindings could not pass `validateControllerProfile()`.
+ */
+const TRAVEL = {
+  profileId: 'travel',
+  device: { ports: [{ role: 'performance', priority: 5, match: { name: 'Travel In' } }] },
+  controls: [
+    { id: 'declared', label: 'Declared', family: 'fader',
+      bindings: [{ layer: 'default', when: { kind: 'cc', number: 20 }, mode: 'absolute', range: [16, 112] }] },
+    { id: 'silent', label: 'Silent', family: 'fader',
+      bindings: [{ layer: 'default', when: { kind: 'cc', number: 21 }, mode: 'absolute' }] },
+    { id: 'inverted', label: 'Inverted', family: 'fader',
+      bindings: [{ layer: 'default', when: { kind: 'cc', number: 22 }, mode: 'absolute', range: [100, 20] }] },
+    { id: 'nonsense', label: 'Nonsense', family: 'fader',
+      bindings: [{ layer: 'default', when: { kind: 'cc', number: 23 }, mode: 'absolute', range: ['16', null] }] },
+    { id: 'pressure', label: 'Pressure', family: 'strip',
+      bindings: [{ layer: 'default', when: { kind: 'channelpressure' }, mode: 'pressure' }] }
+  ]
+};
+
+const travel = (controller, value) =>
+  decodeControl(TRAVEL, { type: 'cc', channel: 1, controller, value, sourceName: 'Travel In' });
+
+test('a binding is normalised against the travel it declares, not against the wire format', () => {
+  assert.equal(travel(20, 16).normalizedValue, 0);
+  assert.equal(travel(20, 64).normalizedValue, 0.5, 'the full span would have said 0.504');
+  assert.equal(travel(20, 112).normalizedValue, 1, 'the full span would have said 0.882');
+  assert.equal(travel(21, 64).normalizedValue, 64 / 127, 'a binding declaring no range keeps the full span');
+});
+
+test('a value outside the declared travel is clamped, never reported past the ends', () => {
+  // A pedal declared [16, 112] that sends 120 once is a real pedal; a consumer
+  // handed 1.083 for a VST parameter has no rule for it.
+  assert.equal(travel(20, 127).normalizedValue, 1);
+  assert.equal(travel(20, 0).normalizedValue, 0);
+});
+
+test('a range the validator would have refused falls back to the full span, and never to NaN', () => {
+  for (const [controller, id] of [[22, 'inverted'], [23, 'nonsense']]) {
+    const hit = travel(controller, 64);
+    assert.equal(hit.control.id, id);
+    assert.equal(hit.normalizedValue, 64 / 127, `${id} did not fall back to the full span`);
+  }
+});
+
+test('channel pressure answers on kind and channel alone, carrying no note', () => {
+  const press = (channel, value) =>
+    decodeControl(TRAVEL, { type: 'channelpressure', channel, value, sourceName: 'Travel In' });
+  assert.equal(press(1, 127).control.id, 'pressure');
+  assert.equal(press(1, 127).normalizedValue, 1);
+  assert.equal(press(16, 64).normalizedValue, 64 / 127, 'a binding declaring no channel answers on any');
+  assert.deepEqual(Object.keys(press(1, 64)).sort(), ['binding', 'control', 'normalizedValue', 'rawValue'],
+    'a pressure stream names no note, so the result carries none');
+  assert.equal(press(1, 64).rawValue, 64);
+});

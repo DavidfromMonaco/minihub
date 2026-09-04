@@ -28,7 +28,11 @@
  *   - `mode: relative` with an encoding, and a `cc14` pair -- both declarable,
  *     neither interpreted by the decoder today. The corpus records that as a
  *     refusal, out loud, rather than leaving it to be discovered by whoever
- *     plugs in the first encoder.
+ *     plugs in the first encoder;
+ *   - a `range` that is not the full span, and a channel pressure declared on a
+ *     channel. Both fields were validated from the start and read by nobody, and
+ *     the shipped profile cannot see the difference: it declares [0, 127]
+ *     everywhere, which is exactly what ignoring `range` computes anyway.
  *
  * THIS FILE SHIPS NOTHING. The plan's constraint is exactly one profile in
  * `src/`; a fixture in `test/` is what proves the machinery without claiming to

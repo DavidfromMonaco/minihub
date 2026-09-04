@@ -391,6 +391,165 @@
       }
     },
     {
+      "id": "pressure-decodes-on-its-declared-channel",
+      "why": "channel pressure names no note and no controller number, so the binding that answers is found by kind and channel alone. Until this case the kind was declarable and decoded to nothing; the fixture declares it on channel 2, so this also says the channel of a number-less kind is matched rather than assumed",
+      "sourceName": "Vega49 Keys",
+      "bytes": [
+        209,
+        90
+      ],
+      "parsed": {
+        "type": "channelpressure",
+        "channel": 2,
+        "value": 90,
+        "raw": [
+          209,
+          90
+        ]
+      },
+      "expect": {
+        "controlId": "pressure-strip",
+        "bindingIndex": 0,
+        "normalizedValue": 0.7086614173228346,
+        "rawValue": 90
+      }
+    },
+    {
+      "id": "breath-at-the-low-end-of-its-range",
+      "why": "the bottom of a declared range is 0, where the full span would have said 0.126. This case and the two after it are what make `range` a field that does something",
+      "sourceName": "Vega49 Keys",
+      "bytes": [
+        176,
+        2,
+        16
+      ],
+      "parsed": {
+        "type": "cc",
+        "channel": 1,
+        "controller": 2,
+        "value": 16,
+        "raw": [
+          176,
+          2,
+          16
+        ]
+      },
+      "expect": {
+        "controlId": "breath",
+        "bindingIndex": 0,
+        "normalizedValue": 0,
+        "rawValue": 16
+      }
+    },
+    {
+      "id": "breath-mid-range",
+      "why": "midway through [16, 112], not midway through 0..127: with the range ignored this would read 0.504",
+      "sourceName": "Vega49 Keys",
+      "bytes": [
+        176,
+        2,
+        64
+      ],
+      "parsed": {
+        "type": "cc",
+        "channel": 1,
+        "controller": 2,
+        "value": 64,
+        "raw": [
+          176,
+          2,
+          64
+        ]
+      },
+      "expect": {
+        "controlId": "breath",
+        "bindingIndex": 0,
+        "normalizedValue": 0.5,
+        "rawValue": 64
+      }
+    },
+    {
+      "id": "breath-at-the-top-of-its-range",
+      "why": "the top of a declared range is 1, where the full span would have said 0.882",
+      "sourceName": "Vega49 Keys",
+      "bytes": [
+        176,
+        2,
+        112
+      ],
+      "parsed": {
+        "type": "cc",
+        "channel": 1,
+        "controller": 2,
+        "value": 112,
+        "raw": [
+          176,
+          2,
+          112
+        ]
+      },
+      "expect": {
+        "controlId": "breath",
+        "bindingIndex": 0,
+        "normalizedValue": 1,
+        "rawValue": 112
+      }
+    },
+    {
+      "id": "breath-above-its-range-clamps",
+      "why": "a control declared [16, 112] that sends 120 is a real control and not an error. The value is clamped rather than reported as 1.083, which a VST parameter has no rule for",
+      "sourceName": "Vega49 Keys",
+      "bytes": [
+        176,
+        2,
+        120
+      ],
+      "parsed": {
+        "type": "cc",
+        "channel": 1,
+        "controller": 2,
+        "value": 120,
+        "raw": [
+          176,
+          2,
+          120
+        ]
+      },
+      "expect": {
+        "controlId": "breath",
+        "bindingIndex": 0,
+        "normalizedValue": 1,
+        "rawValue": 120
+      }
+    },
+    {
+      "id": "breath-below-its-range-clamps",
+      "why": "the same clamp underneath: -0.083 is a number no consumer expects, and a range describes a control rather than promising anything about it",
+      "sourceName": "Vega49 Keys",
+      "bytes": [
+        176,
+        2,
+        8
+      ],
+      "parsed": {
+        "type": "cc",
+        "channel": 1,
+        "controller": 2,
+        "value": 8,
+        "raw": [
+          176,
+          2,
+          8
+        ]
+      },
+      "expect": {
+        "controlId": "breath",
+        "bindingIndex": 0,
+        "normalizedValue": 0,
+        "rawValue": 8
+      }
+    },
+    {
       "id": "refuse-control-surface-port",
       "why": "the mixer port outranks a performance port and still carries nothing: role decides, priority only orders",
       "sourceName": "Vega49 Mix",
@@ -630,8 +789,8 @@
       "expect": null
     },
     {
-      "id": "refuse-channel-pressure",
-      "why": "channel pressure is declarable as a kind and has no decoding path, like cc14",
+      "id": "refuse-pressure-on-undeclared-channel",
+      "why": "channel pressure decodes now, and the fixture declares it on channel 2 only. This case used to record the absence of any decoding path at all; what it records instead is the channel match, which is the more useful half",
       "sourceName": "Vega49 Keys",
       "bytes": [
         208,

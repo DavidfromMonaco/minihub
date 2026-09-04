@@ -43,10 +43,16 @@ import { isPerformancePort } from './portRoles.js';
  * declarations. That is why `polyaftertouch` maps to `note` here: the profile
  * kind of the same name exists for a device that would use aftertouch as a
  * control in its own right, which the MiniLab 3 does not.
+ *
+ * `channelpressure` is the opposite case, and maps to itself: it carries no note
+ * and no controller number, so it cannot be a phase of anything. A keyboard
+ * sending one pressure stream for the whole keybed is declaring one control, and
+ * a profile says so with one binding carrying no `number` at all.
  */
 const KIND_BY_MESSAGE_TYPE = Object.freeze({
   cc: 'cc',
   pitchbend: 'pitchbend',
+  channelpressure: 'channelpressure',
   noteon: 'note',
   noteoff: 'note',
   polyaftertouch: 'note'
@@ -99,6 +105,38 @@ function answering(index, kind, number, channel) {
 const rawOf = (msg) => msg.value ?? msg.velocity ?? msg.bend;
 
 /**
+ * What a message of this kind carries when the control is at its maximum.
+ *
+ * The wire format's span, not the device's -- and only the fallback: it is what
+ * a binding declaring no `range` is normalised against, which is most of them.
+ */
+const FULL_SPAN = Object.freeze({ cc: 127, note: 127, channelpressure: 127, pitchbend: 16383 });
+
+/**
+ * One raw value against the travel its binding declares, as 0..1.
+ *
+ * `range` was written and validated when the profile format landed, and read by
+ * nobody: a field an author could fill in correctly and watch do nothing. A
+ * breath input declared [16, 112] reported four fifths of the way up at full
+ * blow, and no error anywhere said so.
+ *
+ * Clamped, because `range` describes a control rather than promising anything
+ * about it -- a pedal declared [16, 112] that sends 120 once is a real pedal, and
+ * a consumer handed 1.08 for a VST parameter has no rule for it. A malformed
+ * range falls back to the full span instead of returning NaN: the built-in
+ * profile ships WITHOUT passing the validator (see `minilabControls.js`), so
+ * this function is not entitled to assume one ever ran.
+ */
+function normalize(binding, kind, value) {
+  const range = binding?.range;
+  const declared = Array.isArray(range) && range.length === 2
+    && Number.isFinite(range[0]) && Number.isFinite(range[1]) && range[1] > range[0];
+  const low = declared ? range[0] : 0;
+  const high = declared ? range[1] : FULL_SPAN[kind];
+  return Math.min(1, Math.max(0, (value - low) / (high - low)));
+}
+
+/**
  * Decode one parsed message against one profile.
  *
  * Returns null for everything that is not a control of this profile, and the
@@ -120,8 +158,12 @@ export function decodeControl(profile, msg) {
     if (!hit) return null;
     return {
       ...hit,
-      normalizedValue: msg.bend / 16383,
+      normalizedValue: normalize(hit.binding, 'pitchbend', msg.bend),
       rawValue: rawOf(msg),
+      // Deliberately NOT rescaled by `range`: 8192 is the centre of the wire
+      // format, which is where the wheel springs back to, whatever travel the
+      // device declares around it. Recentring on the declared midpoint would
+      // move "released" off zero for every asymmetric bender.
       bipolarValue: Math.max(-1, (msg.bend - 8192) / 8191)
     };
   }
@@ -130,7 +172,20 @@ export function decodeControl(profile, msg) {
     if (!Number.isInteger(msg.value) || msg.value < 0 || msg.value > 127) return null;
     const hit = answering(index, 'cc', msg.controller, msg.channel);
     if (!hit) return null;
-    return { ...hit, normalizedValue: msg.value / 127, rawValue: rawOf(msg) };
+    return { ...hit, normalizedValue: normalize(hit.binding, 'cc', msg.value), rawValue: rawOf(msg) };
+  }
+
+  // Number-less, like a pitch bend: one stream for the whole keybed, so the
+  // binding that answers is found by kind and channel alone.
+  if (kind === 'channelpressure') {
+    if (!Number.isInteger(msg.value) || msg.value < 0 || msg.value > 127) return null;
+    const hit = answering(index, 'channelpressure', undefined, msg.channel);
+    if (!hit) return null;
+    return {
+      ...hit,
+      normalizedValue: normalize(hit.binding, 'channelpressure', msg.value),
+      rawValue: rawOf(msg)
+    };
   }
 
   if (!Number.isInteger(msg.note)) return null;
@@ -141,7 +196,7 @@ export function decodeControl(profile, msg) {
   if (!Number.isInteger(level) || level < 0 || level > 127) return null;
   return {
     ...hit,
-    normalizedValue: level / 127,
+    normalizedValue: normalize(hit.binding, 'note', level),
     rawValue: rawOf(msg),
     phase: msg.type,
     note: msg.note

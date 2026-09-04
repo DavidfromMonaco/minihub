@@ -6,8 +6,8 @@
   "author": "MiniHub test fixture",
   "createdAt": "2026-09-04",
   "completeness": {
-    "declared": 8,
-    "observed": 4,
+    "declared": 10,
+    "observed": 5,
     "inferred": 1,
     "untested": 1
   },
@@ -159,6 +159,35 @@
           "when": { "kind": "cc14", "number": 12, "lsbNumber": 44 },
           "mode": "absolute",
           "range": [0, 16383],
+          "confidence": "documented"
+        }
+      ]
+    },
+    {
+      "id": "pressure-strip",
+      "label": "Aftertouch",
+      "family": "strip",
+      "layout": { "x": 300, "y": 210 },
+      "bindings": [
+        {
+          "layer": "*",
+          "when": { "kind": "channelpressure", "channel": 2 },
+          "mode": "pressure",
+          "confidence": "observed"
+        }
+      ]
+    },
+    {
+      "id": "breath",
+      "label": "Breath",
+      "family": "breath",
+      "layout": { "x": 500, "y": 40 },
+      "bindings": [
+        {
+          "layer": "*",
+          "when": { "kind": "cc", "number": 2 },
+          "mode": "absolute",
+          "range": [16, 112],
           "confidence": "documented"
         }
       ]

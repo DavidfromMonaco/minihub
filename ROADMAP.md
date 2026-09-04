@@ -7,8 +7,9 @@ Counter-intuitive choices: [DECISIONS.md](DECISIONS.md). Long workstreams:
 [PLANS.md](PLANS.md).
 
 **Current state** — branch `master`.
-631 JS tests green, 3,954 native checks green, clean Release build, `dist/`
-synchronised with the sources.
+678 JS tests green, 15 `npm run check` rules green, `dist/` synchronised with the
+sources. The native side is untouched since `73accf5`, where its 3,954 checks and
+a clean Release build were last verified.
 
 One caveat on that build, recorded here so it stops being invisible: it reports
 **four `C4996` warnings** on the deprecated `juce::MidiBuffer::Iterator`, inside
@@ -306,18 +307,36 @@ screen came from the profile through the routing node. Port selection is exactly
 what `npm test` cannot see, which is why this line exists. Mechanically: 674 JS
 tests, 15 `npm run check` rules.
 
-Two gaps the fixture surfaced, recorded in its corpus rather than left to be
-found: `cc14` and `channelpressure` are declarable kinds with no decoding path,
-so a profile can declare a 14-bit fader and MiniHub answers nothing; and `mode`
-/ `range` are validated and read by nobody, so a `relative` encoder decodes as
-an absolute byte. Both are behaviour to add, not regressions -- and both are
-cheapest to do while the corpus that will check them already exists.
+Two gaps the fixture surfaced were recorded in its corpus rather than left to be
+found, and **the stateless half of them closed on 2026-09-05**. `channelpressure`
+is decoded: it names no note and no controller number, so the binding that answers
+is found by kind and channel alone. `range` is read: a value is normalised against
+the travel its binding declares and clamped to it, where everything used to be
+divided by the wire format's span. The shipped profile declares `[0, 127]` on
+every binding that carries a range, which is exactly what ignoring the field
+computed -- so nothing changed for the MiniLab, and
+`test/conformance/midi-corpus.json` is untouched, byte for byte. Six fixture cases
+and four unit tests are what say the two fields now do something; two of the six
+exist only because 0 and 127 would have passed with `range` still ignored.
+
+**What is left of those two gaps is not one thing but two, and the line above used
+to flatten them.** `cc14` is decoder work, and it is the expensive half: MSB and
+LSB arrive as two messages, so a 14-bit value needs the MSB latched between calls
+-- state, inside a function that has none and whose shareability rests on being
+`(profile, message) -> answer`. The conformance corpus is a list of independent
+cases and cannot express a pair either, so closing that gap moves the format the
+site Builder's copy is checked against (spec §3.5). `mode: relative` is **not**
+decoder work: the corpus already records the position -- the decoder reports which
+control answered and the byte it carried, and turning a delta into a position
+belongs to the caller. What is missing there is a consumer in
+`core/controlBindings.js`, not a branch in `decodeControl.js`.
 
 What the two plans leave behind, named rather than left to be discovered: the
 pad function labels and the faceplate decoration still have no field in the
 format, and one device cannot say what that field should be; a binding whose
 profile is absent is kept but not shown, because with one built-in profile there
-is nothing to show; and the two decoding gaps above. What Étape A owed and B
+is nothing to show; and what is left of the decoding gaps above -- `cc14`, and a
+consumer for `mode: relative`. What Étape A owed and B
 paid: the decoder no longer asks `midi/minilab.js` anything — it reads
 `device.ports` from the profile (§4.2) and is the artefact §3.5 wants copied
 into the Builder, with `npm run check` refusing any import that would break the
