@@ -423,11 +423,51 @@ Conflits     0
 Resultat    PARTIEL - exportable, completable dans MiniHub
 ```
 
-### 5.4 Le site autour
+### 5.4 The site around it
 
-Présentation, fonctionnalités, téléchargement, documentation du format,
-Builder, dossier de profils. Statique. Pas de compte, pas de backend, pas de
-télémétrie. Aucun événement MIDI ne quitte le navigateur.
+*(This section is in English, per AGENTS.md §6. The rest of this document
+predates that rule and still owes its conversion.)*
+
+Presentation, features, download, documentation of the format, the Builder, the
+profiles folder. Static. No account, no backend, no telemetry. No MIDI event
+leaves the browser.
+
+#### The device card
+
+One page per device: a photograph, its history (date, country of origin), its
+specifications, its connectors, its keybed, and a blueprint of its controls.
+
+Three rules, each of which stops the card turning into something else:
+
+1. **Two artefacts, one identity.** The profile says what the device *sends* —
+   the contract MiniHub executes, and a thing a reviewer can check in five
+   minutes. The card says what the device *is*. They share the `profileId` and
+   nothing else. No photograph, no prose, no country of origin ever enters a
+   profile: D-020 refuses moderation tiers, and editorial content inside a
+   contributed data file **is** a moderation tier under another name.
+2. **The blueprint is generated, never drawn in the browser.** The site's CSP is
+   `script-src 'none'` and the site ships no JavaScript at all. A script in the
+   site's `scripts/` reads the profile and writes the SVG, which is committed —
+   the same category as `check.mjs`, not a build step: what is in the repository
+   is still exactly what is served. `check.mjs` then refuses a blueprint that no
+   longer matches the profile it came from, which is what turns the card into a
+   **verification** of the profile rather than an illustration of it.
+3. **The profile is copied into the site repository**, exactly as `parseMidi.js`
+   and the decoder are (§3.5). The card reads that copy, never the application.
+
+**Photographs** — manufacturer product shots are used as citation, credited, and
+replaced on the manufacturer's request. Author's decision, 2026-09-04. Still
+owed: a visible way to make that request, since the site displays no contact
+address by design. The public `minihub-site` issues are the candidate that costs
+no address.
+
+**What this closes**: an interactive card — hovering a knob to read its CC —
+needs `script-src 'none'` lifted. The site's whole posture is not worth that
+convenience.
+
+**Ordering**: Étape C. The cards are written by the author, once the rest is
+finished. `layout` and `family` in the profile (§4.4) are what the blueprint
+reads, which is one more reason they are required in v1 rather than in a phase 3.
 
 ---
 

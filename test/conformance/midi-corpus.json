@@ -1,0 +1,2138 @@
+{
+  "formatVersion": 1,
+  "profileId": "minilab-3",
+  "recordedAt": "2026-09-04",
+  "note": "A recording, not a fixture. Every expectation was derived from the control declaration and the documented normalisation rules, then frozen. Regenerating this file would defeat its purpose: it exists to notice when the decoding changes.",
+  "cases": [
+    {
+      "id": "k1-cc74",
+      "why": "K1, the CC it sends out of the box",
+      "sourceName": "Minilab3 MIDI",
+      "bytes": [176, 74, 13],
+      "parsed": {
+        "type": "cc",
+        "channel": 1,
+        "controller": 74,
+        "value": 13,
+        "raw": [176, 74, 13]
+      },
+      "expect": {
+        "type": "control",
+        "sourceControlId": "minilab-3:k1",
+        "sourceNodeId": "minilab-3",
+        "sourcePortId": "control-k1",
+        "label": "K1",
+        "semantics": "continuous-absolute",
+        "normalizedValue": 0.10236220472440945,
+        "rawValue": 13
+      }
+    },
+    {
+      "id": "k1-cc86",
+      "why": "K1, alternate CC number 2 of its declaration",
+      "sourceName": "Minilab3 MIDI",
+      "bytes": [176, 86, 26],
+      "parsed": {
+        "type": "cc",
+        "channel": 1,
+        "controller": 86,
+        "value": 26,
+        "raw": [176, 86, 26]
+      },
+      "expect": {
+        "type": "control",
+        "sourceControlId": "minilab-3:k1",
+        "sourceNodeId": "minilab-3",
+        "sourcePortId": "control-k1",
+        "label": "K1",
+        "semantics": "continuous-absolute",
+        "normalizedValue": 0.2047244094488189,
+        "rawValue": 26
+      }
+    },
+    {
+      "id": "k2-cc71",
+      "why": "K2, the CC it sends out of the box",
+      "sourceName": "Minilab3 MIDI",
+      "bytes": [176, 71, 39],
+      "parsed": {
+        "type": "cc",
+        "channel": 1,
+        "controller": 71,
+        "value": 39,
+        "raw": [176, 71, 39]
+      },
+      "expect": {
+        "type": "control",
+        "sourceControlId": "minilab-3:k2",
+        "sourceNodeId": "minilab-3",
+        "sourcePortId": "control-k2",
+        "label": "K2",
+        "semantics": "continuous-absolute",
+        "normalizedValue": 0.30708661417322836,
+        "rawValue": 39
+      }
+    },
+    {
+      "id": "k2-cc87",
+      "why": "K2, alternate CC number 2 of its declaration",
+      "sourceName": "Minilab3 MIDI",
+      "bytes": [176, 87, 52],
+      "parsed": {
+        "type": "cc",
+        "channel": 1,
+        "controller": 87,
+        "value": 52,
+        "raw": [176, 87, 52]
+      },
+      "expect": {
+        "type": "control",
+        "sourceControlId": "minilab-3:k2",
+        "sourceNodeId": "minilab-3",
+        "sourcePortId": "control-k2",
+        "label": "K2",
+        "semantics": "continuous-absolute",
+        "normalizedValue": 0.4094488188976378,
+        "rawValue": 52
+      }
+    },
+    {
+      "id": "k3-cc76",
+      "why": "K3, the CC it sends out of the box",
+      "sourceName": "Minilab3 MIDI",
+      "bytes": [176, 76, 65],
+      "parsed": {
+        "type": "cc",
+        "channel": 1,
+        "controller": 76,
+        "value": 65,
+        "raw": [176, 76, 65]
+      },
+      "expect": {
+        "type": "control",
+        "sourceControlId": "minilab-3:k3",
+        "sourceNodeId": "minilab-3",
+        "sourcePortId": "control-k3",
+        "label": "K3",
+        "semantics": "continuous-absolute",
+        "normalizedValue": 0.5118110236220472,
+        "rawValue": 65
+      }
+    },
+    {
+      "id": "k3-cc89",
+      "why": "K3, alternate CC number 2 of its declaration",
+      "sourceName": "Minilab3 MIDI",
+      "bytes": [176, 89, 78],
+      "parsed": {
+        "type": "cc",
+        "channel": 1,
+        "controller": 89,
+        "value": 78,
+        "raw": [176, 89, 78]
+      },
+      "expect": {
+        "type": "control",
+        "sourceControlId": "minilab-3:k3",
+        "sourceNodeId": "minilab-3",
+        "sourcePortId": "control-k3",
+        "label": "K3",
+        "semantics": "continuous-absolute",
+        "normalizedValue": 0.6141732283464567,
+        "rawValue": 78
+      }
+    },
+    {
+      "id": "k4-cc77",
+      "why": "K4, the CC it sends out of the box",
+      "sourceName": "Minilab3 MIDI",
+      "bytes": [176, 77, 91],
+      "parsed": {
+        "type": "cc",
+        "channel": 1,
+        "controller": 77,
+        "value": 91,
+        "raw": [176, 77, 91]
+      },
+      "expect": {
+        "type": "control",
+        "sourceControlId": "minilab-3:k4",
+        "sourceNodeId": "minilab-3",
+        "sourcePortId": "control-k4",
+        "label": "K4",
+        "semantics": "continuous-absolute",
+        "normalizedValue": 0.7165354330708661,
+        "rawValue": 91
+      }
+    },
+    {
+      "id": "k4-cc90",
+      "why": "K4, alternate CC number 2 of its declaration",
+      "sourceName": "Minilab3 MIDI",
+      "bytes": [176, 90, 104],
+      "parsed": {
+        "type": "cc",
+        "channel": 1,
+        "controller": 90,
+        "value": 104,
+        "raw": [176, 90, 104]
+      },
+      "expect": {
+        "type": "control",
+        "sourceControlId": "minilab-3:k4",
+        "sourceNodeId": "minilab-3",
+        "sourcePortId": "control-k4",
+        "label": "K4",
+        "semantics": "continuous-absolute",
+        "normalizedValue": 0.8188976377952756,
+        "rawValue": 104
+      }
+    },
+    {
+      "id": "k5-cc93",
+      "why": "K5, the CC it sends out of the box",
+      "sourceName": "Minilab3 MIDI",
+      "bytes": [176, 93, 117],
+      "parsed": {
+        "type": "cc",
+        "channel": 1,
+        "controller": 93,
+        "value": 117,
+        "raw": [176, 93, 117]
+      },
+      "expect": {
+        "type": "control",
+        "sourceControlId": "minilab-3:k5",
+        "sourceNodeId": "minilab-3",
+        "sourcePortId": "control-k5",
+        "label": "K5",
+        "semantics": "continuous-absolute",
+        "normalizedValue": 0.9212598425196851,
+        "rawValue": 117
+      }
+    },
+    {
+      "id": "k5-cc110",
+      "why": "K5, alternate CC number 2 of its declaration",
+      "sourceName": "Minilab3 MIDI",
+      "bytes": [176, 110, 2],
+      "parsed": {
+        "type": "cc",
+        "channel": 1,
+        "controller": 110,
+        "value": 2,
+        "raw": [176, 110, 2]
+      },
+      "expect": {
+        "type": "control",
+        "sourceControlId": "minilab-3:k5",
+        "sourceNodeId": "minilab-3",
+        "sourcePortId": "control-k5",
+        "label": "K5",
+        "semantics": "continuous-absolute",
+        "normalizedValue": 0.015748031496062992,
+        "rawValue": 2
+      }
+    },
+    {
+      "id": "k6-cc18",
+      "why": "K6, the CC it sends out of the box",
+      "sourceName": "Minilab3 MIDI",
+      "bytes": [176, 18, 15],
+      "parsed": {
+        "type": "cc",
+        "channel": 1,
+        "controller": 18,
+        "value": 15,
+        "raw": [176, 18, 15]
+      },
+      "expect": {
+        "type": "control",
+        "sourceControlId": "minilab-3:k6",
+        "sourceNodeId": "minilab-3",
+        "sourcePortId": "control-k6",
+        "label": "K6",
+        "semantics": "continuous-absolute",
+        "normalizedValue": 0.11811023622047244,
+        "rawValue": 15
+      }
+    },
+    {
+      "id": "k6-cc111",
+      "why": "K6, alternate CC number 2 of its declaration",
+      "sourceName": "Minilab3 MIDI",
+      "bytes": [176, 111, 28],
+      "parsed": {
+        "type": "cc",
+        "channel": 1,
+        "controller": 111,
+        "value": 28,
+        "raw": [176, 111, 28]
+      },
+      "expect": {
+        "type": "control",
+        "sourceControlId": "minilab-3:k6",
+        "sourceNodeId": "minilab-3",
+        "sourcePortId": "control-k6",
+        "label": "K6",
+        "semantics": "continuous-absolute",
+        "normalizedValue": 0.2204724409448819,
+        "rawValue": 28
+      }
+    },
+    {
+      "id": "k7-cc19",
+      "why": "K7, the CC it sends out of the box",
+      "sourceName": "Minilab3 MIDI",
+      "bytes": [176, 19, 41],
+      "parsed": {
+        "type": "cc",
+        "channel": 1,
+        "controller": 19,
+        "value": 41,
+        "raw": [176, 19, 41]
+      },
+      "expect": {
+        "type": "control",
+        "sourceControlId": "minilab-3:k7",
+        "sourceNodeId": "minilab-3",
+        "sourcePortId": "control-k7",
+        "label": "K7",
+        "semantics": "continuous-absolute",
+        "normalizedValue": 0.3228346456692913,
+        "rawValue": 41
+      }
+    },
+    {
+      "id": "k7-cc116",
+      "why": "K7, alternate CC number 2 of its declaration",
+      "sourceName": "Minilab3 MIDI",
+      "bytes": [176, 116, 54],
+      "parsed": {
+        "type": "cc",
+        "channel": 1,
+        "controller": 116,
+        "value": 54,
+        "raw": [176, 116, 54]
+      },
+      "expect": {
+        "type": "control",
+        "sourceControlId": "minilab-3:k7",
+        "sourceNodeId": "minilab-3",
+        "sourcePortId": "control-k7",
+        "label": "K7",
+        "semantics": "continuous-absolute",
+        "normalizedValue": 0.4251968503937008,
+        "rawValue": 54
+      }
+    },
+    {
+      "id": "k8-cc16",
+      "why": "K8, the CC it sends out of the box",
+      "sourceName": "Minilab3 MIDI",
+      "bytes": [176, 16, 67],
+      "parsed": {
+        "type": "cc",
+        "channel": 1,
+        "controller": 16,
+        "value": 67,
+        "raw": [176, 16, 67]
+      },
+      "expect": {
+        "type": "control",
+        "sourceControlId": "minilab-3:k8",
+        "sourceNodeId": "minilab-3",
+        "sourcePortId": "control-k8",
+        "label": "K8",
+        "semantics": "continuous-absolute",
+        "normalizedValue": 0.5275590551181102,
+        "rawValue": 67
+      }
+    },
+    {
+      "id": "k8-cc117",
+      "why": "K8, alternate CC number 2 of its declaration",
+      "sourceName": "Minilab3 MIDI",
+      "bytes": [176, 117, 80],
+      "parsed": {
+        "type": "cc",
+        "channel": 1,
+        "controller": 117,
+        "value": 80,
+        "raw": [176, 117, 80]
+      },
+      "expect": {
+        "type": "control",
+        "sourceControlId": "minilab-3:k8",
+        "sourceNodeId": "minilab-3",
+        "sourcePortId": "control-k8",
+        "label": "K8",
+        "semantics": "continuous-absolute",
+        "normalizedValue": 0.6299212598425197,
+        "rawValue": 80
+      }
+    },
+    {
+      "id": "f1-cc82",
+      "why": "F1, the CC it sends out of the box",
+      "sourceName": "Minilab3 MIDI",
+      "bytes": [176, 82, 93],
+      "parsed": {
+        "type": "cc",
+        "channel": 1,
+        "controller": 82,
+        "value": 93,
+        "raw": [176, 82, 93]
+      },
+      "expect": {
+        "type": "control",
+        "sourceControlId": "minilab-3:f1",
+        "sourceNodeId": "minilab-3",
+        "sourcePortId": "control-f1",
+        "label": "F1",
+        "semantics": "continuous-absolute",
+        "normalizedValue": 0.7322834645669292,
+        "rawValue": 93
+      }
+    },
+    {
+      "id": "f1-cc14",
+      "why": "F1, alternate CC number 2 of its declaration",
+      "sourceName": "Minilab3 MIDI",
+      "bytes": [176, 14, 106],
+      "parsed": {
+        "type": "cc",
+        "channel": 1,
+        "controller": 14,
+        "value": 106,
+        "raw": [176, 14, 106]
+      },
+      "expect": {
+        "type": "control",
+        "sourceControlId": "minilab-3:f1",
+        "sourceNodeId": "minilab-3",
+        "sourcePortId": "control-f1",
+        "label": "F1",
+        "semantics": "continuous-absolute",
+        "normalizedValue": 0.8346456692913385,
+        "rawValue": 106
+      }
+    },
+    {
+      "id": "f2-cc83",
+      "why": "F2, the CC it sends out of the box",
+      "sourceName": "Minilab3 MIDI",
+      "bytes": [176, 83, 119],
+      "parsed": {
+        "type": "cc",
+        "channel": 1,
+        "controller": 83,
+        "value": 119,
+        "raw": [176, 83, 119]
+      },
+      "expect": {
+        "type": "control",
+        "sourceControlId": "minilab-3:f2",
+        "sourceNodeId": "minilab-3",
+        "sourcePortId": "control-f2",
+        "label": "F2",
+        "semantics": "continuous-absolute",
+        "normalizedValue": 0.937007874015748,
+        "rawValue": 119
+      }
+    },
+    {
+      "id": "f2-cc15",
+      "why": "F2, alternate CC number 2 of its declaration",
+      "sourceName": "Minilab3 MIDI",
+      "bytes": [176, 15, 4],
+      "parsed": {
+        "type": "cc",
+        "channel": 1,
+        "controller": 15,
+        "value": 4,
+        "raw": [176, 15, 4]
+      },
+      "expect": {
+        "type": "control",
+        "sourceControlId": "minilab-3:f2",
+        "sourceNodeId": "minilab-3",
+        "sourcePortId": "control-f2",
+        "label": "F2",
+        "semantics": "continuous-absolute",
+        "normalizedValue": 0.031496062992125984,
+        "rawValue": 4
+      }
+    },
+    {
+      "id": "f3-cc85",
+      "why": "F3, the CC it sends out of the box",
+      "sourceName": "Minilab3 MIDI",
+      "bytes": [176, 85, 17],
+      "parsed": {
+        "type": "cc",
+        "channel": 1,
+        "controller": 85,
+        "value": 17,
+        "raw": [176, 85, 17]
+      },
+      "expect": {
+        "type": "control",
+        "sourceControlId": "minilab-3:f3",
+        "sourceNodeId": "minilab-3",
+        "sourcePortId": "control-f3",
+        "label": "F3",
+        "semantics": "continuous-absolute",
+        "normalizedValue": 0.13385826771653545,
+        "rawValue": 17
+      }
+    },
+    {
+      "id": "f3-cc30",
+      "why": "F3, alternate CC number 2 of its declaration",
+      "sourceName": "Minilab3 MIDI",
+      "bytes": [176, 30, 30],
+      "parsed": {
+        "type": "cc",
+        "channel": 1,
+        "controller": 30,
+        "value": 30,
+        "raw": [176, 30, 30]
+      },
+      "expect": {
+        "type": "control",
+        "sourceControlId": "minilab-3:f3",
+        "sourceNodeId": "minilab-3",
+        "sourcePortId": "control-f3",
+        "label": "F3",
+        "semantics": "continuous-absolute",
+        "normalizedValue": 0.23622047244094488,
+        "rawValue": 30
+      }
+    },
+    {
+      "id": "f4-cc17",
+      "why": "F4, the CC it sends out of the box",
+      "sourceName": "Minilab3 MIDI",
+      "bytes": [176, 17, 43],
+      "parsed": {
+        "type": "cc",
+        "channel": 1,
+        "controller": 17,
+        "value": 43,
+        "raw": [176, 17, 43]
+      },
+      "expect": {
+        "type": "control",
+        "sourceControlId": "minilab-3:f4",
+        "sourceNodeId": "minilab-3",
+        "sourcePortId": "control-f4",
+        "label": "F4",
+        "semantics": "continuous-absolute",
+        "normalizedValue": 0.33858267716535434,
+        "rawValue": 43
+      }
+    },
+    {
+      "id": "f4-cc31",
+      "why": "F4, alternate CC number 2 of its declaration",
+      "sourceName": "Minilab3 MIDI",
+      "bytes": [176, 31, 56],
+      "parsed": {
+        "type": "cc",
+        "channel": 1,
+        "controller": 31,
+        "value": 56,
+        "raw": [176, 31, 56]
+      },
+      "expect": {
+        "type": "control",
+        "sourceControlId": "minilab-3:f4",
+        "sourceNodeId": "minilab-3",
+        "sourcePortId": "control-f4",
+        "label": "F4",
+        "semantics": "continuous-absolute",
+        "normalizedValue": 0.4409448818897638,
+        "rawValue": 56
+      }
+    },
+    {
+      "id": "main-encoder-cc114",
+      "why": "Main, the CC it sends out of the box",
+      "sourceName": "Minilab3 MIDI",
+      "bytes": [176, 114, 69],
+      "parsed": {
+        "type": "cc",
+        "channel": 1,
+        "controller": 114,
+        "value": 69,
+        "raw": [176, 114, 69]
+      },
+      "expect": {
+        "type": "control",
+        "sourceControlId": "minilab-3:main-encoder",
+        "sourceNodeId": "minilab-3",
+        "sourcePortId": "control-main-encoder",
+        "label": "Main",
+        "semantics": "continuous-absolute",
+        "normalizedValue": 0.5433070866141733,
+        "rawValue": 69
+      }
+    },
+    {
+      "id": "main-encoder-cc112",
+      "why": "Main, alternate CC number 2 of its declaration",
+      "sourceName": "Minilab3 MIDI",
+      "bytes": [176, 112, 82],
+      "parsed": {
+        "type": "cc",
+        "channel": 1,
+        "controller": 112,
+        "value": 82,
+        "raw": [176, 112, 82]
+      },
+      "expect": {
+        "type": "control",
+        "sourceControlId": "minilab-3:main-encoder",
+        "sourceNodeId": "minilab-3",
+        "sourcePortId": "control-main-encoder",
+        "label": "Main",
+        "semantics": "continuous-absolute",
+        "normalizedValue": 0.6456692913385826,
+        "rawValue": 82
+      }
+    },
+    {
+      "id": "main-encoder-cc28",
+      "why": "Main, alternate CC number 3 of its declaration",
+      "sourceName": "Minilab3 MIDI",
+      "bytes": [176, 28, 95],
+      "parsed": {
+        "type": "cc",
+        "channel": 1,
+        "controller": 28,
+        "value": 95,
+        "raw": [176, 28, 95]
+      },
+      "expect": {
+        "type": "control",
+        "sourceControlId": "minilab-3:main-encoder",
+        "sourceNodeId": "minilab-3",
+        "sourcePortId": "control-main-encoder",
+        "label": "Main",
+        "semantics": "continuous-absolute",
+        "normalizedValue": 0.7480314960629921,
+        "rawValue": 95
+      }
+    },
+    {
+      "id": "main-encoder-cc29",
+      "why": "Main, alternate CC number 4 of its declaration",
+      "sourceName": "Minilab3 MIDI",
+      "bytes": [176, 29, 108],
+      "parsed": {
+        "type": "cc",
+        "channel": 1,
+        "controller": 29,
+        "value": 108,
+        "raw": [176, 29, 108]
+      },
+      "expect": {
+        "type": "control",
+        "sourceControlId": "minilab-3:main-encoder",
+        "sourceNodeId": "minilab-3",
+        "sourcePortId": "control-main-encoder",
+        "label": "Main",
+        "semantics": "continuous-absolute",
+        "normalizedValue": 0.8503937007874016,
+        "rawValue": 108
+      }
+    },
+    {
+      "id": "main-click-cc115",
+      "why": "Main Click, the CC it sends out of the box",
+      "sourceName": "Minilab3 MIDI",
+      "bytes": [176, 115, 121],
+      "parsed": {
+        "type": "cc",
+        "channel": 1,
+        "controller": 115,
+        "value": 121,
+        "raw": [176, 115, 121]
+      },
+      "expect": {
+        "type": "control",
+        "sourceControlId": "minilab-3:main-click",
+        "sourceNodeId": "minilab-3",
+        "sourcePortId": "control-main-click",
+        "label": "Main Click",
+        "semantics": "momentary-or-toggle",
+        "normalizedValue": 0.952755905511811,
+        "rawValue": 121
+      }
+    },
+    {
+      "id": "main-click-cc113",
+      "why": "Main Click, alternate CC number 2 of its declaration",
+      "sourceName": "Minilab3 MIDI",
+      "bytes": [176, 113, 6],
+      "parsed": {
+        "type": "cc",
+        "channel": 1,
+        "controller": 113,
+        "value": 6,
+        "raw": [176, 113, 6]
+      },
+      "expect": {
+        "type": "control",
+        "sourceControlId": "minilab-3:main-click",
+        "sourceNodeId": "minilab-3",
+        "sourcePortId": "control-main-click",
+        "label": "Main Click",
+        "semantics": "momentary-or-toggle",
+        "normalizedValue": 0.047244094488188976,
+        "rawValue": 6
+      }
+    },
+    {
+      "id": "main-click-cc118",
+      "why": "Main Click, alternate CC number 3 of its declaration",
+      "sourceName": "Minilab3 MIDI",
+      "bytes": [176, 118, 19],
+      "parsed": {
+        "type": "cc",
+        "channel": 1,
+        "controller": 118,
+        "value": 19,
+        "raw": [176, 118, 19]
+      },
+      "expect": {
+        "type": "control",
+        "sourceControlId": "minilab-3:main-click",
+        "sourceNodeId": "minilab-3",
+        "sourcePortId": "control-main-click",
+        "label": "Main Click",
+        "semantics": "momentary-or-toggle",
+        "normalizedValue": 0.14960629921259844,
+        "rawValue": 19
+      }
+    },
+    {
+      "id": "main-click-cc119",
+      "why": "Main Click, alternate CC number 4 of its declaration",
+      "sourceName": "Minilab3 MIDI",
+      "bytes": [176, 119, 32],
+      "parsed": {
+        "type": "cc",
+        "channel": 1,
+        "controller": 119,
+        "value": 32,
+        "raw": [176, 119, 32]
+      },
+      "expect": {
+        "type": "control",
+        "sourceControlId": "minilab-3:main-click",
+        "sourceNodeId": "minilab-3",
+        "sourcePortId": "control-main-click",
+        "label": "Main Click",
+        "semantics": "momentary-or-toggle",
+        "normalizedValue": 0.25196850393700787,
+        "rawValue": 32
+      }
+    },
+    {
+      "id": "modulation-cc1",
+      "why": "Mod, the CC it sends out of the box",
+      "sourceName": "Minilab3 MIDI",
+      "bytes": [176, 1, 45],
+      "parsed": {
+        "type": "cc",
+        "channel": 1,
+        "controller": 1,
+        "value": 45,
+        "raw": [176, 1, 45]
+      },
+      "expect": {
+        "type": "control",
+        "sourceControlId": "minilab-3:modulation",
+        "sourceNodeId": "minilab-3",
+        "sourcePortId": "control-modulation",
+        "label": "Mod",
+        "semantics": "continuous-absolute",
+        "normalizedValue": 0.3543307086614173,
+        "rawValue": 45
+      }
+    },
+    {
+      "id": "shift-cc9",
+      "why": "Shift, the CC it sends out of the box",
+      "sourceName": "Minilab3 MIDI",
+      "bytes": [176, 9, 58],
+      "parsed": {
+        "type": "cc",
+        "channel": 1,
+        "controller": 9,
+        "value": 58,
+        "raw": [176, 9, 58]
+      },
+      "expect": {
+        "type": "control",
+        "sourceControlId": "minilab-3:shift",
+        "sourceNodeId": "minilab-3",
+        "sourcePortId": "control-shift",
+        "label": "Shift",
+        "semantics": "momentary",
+        "normalizedValue": 0.4566929133858268,
+        "rawValue": 58
+      }
+    },
+    {
+      "id": "shift-cc27",
+      "why": "Shift, alternate CC number 2 of its declaration",
+      "sourceName": "Minilab3 MIDI",
+      "bytes": [176, 27, 71],
+      "parsed": {
+        "type": "cc",
+        "channel": 1,
+        "controller": 27,
+        "value": 71,
+        "raw": [176, 27, 71]
+      },
+      "expect": {
+        "type": "control",
+        "sourceControlId": "minilab-3:shift",
+        "sourceNodeId": "minilab-3",
+        "sourcePortId": "control-shift",
+        "label": "Shift",
+        "semantics": "momentary",
+        "normalizedValue": 0.5590551181102362,
+        "rawValue": 71
+      }
+    },
+    {
+      "id": "p1-cc102",
+      "why": "P1, the CC it sends out of the box",
+      "sourceName": "Minilab3 MIDI",
+      "bytes": [185, 102, 84],
+      "parsed": {
+        "type": "cc",
+        "channel": 10,
+        "controller": 102,
+        "value": 84,
+        "raw": [185, 102, 84]
+      },
+      "expect": {
+        "type": "control",
+        "sourceControlId": "minilab-3:p1",
+        "sourceNodeId": "minilab-3",
+        "sourcePortId": "control-p1",
+        "label": "P1",
+        "semantics": "velocity-momentary-pressure",
+        "normalizedValue": 0.6614173228346457,
+        "rawValue": 84
+      }
+    },
+    {
+      "id": "p2-cc103",
+      "why": "P2, the CC it sends out of the box",
+      "sourceName": "Minilab3 MIDI",
+      "bytes": [185, 103, 97],
+      "parsed": {
+        "type": "cc",
+        "channel": 10,
+        "controller": 103,
+        "value": 97,
+        "raw": [185, 103, 97]
+      },
+      "expect": {
+        "type": "control",
+        "sourceControlId": "minilab-3:p2",
+        "sourceNodeId": "minilab-3",
+        "sourcePortId": "control-p2",
+        "label": "P2",
+        "semantics": "velocity-momentary-pressure",
+        "normalizedValue": 0.7637795275590551,
+        "rawValue": 97
+      }
+    },
+    {
+      "id": "p3-cc104",
+      "why": "P3, the CC it sends out of the box",
+      "sourceName": "Minilab3 MIDI",
+      "bytes": [185, 104, 110],
+      "parsed": {
+        "type": "cc",
+        "channel": 10,
+        "controller": 104,
+        "value": 110,
+        "raw": [185, 104, 110]
+      },
+      "expect": {
+        "type": "control",
+        "sourceControlId": "minilab-3:p3",
+        "sourceNodeId": "minilab-3",
+        "sourcePortId": "control-p3",
+        "label": "P3",
+        "semantics": "velocity-momentary-pressure",
+        "normalizedValue": 0.8661417322834646,
+        "rawValue": 110
+      }
+    },
+    {
+      "id": "p4-cc105",
+      "why": "P4, the CC it sends out of the box",
+      "sourceName": "Minilab3 MIDI",
+      "bytes": [185, 105, 123],
+      "parsed": {
+        "type": "cc",
+        "channel": 10,
+        "controller": 105,
+        "value": 123,
+        "raw": [185, 105, 123]
+      },
+      "expect": {
+        "type": "control",
+        "sourceControlId": "minilab-3:p4",
+        "sourceNodeId": "minilab-3",
+        "sourcePortId": "control-p4",
+        "label": "P4",
+        "semantics": "velocity-momentary-pressure",
+        "normalizedValue": 0.968503937007874,
+        "rawValue": 123
+      }
+    },
+    {
+      "id": "p5-cc106",
+      "why": "P5, the CC it sends out of the box",
+      "sourceName": "Minilab3 MIDI",
+      "bytes": [185, 106, 8],
+      "parsed": {
+        "type": "cc",
+        "channel": 10,
+        "controller": 106,
+        "value": 8,
+        "raw": [185, 106, 8]
+      },
+      "expect": {
+        "type": "control",
+        "sourceControlId": "minilab-3:p5",
+        "sourceNodeId": "minilab-3",
+        "sourcePortId": "control-p5",
+        "label": "P5",
+        "semantics": "velocity-momentary-pressure",
+        "normalizedValue": 0.06299212598425197,
+        "rawValue": 8
+      }
+    },
+    {
+      "id": "p6-cc107",
+      "why": "P6, the CC it sends out of the box",
+      "sourceName": "Minilab3 MIDI",
+      "bytes": [185, 107, 21],
+      "parsed": {
+        "type": "cc",
+        "channel": 10,
+        "controller": 107,
+        "value": 21,
+        "raw": [185, 107, 21]
+      },
+      "expect": {
+        "type": "control",
+        "sourceControlId": "minilab-3:p6",
+        "sourceNodeId": "minilab-3",
+        "sourcePortId": "control-p6",
+        "label": "P6",
+        "semantics": "velocity-momentary-pressure",
+        "normalizedValue": 0.16535433070866143,
+        "rawValue": 21
+      }
+    },
+    {
+      "id": "p7-cc108",
+      "why": "P7, the CC it sends out of the box",
+      "sourceName": "Minilab3 MIDI",
+      "bytes": [185, 108, 34],
+      "parsed": {
+        "type": "cc",
+        "channel": 10,
+        "controller": 108,
+        "value": 34,
+        "raw": [185, 108, 34]
+      },
+      "expect": {
+        "type": "control",
+        "sourceControlId": "minilab-3:p7",
+        "sourceNodeId": "minilab-3",
+        "sourcePortId": "control-p7",
+        "label": "P7",
+        "semantics": "velocity-momentary-pressure",
+        "normalizedValue": 0.2677165354330709,
+        "rawValue": 34
+      }
+    },
+    {
+      "id": "p8-cc109",
+      "why": "P8, the CC it sends out of the box",
+      "sourceName": "Minilab3 MIDI",
+      "bytes": [185, 109, 47],
+      "parsed": {
+        "type": "cc",
+        "channel": 10,
+        "controller": 109,
+        "value": 47,
+        "raw": [185, 109, 47]
+      },
+      "expect": {
+        "type": "control",
+        "sourceControlId": "minilab-3:p8",
+        "sourceNodeId": "minilab-3",
+        "sourcePortId": "control-p8",
+        "label": "P8",
+        "semantics": "velocity-momentary-pressure",
+        "normalizedValue": 0.3700787401574803,
+        "rawValue": 47
+      }
+    },
+    {
+      "id": "k1-floor",
+      "why": "K1 fully down: the normalised value must be exactly 0",
+      "sourceName": "Minilab3 MIDI",
+      "bytes": [176, 74, 0],
+      "parsed": {
+        "type": "cc",
+        "channel": 1,
+        "controller": 74,
+        "value": 0,
+        "raw": [176, 74, 0]
+      },
+      "expect": {
+        "type": "control",
+        "sourceControlId": "minilab-3:k1",
+        "sourceNodeId": "minilab-3",
+        "sourcePortId": "control-k1",
+        "label": "K1",
+        "semantics": "continuous-absolute",
+        "normalizedValue": 0,
+        "rawValue": 0
+      }
+    },
+    {
+      "id": "k1-ceiling",
+      "why": "K1 fully up: the normalised value must be exactly 1",
+      "sourceName": "Minilab3 MIDI",
+      "bytes": [176, 74, 127],
+      "parsed": {
+        "type": "cc",
+        "channel": 1,
+        "controller": 74,
+        "value": 127,
+        "raw": [176, 74, 127]
+      },
+      "expect": {
+        "type": "control",
+        "sourceControlId": "minilab-3:k1",
+        "sourceNodeId": "minilab-3",
+        "sourcePortId": "control-k1",
+        "label": "K1",
+        "semantics": "continuous-absolute",
+        "normalizedValue": 1,
+        "rawValue": 127
+      }
+    },
+    {
+      "id": "k1-channel-16",
+      "why": "K1 on channel 16 still decodes: the device can be moved to another global channel, and CONTROL follows the CC number rather than the channel",
+      "sourceName": "Minilab3 MIDI",
+      "bytes": [191, 74, 100],
+      "parsed": {
+        "type": "cc",
+        "channel": 16,
+        "controller": 74,
+        "value": 100,
+        "raw": [191, 74, 100]
+      },
+      "expect": {
+        "type": "control",
+        "sourceControlId": "minilab-3:k1",
+        "sourceNodeId": "minilab-3",
+        "sourcePortId": "control-k1",
+        "label": "K1",
+        "semantics": "continuous-absolute",
+        "normalizedValue": 0.7874015748031497,
+        "rawValue": 100
+      }
+    },
+    {
+      "id": "k1-on-the-analog-lab-port",
+      "why": "The dedicated Analog Lab port is a performance port too",
+      "sourceName": "MiniLab 3 ALV",
+      "bytes": [176, 74, 42],
+      "parsed": {
+        "type": "cc",
+        "channel": 1,
+        "controller": 74,
+        "value": 42,
+        "raw": [176, 74, 42]
+      },
+      "expect": {
+        "type": "control",
+        "sourceControlId": "minilab-3:k1",
+        "sourceNodeId": "minilab-3",
+        "sourcePortId": "control-k1",
+        "label": "K1",
+        "semantics": "continuous-absolute",
+        "normalizedValue": 0.33070866141732286,
+        "rawValue": 42
+      }
+    },
+    {
+      "id": "p1-hit",
+      "why": "P1 struck on its default note",
+      "sourceName": "Minilab3 MIDI",
+      "bytes": [153, 36, 40],
+      "parsed": {
+        "type": "noteon",
+        "channel": 10,
+        "note": 36,
+        "velocity": 40,
+        "raw": [153, 36, 40]
+      },
+      "expect": {
+        "type": "control",
+        "sourceControlId": "minilab-3:p1",
+        "sourceNodeId": "minilab-3",
+        "sourcePortId": "control-p1",
+        "label": "P1",
+        "semantics": "velocity-momentary-pressure",
+        "normalizedValue": 0.31496062992125984,
+        "rawValue": 40,
+        "phase": "noteon",
+        "note": 36
+      }
+    },
+    {
+      "id": "p1-hit-alternate-note",
+      "why": "P1 on the second note of its declaration",
+      "sourceName": "Minilab3 MIDI",
+      "bytes": [153, 44, 96],
+      "parsed": {
+        "type": "noteon",
+        "channel": 10,
+        "note": 44,
+        "velocity": 96,
+        "raw": [153, 44, 96]
+      },
+      "expect": {
+        "type": "control",
+        "sourceControlId": "minilab-3:p1",
+        "sourceNodeId": "minilab-3",
+        "sourcePortId": "control-p1",
+        "label": "P1",
+        "semantics": "velocity-momentary-pressure",
+        "normalizedValue": 0.7559055118110236,
+        "rawValue": 96,
+        "phase": "noteon",
+        "note": 44
+      }
+    },
+    {
+      "id": "p1-release",
+      "why": "P1 released: the value falls to 0 while the velocity byte does not",
+      "sourceName": "Minilab3 MIDI",
+      "bytes": [137, 36, 64],
+      "parsed": {
+        "type": "noteoff",
+        "channel": 10,
+        "note": 36,
+        "velocity": 64,
+        "raw": [137, 36, 64]
+      },
+      "expect": {
+        "type": "control",
+        "sourceControlId": "minilab-3:p1",
+        "sourceNodeId": "minilab-3",
+        "sourcePortId": "control-p1",
+        "label": "P1",
+        "semantics": "velocity-momentary-pressure",
+        "normalizedValue": 0,
+        "rawValue": 64,
+        "phase": "noteoff",
+        "note": 36
+      }
+    },
+    {
+      "id": "p1-pressure",
+      "why": "P1 pressed harder after the hit",
+      "sourceName": "Minilab3 MIDI",
+      "bytes": [169, 36, 20],
+      "parsed": {
+        "type": "polyaftertouch",
+        "channel": 10,
+        "note": 36,
+        "value": 20,
+        "raw": [169, 36, 20]
+      },
+      "expect": {
+        "type": "control",
+        "sourceControlId": "minilab-3:p1",
+        "sourceNodeId": "minilab-3",
+        "sourcePortId": "control-p1",
+        "label": "P1",
+        "semantics": "velocity-momentary-pressure",
+        "normalizedValue": 0.15748031496062992,
+        "rawValue": 20,
+        "phase": "polyaftertouch",
+        "note": 36
+      }
+    },
+    {
+      "id": "p2-hit",
+      "why": "P2 struck on its default note",
+      "sourceName": "Minilab3 MIDI",
+      "bytes": [153, 37, 49],
+      "parsed": {
+        "type": "noteon",
+        "channel": 10,
+        "note": 37,
+        "velocity": 49,
+        "raw": [153, 37, 49]
+      },
+      "expect": {
+        "type": "control",
+        "sourceControlId": "minilab-3:p2",
+        "sourceNodeId": "minilab-3",
+        "sourcePortId": "control-p2",
+        "label": "P2",
+        "semantics": "velocity-momentary-pressure",
+        "normalizedValue": 0.3858267716535433,
+        "rawValue": 49,
+        "phase": "noteon",
+        "note": 37
+      }
+    },
+    {
+      "id": "p2-hit-alternate-note",
+      "why": "P2 on the second note of its declaration",
+      "sourceName": "Minilab3 MIDI",
+      "bytes": [153, 45, 96],
+      "parsed": {
+        "type": "noteon",
+        "channel": 10,
+        "note": 45,
+        "velocity": 96,
+        "raw": [153, 45, 96]
+      },
+      "expect": {
+        "type": "control",
+        "sourceControlId": "minilab-3:p2",
+        "sourceNodeId": "minilab-3",
+        "sourcePortId": "control-p2",
+        "label": "P2",
+        "semantics": "velocity-momentary-pressure",
+        "normalizedValue": 0.7559055118110236,
+        "rawValue": 96,
+        "phase": "noteon",
+        "note": 45
+      }
+    },
+    {
+      "id": "p2-release",
+      "why": "P2 released: the value falls to 0 while the velocity byte does not",
+      "sourceName": "Minilab3 MIDI",
+      "bytes": [137, 37, 64],
+      "parsed": {
+        "type": "noteoff",
+        "channel": 10,
+        "note": 37,
+        "velocity": 64,
+        "raw": [137, 37, 64]
+      },
+      "expect": {
+        "type": "control",
+        "sourceControlId": "minilab-3:p2",
+        "sourceNodeId": "minilab-3",
+        "sourcePortId": "control-p2",
+        "label": "P2",
+        "semantics": "velocity-momentary-pressure",
+        "normalizedValue": 0,
+        "rawValue": 64,
+        "phase": "noteoff",
+        "note": 37
+      }
+    },
+    {
+      "id": "p2-pressure",
+      "why": "P2 pressed harder after the hit",
+      "sourceName": "Minilab3 MIDI",
+      "bytes": [169, 37, 27],
+      "parsed": {
+        "type": "polyaftertouch",
+        "channel": 10,
+        "note": 37,
+        "value": 27,
+        "raw": [169, 37, 27]
+      },
+      "expect": {
+        "type": "control",
+        "sourceControlId": "minilab-3:p2",
+        "sourceNodeId": "minilab-3",
+        "sourcePortId": "control-p2",
+        "label": "P2",
+        "semantics": "velocity-momentary-pressure",
+        "normalizedValue": 0.2125984251968504,
+        "rawValue": 27,
+        "phase": "polyaftertouch",
+        "note": 37
+      }
+    },
+    {
+      "id": "p3-hit",
+      "why": "P3 struck on its default note",
+      "sourceName": "Minilab3 MIDI",
+      "bytes": [153, 38, 58],
+      "parsed": {
+        "type": "noteon",
+        "channel": 10,
+        "note": 38,
+        "velocity": 58,
+        "raw": [153, 38, 58]
+      },
+      "expect": {
+        "type": "control",
+        "sourceControlId": "minilab-3:p3",
+        "sourceNodeId": "minilab-3",
+        "sourcePortId": "control-p3",
+        "label": "P3",
+        "semantics": "velocity-momentary-pressure",
+        "normalizedValue": 0.4566929133858268,
+        "rawValue": 58,
+        "phase": "noteon",
+        "note": 38
+      }
+    },
+    {
+      "id": "p3-hit-alternate-note",
+      "why": "P3 on the second note of its declaration",
+      "sourceName": "Minilab3 MIDI",
+      "bytes": [153, 46, 96],
+      "parsed": {
+        "type": "noteon",
+        "channel": 10,
+        "note": 46,
+        "velocity": 96,
+        "raw": [153, 46, 96]
+      },
+      "expect": {
+        "type": "control",
+        "sourceControlId": "minilab-3:p3",
+        "sourceNodeId": "minilab-3",
+        "sourcePortId": "control-p3",
+        "label": "P3",
+        "semantics": "velocity-momentary-pressure",
+        "normalizedValue": 0.7559055118110236,
+        "rawValue": 96,
+        "phase": "noteon",
+        "note": 46
+      }
+    },
+    {
+      "id": "p3-release",
+      "why": "P3 released: the value falls to 0 while the velocity byte does not",
+      "sourceName": "Minilab3 MIDI",
+      "bytes": [137, 38, 64],
+      "parsed": {
+        "type": "noteoff",
+        "channel": 10,
+        "note": 38,
+        "velocity": 64,
+        "raw": [137, 38, 64]
+      },
+      "expect": {
+        "type": "control",
+        "sourceControlId": "minilab-3:p3",
+        "sourceNodeId": "minilab-3",
+        "sourcePortId": "control-p3",
+        "label": "P3",
+        "semantics": "velocity-momentary-pressure",
+        "normalizedValue": 0,
+        "rawValue": 64,
+        "phase": "noteoff",
+        "note": 38
+      }
+    },
+    {
+      "id": "p3-pressure",
+      "why": "P3 pressed harder after the hit",
+      "sourceName": "Minilab3 MIDI",
+      "bytes": [169, 38, 34],
+      "parsed": {
+        "type": "polyaftertouch",
+        "channel": 10,
+        "note": 38,
+        "value": 34,
+        "raw": [169, 38, 34]
+      },
+      "expect": {
+        "type": "control",
+        "sourceControlId": "minilab-3:p3",
+        "sourceNodeId": "minilab-3",
+        "sourcePortId": "control-p3",
+        "label": "P3",
+        "semantics": "velocity-momentary-pressure",
+        "normalizedValue": 0.2677165354330709,
+        "rawValue": 34,
+        "phase": "polyaftertouch",
+        "note": 38
+      }
+    },
+    {
+      "id": "p4-hit",
+      "why": "P4 struck on its default note",
+      "sourceName": "Minilab3 MIDI",
+      "bytes": [153, 39, 67],
+      "parsed": {
+        "type": "noteon",
+        "channel": 10,
+        "note": 39,
+        "velocity": 67,
+        "raw": [153, 39, 67]
+      },
+      "expect": {
+        "type": "control",
+        "sourceControlId": "minilab-3:p4",
+        "sourceNodeId": "minilab-3",
+        "sourcePortId": "control-p4",
+        "label": "P4",
+        "semantics": "velocity-momentary-pressure",
+        "normalizedValue": 0.5275590551181102,
+        "rawValue": 67,
+        "phase": "noteon",
+        "note": 39
+      }
+    },
+    {
+      "id": "p4-hit-alternate-note",
+      "why": "P4 on the second note of its declaration",
+      "sourceName": "Minilab3 MIDI",
+      "bytes": [153, 47, 96],
+      "parsed": {
+        "type": "noteon",
+        "channel": 10,
+        "note": 47,
+        "velocity": 96,
+        "raw": [153, 47, 96]
+      },
+      "expect": {
+        "type": "control",
+        "sourceControlId": "minilab-3:p4",
+        "sourceNodeId": "minilab-3",
+        "sourcePortId": "control-p4",
+        "label": "P4",
+        "semantics": "velocity-momentary-pressure",
+        "normalizedValue": 0.7559055118110236,
+        "rawValue": 96,
+        "phase": "noteon",
+        "note": 47
+      }
+    },
+    {
+      "id": "p4-release",
+      "why": "P4 released: the value falls to 0 while the velocity byte does not",
+      "sourceName": "Minilab3 MIDI",
+      "bytes": [137, 39, 64],
+      "parsed": {
+        "type": "noteoff",
+        "channel": 10,
+        "note": 39,
+        "velocity": 64,
+        "raw": [137, 39, 64]
+      },
+      "expect": {
+        "type": "control",
+        "sourceControlId": "minilab-3:p4",
+        "sourceNodeId": "minilab-3",
+        "sourcePortId": "control-p4",
+        "label": "P4",
+        "semantics": "velocity-momentary-pressure",
+        "normalizedValue": 0,
+        "rawValue": 64,
+        "phase": "noteoff",
+        "note": 39
+      }
+    },
+    {
+      "id": "p4-pressure",
+      "why": "P4 pressed harder after the hit",
+      "sourceName": "Minilab3 MIDI",
+      "bytes": [169, 39, 41],
+      "parsed": {
+        "type": "polyaftertouch",
+        "channel": 10,
+        "note": 39,
+        "value": 41,
+        "raw": [169, 39, 41]
+      },
+      "expect": {
+        "type": "control",
+        "sourceControlId": "minilab-3:p4",
+        "sourceNodeId": "minilab-3",
+        "sourcePortId": "control-p4",
+        "label": "P4",
+        "semantics": "velocity-momentary-pressure",
+        "normalizedValue": 0.3228346456692913,
+        "rawValue": 41,
+        "phase": "polyaftertouch",
+        "note": 39
+      }
+    },
+    {
+      "id": "p5-hit",
+      "why": "P5 struck on its default note",
+      "sourceName": "Minilab3 MIDI",
+      "bytes": [153, 40, 76],
+      "parsed": {
+        "type": "noteon",
+        "channel": 10,
+        "note": 40,
+        "velocity": 76,
+        "raw": [153, 40, 76]
+      },
+      "expect": {
+        "type": "control",
+        "sourceControlId": "minilab-3:p5",
+        "sourceNodeId": "minilab-3",
+        "sourcePortId": "control-p5",
+        "label": "P5",
+        "semantics": "velocity-momentary-pressure",
+        "normalizedValue": 0.5984251968503937,
+        "rawValue": 76,
+        "phase": "noteon",
+        "note": 40
+      }
+    },
+    {
+      "id": "p5-hit-alternate-note",
+      "why": "P5 on the second note of its declaration",
+      "sourceName": "Minilab3 MIDI",
+      "bytes": [153, 48, 96],
+      "parsed": {
+        "type": "noteon",
+        "channel": 10,
+        "note": 48,
+        "velocity": 96,
+        "raw": [153, 48, 96]
+      },
+      "expect": {
+        "type": "control",
+        "sourceControlId": "minilab-3:p5",
+        "sourceNodeId": "minilab-3",
+        "sourcePortId": "control-p5",
+        "label": "P5",
+        "semantics": "velocity-momentary-pressure",
+        "normalizedValue": 0.7559055118110236,
+        "rawValue": 96,
+        "phase": "noteon",
+        "note": 48
+      }
+    },
+    {
+      "id": "p5-release",
+      "why": "P5 released: the value falls to 0 while the velocity byte does not",
+      "sourceName": "Minilab3 MIDI",
+      "bytes": [137, 40, 64],
+      "parsed": {
+        "type": "noteoff",
+        "channel": 10,
+        "note": 40,
+        "velocity": 64,
+        "raw": [137, 40, 64]
+      },
+      "expect": {
+        "type": "control",
+        "sourceControlId": "minilab-3:p5",
+        "sourceNodeId": "minilab-3",
+        "sourcePortId": "control-p5",
+        "label": "P5",
+        "semantics": "velocity-momentary-pressure",
+        "normalizedValue": 0,
+        "rawValue": 64,
+        "phase": "noteoff",
+        "note": 40
+      }
+    },
+    {
+      "id": "p5-pressure",
+      "why": "P5 pressed harder after the hit",
+      "sourceName": "Minilab3 MIDI",
+      "bytes": [169, 40, 48],
+      "parsed": {
+        "type": "polyaftertouch",
+        "channel": 10,
+        "note": 40,
+        "value": 48,
+        "raw": [169, 40, 48]
+      },
+      "expect": {
+        "type": "control",
+        "sourceControlId": "minilab-3:p5",
+        "sourceNodeId": "minilab-3",
+        "sourcePortId": "control-p5",
+        "label": "P5",
+        "semantics": "velocity-momentary-pressure",
+        "normalizedValue": 0.3779527559055118,
+        "rawValue": 48,
+        "phase": "polyaftertouch",
+        "note": 40
+      }
+    },
+    {
+      "id": "p6-hit",
+      "why": "P6 struck on its default note",
+      "sourceName": "Minilab3 MIDI",
+      "bytes": [153, 41, 85],
+      "parsed": {
+        "type": "noteon",
+        "channel": 10,
+        "note": 41,
+        "velocity": 85,
+        "raw": [153, 41, 85]
+      },
+      "expect": {
+        "type": "control",
+        "sourceControlId": "minilab-3:p6",
+        "sourceNodeId": "minilab-3",
+        "sourcePortId": "control-p6",
+        "label": "P6",
+        "semantics": "velocity-momentary-pressure",
+        "normalizedValue": 0.6692913385826772,
+        "rawValue": 85,
+        "phase": "noteon",
+        "note": 41
+      }
+    },
+    {
+      "id": "p6-hit-alternate-note",
+      "why": "P6 on the second note of its declaration",
+      "sourceName": "Minilab3 MIDI",
+      "bytes": [153, 49, 96],
+      "parsed": {
+        "type": "noteon",
+        "channel": 10,
+        "note": 49,
+        "velocity": 96,
+        "raw": [153, 49, 96]
+      },
+      "expect": {
+        "type": "control",
+        "sourceControlId": "minilab-3:p6",
+        "sourceNodeId": "minilab-3",
+        "sourcePortId": "control-p6",
+        "label": "P6",
+        "semantics": "velocity-momentary-pressure",
+        "normalizedValue": 0.7559055118110236,
+        "rawValue": 96,
+        "phase": "noteon",
+        "note": 49
+      }
+    },
+    {
+      "id": "p6-release",
+      "why": "P6 released: the value falls to 0 while the velocity byte does not",
+      "sourceName": "Minilab3 MIDI",
+      "bytes": [137, 41, 64],
+      "parsed": {
+        "type": "noteoff",
+        "channel": 10,
+        "note": 41,
+        "velocity": 64,
+        "raw": [137, 41, 64]
+      },
+      "expect": {
+        "type": "control",
+        "sourceControlId": "minilab-3:p6",
+        "sourceNodeId": "minilab-3",
+        "sourcePortId": "control-p6",
+        "label": "P6",
+        "semantics": "velocity-momentary-pressure",
+        "normalizedValue": 0,
+        "rawValue": 64,
+        "phase": "noteoff",
+        "note": 41
+      }
+    },
+    {
+      "id": "p6-pressure",
+      "why": "P6 pressed harder after the hit",
+      "sourceName": "Minilab3 MIDI",
+      "bytes": [169, 41, 55],
+      "parsed": {
+        "type": "polyaftertouch",
+        "channel": 10,
+        "note": 41,
+        "value": 55,
+        "raw": [169, 41, 55]
+      },
+      "expect": {
+        "type": "control",
+        "sourceControlId": "minilab-3:p6",
+        "sourceNodeId": "minilab-3",
+        "sourcePortId": "control-p6",
+        "label": "P6",
+        "semantics": "velocity-momentary-pressure",
+        "normalizedValue": 0.4330708661417323,
+        "rawValue": 55,
+        "phase": "polyaftertouch",
+        "note": 41
+      }
+    },
+    {
+      "id": "p7-hit",
+      "why": "P7 struck on its default note",
+      "sourceName": "Minilab3 MIDI",
+      "bytes": [153, 42, 94],
+      "parsed": {
+        "type": "noteon",
+        "channel": 10,
+        "note": 42,
+        "velocity": 94,
+        "raw": [153, 42, 94]
+      },
+      "expect": {
+        "type": "control",
+        "sourceControlId": "minilab-3:p7",
+        "sourceNodeId": "minilab-3",
+        "sourcePortId": "control-p7",
+        "label": "P7",
+        "semantics": "velocity-momentary-pressure",
+        "normalizedValue": 0.7401574803149606,
+        "rawValue": 94,
+        "phase": "noteon",
+        "note": 42
+      }
+    },
+    {
+      "id": "p7-hit-alternate-note",
+      "why": "P7 on the second note of its declaration",
+      "sourceName": "Minilab3 MIDI",
+      "bytes": [153, 50, 96],
+      "parsed": {
+        "type": "noteon",
+        "channel": 10,
+        "note": 50,
+        "velocity": 96,
+        "raw": [153, 50, 96]
+      },
+      "expect": {
+        "type": "control",
+        "sourceControlId": "minilab-3:p7",
+        "sourceNodeId": "minilab-3",
+        "sourcePortId": "control-p7",
+        "label": "P7",
+        "semantics": "velocity-momentary-pressure",
+        "normalizedValue": 0.7559055118110236,
+        "rawValue": 96,
+        "phase": "noteon",
+        "note": 50
+      }
+    },
+    {
+      "id": "p7-release",
+      "why": "P7 released: the value falls to 0 while the velocity byte does not",
+      "sourceName": "Minilab3 MIDI",
+      "bytes": [137, 42, 64],
+      "parsed": {
+        "type": "noteoff",
+        "channel": 10,
+        "note": 42,
+        "velocity": 64,
+        "raw": [137, 42, 64]
+      },
+      "expect": {
+        "type": "control",
+        "sourceControlId": "minilab-3:p7",
+        "sourceNodeId": "minilab-3",
+        "sourcePortId": "control-p7",
+        "label": "P7",
+        "semantics": "velocity-momentary-pressure",
+        "normalizedValue": 0,
+        "rawValue": 64,
+        "phase": "noteoff",
+        "note": 42
+      }
+    },
+    {
+      "id": "p7-pressure",
+      "why": "P7 pressed harder after the hit",
+      "sourceName": "Minilab3 MIDI",
+      "bytes": [169, 42, 62],
+      "parsed": {
+        "type": "polyaftertouch",
+        "channel": 10,
+        "note": 42,
+        "value": 62,
+        "raw": [169, 42, 62]
+      },
+      "expect": {
+        "type": "control",
+        "sourceControlId": "minilab-3:p7",
+        "sourceNodeId": "minilab-3",
+        "sourcePortId": "control-p7",
+        "label": "P7",
+        "semantics": "velocity-momentary-pressure",
+        "normalizedValue": 0.4881889763779528,
+        "rawValue": 62,
+        "phase": "polyaftertouch",
+        "note": 42
+      }
+    },
+    {
+      "id": "p8-hit",
+      "why": "P8 struck on its default note",
+      "sourceName": "Minilab3 MIDI",
+      "bytes": [153, 43, 103],
+      "parsed": {
+        "type": "noteon",
+        "channel": 10,
+        "note": 43,
+        "velocity": 103,
+        "raw": [153, 43, 103]
+      },
+      "expect": {
+        "type": "control",
+        "sourceControlId": "minilab-3:p8",
+        "sourceNodeId": "minilab-3",
+        "sourcePortId": "control-p8",
+        "label": "P8",
+        "semantics": "velocity-momentary-pressure",
+        "normalizedValue": 0.8110236220472441,
+        "rawValue": 103,
+        "phase": "noteon",
+        "note": 43
+      }
+    },
+    {
+      "id": "p8-hit-alternate-note",
+      "why": "P8 on the second note of its declaration",
+      "sourceName": "Minilab3 MIDI",
+      "bytes": [153, 51, 96],
+      "parsed": {
+        "type": "noteon",
+        "channel": 10,
+        "note": 51,
+        "velocity": 96,
+        "raw": [153, 51, 96]
+      },
+      "expect": {
+        "type": "control",
+        "sourceControlId": "minilab-3:p8",
+        "sourceNodeId": "minilab-3",
+        "sourcePortId": "control-p8",
+        "label": "P8",
+        "semantics": "velocity-momentary-pressure",
+        "normalizedValue": 0.7559055118110236,
+        "rawValue": 96,
+        "phase": "noteon",
+        "note": 51
+      }
+    },
+    {
+      "id": "p8-release",
+      "why": "P8 released: the value falls to 0 while the velocity byte does not",
+      "sourceName": "Minilab3 MIDI",
+      "bytes": [137, 43, 64],
+      "parsed": {
+        "type": "noteoff",
+        "channel": 10,
+        "note": 43,
+        "velocity": 64,
+        "raw": [137, 43, 64]
+      },
+      "expect": {
+        "type": "control",
+        "sourceControlId": "minilab-3:p8",
+        "sourceNodeId": "minilab-3",
+        "sourcePortId": "control-p8",
+        "label": "P8",
+        "semantics": "velocity-momentary-pressure",
+        "normalizedValue": 0,
+        "rawValue": 64,
+        "phase": "noteoff",
+        "note": 43
+      }
+    },
+    {
+      "id": "p8-pressure",
+      "why": "P8 pressed harder after the hit",
+      "sourceName": "Minilab3 MIDI",
+      "bytes": [169, 43, 69],
+      "parsed": {
+        "type": "polyaftertouch",
+        "channel": 10,
+        "note": 43,
+        "value": 69,
+        "raw": [169, 43, 69]
+      },
+      "expect": {
+        "type": "control",
+        "sourceControlId": "minilab-3:p8",
+        "sourceNodeId": "minilab-3",
+        "sourcePortId": "control-p8",
+        "label": "P8",
+        "semantics": "velocity-momentary-pressure",
+        "normalizedValue": 0.5433070866141733,
+        "rawValue": 69,
+        "phase": "polyaftertouch",
+        "note": 43
+      }
+    },
+    {
+      "id": "p1-hit-with-velocity-zero",
+      "why": "A note on with velocity 0 is a note off: the pad reads as released, not as a silent hit",
+      "sourceName": "Minilab3 MIDI",
+      "bytes": [153, 36, 0],
+      "parsed": {
+        "type": "noteoff",
+        "channel": 10,
+        "note": 36,
+        "velocity": 0,
+        "raw": [153, 36, 0]
+      },
+      "expect": {
+        "type": "control",
+        "sourceControlId": "minilab-3:p1",
+        "sourceNodeId": "minilab-3",
+        "sourcePortId": "control-p1",
+        "label": "P1",
+        "semantics": "velocity-momentary-pressure",
+        "normalizedValue": 0,
+        "rawValue": 0,
+        "phase": "noteoff",
+        "note": 36
+      }
+    },
+    {
+      "id": "pitch-bend-floor",
+      "why": "Strip pulled all the way down: the bipolar value clamps at -1",
+      "sourceName": "Minilab3 MIDI",
+      "bytes": [224, 0, 0],
+      "parsed": {
+        "type": "pitchbend",
+        "channel": 1,
+        "bend": 0,
+        "raw": [224, 0, 0]
+      },
+      "expect": {
+        "type": "control",
+        "sourceControlId": "minilab-3:pitch-bend",
+        "sourceNodeId": "minilab-3",
+        "sourcePortId": "control-pitch-bend",
+        "label": "Pitch",
+        "semantics": "bipolar",
+        "normalizedValue": 0,
+        "rawValue": 0,
+        "bipolarValue": -1
+      }
+    },
+    {
+      "id": "pitch-bend-centre",
+      "why": "Strip at rest: the bipolar value is exactly 0",
+      "sourceName": "Minilab3 MIDI",
+      "bytes": [224, 0, 64],
+      "parsed": {
+        "type": "pitchbend",
+        "channel": 1,
+        "bend": 8192,
+        "raw": [224, 0, 64]
+      },
+      "expect": {
+        "type": "control",
+        "sourceControlId": "minilab-3:pitch-bend",
+        "sourceNodeId": "minilab-3",
+        "sourcePortId": "control-pitch-bend",
+        "label": "Pitch",
+        "semantics": "bipolar",
+        "normalizedValue": 0.5000305194408838,
+        "rawValue": 8192,
+        "bipolarValue": 0
+      }
+    },
+    {
+      "id": "pitch-bend-ceiling",
+      "why": "Strip pushed all the way up: the bipolar value is exactly 1",
+      "sourceName": "Minilab3 MIDI",
+      "bytes": [224, 127, 127],
+      "parsed": {
+        "type": "pitchbend",
+        "channel": 1,
+        "bend": 16383,
+        "raw": [224, 127, 127]
+      },
+      "expect": {
+        "type": "control",
+        "sourceControlId": "minilab-3:pitch-bend",
+        "sourceNodeId": "minilab-3",
+        "sourcePortId": "control-pitch-bend",
+        "label": "Pitch",
+        "semantics": "bipolar",
+        "normalizedValue": 1,
+        "rawValue": 16383,
+        "bipolarValue": 1
+      }
+    },
+    {
+      "id": "pitch-bend-quarter",
+      "why": "An ordinary position between the two ends",
+      "sourceName": "Minilab3 MIDI",
+      "bytes": [224, 0, 32],
+      "parsed": {
+        "type": "pitchbend",
+        "channel": 1,
+        "bend": 4096,
+        "raw": [224, 0, 32]
+      },
+      "expect": {
+        "type": "control",
+        "sourceControlId": "minilab-3:pitch-bend",
+        "sourceNodeId": "minilab-3",
+        "sourcePortId": "control-pitch-bend",
+        "label": "Pitch",
+        "semantics": "bipolar",
+        "normalizedValue": 0.2500152597204419,
+        "rawValue": 4096,
+        "bipolarValue": -0.5000610426077402
+      }
+    },
+    {
+      "id": "refuse-control-surface-port",
+      "why": "The MCU/HUI port is a control surface: it never carries what is played, so nothing from it becomes CONTROL",
+      "sourceName": "Minilab3 MCU/HUI",
+      "bytes": [176, 74, 64],
+      "parsed": {
+        "type": "cc",
+        "channel": 1,
+        "controller": 74,
+        "value": 64,
+        "raw": [176, 74, 64]
+      },
+      "expect": null
+    },
+    {
+      "id": "refuse-din-thru-port",
+      "why": "The 5-pin DIN pass-through carries traffic that belongs to another device",
+      "sourceName": "Minilab3 DIN THRU",
+      "bytes": [176, 74, 64],
+      "parsed": {
+        "type": "cc",
+        "channel": 1,
+        "controller": 74,
+        "value": 64,
+        "raw": [176, 74, 64]
+      },
+      "expect": null
+    },
+    {
+      "id": "refuse-another-controller",
+      "why": "CC 74 from a different keyboard is not K1",
+      "sourceName": "nanoKONTROL2 SLIDER/KNOB",
+      "bytes": [176, 74, 64],
+      "parsed": {
+        "type": "cc",
+        "channel": 1,
+        "controller": 74,
+        "value": 64,
+        "raw": [176, 74, 64]
+      },
+      "expect": null
+    },
+    {
+      "id": "refuse-nameless-source",
+      "why": "A message with no port name cannot be attributed to a device",
+      "sourceName": "",
+      "bytes": [176, 74, 64],
+      "parsed": {
+        "type": "cc",
+        "channel": 1,
+        "controller": 74,
+        "value": 64,
+        "raw": [176, 74, 64]
+      },
+      "expect": null
+    },
+    {
+      "id": "refuse-undeclared-cc",
+      "why": "CC 20 is not in the declaration; an undeclared CC is left alone rather than guessed at",
+      "sourceName": "Minilab3 MIDI",
+      "bytes": [176, 20, 64],
+      "parsed": {
+        "type": "cc",
+        "channel": 1,
+        "controller": 20,
+        "value": 64,
+        "raw": [176, 20, 64]
+      },
+      "expect": null
+    },
+    {
+      "id": "refuse-played-key",
+      "why": "The additive invariant, specification 6.7: a note played on the keys is music. It stays on the MIDI path and never becomes a control",
+      "sourceName": "Minilab3 MIDI",
+      "bytes": [144, 36, 96],
+      "parsed": {
+        "type": "noteon",
+        "channel": 1,
+        "note": 36,
+        "velocity": 96,
+        "raw": [144, 36, 96]
+      },
+      "expect": null
+    },
+    {
+      "id": "refuse-non-pad-note-on-channel-10",
+      "why": "Channel 10 is the pad channel, but note 60 is not one of the pads",
+      "sourceName": "Minilab3 MIDI",
+      "bytes": [153, 60, 96],
+      "parsed": {
+        "type": "noteon",
+        "channel": 10,
+        "note": 60,
+        "velocity": 96,
+        "raw": [153, 60, 96]
+      },
+      "expect": null
+    },
+    {
+      "id": "refuse-program-change",
+      "why": "A program change carries no control identity",
+      "sourceName": "Minilab3 MIDI",
+      "bytes": [192, 7],
+      "parsed": {
+        "type": "programchange",
+        "channel": 1,
+        "value": 7,
+        "raw": [192, 7]
+      },
+      "expect": null
+    },
+    {
+      "id": "refuse-channel-pressure",
+      "why": "Channel pressure is not attributable to one pad",
+      "sourceName": "Minilab3 MIDI",
+      "bytes": [208, 64],
+      "parsed": {
+        "type": "channelpressure",
+        "channel": 1,
+        "value": 64,
+        "raw": [208, 64]
+      },
+      "expect": null
+    },
+    {
+      "id": "refuse-clock-byte",
+      "why": "A system real-time byte parses to nothing at all, one step before decoding",
+      "sourceName": "Minilab3 MIDI",
+      "bytes": [248],
+      "parsed": null,
+      "expect": null
+    }
+  ]
+}

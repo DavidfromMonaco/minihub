@@ -7,7 +7,7 @@ Counter-intuitive choices: [DECISIONS.md](DECISIONS.md). Long workstreams:
 [PLANS.md](PLANS.md).
 
 **Current state** — branch `master`.
-590 JS tests green, 3,952 native checks green, clean Release build, `dist/`
+621 JS tests green, 3,952 native checks green, clean Release build, `dist/`
 synchronised with the sources.
 
 One caveat on that build, recorded here so it stops being invisible: it reports
@@ -18,8 +18,10 @@ recompile that surfaced them. Until they are fixed, "0 errors, 0 warnings" is
 true of an incremental build only.
 
 The goal of this whole pass is **consolidation before new modules are added**.
-Items 1 to 3 removed the structural obstacles; item 4 is the only real
-workstream left before adding a module becomes mechanical.
+Items 1 to 3 removed the structural obstacles; item 4 is what is left before
+adding a module becomes mechanical. Item 8 runs alongside it and answers a
+different question — taking the hardware out of the core — and it is the one
+holding the single active-plan slot.
 
 ---
 
@@ -253,11 +255,47 @@ applied on `mixer` nodes), the visibility of a `ctrl-in` on a node with dynamic
 inputs (§4.3 — `nodeInstances.js:289`), and a dual-context live/export runtime
 (§9.1).
 
-**Execution plan**: [plans/active/noeud-matrix.md](plans/active/noeud-matrix.md)
-— 23 steps across four phases, each with its verification command.
+**Execution plan**: [plans/done/noeud-matrix.md](plans/done/noeud-matrix.md) — 23
+steps across four phases, each with its verification command. **On standby**, not
+started: it left `plans/active/` to free the single slot for item 8 below, and two
+of its points are already stale. The note at its head says which.
 
 The Morpher is not removed — it leaves the add menu and stays functional as
 `legacy` (§12). Removing it for good is a separate workstream.
+
+### 8. The controller platform — Étape A in progress
+
+The hardware stops being code. `MINILAB_CONTROL_SOURCES` in
+`midi/minilabControls.js` **is** a profile, written as a JavaScript literal;
+[DECISIONS.md](DECISIONS.md) D-020 lifts the refusal that kept it there, for
+exactly two things — a versioned declarative format, and profiles living as
+files. Extracting it is owed whether or not a second controller ever exists
+([INTENT.md](INTENT.md) §5 calls hardware in the core a defect).
+
+Specification: [MINIHUB_CONTROLLER_PLATFORM_SPEC.md](MINIHUB_CONTROLLER_PLATFORM_SPEC.md).
+Execution plan:
+[plans/active/controller-profile.md](plans/active/controller-profile.md) — 9
+steps, 1 to 4 done.
+
+Order, and it is the one thing here that costs money if missed:
+
+```text
+A  →  (the gate of §2)  →  B  →  C  →  D
+```
+
+| | | |
+|---|---|---|
+| A | the internal profile | no new controller, no new product surface |
+| B | the plural | multi-input `MidiManager`, N controller nodes — crosses the gate |
+| C | the site and the Builder | separate codebase; A's decoder is copied, not rewritten |
+| D | shared profiles | a folder, a README, pull requests |
+
+**A before phase 2 of the Matrix** (item 7 above, spec §6.8), or the
+`ControlBindingManager` refactor is paid twice.
+
+**Device cards land in C** — spec §5.4. One page per device: photo, history,
+specifications, connectors, keybed, and a blueprint generated from the profile
+rather than drawn by hand. Written by the author, after the rest.
 
 ---
 

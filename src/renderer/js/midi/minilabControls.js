@@ -1,42 +1,130 @@
+/**
+ * The MiniLab 3's control surface, read from its profile.
+ *
+ * This file used to hold the 25 control sources as a JavaScript literal. That
+ * literal WAS a profile -- ids, CC numbers, pad notes, port ids -- with the
+ * hardware welded into the core, which INTENT.md section 5 calls a defect and
+ * DECISIONS.md D-020 lifted the refusal on. It now derives them from
+ * profiles/minilab-3.json, and derives nothing else: the exported shape, the
+ * lookup helpers and the decoding are what they were.
+ *
+ * The built-in profile is NOT validated at startup. It ships with the
+ * application and a test holds it against the format; paying for validation on
+ * every launch would buy a guarantee that is already bought. A profile arriving
+ * from anywhere else is a different matter, and validateControllerProfile() in
+ * controllerProfile.js is what it goes through.
+ */
 import { isMiniLabName, isPerformanceInputName } from './minilab.js';
 import { MINILAB_NODE_ID } from '../core/systemNodes.js';
+import profile from './profiles/minilab-3.json' with { type: 'json' };
 
-const source = (value) => Object.freeze(value);
+/**
+ * The legacy `semantics` string, rebuilt from the set of modes a control's
+ * bindings carry.
+ *
+ * It is a compatibility shim, and it is worth knowing that it shims nothing
+ * mechanical: no code in src/ branches on `semantics`. Specification section 4.3
+ * replaced this control-wide word with one `mode` per binding, precisely because
+ * a control can mean different things on different layers. A mode set with no
+ * legacy name falls back to the modes themselves rather than to a plausible
+ * wrong answer.
+ */
+const SEMANTICS_BY_MODES = Object.freeze({
+  absolute: 'continuous-absolute',
+  bipolar: 'bipolar',
+  momentary: 'momentary',
+  toggle: 'momentary-or-toggle',
+  'pressure,velocity': 'velocity-momentary-pressure'
+});
+
+function semanticsOf(control) {
+  const modes = [...new Set(control.bindings.map((binding) => binding.mode))].sort().join(',');
+  return SEMANTICS_BY_MODES[modes] ?? modes;
+}
+
+const numbersOfKind = (control, kind) => Object.freeze(
+  control.bindings.filter((binding) => binding.when.kind === kind).map((binding) => binding.when.number)
+);
+
+/**
+ * One profile control becomes one CONTROL source.
+ *
+ * Every derived string is an identity a saved project already contains -- the
+ * port id sits in each cable, the source id in each learned binding -- so each
+ * one is built by the rule specification section 3.3 fixed, and none of them is
+ * free to change: `control-<controlId>` and `<profileId>:<controlId>`.
+ */
+function toControlSource(control) {
+  const ccs = numbersOfKind(control, 'cc');
+  const notes = numbersOfKind(control, 'note');
+  const source = {
+    id: `${profile.profileId}:${control.id}`,
+    key: control.id,
+    label: control.label,
+    family: control.family,
+    semantics: semanticsOf(control)
+  };
+  // `cc` is the control's primary message, and only where that message is a CC:
+  // a pad leads with its note, and the pitch strip has no CC at all.
+  if (control.bindings[0]?.when.kind === 'cc') source.cc = control.bindings[0].when.number;
+  if (notes.length) source.notes = notes;
+  if (ccs.length) source.ccs = ccs;
+  source.portId = `control-${control.id}`;
+  return Object.freeze(source);
+}
 
 /** Stable physical CONTROL identities; original MIDI is never consumed. */
-export const MINILAB_CONTROL_SOURCES = Object.freeze([
-  source({ id: 'minilab-3:k1', key: 'k1', label: 'K1', family: 'knob', semantics: 'continuous-absolute', cc: 74, ccs: [74, 86], portId: 'control-k1' }),
-  source({ id: 'minilab-3:k2', key: 'k2', label: 'K2', family: 'knob', semantics: 'continuous-absolute', cc: 71, ccs: [71, 87], portId: 'control-k2' }),
-  source({ id: 'minilab-3:k3', key: 'k3', label: 'K3', family: 'knob', semantics: 'continuous-absolute', cc: 76, ccs: [76, 89], portId: 'control-k3' }),
-  source({ id: 'minilab-3:k4', key: 'k4', label: 'K4', family: 'knob', semantics: 'continuous-absolute', cc: 77, ccs: [77, 90], portId: 'control-k4' }),
-  source({ id: 'minilab-3:k5', key: 'k5', label: 'K5', family: 'knob', semantics: 'continuous-absolute', cc: 93, ccs: [93, 110], portId: 'control-k5' }),
-  source({ id: 'minilab-3:k6', key: 'k6', label: 'K6', family: 'knob', semantics: 'continuous-absolute', cc: 18, ccs: [18, 111], portId: 'control-k6' }),
-  source({ id: 'minilab-3:k7', key: 'k7', label: 'K7', family: 'knob', semantics: 'continuous-absolute', cc: 19, ccs: [19, 116], portId: 'control-k7' }),
-  source({ id: 'minilab-3:k8', key: 'k8', label: 'K8', family: 'knob', semantics: 'continuous-absolute', cc: 16, ccs: [16, 117], portId: 'control-k8' }),
-  source({ id: 'minilab-3:f1', key: 'f1', label: 'F1', family: 'fader', semantics: 'continuous-absolute', cc: 82, ccs: [82, 14], portId: 'control-f1' }),
-  source({ id: 'minilab-3:f2', key: 'f2', label: 'F2', family: 'fader', semantics: 'continuous-absolute', cc: 83, ccs: [83, 15], portId: 'control-f2' }),
-  source({ id: 'minilab-3:f3', key: 'f3', label: 'F3', family: 'fader', semantics: 'continuous-absolute', cc: 85, ccs: [85, 30], portId: 'control-f3' }),
-  source({ id: 'minilab-3:f4', key: 'f4', label: 'F4', family: 'fader', semantics: 'continuous-absolute', cc: 17, ccs: [17, 31], portId: 'control-f4' }),
-  source({ id: 'minilab-3:main-encoder', key: 'main-encoder', label: 'Main', family: 'main', semantics: 'continuous-absolute', cc: 114, ccs: [114, 112, 28, 29], portId: 'control-main-encoder' }),
-  source({ id: 'minilab-3:main-click', key: 'main-click', label: 'Main Click', family: 'main-click', semantics: 'momentary-or-toggle', cc: 115, ccs: [115, 113, 118, 119], portId: 'control-main-click' }),
-  source({ id: 'minilab-3:pitch-bend', key: 'pitch-bend', label: 'Pitch', family: 'strip', semantics: 'bipolar', portId: 'control-pitch-bend' }),
-  source({ id: 'minilab-3:modulation', key: 'modulation', label: 'Mod', family: 'strip', semantics: 'continuous-absolute', cc: 1, ccs: [1], portId: 'control-modulation' }),
-  source({ id: 'minilab-3:shift', key: 'shift', label: 'Shift', family: 'utility', semantics: 'momentary', cc: 9, ccs: [9, 27], portId: 'control-shift' }),
-  ...Array.from({ length: 8 }, (_, index) => source({
-    id: `minilab-3:p${index + 1}`, key: `p${index + 1}`, label: `P${index + 1}`,
-    family: 'pad', semantics: 'velocity-momentary-pressure', notes: [36 + index, 44 + index],
-    ccs: [102 + index], portId: `control-p${index + 1}`
-  }))
-]);
+export const MINILAB_CONTROL_SOURCES = Object.freeze(profile.controls.map(toControlSource));
 
 const BY_ID = new Map(MINILAB_CONTROL_SOURCES.map((item) => [item.id, item]));
 const BY_PORT = new Map(MINILAB_CONTROL_SOURCES.map((item) => [item.portId, item]));
-const BY_CC = new Map();
-for (const item of MINILAB_CONTROL_SOURCES) for (const cc of item.ccs || []) BY_CC.set(cc, item);
-const PAD_SOURCES = MINILAB_CONTROL_SOURCES.filter((item) => item.family === 'pad');
 
 export function getMiniLabControlSource(id) { return BY_ID.get(id) || null; }
 export function getMiniLabControlSourceByPort(id) { return BY_PORT.get(id) || null; }
+
+/**
+ * Which profile `kind` a parsed message can answer to.
+ *
+ * A pad's three phases -- struck, released, leaned on -- are one control and one
+ * binding, distinguished in the result by `phase` rather than by three
+ * declarations. That is why `polyaftertouch` maps to `note` here: the profile
+ * kind of the same name exists for a device that would use aftertouch as a
+ * control in its own right, which the MiniLab 3 does not.
+ */
+const KIND_BY_MESSAGE_TYPE = Object.freeze({
+  cc: 'cc',
+  pitchbend: 'pitchbend',
+  noteon: 'note',
+  noteoff: 'note',
+  polyaftertouch: 'note'
+});
+
+/**
+ * `kind:number` -> the controls that answer it, in profile order.
+ *
+ * A binding with no channel answers on any channel, which is what the MiniLab 3
+ * does for everything but its pads: move the keyboard's global channel and K1 is
+ * still K1. The pads are the exception, and the only place a channel is written
+ * down. The validator refuses two bindings that could both answer one message,
+ * so the first match is the only match.
+ */
+const MATCHERS = new Map();
+profile.controls.forEach((control, index) => {
+  const source = MINILAB_CONTROL_SOURCES[index];
+  for (const binding of control.bindings) {
+    const key = `${binding.when.kind}:${binding.when.number ?? '-'}`;
+    const answers = MATCHERS.get(key) ?? [];
+    answers.push({ source, channel: binding.when.channel });
+    MATCHERS.set(key, answers);
+  }
+});
+
+function sourceAnswering(kind, number, channel) {
+  const answers = MATCHERS.get(`${kind}:${number ?? '-'}`);
+  if (!answers) return null;
+  const hit = answers.find((entry) => entry.channel === undefined || entry.channel === channel);
+  return hit ? hit.source : null;
+}
 
 function result(item, msg, normalizedValue, extra = {}) {
   return { type: 'control', sourceControlId: item.id, sourceNodeId: MINILAB_NODE_ID,
@@ -44,24 +132,36 @@ function result(item, msg, normalizedValue, extra = {}) {
     normalizedValue, rawValue: msg.value ?? msg.velocity ?? msg.bend, ...extra };
 }
 
-/** Additively project one documented physical message into CONTROL. */
+/**
+ * Additively project one documented physical message into CONTROL.
+ *
+ * Additively is the invariant, not the adverb: a message that becomes a control
+ * is never taken off its MIDI path. A note played on the keys stays music, and
+ * K1 keeps sending CC 74 while it also drives a VST parameter. Specification
+ * section 6.7, and `controlRouting.test.mjs` is what holds it.
+ */
 export function decodeMiniLabControl(msg) {
   if (!msg || !isMiniLabName(msg.sourceName) || !isPerformanceInputName(msg.sourceName)) return null;
-  if (msg.type === 'pitchbend' && Number.isInteger(msg.bend) && msg.bend >= 0 && msg.bend <= 16383) {
-    const item = BY_ID.get('minilab-3:pitch-bend');
+  const kind = KIND_BY_MESSAGE_TYPE[msg.type];
+  if (!kind) return null;
+
+  if (kind === 'pitchbend') {
+    if (!Number.isInteger(msg.bend) || msg.bend < 0 || msg.bend > 16383) return null;
+    const item = sourceAnswering('pitchbend', undefined, msg.channel);
+    if (!item) return null;
     return result(item, msg, msg.bend / 16383, { bipolarValue: Math.max(-1, (msg.bend - 8192) / 8191) });
   }
-  if (msg.type === 'cc' && Number.isInteger(msg.value) && msg.value >= 0 && msg.value <= 127) {
-    const item = BY_CC.get(msg.controller);
+
+  if (kind === 'cc') {
+    if (!Number.isInteger(msg.value) || msg.value < 0 || msg.value > 127) return null;
+    const item = sourceAnswering('cc', msg.controller, msg.channel);
     return item ? result(item, msg, msg.value / 127) : null;
   }
-  if ((msg.type === 'noteon' || msg.type === 'noteoff' || msg.type === 'polyaftertouch')
-      && msg.channel === 10 && Number.isInteger(msg.note)) {
-    const item = PAD_SOURCES.find((pad) => pad.notes.includes(msg.note));
-    if (!item) return null;
-    const raw = msg.type === 'noteoff' ? 0 : (msg.velocity ?? msg.value);
-    if (!Number.isInteger(raw) || raw < 0 || raw > 127) return null;
-    return result(item, msg, raw / 127, { phase: msg.type, note: msg.note });
-  }
-  return null;
+
+  if (!Number.isInteger(msg.note)) return null;
+  const item = sourceAnswering('note', msg.note, msg.channel);
+  if (!item) return null;
+  const raw = msg.type === 'noteoff' ? 0 : (msg.velocity ?? msg.value);
+  if (!Number.isInteger(raw) || raw < 0 || raw > 127) return null;
+  return result(item, msg, raw / 127, { phase: msg.type, note: msg.note });
 }

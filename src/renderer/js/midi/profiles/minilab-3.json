@@ -1,0 +1,918 @@
+{
+  "formatVersion": 1,
+  "profileId": "minilab-3",
+  "revision": 1,
+  "name": "Arturia MiniLab 3",
+  "author": "",
+  "createdAt": "2026-09-04",
+  "completeness": {
+    "declared": 25,
+    "observed": 25,
+    "inferred": 0,
+    "untested": 0
+  },
+  "device": {
+    "vendor": "Arturia",
+    "model": "MiniLab 3",
+    "ports": [
+      {
+        "role": "performance",
+        "priority": 5,
+        "match": {
+          "name": "Minilab3 MIDI"
+        }
+      },
+      {
+        "role": "performance",
+        "priority": 3,
+        "match": {
+          "name": "Minilab3 ALV"
+        },
+        "note": "the dedicated Analog Lab channel"
+      },
+      {
+        "role": "control-surface",
+        "priority": 1,
+        "match": {
+          "name": "Minilab3 MCU/HUI"
+        },
+        "note": "never carries what is played"
+      },
+      {
+        "role": "ignore",
+        "priority": 0,
+        "match": {
+          "name": "Minilab3 DIN THRU"
+        },
+        "note": "a pass-through for another instrument"
+      }
+    ]
+  },
+  "layers": [
+    {
+      "id": "default",
+      "label": "Any mode"
+    }
+  ],
+  "controls": [
+    {
+      "id": "k1",
+      "label": "K1",
+      "family": "knob",
+      "layout": {
+        "x": 155,
+        "y": 43
+      },
+      "bindings": [
+        {
+          "layer": "default",
+          "when": {
+            "kind": "cc",
+            "number": 74
+          },
+          "mode": "absolute",
+          "range": [0, 127],
+          "confidence": "observed"
+        },
+        {
+          "layer": "default",
+          "when": {
+            "kind": "cc",
+            "number": 86
+          },
+          "mode": "absolute",
+          "range": [0, 127],
+          "confidence": "inferred"
+        }
+      ]
+    },
+    {
+      "id": "k2",
+      "label": "K2",
+      "family": "knob",
+      "layout": {
+        "x": 207,
+        "y": 43
+      },
+      "bindings": [
+        {
+          "layer": "default",
+          "when": {
+            "kind": "cc",
+            "number": 71
+          },
+          "mode": "absolute",
+          "range": [0, 127],
+          "confidence": "observed"
+        },
+        {
+          "layer": "default",
+          "when": {
+            "kind": "cc",
+            "number": 87
+          },
+          "mode": "absolute",
+          "range": [0, 127],
+          "confidence": "inferred"
+        }
+      ]
+    },
+    {
+      "id": "k3",
+      "label": "K3",
+      "family": "knob",
+      "layout": {
+        "x": 259,
+        "y": 43
+      },
+      "bindings": [
+        {
+          "layer": "default",
+          "when": {
+            "kind": "cc",
+            "number": 76
+          },
+          "mode": "absolute",
+          "range": [0, 127],
+          "confidence": "observed"
+        },
+        {
+          "layer": "default",
+          "when": {
+            "kind": "cc",
+            "number": 89
+          },
+          "mode": "absolute",
+          "range": [0, 127],
+          "confidence": "inferred"
+        }
+      ]
+    },
+    {
+      "id": "k4",
+      "label": "K4",
+      "family": "knob",
+      "layout": {
+        "x": 311,
+        "y": 43
+      },
+      "bindings": [
+        {
+          "layer": "default",
+          "when": {
+            "kind": "cc",
+            "number": 77
+          },
+          "mode": "absolute",
+          "range": [0, 127],
+          "confidence": "observed"
+        },
+        {
+          "layer": "default",
+          "when": {
+            "kind": "cc",
+            "number": 90
+          },
+          "mode": "absolute",
+          "range": [0, 127],
+          "confidence": "inferred"
+        }
+      ]
+    },
+    {
+      "id": "k5",
+      "label": "K5",
+      "family": "knob",
+      "layout": {
+        "x": 155,
+        "y": 91
+      },
+      "bindings": [
+        {
+          "layer": "default",
+          "when": {
+            "kind": "cc",
+            "number": 93
+          },
+          "mode": "absolute",
+          "range": [0, 127],
+          "confidence": "observed"
+        },
+        {
+          "layer": "default",
+          "when": {
+            "kind": "cc",
+            "number": 110
+          },
+          "mode": "absolute",
+          "range": [0, 127],
+          "confidence": "inferred"
+        }
+      ]
+    },
+    {
+      "id": "k6",
+      "label": "K6",
+      "family": "knob",
+      "layout": {
+        "x": 207,
+        "y": 91
+      },
+      "bindings": [
+        {
+          "layer": "default",
+          "when": {
+            "kind": "cc",
+            "number": 18
+          },
+          "mode": "absolute",
+          "range": [0, 127],
+          "confidence": "observed"
+        },
+        {
+          "layer": "default",
+          "when": {
+            "kind": "cc",
+            "number": 111
+          },
+          "mode": "absolute",
+          "range": [0, 127],
+          "confidence": "inferred"
+        }
+      ]
+    },
+    {
+      "id": "k7",
+      "label": "K7",
+      "family": "knob",
+      "layout": {
+        "x": 259,
+        "y": 91
+      },
+      "bindings": [
+        {
+          "layer": "default",
+          "when": {
+            "kind": "cc",
+            "number": 19
+          },
+          "mode": "absolute",
+          "range": [0, 127],
+          "confidence": "observed"
+        },
+        {
+          "layer": "default",
+          "when": {
+            "kind": "cc",
+            "number": 116
+          },
+          "mode": "absolute",
+          "range": [0, 127],
+          "confidence": "inferred"
+        }
+      ]
+    },
+    {
+      "id": "k8",
+      "label": "K8",
+      "family": "knob",
+      "layout": {
+        "x": 311,
+        "y": 91
+      },
+      "bindings": [
+        {
+          "layer": "default",
+          "when": {
+            "kind": "cc",
+            "number": 16
+          },
+          "mode": "absolute",
+          "range": [0, 127],
+          "confidence": "observed"
+        },
+        {
+          "layer": "default",
+          "when": {
+            "kind": "cc",
+            "number": 117
+          },
+          "mode": "absolute",
+          "range": [0, 127],
+          "confidence": "inferred"
+        }
+      ]
+    },
+    {
+      "id": "f1",
+      "label": "F1",
+      "family": "fader",
+      "layout": {
+        "x": 355,
+        "y": 63
+      },
+      "bindings": [
+        {
+          "layer": "default",
+          "when": {
+            "kind": "cc",
+            "number": 82
+          },
+          "mode": "absolute",
+          "range": [0, 127],
+          "confidence": "observed"
+        },
+        {
+          "layer": "default",
+          "when": {
+            "kind": "cc",
+            "number": 14
+          },
+          "mode": "absolute",
+          "range": [0, 127],
+          "confidence": "inferred"
+        }
+      ]
+    },
+    {
+      "id": "f2",
+      "label": "F2",
+      "family": "fader",
+      "layout": {
+        "x": 392,
+        "y": 63
+      },
+      "bindings": [
+        {
+          "layer": "default",
+          "when": {
+            "kind": "cc",
+            "number": 83
+          },
+          "mode": "absolute",
+          "range": [0, 127],
+          "confidence": "observed"
+        },
+        {
+          "layer": "default",
+          "when": {
+            "kind": "cc",
+            "number": 15
+          },
+          "mode": "absolute",
+          "range": [0, 127],
+          "confidence": "inferred"
+        }
+      ]
+    },
+    {
+      "id": "f3",
+      "label": "F3",
+      "family": "fader",
+      "layout": {
+        "x": 429,
+        "y": 63
+      },
+      "bindings": [
+        {
+          "layer": "default",
+          "when": {
+            "kind": "cc",
+            "number": 85
+          },
+          "mode": "absolute",
+          "range": [0, 127],
+          "confidence": "observed"
+        },
+        {
+          "layer": "default",
+          "when": {
+            "kind": "cc",
+            "number": 30
+          },
+          "mode": "absolute",
+          "range": [0, 127],
+          "confidence": "inferred"
+        }
+      ]
+    },
+    {
+      "id": "f4",
+      "label": "F4",
+      "family": "fader",
+      "layout": {
+        "x": 466,
+        "y": 63
+      },
+      "bindings": [
+        {
+          "layer": "default",
+          "when": {
+            "kind": "cc",
+            "number": 17
+          },
+          "mode": "absolute",
+          "range": [0, 127],
+          "confidence": "observed"
+        },
+        {
+          "layer": "default",
+          "when": {
+            "kind": "cc",
+            "number": 31
+          },
+          "mode": "absolute",
+          "range": [0, 127],
+          "confidence": "inferred"
+        }
+      ]
+    },
+    {
+      "id": "main-encoder",
+      "label": "Main",
+      "family": "main",
+      "layout": {
+        "x": 122,
+        "y": 68
+      },
+      "bindings": [
+        {
+          "layer": "default",
+          "when": {
+            "kind": "cc",
+            "number": 114
+          },
+          "mode": "absolute",
+          "range": [0, 127],
+          "confidence": "observed"
+        },
+        {
+          "layer": "default",
+          "when": {
+            "kind": "cc",
+            "number": 112
+          },
+          "mode": "absolute",
+          "range": [0, 127],
+          "confidence": "inferred"
+        },
+        {
+          "layer": "default",
+          "when": {
+            "kind": "cc",
+            "number": 28
+          },
+          "mode": "absolute",
+          "range": [0, 127],
+          "confidence": "inferred"
+        },
+        {
+          "layer": "default",
+          "when": {
+            "kind": "cc",
+            "number": 29
+          },
+          "mode": "absolute",
+          "range": [0, 127],
+          "confidence": "inferred"
+        }
+      ]
+    },
+    {
+      "id": "main-click",
+      "label": "Main Click",
+      "family": "main-click",
+      "layout": {
+        "x": 122,
+        "y": 84
+      },
+      "bindings": [
+        {
+          "layer": "default",
+          "when": {
+            "kind": "cc",
+            "number": 115
+          },
+          "mode": "toggle",
+          "confidence": "observed"
+        },
+        {
+          "layer": "default",
+          "when": {
+            "kind": "cc",
+            "number": 113
+          },
+          "mode": "toggle",
+          "confidence": "inferred"
+        },
+        {
+          "layer": "default",
+          "when": {
+            "kind": "cc",
+            "number": 118
+          },
+          "mode": "toggle",
+          "confidence": "inferred"
+        },
+        {
+          "layer": "default",
+          "when": {
+            "kind": "cc",
+            "number": 119
+          },
+          "mode": "toggle",
+          "confidence": "inferred"
+        }
+      ]
+    },
+    {
+      "id": "pitch-bend",
+      "label": "Pitch",
+      "family": "strip",
+      "layout": {
+        "x": 22,
+        "y": 105
+      },
+      "bindings": [
+        {
+          "layer": "default",
+          "when": {
+            "kind": "pitchbend"
+          },
+          "mode": "bipolar",
+          "confidence": "observed"
+        }
+      ]
+    },
+    {
+      "id": "modulation",
+      "label": "Mod",
+      "family": "strip",
+      "layout": {
+        "x": 53,
+        "y": 105
+      },
+      "bindings": [
+        {
+          "layer": "default",
+          "when": {
+            "kind": "cc",
+            "number": 1
+          },
+          "mode": "absolute",
+          "range": [0, 127],
+          "confidence": "observed"
+        }
+      ]
+    },
+    {
+      "id": "shift",
+      "label": "Shift",
+      "family": "utility",
+      "layout": {
+        "x": 38,
+        "y": 25
+      },
+      "bindings": [
+        {
+          "layer": "default",
+          "when": {
+            "kind": "cc",
+            "number": 9
+          },
+          "mode": "momentary",
+          "confidence": "observed"
+        },
+        {
+          "layer": "default",
+          "when": {
+            "kind": "cc",
+            "number": 27
+          },
+          "mode": "momentary",
+          "confidence": "inferred"
+        }
+      ]
+    },
+    {
+      "id": "p1",
+      "label": "P1",
+      "family": "pad",
+      "layout": {
+        "x": 90,
+        "y": 126
+      },
+      "bindings": [
+        {
+          "layer": "default",
+          "when": {
+            "kind": "note",
+            "channel": 10,
+            "number": 36
+          },
+          "mode": "velocity",
+          "confidence": "observed"
+        },
+        {
+          "layer": "default",
+          "when": {
+            "kind": "note",
+            "channel": 10,
+            "number": 44
+          },
+          "mode": "velocity",
+          "confidence": "inferred"
+        },
+        {
+          "layer": "default",
+          "when": {
+            "kind": "cc",
+            "number": 102
+          },
+          "mode": "pressure",
+          "confidence": "inferred"
+        }
+      ]
+    },
+    {
+      "id": "p2",
+      "label": "P2",
+      "family": "pad",
+      "layout": {
+        "x": 138,
+        "y": 126
+      },
+      "bindings": [
+        {
+          "layer": "default",
+          "when": {
+            "kind": "note",
+            "channel": 10,
+            "number": 37
+          },
+          "mode": "velocity",
+          "confidence": "observed"
+        },
+        {
+          "layer": "default",
+          "when": {
+            "kind": "note",
+            "channel": 10,
+            "number": 45
+          },
+          "mode": "velocity",
+          "confidence": "inferred"
+        },
+        {
+          "layer": "default",
+          "when": {
+            "kind": "cc",
+            "number": 103
+          },
+          "mode": "pressure",
+          "confidence": "inferred"
+        }
+      ]
+    },
+    {
+      "id": "p3",
+      "label": "P3",
+      "family": "pad",
+      "layout": {
+        "x": 186,
+        "y": 126
+      },
+      "bindings": [
+        {
+          "layer": "default",
+          "when": {
+            "kind": "note",
+            "channel": 10,
+            "number": 38
+          },
+          "mode": "velocity",
+          "confidence": "observed"
+        },
+        {
+          "layer": "default",
+          "when": {
+            "kind": "note",
+            "channel": 10,
+            "number": 46
+          },
+          "mode": "velocity",
+          "confidence": "inferred"
+        },
+        {
+          "layer": "default",
+          "when": {
+            "kind": "cc",
+            "number": 104
+          },
+          "mode": "pressure",
+          "confidence": "inferred"
+        }
+      ]
+    },
+    {
+      "id": "p4",
+      "label": "P4",
+      "family": "pad",
+      "layout": {
+        "x": 234,
+        "y": 126
+      },
+      "bindings": [
+        {
+          "layer": "default",
+          "when": {
+            "kind": "note",
+            "channel": 10,
+            "number": 39
+          },
+          "mode": "velocity",
+          "confidence": "observed"
+        },
+        {
+          "layer": "default",
+          "when": {
+            "kind": "note",
+            "channel": 10,
+            "number": 47
+          },
+          "mode": "velocity",
+          "confidence": "inferred"
+        },
+        {
+          "layer": "default",
+          "when": {
+            "kind": "cc",
+            "number": 105
+          },
+          "mode": "pressure",
+          "confidence": "inferred"
+        }
+      ]
+    },
+    {
+      "id": "p5",
+      "label": "P5",
+      "family": "pad",
+      "layout": {
+        "x": 282,
+        "y": 126
+      },
+      "bindings": [
+        {
+          "layer": "default",
+          "when": {
+            "kind": "note",
+            "channel": 10,
+            "number": 40
+          },
+          "mode": "velocity",
+          "confidence": "observed"
+        },
+        {
+          "layer": "default",
+          "when": {
+            "kind": "note",
+            "channel": 10,
+            "number": 48
+          },
+          "mode": "velocity",
+          "confidence": "inferred"
+        },
+        {
+          "layer": "default",
+          "when": {
+            "kind": "cc",
+            "number": 106
+          },
+          "mode": "pressure",
+          "confidence": "inferred"
+        }
+      ]
+    },
+    {
+      "id": "p6",
+      "label": "P6",
+      "family": "pad",
+      "layout": {
+        "x": 330,
+        "y": 126
+      },
+      "bindings": [
+        {
+          "layer": "default",
+          "when": {
+            "kind": "note",
+            "channel": 10,
+            "number": 41
+          },
+          "mode": "velocity",
+          "confidence": "observed"
+        },
+        {
+          "layer": "default",
+          "when": {
+            "kind": "note",
+            "channel": 10,
+            "number": 49
+          },
+          "mode": "velocity",
+          "confidence": "inferred"
+        },
+        {
+          "layer": "default",
+          "when": {
+            "kind": "cc",
+            "number": 107
+          },
+          "mode": "pressure",
+          "confidence": "inferred"
+        }
+      ]
+    },
+    {
+      "id": "p7",
+      "label": "P7",
+      "family": "pad",
+      "layout": {
+        "x": 378,
+        "y": 126
+      },
+      "bindings": [
+        {
+          "layer": "default",
+          "when": {
+            "kind": "note",
+            "channel": 10,
+            "number": 42
+          },
+          "mode": "velocity",
+          "confidence": "observed"
+        },
+        {
+          "layer": "default",
+          "when": {
+            "kind": "note",
+            "channel": 10,
+            "number": 50
+          },
+          "mode": "velocity",
+          "confidence": "inferred"
+        },
+        {
+          "layer": "default",
+          "when": {
+            "kind": "cc",
+            "number": 108
+          },
+          "mode": "pressure",
+          "confidence": "inferred"
+        }
+      ]
+    },
+    {
+      "id": "p8",
+      "label": "P8",
+      "family": "pad",
+      "layout": {
+        "x": 426,
+        "y": 126
+      },
+      "bindings": [
+        {
+          "layer": "default",
+          "when": {
+            "kind": "note",
+            "channel": 10,
+            "number": 43
+          },
+          "mode": "velocity",
+          "confidence": "observed"
+        },
+        {
+          "layer": "default",
+          "when": {
+            "kind": "note",
+            "channel": 10,
+            "number": 51
+          },
+          "mode": "velocity",
+          "confidence": "inferred"
+        },
+        {
+          "layer": "default",
+          "when": {
+            "kind": "cc",
+            "number": 109
+          },
+          "mode": "pressure",
+          "confidence": "inferred"
+        }
+      ]
+    }
+  ]
+}
