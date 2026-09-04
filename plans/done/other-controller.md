@@ -9,8 +9,33 @@ nothing in `src/` assumes which device is plugged in.
 entry of [plans/done/controller-profile.md](../done/controller-profile.md), which
 named the decoder's remaining dependency on `midi/minilab.js`.
 
-**Status** — 6 steps of 6 done. One line of the Done-when is still owed:
-the port selection verified with the controller plugged in.
+**Status** — **finished 2026-09-04**, 6 of 6 steps, started the same day.
+
+**Result** — Nothing under `src/renderer/js/core/` or `src/renderer/js/ui/` names
+a device. The shell asks the routing node what the controller is called, the node
+takes that name from the loaded profile, and two `npm run check` rules fail the
+build if either half comes back — `device name out of the shell` and
+`one profile ships`. A fixture controller nobody owns
+(`test/conformance/vega-49.json`, 27-case corpus) is what says the machinery
+follows a profile rather than the profile that ships; the MiniLab corpus is
+untouched, byte for byte. 674 JS tests, 15 check rules.
+
+Verified in the real application, with the controller plugged in, because port
+selection is what `npm test` cannot see: Windows enumerated the four ports the
+profile declares, the armed input was `Minilab3 MIDI` (role `performance`,
+priority 5) and **not** `Minilab3 DIN THRU`, which enumerates second and which
+the pre-profile ranking would have taken; 194 messages arrived and were decoded
+while playing. Every device name on screen — header, sidebar entry, page title,
+status pill — came from the profile through the node.
+
+**What the next workstream inherits, named rather than left to be discovered** —
+`cc14` and `channelpressure` are declarable kinds with no decoding path, so a
+profile can declare a 14-bit fader and MiniHub answers nothing, silently; `mode`
+and `range` are validated and read by nobody, so a `relative` encoder decodes as
+an absolute byte. Both are recorded as cases in the fixture corpus, with a
+coverage test that fails the day either starts decoding. The plural
+(D-022: N controller nodes, multi-input `MidiManager`, settings migration) is
+still refused, and the faceplate decoration still has no field in the format.
 
 ## Context
 
@@ -395,7 +420,16 @@ runtime.
   "No MiniLab 3 detected", the sidebar entry and the page title say "MiniLab 3",
   and the MIDI input list offers "Minilab3 MIDI (preferred — unavailable)" —
   every one of those strings arriving from the profile through the routing node.
-  What is NOT verified is the other half of the last Done-when line: no MIDI
-  input was enumerated at all, because the controller is not plugged into this
-  machine right now. Port selection with the hardware present is the one thing
-  this workstream still owes, and it stays owed rather than being called done.
+
+2026-09-04 — Real-application check, controller plugged in. Windows enumerates
+`Minilab3 MIDI`, `Minilab3 DIN THRU`, `Minilab3 MCU/HUI` and `Minilab3 ALV` --
+the four ports the profile declares, verbatim -- and the armed input is
+`Minilab3 MIDI`. That is the whole point of the workstream in one line: DIN THRU
+enumerates SECOND, and the ranking that shipped before step 1 took the best port
+present, so a machine that woke up in a different order armed a port no key
+press ever travels on. Role now decides before priority ranks.
+
+194 messages arrived and were decoded, on channel 1, from the armed port. The
+monitor keeps the last 120, and all 120 were notes, so a knob turn made before
+them has scrolled out; what CC 74 decodes to is what the frozen corpus answers,
+94 cases of it. The header read "MiniLab 3 connected" throughout.

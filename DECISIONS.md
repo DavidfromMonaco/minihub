@@ -853,7 +853,9 @@ being reused rather than rebuilt).
 
 ## D-022 — One other controller, not N
 
-**Status**: in force · 2026-09-04 · **decided, not implemented**
+**Status**: in force · 2026-09-04 · **implemented 2026-09-04** —
+[plans/done/other-controller.md](plans/done/other-controller.md), 6 of 6 steps.
+The half with a user is built; the plural this entry refuses is untouched.
 
 **Context** — Étape A of `MINIHUB_CONTROLLER_PLATFORM_SPEC.md` is finished: the
 MiniLab 3 is a profile file, and the engine no longer knows any keyboard by name.

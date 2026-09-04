@@ -266,7 +266,7 @@ of its points are already stale. The note at its head says which.
 The Morpher is not removed — it leaves the add menu and stays functional as
 `legacy` (§12). Removing it for good is a separate workstream.
 
-### 8. The controller platform — Étape A done; the plural refused for now
+### 8. The controller platform — A done, D-022's half of B done; the plural refused
 
 The hardware has stopped being code. `MINILAB_CONTROL_SOURCES` **was** a profile
 written as a JavaScript literal; it is now derived from
@@ -280,14 +280,17 @@ Specification: [MINIHUB_CONTROLLER_PLATFORM_SPEC.md](MINIHUB_CONTROLLER_PLATFORM
 Execution plan, finished 2026-09-04:
 [plans/done/controller-profile.md](plans/done/controller-profile.md) — 9 of 9
 steps, each with the command that proved it.
+Proof of that step: 631 JS tests, 12 `npm run check` rules (three of them new and
+about profiles), 3,954 native checks, and the author's own project opening with
+every cable, node position and instance it was saved with.
 
 **Étape B was not taken as written.** [DECISIONS.md](DECISIONS.md) D-022 splits
 it: the single controller slot becomes a profile slot, so a friend with another
 keyboard can use MiniHub — and the plural (`selectedInputId`, N controller nodes,
 multi-input `MidiManager`) is refused until a second keyboard exists on a desk.
-The author owns one controller, asked directly on 2026-09-04. Plan:
-[plans/active/other-controller.md](plans/active/other-controller.md), 6 steps of
-6 done on 2026-09-04, each with the command that proved it. Nothing under
+The author owns one controller, asked directly on 2026-09-04. Plan, finished
+2026-09-04: [plans/done/other-controller.md](plans/done/other-controller.md),
+6 of 6 steps, each with the command that proved it. Nothing under
 `src/renderer/js/core/` or `src/renderer/js/ui/` names a device any more: the
 shell asks the routing node what the controller is called, and the node takes
 that name from the profile. A fixture profile for a device nobody owns
@@ -295,10 +298,13 @@ that name from the profile. A fixture profile for a device nobody owns
 machinery follows a profile rather than the profile that ships. Two check rules
 were added -- `device name out of the shell` and `one profile ships`.
 
-Still owed before the plan moves to `plans/done/`: the port selection verified
-with the controller actually plugged in. The application was launched and every
-device name on screen comes from the profile, but no MIDI port was enumerated
-that day, and port selection is exactly what `npm test` cannot see.
+Proof of the end, with the controller plugged in: Windows enumerated the four
+ports the profile declares and the armed input was `Minilab3 MIDI` -- **not**
+`Minilab3 DIN THRU`, which enumerates second and which the pre-profile ranking
+would have taken. 194 messages arrived and were decoded. Every device name on
+screen came from the profile through the routing node. Port selection is exactly
+what `npm test` cannot see, which is why this line exists. Mechanically: 674 JS
+tests, 15 `npm run check` rules.
 
 Two gaps the fixture surfaced, recorded in its corpus rather than left to be
 found: `cc14` and `channelpressure` are declarable kinds with no decoding path,
@@ -307,17 +313,15 @@ so a profile can declare a 14-bit fader and MiniHub answers nothing; and `mode`
 an absolute byte. Both are behaviour to add, not regressions -- and both are
 cheapest to do while the corpus that will check them already exists.
 
-Proof of the end: 631 JS tests, 12 `npm run check` rules (three of them new and
-about profiles), 3,954 native checks, and the author's own project opening with
-every cable, node position and instance it was saved with.
-
-What Étape B inherits, and it is written in the plan's closing entry rather than
-left to be found: the decoder still asks `midi/minilab.js` whether a port name
-can carry what is played, instead of reading `device.ports` from the profile
-(§4.2) — so it is not yet the artefact §3.5 wants copied into the Builder; the
-pad function labels and the faceplate decoration have no field in the format yet;
-and a binding whose profile is absent is kept but not shown, because with one
-built-in profile there is nothing to show.
+What the two plans leave behind, named rather than left to be discovered: the
+pad function labels and the faceplate decoration still have no field in the
+format, and one device cannot say what that field should be; a binding whose
+profile is absent is kept but not shown, because with one built-in profile there
+is nothing to show; and the two decoding gaps above. What Étape A owed and B
+paid: the decoder no longer asks `midi/minilab.js` anything — it reads
+`device.ports` from the profile (§4.2) and is the artefact §3.5 wants copied
+into the Builder, with `npm run check` refusing any import that would break the
+copy.
 
 Order, and it is the one thing here that costs money if missed:
 
