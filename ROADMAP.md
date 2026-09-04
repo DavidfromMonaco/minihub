@@ -7,7 +7,7 @@ Counter-intuitive choices: [DECISIONS.md](DECISIONS.md). Long workstreams:
 [PLANS.md](PLANS.md).
 
 **Current state** — branch `master`.
-627 JS tests green, 3,954 native checks green, clean Release build, `dist/`
+631 JS tests green, 3,954 native checks green, clean Release build, `dist/`
 synchronised with the sources.
 
 One caveat on that build, recorded here so it stops being invisible: it reports
@@ -19,9 +19,9 @@ true of an incremental build only.
 
 The goal of this whole pass is **consolidation before new modules are added**.
 Items 1 to 3 removed the structural obstacles; item 4 is what is left before
-adding a module becomes mechanical. Item 8 runs alongside it and answers a
-different question — taking the hardware out of the core — and it is the one
-holding the single active-plan slot.
+adding a module becomes mechanical. Item 8 answered a different question — taking
+the hardware out of the core — and its Étape A finished on 2026-09-04, so
+`plans/active/` is empty and the next workstream can take the slot.
 
 ---
 
@@ -264,19 +264,33 @@ of its points are already stale. The note at its head says which.
 The Morpher is not removed — it leaves the add menu and stays functional as
 `legacy` (§12). Removing it for good is a separate workstream.
 
-### 8. The controller platform — Étape A in progress
+### 8. The controller platform — Étape A done, B not started
 
-The hardware stops being code. `MINILAB_CONTROL_SOURCES` in
-`midi/minilabControls.js` **is** a profile, written as a JavaScript literal;
-[DECISIONS.md](DECISIONS.md) D-020 lifts the refusal that kept it there, for
-exactly two things — a versioned declarative format, and profiles living as
-files. Extracting it is owed whether or not a second controller ever exists
-([INTENT.md](INTENT.md) §5 calls hardware in the core a defect).
+The hardware has stopped being code. `MINILAB_CONTROL_SOURCES` **was** a profile
+written as a JavaScript literal; it is now derived from
+`midi/profiles/minilab-3.json`, which declares the 25 controls, the messages they
+send and where they sit. The decoder answers from it, the Patch Bay draws from
+it, and the engine no longer knows any keyboard by name.
+[DECISIONS.md](DECISIONS.md) D-020 is what opened the door; D-008 is closed by
+the same work.
 
 Specification: [MINIHUB_CONTROLLER_PLATFORM_SPEC.md](MINIHUB_CONTROLLER_PLATFORM_SPEC.md).
-Execution plan:
-[plans/active/controller-profile.md](plans/active/controller-profile.md) — 9
-steps, 1 to 8 done.
+Execution plan, finished 2026-09-04:
+[plans/done/controller-profile.md](plans/done/controller-profile.md) — 9 of 9
+steps, each with the command that proved it. **The single active-plan slot is
+free.**
+
+Proof of the end: 631 JS tests, 12 `npm run check` rules (three of them new and
+about profiles), 3,954 native checks, and the author's own project opening with
+every cable, node position and instance it was saved with.
+
+What Étape B inherits, and it is written in the plan's closing entry rather than
+left to be found: the decoder still asks `midi/minilab.js` whether a port name
+can carry what is played, instead of reading `device.ports` from the profile
+(§4.2) — so it is not yet the artefact §3.5 wants copied into the Builder; the
+pad function labels and the faceplate decoration have no field in the format yet;
+and a binding whose profile is absent is kept but not shown, because with one
+built-in profile there is nothing to show.
 
 Order, and it is the one thing here that costs money if missed:
 

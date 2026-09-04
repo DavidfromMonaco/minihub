@@ -9,7 +9,23 @@ being code.
 D-020 · [INTENT.md](../../INTENT.md) §5 ("a hardware identifier rooted in the core
 is a defect") and §8 ter.
 
-**Status** — in progress · started 2026-09-04.
+**Status** — **finished 2026-09-04**, 9 of 9 steps, started the same day.
+
+**Result** — The MiniLab 3 is a file. `profiles/minilab-3.json` declares its 25
+controls, their messages and their positions; `midi/minilabControls.js` reads it;
+the decoder answers from it; the Patch Bay draws from it; and the engine no longer
+knows any keyboard by name. 631 JS tests, 12 `npm run check` rules, 3,954 native
+checks, and the author's own project opens with every cable, position and instance
+it was saved with.
+
+**What Étape B inherits, named rather than left to be discovered** — three things
+are still hardware living in code, each deliberately: the decoder reaches into
+`midi/minilab.js` for port-name roles instead of reading `device.ports` from the
+profile (§4.2), so it is not yet the artefact §3.5 wants copied into the Builder;
+the pad function labels and the faceplate decoration have no field in the format
+and no second device to prove what that field should be; and an unresolved
+binding is kept but invisible, because with one built-in profile there is nothing
+to show. See the step 5, 6 and 9 log entries.
 
 ## Context
 
@@ -114,8 +130,10 @@ Named explicitly, because each will be tempting once the format exists:
       four pre-existing `C4996` warnings, unchanged. 1309 + 83 + 27 + 2535 =
       **3,954** native checks (two of them new). Probed: putting the name back
       fails the new assertion by name.
-- [ ] 9. Remove the literal. `midi/minilabControls.js` becomes a thin loader.
-      Check: the full list under "Done when".
+- [x] 9. Remove the literal. `midi/minilabControls.js` becomes a thin loader.
+      Check: the full list under "Done when" — all green, and the author's own
+      project verified through the real load path: 4 cables of 4, 0 skipped, 4
+      node positions, 2 instances, 0 unresolved ports.
 
 ## Fallback point
 
@@ -454,3 +472,38 @@ entier", and its "Reste ouvert" section now says what closed it. The register's
 rule is append-only; what was edited is a status marker and a stale code
 reference — `midi_output.h:49` no longer exists — while the decision itself was
 left untouched and the open point kept visible rather than erased.
+
+2026-09-04 — Step 9 done, and it turned out to be about proof rather than code.
+
+The literal it was written to remove had already gone at step 3: deriving a
+constant and keeping the hand-written version of it are mutually exclusive. What
+was left was the acceptance criterion nothing had yet tested — **no existing
+project modified** — and that had to become a command like everything else.
+
+`test/projectCompatibility.test.mjs` opens a project through the real path:
+`applySnapshot()`, the MiniLab and Audio Output routing nodes from their own
+module factories, `nodes.load()`, then `network.restore()`. It counts, because
+the failure here is silent in both directions — `Network.restore()` skips a cable
+whose endpoints it cannot resolve and merely warns, and binding normalisation
+used to drop what it could not resolve. A project would simply open smaller than
+it was saved, and the next save would make that permanent.
+
+The fixture is written in the **pre-D-019 `graph` spelling**, which is what files
+saved before today actually contain, and it carries what the author's own project
+does not: control cables and learned bindings, including one from a keyboard this
+build has never heard of.
+
+**The author's real project was opened too**, through the same path, as a one-off
+rather than a test: `Saves/` is not tracked, so a test reading it would pass or
+fail depending on whose machine ran it. Result: 4 cables of 4, 0 skipped, 4 node
+positions, 2 instances with one plugin each, 0 unresolved ports, tempo 120. It
+opens exactly as it was saved.
+
+**`minilabControls.js` is a loader plus the decoder, and that is where honesty is
+owed.** Specification §3.5 wants schema and decoder to be one artefact, copied
+byte for byte into the Builder. `controllerProfile.js` is already that.
+The decoder is not: it still imports `midi/minilab.js` to ask whether a port name
+can carry what is played. That knowledge belongs in the profile — §4.2 gives
+`device.ports` exactly those roles — and moving it is Étape B's work, not a
+tidy-up to slip into the last step of this one. Named here so Étape C does not
+discover it while copying.
