@@ -9,6 +9,18 @@ compagnon et Controller Builder
 
 ## 0. Révisions
 
+### v2.1 — 2026-09-05
+
+*(In English, per AGENTS.md §6, like §5.3 bis and §5.4 below.)*
+
+Two corrections, both from one question about the Builder: where do the
+coordinates come from.
+
+| # | What v2 said | What was found | § |
+|---|---|---|---|
+| 12 | `layout` is required from v1 (revision 5 above) | §5.3 never fills it. Its five steps capture what the device **sends**, and none of them asks where its controls **are**. A mandatory field the Builder cannot honestly fill is filled with a guess, which is the one outcome §1.3 refuses. `layout` becomes optional, and its absence is the marker. | §4.4, §5.3 bis |
+| 13 | "the site ships no JavaScript at all" | False for the Builder, which needs Web MIDI (§5.2) and now a clickable backdrop. True for the device cards. Two surfaces, two postures — they were written as one. | §5.4 |
+
 ### v2 — 2026-09-03
 
 Réécriture après épreuve du concept contre le code réel. Onze corrections, dont
@@ -313,7 +325,7 @@ observé est `inferred` et affiché comme tel.
 `programchange`. Une paire 14 bits est **un** binding
 `{ "kind": "cc14", "number": 74, "lsbNumber": 106 }`, jamais deux contrôles.
 
-### 4.4 `layout` est requis dès la v1, pas en Phase 3
+### 4.4 `layout` dès la v1 — obligatoire alors, optionnel depuis (v2.1)
 
 La v1 range la représentation graphique en Phase 3 et rend `layout` optionnel.
 Vérification faite, c'est un piège à deux détentes.
@@ -337,6 +349,16 @@ Avec `layout` dès la v1, le rendu existant devient générique sans rien perdre
 et le MiniLab reste dessiné exactement comme aujourd'hui — ses coordonnées
 sortent du code pour entrer dans son profil. `family` gouverne la forme,
 `layout` la position, la façade reste `base.css`.
+
+**Revised 2026-09-05 — `layout` becomes optional.** *(In English, per AGENTS.md
+§6.)* Everything above holds for a profile that **has** coordinates, and it is
+why the MiniLab's left the code for its file. What it got wrong is the
+conclusion that the field must therefore be mandatory. The migration it feared
+was adding `layout` to the format later — the field exists, so making it
+optional migrates nothing and invalidates no profile written so far. And the
+Builder cannot fill it from the five steps of §5.3, which capture what a device
+sends and never where its controls sit: a required field it cannot honestly fill
+gets filled with a guess. See §5.3 bis.
 
 ### 4.5 Métadonnées
 
@@ -404,6 +426,9 @@ Sert à savoir ce qui reste à couvrir.
 Tout ce qui n'est pas issu d'un geste est `inferred` ou `documented`. Jamais
 `observed`.
 
+> **Placement** — one more gesture belongs here, and it captures something else:
+> not what the control sends, but where it is. See §5.3 bis.
+
 **Étape 3 — balayer les couches.** *Nouvelle.* « Votre appareil a-t-il un
 bouton Shift, un mode DAW, des banques ? » Si oui, l'assistant fait refaire la
 calibration des contrôles concernés dans la seconde couche. Si l'utilisateur
@@ -422,6 +447,83 @@ Non testes   6      couche DAW
 Conflits     0
 Resultat    PARTIEL - exportable, completable dans MiniHub
 ```
+
+### 5.3 bis Where the controls are — the photograph, or nothing
+
+*(In English, per AGENTS.md §6, like §5.4 below.)*
+
+The five steps above capture what the device **sends**. None of them captures
+where its controls **are**, which is what `layout` records. The field was
+required from v1 (§4.4) and the Builder had no way to fill it: this section is
+that gap closed.
+
+It matters more than a picture normally would, because in MiniHub the picture
+**is** the wiring surface. `core/nodeGeometry.js` places a control port at its
+profile coordinate — `node.surface.ports[port.id]`, scaled — so pulling a cable
+from a knob is aiming at a spot on a drawing, not picking from a list. A layout
+that puts K1 where K3 sits makes the user cable the wrong control, in silence;
+they find out by turning it. It corrupts nothing saved, since a binding is
+identified by `<profileId>:<controlId>` and never by a position — but it is a
+data-entry error with no error message.
+
+**What "exact" means here is ordinal, not metric.** Twenty pixels of drift change
+nothing: the hit target is wide and the neighbourhood is unchanged. What has to
+be right is *which control sits where relative to the others* — the order along a
+row, the separation of groups, which pad is top left. A slightly skewed drawing
+is usable. A drawing that swaps K3 and K4 is broken.
+
+Two outcomes, and the profile says which one happened.
+
+**A — the user supplies a photograph of their own device.** It is shown as a
+backdrop, and calibration asks for one extra gesture: *move the control, then
+click it on your photo*. The MIDI message gives the identity, the click gives the
+position. Nothing is recognised in the image, and nothing needs to be — the
+Builder already knows which control answered, which is precisely what no image
+analysis could tell it. `device.layout` takes the photograph's dimensions and the
+coordinates live in its frame, so perspective is preserved rather than fought.
+
+**B — the user supplies nothing.** The controls are recorded as a **list**, and
+`layout` is **absent**. Not guessed, not defaulted to a grid: absent.
+
+**Why B is a list and not a default grid.** A grid invents ordinality. It assumes
+four knobs to a row, a single row of pads, and a physical order that CC numbers
+do not carry — on the MiniLab K1..K8 run left to right, and nothing guarantees
+that anywhere else. It produces a drawing that is plausible and wrong, which is
+the failure §1.3 exists to refuse: *« un profil à 95 % qui prétend 100 % »*. A
+list claims nothing about geometry, so it cannot be wrong about it. The
+photograph is the only mechanism in the whole journey that **measures**
+ordinality instead of assuming it.
+
+**Consequence on the format** — `layout` becomes optional (§4.4, revised).
+Absence is the marker, and deliberately not a `confidence` on the layout: a field
+flagged "unsure" is read as sure within six months, whereas a field that is not
+there cannot lie. Nothing else in the format moves, and every profile written so
+far stays valid.
+
+**Consequence in the application** — a node whose controls carry no layout falls
+back to the port list every other node already uses: the mode `nodeGeometry.js`
+takes when `node.surface` is absent. The one piece of work it needs is the one
+§4.4 measured — 25 ports stacked at 30 px is ~760 px of node. That is a defect of
+the single column, not of the list: in columns, or grouped by `family`, the same
+25 controls fit in about 250 px.
+
+**Not built yet, and on purpose.** While the MiniLab is the only profile and
+carries its layout, the list mode is never reached. It becomes necessary with the
+Builder (Étape C) and the first profile written without a photograph. Building it
+now would be a path nothing walks — `INTENT.md` §2.
+
+**The photograph is not kept.** It is a backdrop during setup; the profile
+records coordinates, never an image. Keeping it would turn a shareable text file
+into a binary with a copyright question attached, and rule 1 of §5.4 already
+refuses editorial content inside a profile. The generated blueprint is therefore
+a drawing — circles and rectangles by `family`, at the clicked positions — and
+never the user's photograph.
+
+**And it is not the photograph of §5.4.** The device card's is a manufacturer
+product shot: credited, committed to the site repository, published. The
+Builder's is the user's own: it never leaves their browser, and it is discarded.
+Same medium, opposite status. The only thing that travels between those two
+worlds is the profile, and it contains neither.
 
 ### 5.4 The site around it
 
@@ -445,8 +547,11 @@ Three rules, each of which stops the card turning into something else:
    nothing else. No photograph, no prose, no country of origin ever enters a
    profile: D-020 refuses moderation tiers, and editorial content inside a
    contributed data file **is** a moderation tier under another name.
-2. **The blueprint is generated, never drawn in the browser.** The site's CSP is
-   `script-src 'none'` and the site ships no JavaScript at all. A script in the
+2. **The blueprint is generated, never drawn in the browser.** The cards' CSP is
+   `script-src 'none'` and they ship no JavaScript at all. The Builder is the
+   exception and always was — Web MIDI (§5.2) and the placement backdrop of
+   §5.3 bis both need scripting — so this is two surfaces with two postures: the
+   cards are documents, the Builder is a tool. A script in the
    site's `scripts/` reads the profile and writes the SVG, which is committed —
    the same category as `check.mjs`, not a build step: what is in the repository
    is still exactly what is served. `check.mjs` then refuses a blueprint that no
@@ -456,7 +561,9 @@ Three rules, each of which stops the card turning into something else:
    and the decoder are (§3.5). The card reads that copy, never the application.
 
 **Photographs** — manufacturer product shots are used as citation, credited, and
-replaced on the manufacturer's request. Author's decision, 2026-09-04. Still
+replaced on the manufacturer's request. These are not the photograph of
+§5.3 bis, which is the user's own, never leaves their browser and is discarded
+after setup; the two are never interchanged, in either direction. Author's decision, 2026-09-04. Still
 owed: a visible way to make that request, since the site displays no contact
 address by design. The public `minihub-site` issues are the candidate that costs
 no address.

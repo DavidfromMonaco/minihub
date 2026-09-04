@@ -928,3 +928,77 @@ and staying so), `src/renderer/js/midi/minilab.js` (the port roles that belong i
 (`isCanonicalMidiIngress`), `src/renderer/js/ui/header.js:50` and `:53` (the two
 hard-coded device strings), and `plans/done/controller-profile.md`, whose closing
 entry names the decoder's remaining dependency on `midi/minilab.js`.
+
+---
+
+## D-023 — `layout` is optional, and its absence is the answer
+
+**Status**: in force · 2026-09-05 · **not implemented** — specification only
+(§4.4 revised, §5.3 bis added). The validator still requires `layout`, and
+nothing reaches the list mode while the MiniLab is the only profile and carries
+its coordinates.
+
+**Context** — D-020 turned a controller into a profile file, and spec §4.4
+required `layout` from v1 for a sound reason: without coordinates the Patch Bay
+stacks 25 ports at 30 px — ~760 px of node — and the drawing code was arithmetic
+that assumed four knobs to a row.
+
+What that section never checked is whether anything could **fill** the field. It
+cannot. The Builder's five steps (§5.3) capture what a device *sends* — a full
+sweep, a turn in each direction, press-release-press — and not one of them asks
+where a control sits.
+
+And the field is not decoration. `core/nodeGeometry.js` places a control port at
+its profile coordinate, so the drawing **is** the wiring surface: pulling a cable
+is aiming at a spot on a picture. A layout that puts K1 where K3 sits makes the
+user cable the wrong control, in silence. It corrupts nothing saved — a binding
+is `<profileId>:<controlId>`, never a position — but it is a data-entry error
+with no error message.
+
+**Decision** — Two outcomes, both honest, distinguished by **presence** rather
+than by a flag.
+
+- **With a photograph of the user's own device**: the Builder shows it as a
+  backdrop and asks one extra gesture per control — move it, then click it on the
+  photo. The MIDI message gives the identity, the click gives the position.
+  Nothing is recognised in the image and nothing needs to be.
+- **Without one**: the controls are a list, and `layout` is **absent**.
+
+`layout` therefore becomes **optional**. Three alternatives were refused:
+
+- **a default grid** — it invents ordinality: four knobs to a row, one row of
+  pads, and a physical order that CC numbers do not carry. It yields a drawing
+  that is plausible and wrong, which §1.3 refuses in as many words — *« un profil
+  à 95 % qui prétend 100 % »*;
+- **a `confidence` on the layout** — a field flagged unsure is read as sure
+  within six months. A field that is not there cannot lie;
+- **analysing the photograph** — it could never answer the only question that
+  matters, which is *which* of eight identical knobs sends CC 74. The Builder
+  already knows, from the message it just received.
+
+**Consequence** — The precision required is **ordinal, not metric**: twenty
+pixels of drift change nothing, while swapping K3 and K4 breaks the surface. The
+photograph is the only mechanism in the journey that measures that ordinality
+rather than assuming it, which is why it is the primary path and the list is the
+fallback — not the reverse.
+
+The application side is one already-existing mode: a node without `node.surface`
+falls back to the port list every other node uses. Its only work is the ~760 px
+column §4.4 measured, which is a defect of the single column rather than of the
+list — in columns, or grouped by `family`, 25 controls fit in about 250 px.
+
+Nothing is built now, on purpose: while the MiniLab is the only profile, the list
+mode is never reached, and building a path nothing walks is what `INTENT.md` §2
+refuses. It becomes necessary with the Builder (Étape C).
+
+**What would justify revisiting it** — A way for the Builder to obtain ordinality
+without a photograph that does not amount to guessing. Nothing on the table does:
+Web MIDI with `sysex: false` (§5.2) exposes `name`, `manufacturer` and `id`, and
+none of the three says where a knob is.
+
+**Proof in the code** — `src/renderer/js/core/nodeGeometry.js:65-71` (the control
+port placed from `node.surface.ports[port.id]`), `:50` (`SURFACE_NODE_HEIGHT`
+against the `PORT_ROW = 30` stack), `src/renderer/js/midi/controllerProfile.js`
+`validateControls()` (where `layout` is required today, and the one line that
+changes when this is implemented), and `src/renderer/js/ui/miniLabControlSurface.js`
+(the only consumer of the coordinates).

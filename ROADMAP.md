@@ -358,6 +358,19 @@ A  →  (the gate of §2)  →  B  →  C  →  D
 **A before phase 2 of the Matrix** (item 7 above, spec §6.8), or the
 `ControlBindingManager` refactor is paid twice.
 
+**Where a `layout` comes from, decided 2026-09-05** —
+[DECISIONS.md](DECISIONS.md) D-023, **specification only, no code**. The
+Builder's five steps capture what a device *sends* and never where its controls
+*sit*, so `layout` was a required field nothing could fill — and it is not
+decoration: `nodeGeometry.js` places a control port at its profile coordinate, so
+the drawing is the wiring surface and a wrong one makes the user cable the wrong
+control in silence. It becomes optional. With a photograph of the user's own
+device, calibration asks one click per control and the coordinates are measured;
+without one, the controls are a list and `layout` is absent. A default grid was
+refused: it invents an ordinality that CC numbers do not carry. Nothing is built
+— while the MiniLab is the only profile the list mode is never reached, and it
+becomes necessary with Étape C. Spec §4.4 (revised) and §5.3 bis.
+
 **Device cards land in C** — spec §5.4. One page per device: photo, history,
 specifications, connectors, keybed, and a blueprint generated from the profile
 rather than drawn by hand. Written by the author, after the rest.
