@@ -3,6 +3,7 @@ import {
   getMiniLabControlSource,
   getMiniLabControlSourceByPort
 } from '../midi/minilabControls.js';
+import { isProfileIdentifier } from '../midi/controllerProfile.js';
 import { MINILAB_NODE_ID } from './systemNodes.js';
 
 export const CONTROL_BINDING_VERSION = 1;
@@ -21,12 +22,42 @@ function boundedString(value, maxLength) {
 }
 
 /**
+ * Is this a well-formed binding key, `<profileId>:<controlId>`?
+ *
+ * Shape only, deliberately: whether the control exists is a different question,
+ * and asking it here is what used to destroy people's work. See
+ * normalizeControlBinding below. A key with a second colon fails because no
+ * identifier may contain one.
+ */
+function isControlSourceKey(value) {
+  if (typeof value !== 'string') return false;
+  const separator = value.indexOf(':');
+  if (separator === -1) return false;
+  return isProfileIdentifier(value.slice(0, separator))
+    && isProfileIdentifier(value.slice(separator + 1));
+}
+
+/**
  * Validate one persisted binding. Invalid/unbounded records are discarded on
  * load instead of being allowed to widen the IPC surface later.
+ *
+ * WHAT THIS FUNCTION IS NOT ALLOWED TO DO, and used to
+ * ----------------------------------------------------
+ * It checked that `sourceControlId` named a control the MiniLab table knew, and
+ * dropped the binding when it did not. Bindings live in the `.minihub` file, so
+ * the sequence was: the profile is missing for any reason -> every binding it
+ * names is silently dropped on load -> the next save writes the file without
+ * them. Hours of Learn, gone, with no message and nothing to undo.
+ *
+ * Specification section 6.1: this validates the SHAPE. Belonging is resolved at
+ * use, against the profile actually loaded, and a binding that resolves to
+ * nothing is kept and reported `missing-target` by bindingStatus(). A control
+ * that cannot be found is a control that cannot be routed -- it is not a reason
+ * to throw the user's mapping away.
  */
 export function normalizeControlBinding(value) {
   if (!value || typeof value !== 'object' || value.version !== CONTROL_BINDING_VERSION) return null;
-  if (!getMiniLabControlSource(value.sourceControlId)) return null;
+  if (!isControlSourceKey(value.sourceControlId)) return null;
   if (!boundedString(value.pluginInstanceId, 64)
       || !/^plugin-[1-9][0-9]*$/.test(value.pluginInstanceId)) return null;
   if (!boundedString(value.pluginId, MAX_PLUGIN_ID_LENGTH)) return null;
@@ -234,6 +265,10 @@ export class ControlBindingManager {
   bindingStatus(nodeId, sourceControlId) {
     const binding = this.bindingFor(nodeId, sourceControlId);
     if (!binding) return { state: 'unbound', binding: null };
+    // The binding survived a load that could not resolve its control -- the
+    // profile is not there, or no longer declares it. It is kept, it is visibly
+    // not working, and it is not routed. It is emphatically not deleted.
+    if (!getMiniLabControlSource(sourceControlId)) return { state: 'missing-target', binding };
     if (!this.isConnected(nodeId, sourceControlId)) return { state: 'disconnected', binding };
     const node = this.hub.nodes.get(nodeId);
     const plugin = node?.content?.plugins?.find((p) => p.id === binding.pluginInstanceId);

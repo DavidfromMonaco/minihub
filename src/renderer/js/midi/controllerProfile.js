@@ -74,13 +74,30 @@ export const ALL_LAYERS = '*';
  * object nested until the validator recurses off the stack.
  */
 const LIMITS = Object.freeze({
-  stringLength: 200, depth: 8, ports: 32, layers: 16,
+  stringLength: 200, identifier: 64, depth: 8, ports: 32, layers: 16,
   controls: 512, bindings: 32, coordinate: 4096, priority: 100, revision: 100000
 });
 
 const ID_SHAPE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const ID_SHAPE_TEXT = 'lowercase letters, digits and single hyphens';
 const DATE_SHAPE = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Is this one identifier of the format -- a profile id, a control id, a layer id,
+ * a family?
+ *
+ * Exported because it is not only the validator's business. A persisted binding
+ * key is `<profileId>:<controlId>`, and `core/controlBindings.js` has to decide
+ * whether such a key is well formed **without** knowing whether the profile it
+ * names is loaded. Specification section 6.1: shape is checked on load,
+ * belonging is resolved at use. Two copies of this rule would drift, and the
+ * drift would be silent -- a binding accepted on one side and refused on the
+ * other simply disappears.
+ */
+export function isProfileIdentifier(value) {
+  return typeof value === 'string' && value.length > 0
+    && value.length <= LIMITS.identifier && ID_SHAPE.test(value);
+}
 
 const ROOT_KEYS = Object.freeze([
   'formatVersion', 'profileId', 'revision', 'name', 'author',
@@ -200,6 +217,13 @@ function stringField(object, path, key, errors, { shape = null, shapeText = '', 
   }
   if (typeof value !== 'string') { fail(errors, where, 'must be a string'); return null; }
   if (value.length === 0) { fail(errors, where, 'must not be empty'); return null; }
+  if (shape === ID_SHAPE) {
+    if (!isProfileIdentifier(value)) {
+      fail(errors, where, `must be ${shapeText}, at most ${LIMITS.identifier} characters`);
+      return null;
+    }
+    return value;
+  }
   if (shape && !shape.test(value)) { fail(errors, where, `must be ${shapeText}`); return null; }
   return value;
 }

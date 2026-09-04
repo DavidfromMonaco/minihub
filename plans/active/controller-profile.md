@@ -91,10 +91,12 @@ Named explicitly, because each will be tempting once the format exists:
       621 green, 9 rules clean, and the 94 frozen corpus cases passed **without
       being touched**. Probed: K1 pinned to channel 1 in the profile fails three
       tests, the corpus among them.
-- [ ] 5. Bindings validated against the profile; a binding whose profile is
+- [x] 5. Bindings validated against the profile; a binding whose profile is
       absent is **kept**, not dropped (spec §6.1).
       Check: new test — a binding with an unknown profile survives a
-      save/load cycle.
+      save/load cycle. 625 green, 9 rules clean, application relaunched. Both
+      halves probed separately: restoring the membership check fails all four new
+      tests, removing the `missing-target` branch fails only the status one.
 - [ ] 6. `layout` moves from `core/nodeGeometry.js` into the profile;
       `MINILAB_NODE_HEIGHT` and the `node.id === MINILAB_NODE_ID` branch go.
       Check: `npm test` + `npm run check`
@@ -279,3 +281,41 @@ frozen them.
 
 **What is still not proven**: no physical MiniLab was moved to another global
 channel during any of this. The corpus is a recording, not the device.
+
+2026-09-04 — Step 5 done. The one step of this plan that repairs something
+rather than moving it.
+
+`normalizeControlBinding()` no longer asks whether a binding's control exists. It
+asks whether the key is well formed — `<profileId>:<controlId>`, both
+identifiers — and nothing else. Belonging is resolved at use, against the profile
+actually loaded, and a binding that resolves to nothing is **kept**, reported
+`missing-target`, and refused by `route()`. Kept is not obeyed.
+
+The failure this closes was not hypothetical. Bindings live in the `.minihub`
+file. Profile missing for any reason → every binding it names dropped in silence
+on load → the next save writes the file without them. The test therefore does the
+whole cycle, including the save, because the load alone never lost anything: it
+is the write afterwards that made it permanent.
+
+Two changes that look smaller than they are:
+
+- **`isProfileIdentifier()` is exported from `controllerProfile.js`**, and
+  `controlBindings.js` composes the binding key from it. The alternative was a
+  second regular expression in a second file, and its drift would have been
+  silent in the worst possible way — a key accepted by one side and refused by
+  the other is a binding that disappears.
+- **An identifier is now bounded at 64 characters.** It was bounded only by the
+  200-character limit that applies to every string, and a persisted key has to be
+  bounded more tightly than free text. No `formatVersion` bump, for the same
+  reason as step 4: nothing outside this repository holds a profile yet.
+
+`bindingStatus()` gained its new case **before** the `disconnected` one, which is
+a correction and not only an addition: an unresolvable source used to be reported
+as disconnected, telling the user to plug in a cable for a control that cannot be
+plugged in at all.
+
+**Out of scope, and named because it will look like an omission**: the interface.
+`renderControlBindings()` walks the loaded profile's controls, so a kept orphan
+is invisible rather than shown as `missing-target`. With one built-in profile
+that cannot go missing, there is nothing to display today; the orphan needs a
+place on screen only when a profile can really be absent, which is Étape B.
