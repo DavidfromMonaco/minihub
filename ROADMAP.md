@@ -264,7 +264,7 @@ of its points are already stale. The note at its head says which.
 The Morpher is not removed — it leaves the add menu and stays functional as
 `legacy` (§12). Removing it for good is a separate workstream.
 
-### 8. The controller platform — Étape A done, B not started
+### 8. The controller platform — Étape A done; the plural refused for now
 
 The hardware has stopped being code. `MINILAB_CONTROL_SOURCES` **was** a profile
 written as a JavaScript literal; it is now derived from
@@ -277,8 +277,15 @@ the same work.
 Specification: [MINIHUB_CONTROLLER_PLATFORM_SPEC.md](MINIHUB_CONTROLLER_PLATFORM_SPEC.md).
 Execution plan, finished 2026-09-04:
 [plans/done/controller-profile.md](plans/done/controller-profile.md) — 9 of 9
-steps, each with the command that proved it. **The single active-plan slot is
-free.**
+steps, each with the command that proved it.
+
+**Étape B was not taken as written.** [DECISIONS.md](DECISIONS.md) D-022 splits
+it: the single controller slot becomes a profile slot, so a friend with another
+keyboard can use MiniHub — and the plural (`selectedInputId`, N controller nodes,
+multi-input `MidiManager`) is refused until a second keyboard exists on a desk.
+The author owns one controller, asked directly on 2026-09-04. Plan:
+[plans/active/other-controller.md](plans/active/other-controller.md), 6 steps,
+not started.
 
 Proof of the end: 631 JS tests, 12 `npm run check` rules (three of them new and
 about profiles), 3,954 native checks, and the author's own project opening with

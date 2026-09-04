@@ -229,6 +229,37 @@ in every project that used it. A profile evolves by adding, never by renaming.
 Target specification: `MINIHUB_CONTROLLER_PLATFORM_SPEC.md`. Decision:
 [DECISIONS.md](DECISIONS.md) D-020.
 
+## 8 quater. One other controller, not N
+
+**Status: settled 2026-09-04. In scope.**
+
+§8 ter lifted the refusal for the profile **format**. This is the smaller,
+separate question of what the application does with it: today MiniHub works with
+a MiniLab 3 and with nothing else, so a friend holding any other keyboard cannot
+use it at all.
+
+Lifted, and only this: **the single controller slot stops being a MiniLab slot
+and becomes a profile slot.** Port roles come from the profile, the controller
+node takes its identity from the profile, the sequencer accepts the controller
+node rather than one hard-coded id, and the header names whatever is connected.
+
+**Not lifted: the plural.** `selectedInputId` stays singular. No multi-input
+`MidiManager`, no N controller nodes, no settings migration. Plugging in a
+*different* keyboard is what someone needs; using *two at once* is what nobody
+has asked for, and §5's line holds — an abstraction for hardware that does not
+exist in this project is speculative work.
+
+Nor is a second profile **shipped**. The application carries exactly one. That a
+second one works is proved by a fixture under `test/`, because writing device
+data for hardware nobody here owns is the same speculation by another route.
+
+Why this one has a user when the plural does not: the application repository
+stays private until a friend configures his own keyboard, and this is the work
+that makes that possible. The refusal of the plural lifts the day a second
+keyboard is on a desk, by the same mechanism that lifted this.
+
+Decision: [DECISIONS.md](DECISIONS.md) D-022.
+
 ## 9. Trade-offs
 
 **The rule of conduct, non-negotiable:** when a request conflicts with the

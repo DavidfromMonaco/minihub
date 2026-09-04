@@ -848,3 +848,81 @@ child), `native/audio-engine/src/engine.cpp` (the `editorStatus` payload:
 allow-list a new command has to enter), and
 `src/renderer/js/core/nodeInstances.js` (`renderControlBindings()`, the interface
 being reused rather than rebuilt).
+
+---
+
+## D-022 — One other controller, not N
+
+**Status**: in force · 2026-09-04 · **decided, not implemented**
+
+**Context** — Étape A of `MINIHUB_CONTROLLER_PLATFORM_SPEC.md` is finished: the
+MiniLab 3 is a profile file, and the engine no longer knows any keyboard by name.
+Étape B, "le pluriel", was next in that document: a multi-input `MidiManager`, N
+controller nodes, a generic Patch Bay node, a generalised sequencer ingress.
+
+Two facts decided against it, and neither is about taste.
+
+The specification's own §2 says Étapes B, C and D require amending
+[INTENT.md](INTENT.md), written and dated. INTENT §5 says why: *"not making it
+impossible ≠ generalising now. Writing an abstraction layer for controllers that
+do not exist in this project is speculative work."*
+
+And the author has **one** controller. Asked directly on 2026-09-04: no second
+keyboard. The next real user is named and dated — a friend who will configure his
+own keyboard, which is the condition on which the application repository stops
+being private — but he is not here yet.
+
+**Decision** — Étape B as written is **not** done. What is done instead is the
+half of it that has a user: **the single controller slot stops being a MiniLab
+slot and becomes a profile slot.**
+
+The distinction, in one sentence: *plugging in a different keyboard* is what a
+friend needs; *using two keyboards at once* is what nobody has asked for. They
+were bundled in one étape, and they are not the same size, the same risk, or the
+same product.
+
+In scope:
+
+- port roles read from the profile's `device.ports` (spec §4.2) instead of
+  `midi/minilab.js` — which is what Étape A left owed, and what lets a port that
+  is not called "Minilab3 MIDI" be recognised at all;
+- the controller node's identity taken from the loaded profile;
+- the sequencer's canonical MIDI ingress accepting the controller node rather
+  than one id (`sequencerController.js:9`, five call sites);
+- the header naming the connected device from the profile instead of two
+  hard-coded strings.
+
+Out of scope, and refused for now:
+
+- **`selectedInputId` stays singular.** No multi-input `MidiManager`, no settings
+  migration, no N controller nodes. That is the part that touches the signal path
+  in several places at once, and it is the part with no user.
+- no second profile is **shipped**. The application keeps exactly one. That a
+  second works is proved by a fixture in `test/`, not by data for hardware nobody
+  owns — which is precisely what INTENT §5 calls speculative.
+
+**Consequence** — A friend with a different keyboard can write a profile and use
+MiniHub. That is the milestone the repository's visibility already waits on, so
+this étape has a user before it has code, which is the opposite of how Étape B
+was framed.
+
+The plural is not refused forever; it is refused **until someone plugs in a second
+keyboard**. The day that happens, `selectedInputId` is the one thing to reopen,
+and nothing in this étape blocks it.
+
+Calendar, carried over from spec §6.8 and D-021: **D-018** refactors
+`ControlBindingManager` with an owner named `minilab`, which is wrong the moment
+a profile can be something else. When D-018 is implemented, that name is
+`controller:<profileId>`.
+
+**What would justify revisiting it** — A second controller on the desk, or a user
+who genuinely needs two at once. Either makes the plural concrete rather than
+speculative, and the refusal above lifts by the same mechanism that lifted this
+one.
+
+**Proof in the code** — `src/main/settings.js:21` (`selectedInputId`, singular
+and staying so), `src/renderer/js/midi/minilab.js` (the port roles that belong in
+`device.ports`), `src/renderer/js/core/sequencerController.js:9`
+(`isCanonicalMidiIngress`), `src/renderer/js/ui/header.js:50` and `:53` (the two
+hard-coded device strings), and `plans/done/controller-profile.md`, whose closing
+entry names the decoder's remaining dependency on `midi/minilab.js`.
