@@ -7,7 +7,7 @@ Counter-intuitive choices: [DECISIONS.md](DECISIONS.md). Long workstreams:
 [PLANS.md](PLANS.md).
 
 **Current state** — branch `master`.
-627 JS tests green, 3,952 native checks green, clean Release build, `dist/`
+627 JS tests green, 3,954 native checks green, clean Release build, `dist/`
 synchronised with the sources.
 
 One caveat on that build, recorded here so it stops being invisible: it reports
@@ -180,10 +180,10 @@ except that the filter only covers the disk path. The `command()` method just
 below (line 401) already applies the right filtering; `_onEvent` should adopt
 the same logic.
 
-**Identity on the C++ side** — `native/audio-engine/src/midi_output.h:56`
-hard-codes `id == "minilab-3"` in `isPhysicalMidiDestination()`. It is the
-native counterpart of what item 3 unified on the JS side; invariant 7 of
-ARCHITECTURE.md is therefore not yet complete.
+~~**Identity on the C++ side**~~ — **done 2026-09-04**, item 8 step 8.
+`isPhysicalMidiDestination()` is deleted; the engine reads the node kind the
+renderer already sends. `minilab-3` appears nowhere in `native/`, and invariant 7
+is complete on both sides. See [DECISIONS.md](DECISIONS.md) D-008.
 
 **Escaping** — `src/renderer/js/core/nodeInstances.js:240` interpolates
 `${instance.name}` without `escapeHtml`, the only exception among neighbouring
@@ -276,7 +276,7 @@ files. Extracting it is owed whether or not a second controller ever exists
 Specification: [MINIHUB_CONTROLLER_PLATFORM_SPEC.md](MINIHUB_CONTROLLER_PLATFORM_SPEC.md).
 Execution plan:
 [plans/active/controller-profile.md](plans/active/controller-profile.md) — 9
-steps, 1 to 7 done.
+steps, 1 to 8 done.
 
 Order, and it is the one thing here that costs money if missed:
 

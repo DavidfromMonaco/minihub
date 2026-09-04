@@ -197,7 +197,10 @@ lisible d'un coup d'œil.
 
 ## D-008 — Une identité partagée est déclarée à un seul endroit
 
-**Statut** : **partiellement appliquée** · établie au commit `f4ec31f`
+**Statut** : **appliquée en entier** · établie au commit `f4ec31f`, achevée le
+2026-09-04 (Étape A, étape 8). Seul le *statut* est mis à jour ici : la décision
+elle-même n'a pas bougé, et ce qui restait ouvert est conservé ci-dessous plutôt
+qu'effacé.
 
 **Contexte** — `'minilab-3'` était redéclaré dans **neuf modules** sous trois
 noms différents, `'audio-output'` dans trois. La liste des clés de projet
@@ -212,16 +215,25 @@ principal n'en contiennent aucune.
 **Conséquence** — Un littéral d'identité partagée dans un module est désormais
 un défaut, pas un raccourci. `npm run check` le refuse.
 
-**Reste ouvert** — La contrepartie C++ n'est pas unifiée :
-`isPhysicalMidiDestination()` code encore `id == "minilab-3"` en dur.
-L'invariant 7 est donc incomplet côté natif. Voir ROADMAP §5.
+**Ce qui restait ouvert, et comment ça s'est fermé** — La contrepartie C++
+n'était pas unifiée : `isPhysicalMidiDestination()` codait `id == "minilab-3"`
+en dur, et l'invariant 7 était donc incomplet côté natif.
 
-**Ce qui justifierait de revenir dessus** — Rien. Le travail restant est de
-l'étendre, pas de le défaire.
+Fermé le 2026-09-04. La fonction est supprimée. Le moteur reconnaît maintenant
+une destination matérielle au **genre** du nœud (`midi-output`) que le renderer
+envoie déjà pour chaque nœud du réseau MIDI — le séquenceur lisait d'ailleurs ce
+genre depuis toujours, et ne gardait la comparaison par nom qu'en second recours.
+Un second contrôleur ne coûte donc plus une ligne de C++. Deux vérifications
+natives neuves le tiennent, dont une qui échoue si le nom redevient spécial.
+
+**Ce qui justifierait de revenir dessus** — Rien. Le travail restant était de
+l'étendre, pas de le défaire, et il est fait.
 
 **Preuve dans le code** — `src/renderer/js/core/systemNodes.js`,
 `src/renderer/js/core/projectKeys.js`, `src/main/settings.js:19-30`,
-et la violation restante `native/audio-engine/src/midi_output.h:49`
+`native/audio-engine/src/midi_network.cpp` (`physicalOutputs`, construit depuis
+les genres de nœuds) et `native/audio-engine/test/native_tests.cpp`
+(« an undeclared destination is refused, whatever it is called »).
 
 ---
 

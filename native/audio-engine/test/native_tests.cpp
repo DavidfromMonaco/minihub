@@ -730,6 +730,20 @@ void testSequencerPhysicalMidiOutputAndArpeggiatorRoute()
     transport.seekPpq(.25);sequencer.panic();transport.beginBlock();hardware.captured.clear();sequencer.processMidi(256,transport,nullptr,&hardware,5000.0);bool chase=false;for(const auto& event:hardware.captured)chase|=event.getMessage().isNoteOn()&&event.samplePosition==0;expect(chase,"hardware MIDI seek performs native note chase");hardware.panic();expect(hardware.panics==1&&hardware.captured.isEmpty(),"hardware MIDI Stop/panic clears pending notes");
 
     mlh::Chain destination("vst-arp-route");destination.setMidiEnabled(true);mlh::MidiNetworkSpec networkSpec;mlh::MidiNetworkNodeSpec arp;arp.id="arp-route";arp.kind="arpeggiator";arp.arp.rate=2;arp.arp.patternLength=16;arp.destinations={"vst-arp-route"};networkSpec.nodes.push_back(arp);auto midiPlan=mlh::MidiExecutionPlan::compile(networkSpec,[&](const std::string&id){return id=="vst-arp-route"?&destination:nullptr;},error);expect(midiPlan!=nullptr,"existing native Arpeggiator network compiles for a Sequencer source");
+
+    // D-008, finished. The engine used to recognise the hardware MIDI output by
+    // comparing a destination id to one keyboard's name. It now reads the node
+    // KIND the renderer already sends, so a second controller costs no C++.
+    mlh::MidiNetworkSpec hardwareSpec;mlh::MidiNetworkNodeSpec hardwareOut;hardwareOut.id="controller-b";hardwareOut.kind="midi-output";hardwareSpec.nodes.push_back(hardwareOut);
+    mlh::MidiNetworkNodeSpec arpToHardware;arpToHardware.id="arp-hardware";arpToHardware.kind="arpeggiator";arpToHardware.arp.rate=2;arpToHardware.arp.patternLength=16;arpToHardware.destinations={"controller-b"};hardwareSpec.nodes.push_back(arpToHardware);
+    auto hardwarePlan=mlh::MidiExecutionPlan::compile(hardwareSpec,[](const std::string&){return (mlh::Chain*)nullptr;},error);
+    expect(hardwarePlan!=nullptr&&hardwarePlan->nodes().size()==1&&hardwarePlan->nodes()[0].destinations.size()==1&&hardwarePlan->nodes()[0].destinations[0].kind==mlh::MidiDestinationKind::physicalOutput,"a destination declared midi-output compiles to the hardware output, with no chain to look up");
+
+    // The other half of the same statement, and the one that would catch the
+    // special case coming back: the old hard-coded name buys nothing on its own.
+    mlh::MidiNetworkSpec byNameOnly;mlh::MidiNetworkNodeSpec arpToName=arpToHardware;arpToName.destinations={"minilab-3"};byNameOnly.nodes.push_back(arpToName);
+    expect(mlh::MidiExecutionPlan::compile(byNameOnly,[](const std::string&){return (mlh::Chain*)nullptr;},error)==nullptr,"an undeclared destination is refused, whatever it is called");
+
     auto arpTrack=midiTrack("track-arp","arp-route");mlh::setProp(arpTrack,"outputKind","arpeggiator");juce::Array<juce::var> arpNotes;arpNotes.add(midiNote(.125,.5,60,100,4));replaceMidiNotes(arpTrack,arpNotes);tracks.clear();tracks.add(arpTrack);expect(sequencer.sync(makeSequencerProject(tracks),[](const std::string&){return (mlh::Chain*)nullptr;},48000,12000,info,error),"Sequencer track accepts the existing Arpeggiator node as destination");
     transport.setLoop(false,0,4);transport.seekPpq(0);transport.setPlaying(true);transport.beginBlock();sequencer.processMidi(12000,transport,midiPlan.get());midiPlan->process(12000,transport);juce::MidiBuffer midi;destination.pullMidi(midi,12000);int arpOnSample=-1;for(const auto& event:midi)if(event.getMessage().isNoteOn())arpOnSample=event.samplePosition;expect(arpOnSample==6000,"Sequencer timestamp enters the existing Arpeggiator before its exact next 1/16 step");
 }

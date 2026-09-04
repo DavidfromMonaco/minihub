@@ -44,9 +44,4 @@ private:
     juce::String selectedIdentifier_, selectedName_;
 };
 
-inline bool isPhysicalMidiDestination(const std::string& id) noexcept
-{
-    return id == "minilab-3";
-}
-
 } // namespace mlh

@@ -108,9 +108,12 @@ Named explicitly, because each will be tempting once the format exists:
       12 rules now, 627 tests green. Each probe fired **one** rule and named the
       exact line: an executable URL in the profile, a shipped control id gone
       from a profile, and a second data file spelling the device's name.
-- [ ] 8. Finish D-008 on the C++ side: `native/audio-engine/src/midi_output.h:49`
+- [x] 8. Finish D-008 on the C++ side: `native/audio-engine/src/midi_output.h:49`
       hard-codes `id == "minilab-3"` in `isPhysicalMidiDestination()`.
-      Check: `npm run build:native` + the four native binaries.
+      Check: `npm run build:native` + the four native binaries. 0 errors and the
+      four pre-existing `C4996` warnings, unchanged. 1309 + 83 + 27 + 2535 =
+      **3,954** native checks (two of them new). Probed: putting the name back
+      fails the new assertion by name.
 - [ ] 9. Remove the literal. `midi/minilabControls.js` becomes a thin loader.
       Check: the full list under "Done when".
 
@@ -410,3 +413,44 @@ weakening a rule to accommodate a file is how rules start meaning nothing.
 Probed one at a time, and each probe fired exactly one rule with the offending
 line named. The script's closing line was corrected too: it claimed every rule
 maps to an ARCHITECTURE §13 invariant, which stopped being true with these three.
+
+2026-09-04 — Step 8 done. **`minilab-3` no longer appears anywhere in the engine.**
+
+The fix turned out to be smaller than the plan implied, and for a good reason:
+`sequencer.cpp` already read the node **kind** the renderer sends
+(`outputKind == "midi-output"`) and only kept the name comparison as a second
+chance. So the generalisation was not invented here — it was already half
+written, and the name was the redundant half.
+
+What changed:
+
+- `isPhysicalMidiDestination()` is deleted.
+- `midi_network.cpp` builds a `physicalOutputs` set from the spec's own
+  `midi-output` nodes, and resolves destinations against it.
+- `engine.cpp` now carries those nodes into the spec instead of skipping every
+  node that is not an arpeggiator. That was the only real gap: the renderer had
+  been sending them all along (`describeMidiNetwork` includes `midi-output`), and
+  the parser was dropping them on the floor.
+- `sequencer.cpp` loses the redundant clause.
+
+**No payload change, no new engine command, no allow-list entry.** The renderer
+was already telling the engine everything it needed; the engine was choosing to
+guess instead.
+
+Two native assertions were added, because the physical-destination path had
+**none** — the old behaviour was not tested either, which is how a hardware name
+survived in an audio engine for that long. The second one is the interesting one:
+it routes an arpeggiator to a destination called `minilab-3` that no node
+declares, and requires the compile to be **refused**. Put the special case back
+and it fails by name: `an undeclared destination is refused, whatever it is
+called`.
+
+The build reports 0 errors and the same four `C4996` warnings on the deprecated
+`juce::MidiBuffer::Iterator` — pre-existing, in the arpeggiator's real-time path,
+and explicitly not this plan's to fix. Counted rather than asserted: exactly four.
+
+D-008's **status** was updated from "partiellement appliquée" to "appliquée en
+entier", and its "Reste ouvert" section now says what closed it. The register's
+rule is append-only; what was edited is a status marker and a stale code
+reference — `midi_output.h:49` no longer exists — while the decision itself was
+left untouched and the open point kept visible rather than erased.

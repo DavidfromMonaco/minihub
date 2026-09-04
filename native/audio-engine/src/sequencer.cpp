@@ -227,7 +227,10 @@ bool SequencerEngine::sync(const juce::var& project,
         track.runtime->gain.store(boundedGain(value["volume"]),std::memory_order_relaxed);
         if (track.type=="midi" && !track.outputId.empty()) {
             const auto outputKind=value["outputKind"].toString();
-            if(outputKind=="midi-output"||isPhysicalMidiDestination(track.outputId))track.midiOutputKind=Track::MidiOutputKind::physical;
+            // The kind decides, never the id. The renderer sends the node's type
+            // for every track output, so comparing the id to one keyboard's name
+            // was both redundant and the last hardware literal in the engine.
+            if(outputKind=="midi-output")track.midiOutputKind=Track::MidiOutputKind::physical;
             else if(outputKind=="arpeggiator")track.midiOutputKind=Track::MidiOutputKind::processor;
             else{track.destination=chainLookup(track.outputId);if(!track.destination&&outputKind.isNotEmpty())track.midiOutputKind=Track::MidiOutputKind::processor;}
         }
