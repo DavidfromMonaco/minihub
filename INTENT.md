@@ -79,12 +79,16 @@ proposed "just in case" is to be refused.
 
 ## 6. What MiniHub is not, and does not become
 
-- **Not a multi-user product.** No accounts, no profiles, no sync, no sharing of
-  projects between machines.
+- **Not a multi-user product.** No accounts, no user profiles, no sync, no
+  sharing of projects between machines. Controller profiles are the single
+  exception, and they are shared as files — see §8 ter.
 - **Not a service.** Startup depends on no server, no database, no account. The
-  application must stay fully usable offline (see §7).
-- **Not an extensible platform.** No in-house plugin system, no user scripting
-  language, no public API. The plugins are VST3.
+  application must stay fully usable offline (see §7), and the companion site is
+  never a runtime dependency.
+- **Not a platform extensible by code.** No in-house plugin system, no user
+  scripting language, no public API, no callback of any kind. The plugins are
+  VST3. Extension by **declarative data** — one controller profile — is allowed,
+  and nothing beyond it; see §8 ter.
 - **Not a project with dependencies.** The absence of a bundler, a framework and
   any runtime dependency is a choice of identity, not technical lag
   ([DECISIONS.md](DECISIONS.md) D-003).
@@ -173,6 +177,57 @@ reopens the refusal in §6; it does not extend this lifting.
 Target specification: `SPECIFICATION_MATRIX_MINIHUB.md`. Decisions:
 [DECISIONS.md](DECISIONS.md) D-016 (the lifting), D-017 (the clock), D-018 (the
 shared Learn).
+
+## 8 ter. Refusal lifted: a controller is data, and that data is shared
+
+**Status: settled 2026-09-04. In scope.**
+
+§6 refused an extensible platform and a multi-user product. That refusal is
+lifted for **one thing**: a controller is described by a declarative profile,
+and those profiles are shared between people who own the same hardware.
+
+The reason is not that the project grew ambitious. It is that the refusal was
+already costing something concrete. `MINILAB_CONTROL_SOURCES` in
+`midi/minilabControls.js` **is** a profile — it is simply written as a
+JavaScript literal instead of a data file. The hardware is welded into the core,
+which §5 already names a defect. Extracting it is owed whether or not anyone
+else ever plugs in a keyboard.
+
+What is lifted is **precisely bounded**:
+
+- a **declarative profile format**, versioned, describing one controller: its
+  port identity, its controls, their MIDI bindings, their layout;
+- **profiles as files in the repository**, contributed by pull request. That is
+  the whole sharing mechanism.
+
+The rule that holds all of it together: **extensible by data, never by code.**
+A profile is a scalar, an array or an object. Never JavaScript, never a script,
+never a command, never a system path, never a DLL, never an executable URL,
+never a callback. `npm run check` enforces this, so it is a rule and not a
+hope.
+
+What **stays** refused, and what this lifting must never be read as permitting:
+
+- no accounts, no login, no user profiles, no sync between machines;
+- no server, no database, no backend of any kind. Sharing is a folder and a pull
+  request — no votes, no moderation tiers, no submission API;
+- no sharing of **projects**. §6 still holds: a `.minihub` file stays on the
+  machine that made it;
+- no runtime dependency on the site. MiniHub works with no network and with no
+  site, and shutting the site down makes no installation unusable;
+- no telemetry, and no MIDI event leaving the browser during calibration.
+
+The difference in one sentence: MiniHub accepts a **description of hardware**
+written by someone else. It does not accept their code, their account, or their
+music.
+
+One consequence worth writing down, because it is what makes this expensive to
+get wrong: a published `controlId` is **immutable**. Control ids become port ids
+persisted inside projects, so renaming one in a profile silently breaks cables
+in every project that used it. A profile evolves by adding, never by renaming.
+
+Target specification: `MINIHUB_CONTROLLER_PLATFORM_SPEC.md`. Decision:
+[DECISIONS.md](DECISIONS.md) D-020.
 
 ## 9. Trade-offs
 

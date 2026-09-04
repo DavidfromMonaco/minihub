@@ -8,9 +8,18 @@ comme à l'export.
 **Origine** — [ROADMAP.md](../../ROADMAP.md) §7 · spécification cible
 `SPECIFICATION_MATRIX_MINIHUB.md` (révisée le 2026-09-03 contre le code réel).
 
-**Statut** — **en attente** · plan écrit le 2026-09-03, aucune étape commencée.
-Le dépôt est exactement au point de retour ci-dessous : aucune ligne de code
-n'a bougé. Reprendre à l'étape 1.
+**Statut** — **en veille** · déplacé dans `plans/done/` le 2026-09-04 sans avoir
+commencé : 0 étape sur 23, le dépôt est exactement au point de retour ci-dessous,
+aucune ligne de code n'a bougé. Il reprend sur décision de l'auteur, et pas
+avant.
+
+**À corriger avant de le reprendre** — D-020 a lancé l'Étape A de
+`MINIHUB_CONTROLLER_PLATFORM_SPEC.md`, qui refactore `ControlBindingManager`,
+le même fichier que la phase 2 de ce plan. Deux points de ce document sont donc
+déjà périmés : le nom de propriétaire d'armement `minilab` de D-018 doit devenir
+`controller:<profileId>` (spec §6.8), et la clé de binding devient
+`<profileId>:<controlId>`. Reprendre ce plan sans réécrire ces deux points fait
+payer le refactor deux fois.
 
 ---
 

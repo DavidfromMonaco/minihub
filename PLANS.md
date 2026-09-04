@@ -1,98 +1,101 @@
-# PLANS.md — comment on produit un plan d'exécution
+# PLANS.md — how an execution plan is produced
 
-Un **ExecPlan** est un document de travail vivant pour une tâche qui ne tient pas
-dans une session. Il vit dans `plans/active/`, il est **mis à jour pendant** le
-travail, et il part dans `plans/done/` quand la tâche est finie.
+An **ExecPlan** is a living working document for a task that does not fit inside
+one session. It lives in `plans/active/`, it is **updated during** the work, and
+it moves to `plans/done/` when the task is finished.
 
-Il ne remplace ni [ROADMAP.md](ROADMAP.md) (le *quoi*, à l'échelle du projet) ni
-[ARCHITECTURE.md](ARCHITECTURE.md) (le *comment*, à l'échelle du code).
+It replaces neither [ROADMAP.md](ROADMAP.md) (the *what*, at project scale) nor
+[ARCHITECTURE.md](ARCHITECTURE.md) (the *how*, at code scale).
 
 ---
 
-## 1. Quand écrire un plan — et quand ne pas en écrire
+## 1. When to write a plan — and when not to
 
-**Écris un plan si au moins deux de ces conditions sont vraies :**
+**Write a plan if at least two of these are true:**
 
-- la tâche touche plus de cinq fichiers, ou plus d'un processus (renderer, main,
-  natif) ;
-- elle ne se termine pas dans une seule session de travail ;
-- elle est réversible seulement au prix d'un `git revert` (déplacement de code,
-  changement de format persisté, renommage d'identité) ;
-- elle traverse un invariant d'ARCHITECTURE §13 ou une entrée de
-  [DECISIONS.md](DECISIONS.md).
+- the task touches more than five files, or more than one process (renderer,
+  main, native);
+- it does not finish inside a single working session;
+- it is reversible only at the price of a `git revert` (moving code, changing a
+  persisted format, renaming an identity);
+- it crosses an ARCHITECTURE §13 invariant or a [DECISIONS.md](DECISIONS.md)
+  entry.
 
-**N'écris pas de plan** pour une correction locale, l'ajout d'un test, un
-renommage interne à un fichier, ou toute tâche dont la description tient en une
-phrase et la vérification en une commande. Un plan pour ça est du bruit qu'il
-faudra ensuite maintenir.
+**Do not write a plan** for a local fix, adding a test, a rename inside one
+file, or any task whose description fits in one sentence and whose verification
+fits in one command. A plan for that is noise you then have to maintain.
 
-## 2. Règles
+## 2. Rules
 
-- **Un seul plan actif à la fois.** `plans/active/` contient zéro ou un fichier.
-  Deux chantiers simultanés sur ce projet, c'est deux chantiers inachevés.
-- **Le plan est vivant.** Chaque étape terminée est cochée dans le fichier, avec
-  la commande qui l'a prouvée. Un plan écrit une fois puis jamais rouvert n'a
-  servi à rien : c'est le fichier qu'on relit après un `/clear`, un plantage, ou
-  trois jours d'interruption.
-- **Une étape = une vérification mécanique.** Si tu ne peux pas écrire la
-  commande qui prouve qu'une étape est faite, l'étape est mal découpée.
-- **Le plan ne redécrit pas l'architecture.** Il *renvoie* aux sections
-  concernées. Un plan qui recopie ARCHITECTURE.md deviendra faux avant la fin du
-  chantier.
-- **Ce qui est hors périmètre est écrit noir sur blanc.** C'est la section qui
-  empêche un chantier de trois jours d'en devenir un de trois semaines.
-- **Fini = déplacé.** `git mv plans/active/X.md plans/done/X.md`, avec la ligne
-  de résultat renseignée. Rien ne reste dans `active/`.
-- **Un plan abandonné va aussi dans `done/`**, avec le résultat « abandonné » et
-  la raison. Ce qui n'a pas marché vaut ce qui a marché.
+- **One active plan at a time.** `plans/active/` holds zero or one file. Two
+  simultaneous workstreams on this project means two unfinished workstreams.
+- **The plan is alive.** Every finished step is ticked in the file, with the
+  command that proved it. A plan written once and never reopened served no
+  purpose: it is the file you reread after a `/clear`, a crash, or three days
+  away.
+- **One step = one mechanical check.** If you cannot write the command that
+  proves a step is done, the step is badly cut.
+- **The plan does not re-describe the architecture.** It *points* at the
+  relevant sections. A plan that copies ARCHITECTURE.md will be wrong before the
+  workstream ends.
+- **What is out of scope is written down.** This is the section that stops a
+  three-day workstream becoming a three-week one.
+- **Finished means moved.** `git mv plans/active/X.md plans/done/X.md`, with the
+  result line filled in. Nothing stays in `active/`.
+- **An abandoned plan also goes to `done/`**, with the result "abandoned" and the
+  reason. What did not work is worth as much as what did.
+- **So does a plan put on standby**, with the result "standby", who it waits on,
+  and — this is the part that matters — **what in it has gone stale** while it
+  waited. A plan parked with no such note is worse than no plan: it reads as
+  ready and is not. The slot is for the work in progress, not for intentions.
 
-## 3. Structure obligatoire
+## 3. Required structure
 
-Le nom du fichier est un `slug` en minuscules décrivant la tâche :
-`plans/active/eclater-nodeinstances.md`.
+The file name is a lowercase `slug` describing the task:
+`plans/active/split-nodeinstances.md`.
 
 ```markdown
-# <Titre> — ExecPlan
+# <Title> — ExecPlan
 
-**Objectif** — une phrase. Ce qui sera vrai à la fin et ne l'est pas aujourd'hui.
-**Origine** — ROADMAP §N, ou la raison qui a déclenché le chantier.
-**Statut** — en cours | bloqué (sur quoi) | fini le AAAA-MM-JJ | abandonné (pourquoi)
+**Goal** — one sentence. What will be true at the end and is not true today.
+**Origin** — ROADMAP §N, or the reason that started the workstream.
+**Status** — in progress | blocked (on what) | finished YYYY-MM-DD | abandoned (why)
 
-## Contexte
-Les fichiers concernés, les sections d'ARCHITECTURE.md à relire, les entrées de
-DECISIONS.md que la tâche approche. Rien d'autre.
+## Context
+The files involved, the ARCHITECTURE.md sections to reread, the DECISIONS.md
+entries the task comes near. Nothing else.
 
-## Contraintes
-Ce qui ne doit pas bouger : invariants traversés, formats persistés, API
-publiques. Une contrainte par ligne.
+## Constraints
+What must not move: invariants crossed, persisted formats, public APIs. One
+constraint per line.
 
-## Hors périmètre
-Ce que ce plan ne fera pas, et qui sera tentant. Nommer explicitement.
+## Out of scope
+What this plan will not do, and will be tempting. Name it explicitly.
 
-## Étapes
-- [ ] 1. <action précise, un fichier ou un groupe cohérent>
-      Vérification : `<commande>`
+## Steps
+- [ ] 1. <precise action, one file or one coherent group>
+      Check: `<command>`
 - [ ] 2. …
 
-## Point de retour
-Le commit ou la branche depuis lequel on peut repartir si le chantier tourne mal.
+## Fallback point
+The commit or branch to restart from if the workstream goes wrong.
 
-## Fini quand
-La liste complète des commandes vertes (voir AGENTS.md §8), plus les critères
-propres à cette tâche.
+## Done when
+The full list of green commands (see AGENTS.md §8), plus the criteria specific
+to this task.
 
-## Journal
-AAAA-MM-JJ — ce qui a été fait, ce qui a surpris, ce qui a changé dans le plan.
+## Log
+YYYY-MM-DD — what was done, what was surprising, what changed in the plan.
 ```
 
-## 4. Découpage des étapes
+## 4. Cutting the steps
 
-Une étape est bonne quand elle laisse le dépôt **vert** : `npm test` et
-`npm run check` passent à la fin de chaque étape, pas seulement à la fin du plan.
-Un chantier qui ne peut pas être découpé ainsi doit d'abord être précédé d'une
-étape préparatoire qui le rend possible — typiquement, ajouter les tests qui
-verrouillent le comportement actuel avant de déplacer quoi que ce soit.
+A step is good when it leaves the repository **green**: `npm test` and
+`npm run check` pass at the end of every step, not only at the end of the plan.
+A workstream that cannot be cut that way needs a preparatory step first, one
+that makes it possible — typically, adding the tests that lock the current
+behaviour before moving anything.
 
-Formuler l'action, pas l'intention : « extraire `createDisposers()` dans
-`core/disposers.js` et l'utiliser dans les neuf écouteurs de `mount()` » plutôt
-que « nettoyer la gestion des écouteurs ».
+State the action, not the intention: "extract `createDisposers()` into
+`core/disposers.js` and use it in the nine listeners of `mount()`" rather than
+"clean up listener handling".

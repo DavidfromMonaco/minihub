@@ -698,3 +698,57 @@ and their vocabulary was already English underneath.
 **Proof in the code** — `AGENTS.md` §6, `scripts/check-invariants.mjs` rule
 names, and the `minihub-site` repository, written in English from its first
 commit.
+
+---
+
+## D-020 — A controller is declarative data, and profiles are shared as files
+
+**Status**: in force · 2026-09-04
+
+**Context** — `INTENT.md` §6 refused an extensible platform and a multi-user
+product, and `MINIHUB_CONTROLLER_PLATFORM_SPEC.md` §2 names four dated lines it
+contradicts. The gate was real, and it is now crossed deliberately rather than
+drifted through: the repository is public, the site is published, and someone
+who owns a different keyboard is no longer hypothetical.
+
+But the refusal was also already costing something, independently of anyone
+else. `MINILAB_CONTROL_SOURCES` in `midi/minilabControls.js` **is** a profile,
+written as a JavaScript literal. The hardware is welded into the core, which
+`INTENT.md` §5 calls a defect and D-008 fixed on the JS side without finishing
+on the C++ side. Extracting it is owed whether or not a second controller ever
+exists.
+
+**Decision** — Lift the refusal for exactly two things, and no more: a versioned
+declarative profile format describing one controller, and profiles living as
+files in the repository, contributed by pull request.
+
+The boundary is **extensible by data, never by code**. A profile value is a
+scalar, an array or an object — never a function, a script, a command, a system
+path, a DLL, an executable URL or a callback. That is a `npm run check` rule, so
+it fails a build rather than a review.
+
+Refused, still, and named here so the lifting cannot be widened by reading:
+accounts, login, sync, any backend, any submission API, moderation tiers,
+sharing of `.minihub` projects, and any runtime dependency on the site.
+
+**Consequence** — Étape A of the specification (extracting the reference profile)
+becomes legitimate work rather than speculation, and it is the prerequisite for
+everything after it: the site Builder copies the Étape A decoder verbatim, so
+building the Builder first would mean writing it twice.
+
+A second consequence has a date attached. §6.8 of the specification: D-018
+refactors `ControlBindingManager`, and Étape A refactors the same file. Out of
+order, that refactor is paid twice, and D-018's owner name `minilab` is already
+wrong before being written — in the plural it has to be `controller:<profileId>`.
+The Matrix workstream is therefore on standby until its owner says otherwise,
+and Étape A takes the single active-plan slot.
+
+**What would justify revisiting it** — Evidence that profiles cannot in fact
+describe a second real device without adding executable escape hatches. That
+would mean the format is wrong, not that the boundary is; the answer would be to
+fix the format, and if it cannot be fixed, to withdraw the lifting rather than
+let code in through it.
+
+**Proof in the code** — `src/renderer/js/midi/minilabControls.js`
+(`MINILAB_CONTROL_SOURCES`, the profile already written as a literal),
+`INTENT.md` §8 ter, and `MINIHUB_CONTROLLER_PLATFORM_SPEC.md` §3.1 and §9.

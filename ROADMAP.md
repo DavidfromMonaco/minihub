@@ -1,279 +1,281 @@
-# MiniHub — Feuille de route
+# MiniHub — Roadmap
 
-Document de pilotage : ce qui a été fait, ce qu'il reste à faire.
-Point d'entrée du dépôt : [AGENTS.md](AGENTS.md). Architecture et code :
-[ARCHITECTURE.md](ARCHITECTURE.md). Périmètre produit : [INTENT.md](INTENT.md).
-Choix contre-intuitifs : [DECISIONS.md](DECISIONS.md). Chantiers longs :
+A steering document: what has been done, what is left to do.
+Repository entry point: [AGENTS.md](AGENTS.md). Architecture and code:
+[ARCHITECTURE.md](ARCHITECTURE.md). Product scope: [INTENT.md](INTENT.md).
+Counter-intuitive choices: [DECISIONS.md](DECISIONS.md). Long workstreams:
 [PLANS.md](PLANS.md).
 
-**État actuel** — branche `master`, commit `1b0e3d5`.
-586 tests JS au vert, 3 952 vérifications natives au vert, build Release propre
-(0 erreur, 0 avertissement), `dist/` synchronisé avec les sources.
+**Current state** — branch `master`.
+590 JS tests green, 3,952 native checks green, clean Release build, `dist/`
+synchronised with the sources.
 
-L'objectif de toute cette passe est la **consolidation avant ajout de nouveaux
-modules**. Les points 1 à 3 ont supprimé les obstacles structurels ; le point 4
-est le seul vrai chantier restant avant qu'ajouter un module devienne mécanique.
+One caveat on that build, recorded here so it stops being invisible: it reports
+**four `C4996` warnings** on the deprecated `juce::MidiBuffer::Iterator`, inside
+the arpeggiator's real-time path in `midi_network.cpp`. They predate D-019 — a
+cached object file had been hiding them, and renaming the source forced the
+recompile that surfaced them. Until they are fixed, "0 errors, 0 warnings" is
+true of an incremental build only.
 
----
-
-## Fait
-
-### 1. Point de retour et hygiène du dépôt — `c3c00c9`
-
-Le dépôt était décroché du code réel depuis `601ec70` : tout le moteur audio
-actuel (`sequencer.cpp`, `audio_graph.cpp`, `master_output.cpp`, `midi_graph.cpp`,
-`engine2/`) n'était pas versionné, et une centaine de fichiers sources étaient
-modifiés ou absents. Il n'existait aucun état vers lequel revenir.
-
-- 216 fichiers committés, 8,5 Mo, après vérification complète.
-- `.gitignore` étendu : il ne couvrait qu'un seul arbre de build sur sept.
-- Dépôt compacté : `.git` 120 Mo → 5,6 Mo (1 521 objets libres, aucun pack).
-- Cohérence source↔binaire prouvée : le rebuild n'a **rien relinké**, donc les
-  sources committées sont exactement celles qui ont produit l'exécutable qui
-  fonctionne.
-
-### 2. Purge et archivage documentaire — `4ba5934`
-
-Disque : **13,7 Go → 3,9 Go**.
-
-- Six arbres de build natifs abandonnés supprimés (`build-asan` 5,4 Go,
-  `build-ninja`, `build-clip-editing*`). `build/` — celui qui fait autorité —
-  intact.
-- Builds, SDK et captures des deux prototypes supprimés ; leurs **sources**
-  conservées et versionnées (Engine 2 vit désormais dans
-  `native/audio-engine/src/engine2/`, compilé).
-- `artifacts/` 300 Mo → 58 Mo, de façon chirurgicale : 15 rapports citaient
-  43 chemins `artifacts/` comme pièces justificatives, une purge en bloc les
-  aurait orphelins. Seuls sont partis les profils Chromium jetables et les
-  98 rendus audio qu'aucun rapport ne citait.
-- Les 25 rapports historiques ont été archivés, puis remplacés par les deux
-  documents actuels. Ils restent consultables dans l'historique git au commit
-  `c3c00c9`.
-
-### 3. Unification des identités partagées — `f4ec31f`
-
-Quatre duplications qui piégeaient l'ajout d'un module.
-
-- **`core/systemNodes.js`** — `'minilab-3'` était redéclaré dans **neuf
-  modules** sous trois noms différents, `'audio-output'` dans trois. Mode de
-  panne silencieux : une copie oubliée lors d'un renommage ne lève aucune
-  erreur, le graphe cesse simplement de correspondre.
-- **`core/projectKeys.js`** — la liste projet/application existait en double.
-  Une clé ajoutée d'un seul côté échoue dans deux directions opposées : valeur
-  périmée survivant dans un nouveau projet, ou état de projet écrit dans les
-  préférences globales.
-- **`main/settings.js`** — `DEFAULTS` déclarait 6 clés pour 17 utilisées, et
-  contenait `graphConnections` qui est de l'état de projet.
-- **`ModuleSystem.unregister`** défait maintenant exactement ce que `register`
-  fait, nœud de routage compris. Deux tests verrouillent la symétrie, et leur
-  capacité à détecter la régression a été vérifiée en désactivant le correctif.
-
-### Hors numérotation
-
-- Instantanés du 24/08 préservés en branches (`snapshot/2026-08-24-*`) puis les
-  deux dossiers `.old` supprimés : **23,3 Go → 4,7 Go** sur le disque. Le code
-  qu'ils contenaient ne pesait que 4 Mo ; tout le reste était regénérable.
-- `dist/` resynchronisé. Le manifeste de provenance déclarait `gitHead 601ec70`
-  avec `worktreeDirty: true` — il ment donc moins désormais.
-- Cette documentation : `ARCHITECTURE.md` (alors nommé `BLUEPRINT.md`) +
-  `ROADMAP.md` remplacent 25 fichiers Markdown éparpillés à la racine.
-- Jeu documentaire destiné aux agents : `AGENTS.md` (carte et règles),
-  `CLAUDE.md` (import, Claude Code ne lit pas `AGENTS.md` seul), `INTENT.md`
-  (périmètre produit), `DECISIONS.md` (registre des choix), `PLANS.md` +
-  `plans/` (chantiers longs). `BLUEPRINT.md` renommé `ARCHITECTURE.md`.
-  `scripts/check-invariants.mjs` (`npm run check`) rend mécaniques sept des
-  douze invariants ; sa capacité à détecter a été vérifiée par sonde.
-  **Reste à trancher** : les six questions ouvertes d'`INTENT.md` §9.
+The goal of this whole pass is **consolidation before new modules are added**.
+Items 1 to 3 removed the structural obstacles; item 4 is the only real
+workstream left before adding a module becomes mechanical.
 
 ---
 
-## À faire
+## Done
 
-### 4. Éclater `nodeInstances.js` — le vrai chantier
+### 1. A fallback point, and repository hygiene — `c3c00c9`
 
-**Ce n'est plus ce qui bloque l'ajout d'un module — mesuré le 2026-09-03.**
-`core/nodeEditors.js` et `core/disposers.js` existent (conservés de D-013), et
-**tous** les gestionnaires partagés de `mount()` filtrent sur un `type.id`
-explicite : lignes 693, 853, 1008, 1019, 1043, 1082, 1089. Un type **nouveau**
-les traverse donc sans les toucher, et son éditeur tient dans son propre dossier
-plus un `registerNodeEditor()`. Le coût résiduel est de deux ou trois branches à
-ajouter dans `defaultContentFor()` et la normalisation de contenu.
+The repository had been detached from the real code since `601ec70`: the entire
+current audio engine (`sequencer.cpp`, `audio_network.cpp`, `master_output.cpp`,
+`midi_network.cpp`, `engine2/`) was uncommitted, and about a hundred source
+files were modified or missing. There was no state to go back to.
 
-Ce qui reste vrai, et qui reste le chantier : **les quatre éditeurs qui
-précèdent la couture** (VST, Arpégiateur, Mixer, Morpher) sont toujours
-co-propriétaires des bugs les uns des autres, et toute modification de l'un
-d'eux se paie dans du code partagé avec les trois autres.
+- 216 files committed, 8.5 MB, after full verification.
+- `.gitignore` extended: it covered one build tree out of seven.
+- Repository compacted: `.git` 120 MB → 5.6 MB (1,521 loose objects, no pack).
+- Source↔binary consistency proven: the rebuild **relinked nothing**, so the
+  committed sources are exactly the ones that produced the working executable.
 
-[nodeInstances.js](src/renderer/js/core/nodeInstances.js) fait 1 143 lignes et
-est devenu un fichier-dieu. Son `_registerModule()` contient un `mount()` de
-**440 lignes** (lignes 651 à 1090) qui gère **quatre éditeurs différents** —
-VST, Arpégiateur, Mixer, Morpher — via 26 tests `type.id === '…'` disséminés
-dans 9 gestionnaires d'événements, chacun commençant par
-`if (type.id !== 'X') return;`.
+### 2. Documentation purge and archiving — `4ba5934`
 
-Conséquence concrète : ajouter un type de nœud impose d'éditer ce fichier à une
-dizaine d'endroits, dans du code partagé avec quatre autres types.
+Disk: **13.7 GB → 3.9 GB**.
 
-**Cible proposée :**
+- Six abandoned native build trees deleted (`build-asan` 5.4 GB, `build-ninja`,
+  `build-clip-editing*`). `build/` — the authoritative one — untouched.
+- Builds, SDKs and captures of both prototypes deleted; their **sources** kept
+  and committed (Engine 2 now lives in `native/audio-engine/src/engine2/`, and
+  compiles).
+- `artifacts/` 300 MB → 58 MB, surgically: 15 reports cited 43 `artifacts/`
+  paths as evidence, and a bulk purge would have orphaned them. Only the
+  disposable Chromium profiles and the 98 audio renders no report cited were
+  removed.
+- The 25 historical reports were archived, then replaced by the two current
+  documents. They remain readable in git history at commit `c3c00c9`.
+
+### 3. Unifying shared identities — `f4ec31f`
+
+Four duplications that made adding a module a trap.
+
+- **`core/systemNodes.js`** — `'minilab-3'` was redeclared in **nine modules**
+  under three different names, `'audio-output'` in three. Silent failure mode: a
+  copy forgotten during a rename raises no error, the network simply stops
+  matching.
+- **`core/projectKeys.js`** — the project/application list existed twice. A key
+  added on one side only fails in two opposite directions: a stale value
+  surviving into a new project, or project state written into global
+  preferences.
+- **`main/settings.js`** — `DEFAULTS` declared 6 keys for 17 in use, and held
+  `networkConnections`, which is project state.
+- **`ModuleSystem.unregister`** now undoes exactly what `register` does, routing
+  node included. Two tests lock the symmetry, and their ability to catch the
+  regression was verified by disabling the fix.
+
+### Outside the numbering
+
+- Snapshots from 24/08 preserved as branches (`snapshot/2026-08-24-*`), then
+  both `.old` folders deleted: **23.3 GB → 4.7 GB** on disk. The code they held
+  weighed 4 MB; everything else was regenerable.
+- `dist/` resynchronised. The provenance manifest declared `gitHead 601ec70`
+  with `worktreeDirty: true` — so it lies less now.
+- This documentation: `ARCHITECTURE.md` (then named `BLUEPRINT.md`) +
+  `ROADMAP.md` replace 25 Markdown files scattered at the root.
+- The document set aimed at agents: `AGENTS.md` (map and rules), `CLAUDE.md`
+  (an import, since Claude Code does not read `AGENTS.md` on its own),
+  `INTENT.md` (product scope), `DECISIONS.md` (the decision register),
+  `PLANS.md` + `plans/` (long workstreams). `BLUEPRINT.md` renamed
+  `ARCHITECTURE.md`. `scripts/check-invariants.mjs` (`npm run check`) makes
+  seven of the twelve invariants mechanical; its ability to catch was verified
+  by probe. **Still to settle**: the open questions in `INTENT.md` §11.
+
+---
+
+## To do
+
+### 4. Split `nodeInstances.js` — the real workstream
+
+**This is no longer what blocks adding a module — measured 2026-09-03.**
+`core/nodeEditors.js` and `core/disposers.js` exist (kept from D-013), and
+**every** shared handler in `mount()` filters on an explicit `type.id`: lines
+693, 853, 1008, 1019, 1043, 1082, 1089. A **new** type therefore passes through
+them without touching them, and its editor fits in its own folder plus one
+`registerNodeEditor()`. The residual cost is two or three branches to add in
+`defaultContentFor()` and in content normalisation.
+
+What remains true, and remains the workstream: **the four editors that predate
+that seam** (VST, Arpeggiator, Mixer, Morpher) still co-own each other's bugs,
+and any change to one is paid for in code shared with the other three.
+
+[nodeInstances.js](src/renderer/js/core/nodeInstances.js) is 1,143 lines and has
+become a god file. Its `_registerModule()` holds a **440-line** `mount()` (lines
+651 to 1090) driving **four different editors** — VST, Arpeggiator, Mixer,
+Morpher — through 26 `type.id === '…'` tests scattered across 9 event handlers,
+each opening with `if (type.id !== 'X') return;`.
+
+Concrete consequence: adding a node type means editing that file in about ten
+places, in code shared with four other types.
+
+**Proposed target:**
 
 ```
-core/nodeInstances.js     registre pur : identité, contenu, persistance,
-                          création/suppression/duplication
-core/nodeEditors.js       table typeId → { render, bind }
-modules/vst/…             éditeur VST (chaîne, scan, bindings CONTROL)
-modules/arpeggiator/…     éditeur arpégiateur (déjà à moitié sorti dans
+core/nodeInstances.js     pure registry: identity, content, persistence,
+                          creation / deletion / duplication
+core/nodeEditors.js       table typeId -> { render, bind }
+modules/vst/…             VST editor (chain, scan, CONTROL bindings)
+modules/arpeggiator/…     arpeggiator editor (already half extracted into
                           core/arpeggiatorEditor.js)
-modules/nativeAudio/…     éditeur Mixer + Morpher (ils partagent déjà leur rendu)
+modules/nativeAudio/…     Mixer + Morpher editor (they already share rendering)
 ```
 
-Sous-tâches :
+Sub-tasks:
 
-- extraire un utilitaire `createDisposers()` : `mount()` enregistre aujourd'hui
-  9 écouteurs DOM, miroités à la main à **trois** endroits (déclaration,
-  stockage sur `module._onX`, retrait dans `unmount`). Ajouter un écouteur
-  demande de toucher les trois.
-- remonter `NATIVE_VALUE_COALESCE_MS` (déclaré au milieu du bloc d'imports,
-  ligne 54) et le regroupement d'écritures dans l'utilitaire partagé.
-- documenter le contrat d'éditeur dans ARCHITECTURE.md une fois stabilisé.
+- extract a `createDisposers()` helper: `mount()` currently registers 9 DOM
+  listeners, mirrored by hand in **three** places (declaration, storage on
+  `module._onX`, removal in `unmount`). Adding a listener means touching all
+  three.
+- lift `NATIVE_VALUE_COALESCE_MS` (declared in the middle of the import block,
+  line 54) and the write batching into the shared helper.
+- document the editor contract in ARCHITECTURE.md once it has settled.
 
-**Bénéfice attendu** : un nouveau type de nœud = un nouveau dossier + une ligne
-dans la table, sans toucher au registre.
+**Expected benefit**: a new node type = a new folder plus one line in the table,
+with no change to the registry.
 
-### 5. Code mort, doublons et journalisation
+### 5. Dead code, duplicates and logging
 
-Inventaire établi lors de l'audit, tout est vérifié.
+Inventory established during the audit; everything below is verified.
 
-**Réellement mort** (aucune référence, ni dans `src/`, ni dans `test/`) :
-`buildStampLabel`, `isMiniLab3Name`, `PORT_TYPES`, et trois `dispose()` jamais
-appelés (`ControlBindingManager`, `HardwareConfigManager`, `SequencerController`
-— seul celui d'`EngineClient` sert, dans les tests).
+**Genuinely dead** (no reference in `src/` or `test/`): `buildStampLabel`,
+`isMiniLab3Name`, `PORT_TYPES`, and three `dispose()` that are never called
+(`ControlBindingManager`, `HardwareConfigManager`, `SequencerController` — only
+`EngineClient`'s is used, in the tests).
 
-**Sur-exporté** (utilisé uniquement dans son propre fichier) : `clearFollowingTies`,
-`pitchRowsForPattern`, `pitchLabel`, `TEMPO_MIN`, `TEMPO_MAX`, `PLUGIN_FAMILIES`,
-`knobArcDash`, `knobPointerTransform`, `pearlKnob`, `dockHeight`, `DOCK_MIN_H`,
-`PORT_ROW`, `PAD_BOTTOM`, `MINILAB_NODE_HEIGHT`, `renderControlBindings`.
+**Over-exported** (used only inside its own file): `clearFollowingTies`,
+`pitchRowsForPattern`, `pitchLabel`, `TEMPO_MIN`, `TEMPO_MAX`,
+`PLUGIN_FAMILIES`, `knobArcDash`, `knobPointerTransform`, `pearlKnob`,
+`dockHeight`, `DOCK_MIN_H`, `PORT_ROW`, `PAD_BOTTOM`, `MINILAB_NODE_HEIGHT`,
+`renderControlBindings`.
 
-**Doublons** :
+**Duplicates**:
 
 - `dedupeDevices` (`src/renderer/js/modules/audioOutput/audioOutputModule.js:32`)
-  et `uniqueDevices` (`src/renderer/js/core/hardwareConfig.js:20`)
-  — même fonction, deux versions ;
-- cinq définitions distinctes de `clamp` ;
-- deux `formatDb` aux sémantiques différentes (dBFS contre gain→dB) ;
-- `identityHeight(node)` ignore son paramètre
-  (`src/renderer/js/core/nodeGeometry.js:32`) ;
+  and `uniqueDevices` (`src/renderer/js/core/hardwareConfig.js:20`) — the same
+  function, two versions;
+- five separate definitions of `clamp`;
+- two `formatDb` with different semantics (dBFS versus gain→dB);
+- `identityHeight(node)` ignores its parameter
+  (`src/renderer/js/core/nodeGeometry.js:32`);
 - `export const homeModule` (`src/renderer/js/modules/home/homeModule.js:55`)
-  n'existe que pour un test et duplique la `navEntry` du module réel.
+  exists only for a test and duplicates the real module's `navEntry`.
 
-**Journalisation** — `src/renderer/js/core/engineClient.js:204`
-fait un `console.log` sur **chaque** événement moteur, y compris `masterMeter`
-(10 Hz), `transport`, `hostTiming`, `audioPathTelemetry`. Et
-`src/main/main.js:89` relaie chaque message console du renderer vers
-le processus principal. C'est exactement ce que
-[engineEventTrace.js](src/main/engineEventTrace.js) a été écrit pour empêcher —
-sauf que ce filtre ne couvre que le chemin disque. La méthode `command()` juste
-en dessous (ligne 401) applique déjà le bon filtrage ; `_onEvent` doit reprendre
-la même logique.
+**Logging** — `src/renderer/js/core/engineClient.js:204` runs a `console.log` on
+**every** engine event, including `masterMeter` (10 Hz), `transport`,
+`hostTiming`, `audioPathTelemetry`. And `src/main/main.js:89` relays every
+renderer console message to the main process. This is exactly what
+[engineEventTrace.js](src/main/engineEventTrace.js) was written to prevent —
+except that the filter only covers the disk path. The `command()` method just
+below (line 401) already applies the right filtering; `_onEvent` should adopt
+the same logic.
 
-**Identité côté C++** — `native/audio-engine/src/midi_output.h:56`
-code en dur `id == "minilab-3"` dans `isPhysicalMidiDestination()`. C'est la
-contrepartie native de ce que le point 3 a unifié côté JS ; l'invariant 7 du
-ARCHITECTURE.md n'est donc pas encore complet.
+**Identity on the C++ side** — `native/audio-engine/src/midi_output.h:56`
+hard-codes `id == "minilab-3"` in `isPhysicalMidiDestination()`. It is the
+native counterpart of what item 3 unified on the JS side; invariant 7 of
+ARCHITECTURE.md is therefore not yet complete.
 
-**Échappement** — `src/renderer/js/core/nodeInstances.js:240`
-interpole `${instance.name}` sans `escapeHtml`, seule exception parmi les
-gabarits voisins. Non exploitable (le nom est dérivé du type et de l'ordinal),
-mais à aligner.
+**Escaping** — `src/renderer/js/core/nodeInstances.js:240` interpolates
+`${instance.name}` without `escapeHtml`, the only exception among neighbouring
+templates. Not exploitable (the name derives from the type and the ordinal), but
+worth aligning.
 
-### 6. Cohérence visuelle et nommage
+### 6. Visual consistency and naming
 
-**Deux systèmes de design coexistent, et c'est délibéré.** `base.css`
-(1 486 lignes, langage `.panel`/`.btn`) habille la **coquille sombre** : entête,
-barre latérale, Patch Bay, modales. `omni-pearl.css` (967 lignes, langage
-`op-*`) est un langage **clair, façade d'appareil**, destiné aux surfaces
-d'instrument posées dans cette coquille. Son entête le documente : un module y
-souscrit en posant la classe `omni-pearl` sur sa racine, et « rien ne fuit hors
-de ce sous-arbre ».
+**Two design systems coexist, and that is deliberate.** `base.css` (1,486
+lines, `.panel`/`.btn` vocabulary) dresses the **dark shell**: header, sidebar,
+Patch Bay, modals. `omni-pearl.css` (967 lines, `op-*` vocabulary) is a **light,
+device-faceplate** language, meant for instrument surfaces placed inside that
+shell. Its header documents it: a module opts in by putting the `omni-pearl`
+class on its root, and "nothing leaks outside that subtree".
 
-Mesure au 2026-09-02 : `op-` n'est employé que par **trois** fichiers —
-`ui/omniPearl.js` (la bibliothèque, 18 classes), `core/arpeggiatorEditor.js`
-(23) et `core/nodeInstances.js` (7, pour monter la coquille de l'arpégiateur).
-Ce n'est donc pas une migration inachevée mais un **système amorcé** : un seul
-module sur N porte la façade prévue pour eux tous.
+Measured 2026-09-02: `op-` is used by **three** files only — `ui/omniPearl.js`
+(the library, 18 classes), `core/arpeggiatorEditor.js` (23) and
+`core/nodeInstances.js` (7, to mount the arpeggiator shell). So this is not an
+unfinished migration but a **started system**: one module out of N wears the
+faceplate meant for them all.
 
-**Tranché le 2026-09-02** ([DECISIONS.md](DECISIONS.md) D-012) : confinement et
-non empilement — un module choisit un vocabulaire pour tout son sous-arbre, la
-coquille n'est jamais habillée, il n'y a au plus qu'une façade, et par défaut un
-nouveau module utilise `base.css`. Deux de ces règles sont mécaniques
-(`npm run check` : `faceplate scope`, `one faceplate`).
+**Settled 2026-09-02** ([DECISIONS.md](DECISIONS.md) D-012): containment, not
+layering — a module picks one vocabulary for its whole subtree, the shell is
+never given a faceplate, there is at most one faceplate, and by default a new
+module uses `base.css`. Two of those rules are mechanical (`npm run check`:
+`faceplate scope`, `one faceplate`).
 
-Il ne reste donc **aucun travail obligatoire** ici. Étendre la façade aux autres
-éditeurs de nœuds (Mixer, Morpher, VST) reste possible, éditeur par éditeur, et
-relève du goût : la bibliothèque `ui/omniPearl.js` est générique et le prévoit
-explicitement.
+So **no mandatory work remains** here. Extending the faceplate to the other node
+editors (Mixer, Morpher, VST) is still possible, editor by editor, and is a
+matter of taste: the `ui/omniPearl.js` library is generic and explicitly allows
+for it.
 
-**Quatre noms pour un même produit** : « MiniLab Hub » (titre de fenêtre,
-README), « MiniHub » (exécutable, `dist/MiniHub`, extension `.minihub`,
-`Documents/MiniHub`), `minilab-hub` (nom npm, fichier journal), `mlh_` (préfixe
-natif). À unifier, en gardant à l'esprit que le nom du fichier journal et le
-répertoire `%APPDATA%` sont des chemins existants chez l'utilisateur.
+**Four names for one product**: "MiniLab Hub" (window title, README), "MiniHub"
+(executable, `dist/MiniHub`, the `.minihub` extension, `Documents/MiniHub`),
+`minilab-hub` (npm name, log file), `mlh_` (native prefix). To be unified,
+bearing in mind that the log file name and the `%APPDATA%` directory are paths
+that already exist on the user's machine.
 
-**Style d'écriture** — des passages proprement formatés voisinent avec des
-lignes compressées quasi illisibles : `nodeInstances.js:316-323` et `341-355`,
-`engineSync.js:35`, `engineClient.js:655`. À homogénéiser au fil des passages,
-sans passe cosmétique dédiée.
+**Writing style** — cleanly formatted passages sit next to compressed, near
+unreadable lines: `nodeInstances.js:316-323` and `341-355`, `engineSync.js:35`,
+`engineClient.js:655`. To be smoothed out as those files are visited, without a
+dedicated cosmetic pass.
 
 ---
 
-### 7. Le nœud Matrix — remplacer le Morpher comme direction produit
+### 7. The Matrix node — replacing the Morpher as product direction
 
-**Spécification** : `SPECIFICATION_MATRIX_MINIHUB.md` (cible fonctionnelle
-complète, révisée le 2026-09-03 contre le code réel).
+**Specification**: `SPECIFICATION_MATRIX_MINIHUB.md` (the full functional
+target, revised 2026-09-03 against the real code).
 
-Un nœud de contrôle unique par projet, qui gouverne les nœuds auxquels il est
-câblé par un lien `control` : scènes, états cibles, rampes, règles de sortie à
-seed reproductible. Il ne produit aucun son ; il gouverne le setup qui en
-produit.
+A single control node per project, governing the nodes it is wired to by a
+`control` link: scenes, target states, ramps, and output rules with a
+reproducible seed. It produces no sound; it governs the setup that does.
 
-Trois décisions ont été prises avant toute ligne de code, parce que chacune
-rendait le chantier impossible ou faux si elle était découverte en cours de
-route :
+Three decisions were taken before any code, because each one would have made the
+workstream impossible or wrong had it been discovered halfway through:
 
-- **D-016** — `automation` sort de la liste « hors périmètre » d'[INTENT.md](INTENT.md)
-  §6, dans la forme précise d'un nœud Matrix. La piste d'automation de DAW,
-  elle, reste refusée. Voir [INTENT.md](INTENT.md) §8 bis ;
-- **D-017** — la Matrix compte son propre temps musical, au tempo global. La
-  cadencer sur la **position** du Transport la gelait dès qu'une scène arrêtait
-  le séquenceur, et la rembobinait à chaque `Restart` ;
-- **D-018** — un seul Learn armé dans l'application, avec un propriétaire nommé.
-  Deux systèmes Learn indépendants s'annulaient silencieusement.
+- **D-016** — `automation` leaves the "out of scope" list in
+  [INTENT.md](INTENT.md) §6, in the precise form of a Matrix node. The DAW
+  automation lane stays refused. See [INTENT.md](INTENT.md) §8 bis;
+- **D-017** — the Matrix counts its own musical time, at the global tempo.
+  Clocking it on the Transport **position** froze it as soon as a scene stopped
+  the sequencer, and rewound it on every `Restart`;
+- **D-018** — one armed Learn in the application, with a named owner. Two
+  independent Learn systems cancelled each other silently.
 
-Trois mécanismes que la spécification supposait existants et qui sont **à
-construire** : l'étage de gain post-chaîne d'un nœud VST (§7.2 — `masterLevel`
-n'est appliqué que sur les `mixer`), la visibilité d'un `ctrl-in` sur un nœud à
-entrées dynamiques (§4.3 — `nodeInstances.js:289`), et un runtime bi-contexte
-live/export (§9.1).
+Three mechanisms the specification assumed existed and that are **still to be
+built**: the post-chain gain stage of a VST node (§7.2 — `masterLevel` is only
+applied on `mixer` nodes), the visibility of a `ctrl-in` on a node with dynamic
+inputs (§4.3 — `nodeInstances.js:289`), and a dual-context live/export runtime
+(§9.1).
 
-**Plan d'exécution** : [plans/active/noeud-matrix.md](plans/active/noeud-matrix.md)
-— 23 étapes sur quatre phases, chacune avec sa commande de vérification.
+**Execution plan**: [plans/active/noeud-matrix.md](plans/active/noeud-matrix.md)
+— 23 steps across four phases, each with its verification command.
 
-Le Morpher n'est pas supprimé — il sort du menu d'ajout et reste fonctionnel en
-`legacy` (§12). Sa suppression définitive est un chantier séparé.
+The Morpher is not removed — it leaves the add menu and stays functional as
+`legacy` (§12). Removing it for good is a separate workstream.
 
 ---
 
-## Idées au-delà de la consolidation
+## Ideas beyond consolidation
 
-Sans engagement ni priorité — noté pour ne pas l'oublier.
+No commitment, no priority — written down so they are not forgotten.
 
-- Les types de nœuds `video` et `image` existent dans le registre avec des ports
-  vides ; rien ne les implémente.
-- Le README annonçait « sends, sidechains, automation, gestion de presets,
-  minimap, annuler/refaire, disposition automatique du graphe, groupes de
-  nœuds » comme hors périmètre. **Ils le restent tous.** La gestion de presets
-  a fait exception du 2026-09-02 au 2026-09-03 : le chantier a été mené à
-  l'étape 8 sur 9 puis retiré, et le refus est reconduit
-  ([DECISIONS.md](DECISIONS.md) D-013).
-- Les dix scripts `runtime-*-gauntlet.mjs` sont des harnais ponctuels liés à des
-  investigations closes. À regrouper sous `scripts/gauntlets/` ou à retirer une
-  fois leur usage confirmé caduc.
+- The `video` and `image` node types exist in the registry with empty ports;
+  nothing implements them.
+- The README used to list "sends, sidechains, automation, preset management,
+  minimap, undo/redo, automatic network layout, node groups" as out of scope.
+  **They all remain so.** Preset management was the exception from 2026-09-02 to
+  2026-09-03: the workstream reached step 8 of 9 and was then withdrawn, and the
+  refusal is upheld ([DECISIONS.md](DECISIONS.md) D-013).
+- The ten `runtime-*-gauntlet.mjs` scripts are one-off harnesses tied to closed
+  investigations. To be grouped under `scripts/gauntlets/` or removed once their
+  use is confirmed obsolete.
+- Fix the four `C4996` deprecation warnings in `midi_network.cpp`: replace
+  `juce::MidiBuffer::Iterator` with modern JUCE iteration. It sits in the
+  arpeggiator's real-time path, so it deserves its own commit and its own native
+  run — `--core` plus `mlh_realtime_output_tests.exe`.
