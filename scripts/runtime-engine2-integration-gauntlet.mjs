@@ -89,13 +89,13 @@ const expression = `(async () => {
     await waitFor((event) => event.type === 'sequencerSynced' && event.trackCount === 1,
       after, 'stress sequencer');
     after = events.length;
-    await command({ type: 'syncAudioGraph', nodes: [
+    await command({ type: 'syncAudioNetwork', nodes: [
       { id: 'engine2-stress-sequencer', nodeType: 'sequencer', inputs: [] },
       { id: 'audio-output', nodeType: 'audio-output', inputs: [{ portId: 'audio-in',
         sourceNodeId: 'engine2-stress-sequencer', sourcePortId: 'audio-out', level: 1, muted: false }] }
     ] });
-    await waitFor((event) => event.type === 'audioGraphSynced' && event.nodeCount === 2,
-      after, 'stress audio graph');
+    await waitFor((event) => event.type === 'audioNetworkSynced' && event.nodeCount === 2,
+      after, 'stress audio network');
 
     for (let index = 0; index < 100; index += 1) {
       await transport({ playing: true }, true);
@@ -133,7 +133,7 @@ const expression = `(async () => {
     const project = { format: 'minihub-project', version: 1,
       projectId: 'engine2-roundtrip-${stamp}', name: 'Engine 2 Roundtrip',
       createdAt: new Date().toISOString(), modifiedAt: new Date().toISOString(),
-      graph: { connections: [], layout: {}, viewport: null },
+      network: { connections: [], layout: {}, viewport: null },
       nodeInstances: { instances: [], idSeq: {} }, transport: { bpm: 137 },
       master: { gainDb: -3 }, sequencer: { tracks: [] } };
     const written = await window.hubAPI.projectWrite(projectPath, project);

@@ -951,7 +951,7 @@ private:
         // The ladder below runs from the most MiniHub-friendly proposal down to
         // simply accepting what the plug-in already exposes. Whichever rung
         // lands, the negotiated main bus is validated below - that check, not
-        // the proposal, is what the stereo graph actually depends on.
+        // the proposal, is what the stereo network actually depends on.
         enum class AuxiliaryPolicy { keepCurrent, matchMain, silenced };
 
         const auto currentArrangement = [&](BusDirection direction, Steinberg::int32 index)
@@ -978,7 +978,7 @@ private:
             };
             auto inputs = fill(kInput, inputCount);
             auto outputs = fill(kOutput, outputCount);
-            // The graph-facing buses are never left to the policy.
+            // The network-facing buses are never left to the policy.
             if (!owner_.isInstrument() && mainInputBus_ >= 0)
                 inputs[static_cast<size_t>(mainInputBus_)] = main;
             outputs[static_cast<size_t>(mainOutputBus_)] = main;
@@ -1036,7 +1036,7 @@ private:
             || (!owner_.isInstrument() && (inputChannels_ < 1 || inputChannels_ > 2)))
         {
             // The real gate now, so it has to say what it actually saw.
-            error = className_ + " bus layout does not fit MiniHub's stereo graph"
+            error = className_ + " bus layout does not fit MiniHub's stereo network"
                   + " (main output " + std::to_string(outputChannels_) + " ch, main input "
                   + std::to_string(inputChannels_) + " ch, buses "
                   + std::to_string(inputCount) + " in / " + std::to_string(outputCount)

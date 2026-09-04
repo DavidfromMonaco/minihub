@@ -298,20 +298,20 @@ test('deleting a VST node tears its chain down in the engine', () => {
   const node = hub.nodes.create('vst');
   const chain = hub.nodes.getChain(node.id);
   const plugin = chain.append({ pluginId: 'A', name: 'Vital', role: 'instrument' });
-  hub.graph.connect(node.id, 'audio-out', 'audio-output', 'audio-in');
+  hub.network.connect(node.id, 'audio-out', 'audio-output', 'audio-in');
 
-  assert.ok(sentOf(api, 'syncAudioGraph').some((m) => m.nodes.find((n)=>n.id==='audio-output')?.inputs.some((i)=>i.sourceNodeId===node.id)));
+  assert.ok(sentOf(api, 'syncAudioNetwork').some((m) => m.nodes.find((n)=>n.id==='audio-output')?.inputs.some((i)=>i.sourceNodeId===node.id)));
 
   api.sent.length = 0;
   hub.nodes.delete(node.id);
 
-  assert.ok(sentOf(api, 'syncAudioGraph').at(-1).nodes.every((n)=>n.id!==node.id), 'deleted node must leave native graph');
+  assert.ok(sentOf(api, 'syncAudioNetwork').at(-1).nodes.every((n)=>n.id!==node.id), 'deleted node must leave native network');
   assert.deepEqual(
     sentOf(api, 'removeInstance').map((m) => [m.chainId, m.instanceId]),
     [[node.id, plugin.id]],
     'plugin instances must be destroyed in the engine'
   );
-  assert.equal(hub.graph.getNode(node.id), undefined);
+  assert.equal(hub.network.getNode(node.id), undefined);
 });
 
 // ---- MIDI routing is independent of which module is mounted ----------------
@@ -322,9 +322,9 @@ test('MIDI keeps reaching a connected VST chain regardless of the visible page',
   hub.engine.init();
   setupMidiRouting(hub);
 
-  hub.graph.addNode({ id: 'minilab-3', name: 'MiniLab', outputs: [{ id: 'midi-out', type: 'midi' }] });
+  hub.network.addNode({ id: 'minilab-3', name: 'MiniLab', outputs: [{ id: 'midi-out', type: 'midi' }] });
   const node = hub.nodes.create('vst');
-  hub.graph.connect('minilab-3', 'midi-out', node.id, 'midi-in');
+  hub.network.connect('minilab-3', 'midi-out', node.id, 'midi-in');
 
   hub.events.emit('midi:message', { type: 'noteon', channel: 1, note: 60, velocity: 100, raw: [0x90, 60, 100] });
   assert.equal(sentOf(api, 'midi').length, 1);

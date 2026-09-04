@@ -43,15 +43,15 @@ function clickMenuItem(menu, label) {
 // ---- fixtures -----------------------------------------------------------------
 function setupHub({ withMinilab = true, layout = {} } = {}) {
   const hub = makeHub({
-    graphViewport: { x: 0, y: 0, zoom: 1 },
-    ...(Object.keys(layout).length ? { graphLayout: layout } : {})
+    networkViewport: { x: 0, y: 0, zoom: 1 },
+    ...(Object.keys(layout).length ? { networkLayout: layout } : {})
   });
   const modules = new ModuleSystem(hub);
-  const nodes = new NodeInstanceManager({ events: hub.events, settings: hub.settings, graph: hub.graph, modules });
+  const nodes = new NodeInstanceManager({ events: hub.events, settings: hub.settings, network: hub.network, modules });
   hub.modules = modules;
   hub.nodes = nodes;
   if (withMinilab) {
-    hub.graph.addNode({ id: 'minilab-3', name: 'MiniLab 3', outputs: [{ id: 'midi-out', type: 'midi' }] });
+    hub.network.addNode({ id: 'minilab-3', name: 'MiniLab 3', outputs: [{ id: 'midi-out', type: 'midi' }] });
   }
   return hub;
 }
@@ -166,19 +166,19 @@ test('pasted content is independent and VST plugin IDs are regenerated', () => {
   mod.unmount();
 });
 
-test('external graph connections are NOT copied on paste', () => {
+test('external network connections are NOT copied on paste', () => {
   const hub = setupHub({ withMinilab: true });
   const src = hub.nodes.create('vst'); // vst-001
-  hub.graph.connect('minilab-3', 'midi-out', 'vst-001', 'midi-in');
-  assert.equal(hub.graph.connections().length, 1);
+  hub.network.connect('minilab-3', 'midi-out', 'vst-001', 'midi-in');
+  assert.equal(hub.network.connections().length, 1);
   const { svg, mod } = mount(hub);
   const layer = nodesLayerOf(svg);
   clickNode(svg, findNode(layer, 'vst-001'));
   fireKey('c', svg, { ctrlKey: true });
   fireKey('v', svg, { ctrlKey: true });
   const pasted = hub.nodes.get('vst-002');
-  assert.equal(hub.graph.connections().length, 1, 'no copied connections');
-  assert.equal(hub.graph.connectionsTo(pasted.id).length, 0);
+  assert.equal(hub.network.connections().length, 1, 'no copied connections');
+  assert.equal(hub.network.connectionsTo(pasted.id).length, 0);
   mod.unmount();
 });
 
@@ -193,7 +193,7 @@ test('context Paste uses the context world position', () => {
   fire(svg, 'contextmenu', { target: svg, clientX: 100, clientY: 100 });
   const menu = findClass(container, 'node-context-menu');
   clickMenuItem(menu, 'Paste');
-  const pos = hub.settings.get('graphLayout')['vst-002'];
+  const pos = hub.settings.get('networkLayout')['vst-002'];
   assert.deepEqual(pos, { x: 100, y: 100 });
   mod.unmount();
 });
@@ -207,7 +207,7 @@ test('keyboard Paste uses pointer world position when over the canvas', () => {
   fireKey('c', svg, { ctrlKey: true });
   fire(svg, 'pointermove', { clientX: 120, clientY: 90 });
   fireKey('v', svg, { ctrlKey: true });
-  const pos = hub.settings.get('graphLayout')['vst-002'];
+  const pos = hub.settings.get('networkLayout')['vst-002'];
   assert.deepEqual(pos, { x: 120, y: 90 });
   mod.unmount();
 });
@@ -226,7 +226,7 @@ test('keyboard Paste uses viewport center when pointer is not over the canvas', 
   fireKey('c', svg, { ctrlKey: true });
   // No pointermove -> lastPointerClient is null -> viewport center (400,300).
   fireKey('v', svg, { ctrlKey: true });
-  const pos = hub.settings.get('graphLayout')['vst-002'];
+  const pos = hub.settings.get('networkLayout')['vst-002'];
   assert.deepEqual(pos, { x: 400, y: 300 });
   mod.unmount();
 });
@@ -335,7 +335,7 @@ test('created node appears at the context world position', () => {
   [...vstItem._listeners['click']].forEach((fn) => fn());
   const created = hub.nodes.get('vst-002');
   assert.ok(created, 'node created from submenu');
-  assert.deepEqual(hub.settings.get('graphLayout')['vst-002'], { x: 100, y: 100 });
+  assert.deepEqual(hub.settings.get('networkLayout')['vst-002'], { x: 100, y: 100 });
   mod.unmount();
 });
 

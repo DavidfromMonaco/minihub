@@ -1,17 +1,17 @@
 /**
  * View-state persistence for routing node positions.
  *
- * Node positions are purely visual and must never live inside `hub.graph`.
- * They are stored under the `graphLayout` settings key as:
+ * Node positions are purely visual and must never live inside `hub.network`.
+ * They are stored under the `networkLayout` settings key as:
  *
- *   graphLayout: {
+ *   networkLayout: {
  *     "minilab-3": { x: 120, y: 180 }
  *   }
  *
  * Nodes without a stored position get a deterministic default so the canvas
  * is stable across sessions without extra state.
  */
-const KEY = 'graphLayout';
+const KEY = 'networkLayout';
 
 // Deterministic default placement grid.
 const DEFAULT_X = 80;
@@ -20,7 +20,7 @@ const COL_SPACING = 300;
 const ROW_SPACING = 220;
 const COLS = 3;
 
-export class GraphLayout {
+export class NetworkLayout {
   constructor(settings) {
     this.settings = settings;
   }
@@ -32,7 +32,7 @@ export class GraphLayout {
 
   /**
    * Resolve the position for a node. `index` is the node's position in the
-   * graph's node list and is used only to derive a deterministic default.
+   * network's node list and is used only to derive a deterministic default.
    */
   get(nodeId, index = 0) {
     const entry = this._map()[nodeId];

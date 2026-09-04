@@ -81,7 +81,7 @@ function trackSources(hub, track) {
       : null;
     return selected ? [selected] : [];
   }
-  return hub.graph.listNodes()
+  return hub.network.listNodes()
     .filter((node) => node.type !== 'sequencer'
       && node.outputs.some((port) => port.type === 'audio')
       && hub.sequencer.canUseAudioInput(node.id))
@@ -94,12 +94,12 @@ function trackSources(hub, track) {
 }
 
 function trackDestinations(hub, track) {
-  if (track.type === 'midi') return hub.graph.listNodes().filter((node) => ['vst', 'arpeggiator'].includes(node.type)).map((node) => ({
+  if (track.type === 'midi') return hub.network.listNodes().filter((node) => ['vst', 'arpeggiator'].includes(node.type)).map((node) => ({
     id: node.id,
     name: node.type === 'vst' ? `${node.name} — VST chain`
       : `${node.name} — Arpeggiator`
   }));
-  return hub.graph.listNodes().filter((node) => ['mixer', 'morpher', 'audio-output', 'vst'].includes(node.type)
+  return hub.network.listNodes().filter((node) => ['mixer', 'morpher', 'audio-output', 'vst'].includes(node.type)
     && node.inputs.some((port) => port.type === 'audio')
     && hub.sequencer.canUseAudioOutput(node.id)).map((node) => ({ id: node.id, name: node.name }));
 }
@@ -118,12 +118,12 @@ function destinationPlaceholder(hub, track) {
 
 function explicitSequencerNode(hub) {
   const instance = hub.nodes?.list?.().find((node) => node.type === 'sequencer');
-  return instance ? hub.graph.getNode(instance.id) : null;
+  return instance ? hub.network.getNode(instance.id) : null;
 }
 
 function routeSummary(hub, track, sequencerId) {
-  const inputCables = hub.graph.connectionsTo(sequencerId, track.type === 'midi' ? 'midi-in' : 'audio-in');
-  const outputCables = hub.graph.connectionsFrom(sequencerId, track.type === 'midi' ? 'midi-out' : 'audio-out');
+  const inputCables = hub.network.connectionsTo(sequencerId, track.type === 'midi' ? 'midi-in' : 'audio-in');
+  const outputCables = hub.network.connectionsFrom(sequencerId, track.type === 'midi' ? 'midi-out' : 'audio-out');
   const inputMatches = track.type === 'midi'
     ? inputCables.some((connection) => connection.from.nodeId === MINILAB_NODE_ID
         && connection.from.portId === 'midi-out') && track.inputId === hub.midi.selectedInputId
@@ -628,7 +628,7 @@ export function createSequencerModule(hub) {
       hub.events.on('engine:deviceState', render),
       hub.events.on('midi:ports', render),
       hub.events.on('midi:preference', render),
-      hub.events.on('graph:change', render),
+      hub.events.on('network:change', render),
       hub.events.on('sequencer:playhead', (ppq) => { const el = container?.querySelector('[data-playhead]'); if (el) el.style.left = `${TRACK_HEADER + ppq * controller.model.state.zoom}px`; }),
       hub.events.on('sequencer:export', (status) => { exportStatus = status; render(); }),
       hub.events.on('sequencer:export-capabilities', render)

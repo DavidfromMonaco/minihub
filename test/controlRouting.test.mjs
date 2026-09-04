@@ -41,7 +41,7 @@ const sentOf = (api, type) => api.sent.filter((msg) => msg.type === type);
 const source = (key) => MINILAB_CONTROL_SOURCES.find((item) => item.key === key);
 
 function addMiniLabNode(hub) {
-  hub.graph.addNode({
+  hub.network.addNode({
     id: 'minilab-3',
     name: 'MiniLab 3',
     inputs: [],
@@ -78,7 +78,7 @@ async function makeRig() {
 
 function connect(hub, nodeId, key) {
   const item = source(key);
-  hub.graph.connect('minilab-3', item.portId, nodeId, 'ctrl-in');
+  hub.network.connect('minilab-3', item.portId, nodeId, 'ctrl-in');
   return item;
 }
 
@@ -134,7 +134,7 @@ test('MiniLab K1-K8 have stable physical identities and documented default CCs',
 test('CONTROL remains type-safe and does not create an implicit MIDI cable', async () => {
   const { api, hub, node } = await makeRig();
   connect(hub, node.id, 'k1');
-  assert.throws(() => hub.graph.connect('minilab-3', 'midi-out', node.id, 'ctrl-in'), /Incompatible/);
+  assert.throws(() => hub.network.connect('minilab-3', 'midi-out', node.id, 'ctrl-in'), /Incompatible/);
   setupMidiRouting(hub);
   setupControlRouting(hub);
   const msg = { type: 'cc', sourceName: 'Minilab3 MIDI', channel: 1, controller: 74, value: 64, raw: [0xb0, 74, 64] };
@@ -147,7 +147,7 @@ test('one VST CTRL IN accepts multiple distinct CONTROL cables', async () => {
   const { hub, node } = await makeRig();
   connect(hub, node.id, 'k1');
   connect(hub, node.id, 'k2');
-  assert.equal(hub.graph.connectionsTo(node.id, 'ctrl-in').length, 2);
+  assert.equal(hub.network.connectionsTo(node.id, 'ctrl-in').length, 2);
   assert.deepEqual(hub.control.connectedSources(node.id).map((item) => item.key), ['k1', 'k2']);
 });
 
@@ -202,7 +202,7 @@ test('plugin reorder preserves the binding instance id and ParamID', async () =>
   assert.equal(sentOf(api, 'setVstParameter')[0].instanceId, plugin.id);
 });
 
-test('binding survives application reload with graph topology', async () => {
+test('binding survives application reload with network topology', async () => {
   const { api, hub, node, plugin } = await makeRig();
   connect(hub, node.id, 'k1');
   capture(api, hub, node, plugin);
@@ -212,7 +212,7 @@ test('binding survives application reload with graph topology', async () => {
   await restarted.settings.load();
   addMiniLabNode(restarted);
   await restarted.nodes.load();
-  restarted.graph.restore(restarted.settings.get('graphConnections'));
+  restarted.network.restore(restarted.settings.get('networkConnections'));
   const restored = restarted.nodes.getControlBindings(node.id)[0];
   assert.equal(restored.pluginInstanceId, plugin.id);
   assert.equal(restored.parameterId, '123456789');
@@ -320,7 +320,7 @@ test('CONTROL IPC validation rejects malformed ids, types, ranges and payloads',
 test('musical notes and K1 MIDI remain native while K1 is additionally CONTROL', async () => {
   const { api, hub, node, plugin } = await makeRig();
   connect(hub, node.id, 'k1');
-  hub.graph.connect('minilab-3', 'midi-out', node.id, 'midi-in');
+  hub.network.connect('minilab-3', 'midi-out', node.id, 'midi-in');
   capture(api, hub, node, plugin);
   setupMidiRouting(hub);
   setupControlRouting(hub);
@@ -361,7 +361,7 @@ test('documented faders, main encoder, pads, strips and Shift decode with physic
 
 test('Pitch Bend and factory Mod CC1 remain musical MIDI while adding CONTROL', async () => {
   const { api, hub, node, plugin } = await makeRig();
-  hub.graph.connect('minilab-3', 'midi-out', node.id, 'midi-in');
+  hub.network.connect('minilab-3', 'midi-out', node.id, 'midi-in');
   connect(hub, node.id, 'pitch-bend');
   connect(hub, node.id, 'modulation');
   capture(api, hub, node, plugin, 'pitch-bend');
@@ -409,7 +409,7 @@ test('disconnecting the CONTROL cable stops updates without deleting binding', a
   const { api, hub, node, plugin } = await makeRig();
   const k1 = connect(hub, node.id, 'k1');
   capture(api, hub, node, plugin);
-  hub.graph.disconnect('minilab-3', k1.portId, node.id, 'ctrl-in');
+  hub.network.disconnect('minilab-3', k1.portId, node.id, 'ctrl-in');
   api.sent.length = 0;
   assert.equal(hub.control.bindingStatus(node.id, k1.id).state, 'disconnected');
   assert.equal(hub.control.route(node.id, { type: 'control', sourceControlId: k1.id, normalizedValue: 0.2 }).reason, 'disconnected');
@@ -421,7 +421,7 @@ test('disconnect/delete cancel pending Learn without retaining a stale node targ
   const k1 = connect(hub, node.id, 'k1');
   hub.control.armLearn(node.id, k1.id);
   let pending = hub.control.pendingLearn;
-  hub.graph.disconnect('minilab-3', k1.portId, node.id, 'ctrl-in');
+  hub.network.disconnect('minilab-3', k1.portId, node.id, 'ctrl-in');
   assert.equal(pending.state, 'cancelling');
   api.emitEvent({
     type: 'vstParameterLearnState', learnId: pending.learnId, chainId: node.id,
@@ -463,7 +463,7 @@ test('duplicating a VST node copies plugins with fresh ids but no bindings', asy
   assert.equal(duplicate.content.plugins.length, 1);
   assert.notEqual(duplicate.content.plugins[0].id, plugin.id);
   assert.deepEqual(duplicate.content.controlBindings, []);
-  assert.equal(hub.graph.connectionsTo(duplicate.id, 'ctrl-in').length, 0);
+  assert.equal(hub.network.connectionsTo(duplicate.id, 'ctrl-in').length, 0);
 });
 
 test('VST editor exposes the shared MiniLab surface and guided Learn toolbar', async () => {

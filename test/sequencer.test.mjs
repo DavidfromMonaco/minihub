@@ -3,25 +3,25 @@ import assert from 'node:assert/strict';
 import { SEQUENCER_LIMITS, SequencerModel, normalizeSequencerState, snapPpq, snapStep } from '../src/renderer/js/core/sequencerModel.js';
 import { SequencerController } from '../src/renderer/js/core/sequencerController.js';
 import { EventBus } from '../src/renderer/js/core/eventBus.js';
-import { Graph } from '../src/renderer/js/core/graph.js';
+import { Network } from '../src/renderer/js/core/network.js';
 
 function rig(initial = {}) {
   const data = { ...initial };
   const commands = [];
   const events = new EventBus();
   const settings = { data, get: (key) => data[key], set: async (key, value) => { data[key] = value; } };
-  const graph = new Graph(events, settings);
-  graph.addNode({
+  const network = new Network(events, settings);
+  network.addNode({
     id: 'sequencer', name: 'Sequencer', type: 'sequencer',
     inputs: [{ id: 'midi-in', type: 'midi' }, { id: 'audio-in', type: 'audio' }],
     outputs: [{ id: 'midi-out', type: 'midi' }, { id: 'audio-out', type: 'audio' }],
     onInput: (_portId, message) => controller.receiveMidiInput(message)
   });
-  graph.addNode({ id: 'midi-source', name: 'MIDI Source', type: 'midi-output', inputs: [], outputs: [{ id: 'midi-out', type: 'midi' }] });
-  graph.addNode({ id: 'vst-001', name: 'VST 1', type: 'vst', inputs: [{ id: 'midi-in', type: 'midi' }, { id: 'audio-in', type: 'audio' }], outputs: [{ id: 'audio-out', type: 'audio' }], onInput: (_portId, message) => commands.push({ type: 'liveMidi', chainId: 'vst-001', message }) });
-  graph.addNode({ id: 'minilab-3', name: 'MiniLab 3', type: 'midi-output', inputs: [{ id: 'midi-in', type: 'midi' }], outputs: [{ id: 'midi-out', type: 'midi' }] });
-  graph.addNode({ id: 'audio-input', name: 'Audio Input', type: 'audio-input', inputs: [], outputs: [{ id: 'audio-out', type: 'audio' }] });
-  graph.addNode({ id: 'audio-output', name: 'Audio Output', type: 'audio-output', inputs: [{ id: 'audio-in', type: 'audio' }], outputs: [] });
+  network.addNode({ id: 'midi-source', name: 'MIDI Source', type: 'midi-output', inputs: [], outputs: [{ id: 'midi-out', type: 'midi' }] });
+  network.addNode({ id: 'vst-001', name: 'VST 1', type: 'vst', inputs: [{ id: 'midi-in', type: 'midi' }, { id: 'audio-in', type: 'audio' }], outputs: [{ id: 'audio-out', type: 'audio' }], onInput: (_portId, message) => commands.push({ type: 'liveMidi', chainId: 'vst-001', message }) });
+  network.addNode({ id: 'minilab-3', name: 'MiniLab 3', type: 'midi-output', inputs: [{ id: 'midi-in', type: 'midi' }], outputs: [{ id: 'midi-out', type: 'midi' }] });
+  network.addNode({ id: 'audio-input', name: 'Audio Input', type: 'audio-input', inputs: [], outputs: [{ id: 'audio-out', type: 'audio' }] });
+  network.addNode({ id: 'audio-output', name: 'Audio Output', type: 'audio-output', inputs: [{ id: 'audio-in', type: 'audio' }], outputs: [] });
   const engine = {
     syncSequencer: (project) => commands.push({ type: 'syncSequencer', project }),
     setSequencerTrackControl: (trackId, gain, muted) => commands.push({ type: 'trackControl', trackId, gain, muted }),
@@ -38,7 +38,7 @@ function rig(initial = {}) {
     audioPickSave: async (_name, format = 'wav') => `C:\\audio\\mix.${format}`,
     audioCommitTake: async (_path, name) => ({ ok: true, filePath: `C:\\takes\\${name}.wav` })
   };
-  const hub = { events, settings, graph, engine, api, midi: { listInputs: () => [], selectedOutputId: '', getOutput: () => null }, project: { currentProjectName: 'Test' } };
+  const hub = { events, settings, network, engine, api, midi: { listInputs: () => [], selectedOutputId: '', getOutput: () => null }, project: { currentProjectName: 'Test' } };
   const controller = new SequencerController(hub).load(); hub.sequencer = controller;
   return { hub, controller, commands, data };
 }
@@ -137,15 +137,15 @@ test('track output selection creates authoritative Patch Bay routes', async () =
   const { controller, hub, commands } = rig(); const midi = controller.model.addTrack('midi'); const audio = controller.model.addTrack('audio');
   controller.setTrack(midi.id, { outputId: 'vst-001' }); controller.setTrack(audio.id, { outputId: 'audio-output' });
   await new Promise((resolve) => queueMicrotask(resolve));
-  assert.equal(hub.graph.connectionsFrom('sequencer', 'midi-out')[0].to.nodeId, 'vst-001');
-  assert.equal(hub.graph.connectionsFrom('sequencer', 'audio-out')[0].to.nodeId, 'audio-output');
+  assert.equal(hub.network.connectionsFrom('sequencer', 'midi-out')[0].to.nodeId, 'vst-001');
+  assert.equal(hub.network.connectionsFrom('sequencer', 'audio-out')[0].to.nodeId, 'audio-output');
   const sync = commands.filter((command) => command.type === 'syncSequencer').at(-1);
   assert.equal(sync.project.tracks.find((track) => track.id === midi.id).outputId, 'vst-001');
 });
 
 test('multiple MIDI tracks keep independent VST destinations and visible fan-out cables', async () => {
   const { controller, hub, commands } = rig();
-  hub.graph.addNode({
+  hub.network.addNode({
     id: 'vst-002', name: 'VST 2', type: 'vst',
     inputs: [{ id: 'midi-in', type: 'midi' }, { id: 'audio-in', type: 'audio' }],
     outputs: [{ id: 'audio-out', type: 'audio' }]
@@ -156,14 +156,14 @@ test('multiple MIDI tracks keep independent VST destinations and visible fan-out
   controller.setTrack(second.id, { outputId: 'vst-002' });
   await new Promise((resolve) => queueMicrotask(resolve));
 
-  assert.deepEqual(hub.graph.connectionsFrom('sequencer', 'midi-out')
+  assert.deepEqual(hub.network.connectionsFrom('sequencer', 'midi-out')
     .map((connection) => connection.to.nodeId).sort(), ['vst-001', 'vst-002']);
   const nativeTracks = commands.filter((command) => command.type === 'syncSequencer').at(-1).project.tracks;
   assert.equal(nativeTracks.find((track) => track.id === first.id).outputId, 'vst-001');
   assert.equal(nativeTracks.find((track) => track.id === second.id).outputId, 'vst-002');
 
   controller.removeTrack(first.id);
-  assert.deepEqual(hub.graph.connectionsFrom('sequencer', 'midi-out')
+  assert.deepEqual(hub.network.connectionsFrom('sequencer', 'midi-out')
     .map((connection) => connection.to.nodeId), ['vst-002'],
   'removing one track removes only its VST cable');
 });
@@ -186,14 +186,14 @@ test('track fader and mute update live DSP without rebuilding or panicking the a
 
 test('focused exclusive arm and intentional multi-arm route live MIDI to exact track destinations', () => {
   const { controller, hub, commands } = rig();
-  hub.graph.addNode({
+  hub.network.addNode({
     id: 'vst-002', name: 'VST 2', type: 'vst',
     inputs: [{ id: 'midi-in', type: 'midi' }, { id: 'audio-in', type: 'audio' }],
     outputs: [{ id: 'audio-out', type: 'audio' }],
     onInput: (_portId, message) => commands.push({ type: 'liveMidi', chainId: 'vst-002', message })
   });
   hub.midi.selectedInputId = 'minilab-port';
-  hub.graph.connect('minilab-3', 'midi-out', 'sequencer', 'midi-in');
+  hub.network.connect('minilab-3', 'midi-out', 'sequencer', 'midi-in');
   const first = controller.model.addTrack('midi');
   const second = controller.model.addTrack('midi');
   controller.setTrack(first.id, { inputId: 'minilab-port', outputId: 'vst-001' });
@@ -207,7 +207,7 @@ test('focused exclusive arm and intentional multi-arm route live MIDI to exact t
   controller.exporting = true;
   controller.receiveMidiInput({ sourceId: 'minilab-port', raw: [0x80, 60, 0] });
   assert.deepEqual(commands.filter((item) => item.type === 'liveMidi').slice(-1).map((item) => item.chainId), ['vst-001'],
-    'the held Note Off remains immediate while export owns its private graph');
+    'the held Note Off remains immediate while export owns its private network');
 
   controller.focusTrack(second.id);
   assert.deepEqual([first.armed, second.armed], [false, true], 'normal focus is exclusive by default');
@@ -234,7 +234,7 @@ test('record readiness explains each missing step instead of silently disabling 
   assert.match(controller.recordBlockReason(), /Choose the detected MIDI port/);
   controller.setTrack(track.id, { inputId: 'selected-midi' });
   assert.match(controller.recordBlockReason(), /Connect MiniLab 3 MIDI OUT/);
-  hub.graph.connect('minilab-3', 'midi-out', 'sequencer', 'midi-in');
+  hub.network.connect('minilab-3', 'midi-out', 'sequencer', 'midi-in');
   assert.equal(controller.recordBlockReason(), '');
   assert.equal(controller.startRecording(), true);
   assert.equal(commands.some((command) => command.type === 'record' && command.enabled), true);
@@ -245,7 +245,7 @@ test('enabled metronome enters one native pre-count without starting a second tr
   const track = controller.model.addTrack('midi');
   hub.midi.selectedInputId = 'selected-midi';
   controller.setTrack(track.id, { armed: true, inputId: 'selected-midi' });
-  hub.graph.connect('minilab-3', 'midi-out', 'sequencer', 'midi-in');
+  hub.network.connect('minilab-3', 'midi-out', 'sequencer', 'midi-in');
   commands.length = 0;
 
   assert.equal(controller.startRecording(), true);
@@ -280,16 +280,16 @@ test('audio source selection creates and cleans the authoritative AUDIO IN cable
   controller.setTrack(first.id, { inputId: 'audio-input' });
   controller.setTrack(second.id, { inputId: 'audio-input' });
   await new Promise((resolve) => queueMicrotask(resolve));
-  assert.deepEqual(hub.graph.connectionsTo('sequencer', 'audio-in').map((connection) => connection.from),
+  assert.deepEqual(hub.network.connectionsTo('sequencer', 'audio-in').map((connection) => connection.from),
     [{ nodeId: 'audio-input', portId: 'audio-out' }], 'shared source owns one visible cable');
   assert.equal(commands.filter((command) => command.type === 'syncSequencer').at(-1).project.tracks
     .find((track) => track.id === first.id).inputId, 'audio-input');
 
   controller.removeTrack(first.id);
-  assert.equal(hub.graph.connectionsTo('sequencer', 'audio-in').length, 1,
+  assert.equal(hub.network.connectionsTo('sequencer', 'audio-in').length, 1,
     'the cable stays while another track uses the source');
   controller.removeTrack(second.id);
-  assert.equal(hub.graph.connectionsTo('sequencer', 'audio-in').length, 0,
+  assert.equal(hub.network.connectionsTo('sequencer', 'audio-in').length, 0,
     'deleting the final owner removes the obsolete cable');
 });
 
@@ -299,31 +299,31 @@ test('audio track selectors refuse feedback routes in both directions', () => {
   first.controller.setTrack(outputFirst.id, { outputId: 'vst-001' });
   const rejectedInput = first.controller.model.addTrack('audio');
   first.controller.setTrack(rejectedInput.id, { inputId: 'vst-001' });
-  assert.equal(first.hub.graph.connectionsTo('sequencer', 'audio-in').length, 0,
+  assert.equal(first.hub.network.connectionsTo('sequencer', 'audio-in').length, 0,
     'a Sequencer destination cannot be selected back as its source');
 
   const second = rig();
   const inputFirst = second.controller.model.addTrack('audio');
   second.controller.setTrack(inputFirst.id, { inputId: 'vst-001' });
   second.controller.setTrack(inputFirst.id, { outputId: 'vst-001' });
-  assert.equal(second.hub.graph.connectionsFrom('sequencer', 'audio-out').length, 0,
+  assert.equal(second.hub.network.connectionsFrom('sequencer', 'audio-out').length, 0,
     'a Sequencer source cannot also become its destination');
 });
 
 test('MIDI track selects the existing hardware-output node and synchronizes the selected OS port', async () => {
   const { controller, hub, commands } = rig();
   const track = controller.model.addTrack('midi');
-  hub.graph.connect('minilab-3', 'midi-out', 'sequencer', 'midi-in');
+  hub.network.connect('minilab-3', 'midi-out', 'sequencer', 'midi-in');
   controller.setTrack(track.id, { outputId: 'minilab-3' });
   hub.midi.selectedOutputId = 'system-midi-out';
   hub.midi.getOutput = (id) => id === 'system-midi-out' ? { id, name: 'System MIDI Out' } : null;
   hub.events.emit('engine:state', { state: 'running' });
   await new Promise((resolve) => queueMicrotask(resolve));
 
-  const route = hub.graph.connectionsFrom('sequencer', 'midi-out').find((connection) => connection.to.nodeId === 'minilab-3');
+  const route = hub.network.connectionsFrom('sequencer', 'midi-out').find((connection) => connection.to.nodeId === 'minilab-3');
   const sync = commands.filter((command) => command.type === 'syncSequencer').at(-1);
   assert.ok(route);
-  assert.equal(hub.graph.connectionsTo('sequencer', 'midi-in').length, 1,
+  assert.equal(hub.network.connectionsTo('sequencer', 'midi-in').length, 1,
     'hardware source input cable coexists with hardware destination cable');
   assert.equal(sync.project.tracks.find((item) => item.id === track.id).outputKind, 'midi-output');
   assert.deepEqual(commands.filter((command) => command.type === 'selectMidiOutput').at(-1), {
@@ -335,7 +335,7 @@ test('MIDI track input is native-active only for the selected WebMIDI port and a
   const { controller, hub, commands } = rig();
   const track = controller.model.addTrack('midi');
   controller.model.updateTrack(track.id, { armed: true, inputId: 'selected-midi' });
-  hub.graph.connect('minilab-3', 'midi-out', 'sequencer', 'midi-in');
+  hub.network.connect('minilab-3', 'midi-out', 'sequencer', 'midi-in');
   hub.midi.selectedInputId = 'other-midi';
   controller.changed();
   await new Promise((resolve) => queueMicrotask(resolve));
@@ -355,7 +355,7 @@ test('Record cannot start while a project replacement owns the transition lock',
   const track = controller.model.addTrack('midi');
   controller.model.updateTrack(track.id, { armed: true, inputId: 'selected-midi' });
   hub.midi.selectedInputId = 'selected-midi';
-  hub.graph.connect('minilab-3', 'midi-out', 'sequencer', 'midi-in');
+  hub.network.connect('minilab-3', 'midi-out', 'sequencer', 'midi-in');
   hub.project = { _transitionPending: true };
   const oldAlert = globalThis.alert;
   const messages = [];
@@ -372,14 +372,14 @@ test('Record cannot start while a project replacement owns the transition lock',
 
 test('a rogue MIDI cable cannot impersonate the canonical MiniLab recording ingress', async () => {
   const { controller, hub, commands } = rig();
-  hub.graph.addNode({
+  hub.network.addNode({
     id: 'rogue-arp', type: 'arpeggiator', inputs: [],
     outputs: [{ id: 'midi-out', type: 'midi' }]
   });
   hub.midi.selectedInputId = 'selected-midi';
   const track = controller.model.addTrack('midi');
   controller.model.updateTrack(track.id, { armed: true, inputId: 'selected-midi' });
-  hub.graph.connect('rogue-arp', 'midi-out', 'sequencer', 'midi-in');
+  hub.network.connect('rogue-arp', 'midi-out', 'sequencer', 'midi-in');
   controller.changed();
   await new Promise((resolve) => queueMicrotask(resolve));
   const native = commands.filter((command) => command.type === 'syncSequencer').at(-1);
@@ -392,9 +392,9 @@ test('changing or deleting the last track destination removes only its obsolete 
   const { controller, hub } = rig(); const first = controller.model.addTrack('midi'); const second = controller.model.addTrack('midi');
   controller.setTrack(first.id, { outputId: 'vst-001' }); controller.setTrack(second.id, { outputId: 'vst-001' });
   controller.setTrack(first.id, { outputId: '' });
-  assert.equal(hub.graph.connectionsFrom('sequencer', 'midi-out').length, 1, 'shared route remains for the second track');
+  assert.equal(hub.network.connectionsFrom('sequencer', 'midi-out').length, 1, 'shared route remains for the second track');
   controller.removeTrack(second.id);
-  assert.equal(hub.graph.connectionsFrom('sequencer', 'midi-out').length, 0, 'last owner removes the stale cable');
+  assert.equal(hub.network.connectionsFrom('sequencer', 'midi-out').length, 0, 'last owner removes the stale cable');
 });
 
 test('real native MIDI recording result becomes an editable clip', async () => {
@@ -430,9 +430,9 @@ test('record, compensated MIDI input, panic and master export use native command
   assert.equal(controller.startRecording(), false, 'an armed selection without a cable cannot start recording');
   hub.events.emit('midi:inputMessage', { sourceId: 'in-1', raw: [0x91, 64, 111], offsetMs: -12 });
   assert.equal(commands.some((command) => command.type === 'midiInput'), false, 'legacy renderer event is not a hidden recording route');
-  hub.graph.connect('minilab-3', 'midi-out', 'sequencer', 'midi-in');
+  hub.network.connect('minilab-3', 'midi-out', 'sequencer', 'midi-in');
   assert.equal(controller.startRecording(), true);
-  hub.graph.emitData('minilab-3', 'midi-out', { sourceId: 'in-1', raw: [0x91, 64, 111], offsetMs: -12 });
+  hub.network.emitData('minilab-3', 'midi-out', { sourceId: 'in-1', raw: [0x91, 64, 111], offsetMs: -12 });
   hub.events.emit('midi:panic'); controller.stopRecording(); await controller.exportMaster('full', { tailSeconds: 3, bits: 32 });
   assert.ok(commands.some((command) => command.type === 'record' && command.enabled));
   assert.ok(commands.some((command) => command.type === 'midiInput' && command.args[2] === -12));

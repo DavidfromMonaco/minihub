@@ -66,7 +66,7 @@ const expression = `(async () => {
   const instanceA = 'commercial-instance-a';
   const instanceB = 'commercial-instance-b';
   const pluginIds = [${JSON.stringify(runtimePlugin)}, ${JSON.stringify(runtimeSecondPlugin)}];
-  const audioGraph = (gainA = 1, gainB = 1, muteA = false, muteB = false) => [
+  const audioNetwork = (gainA = 1, gainB = 1, muteA = false, muteB = false) => [
     { id: chainA, nodeType: 'vst', inputs: [] },
     { id: chainB, nodeType: 'vst', inputs: [] },
     { id: 'commercial-mixer', nodeType: 'mixer', masterLevel: 1, inputs: [
@@ -92,8 +92,8 @@ const expression = `(async () => {
       await command({ type: 'setChainOutputEnabled', chainId: target.chainId, enabled: true });
     }
     let after = events.length;
-    await command({ type: 'syncAudioGraph', nodes: audioGraph() });
-    await waitFor((event) => event.type === 'audioGraphSynced', after, 'commercial audio graph');
+    await command({ type: 'syncAudioNetwork', nodes: audioNetwork() });
+    await waitFor((event) => event.type === 'audioNetworkSynced', after, 'commercial audio network');
 
     const holdStart = events.length;
     await command({ type: 'midi', chainId: chainA, data: [0x90, 60, 110], offsetMs: 0 });
@@ -147,8 +147,8 @@ const expression = `(async () => {
     await command({ type: 'setMasterOutput', gainDb: 0 });
 
     after = events.length;
-    await command({ type: 'syncAudioGraph', nodes: audioGraph(0.5, 1, false, true) });
-    await waitFor((event) => event.type === 'audioGraphSynced', after, 'commercial fader/mute graph');
+    await command({ type: 'syncAudioNetwork', nodes: audioNetwork(0.5, 1, false, true) });
+    await waitFor((event) => event.type === 'audioNetworkSynced', after, 'commercial fader/mute network');
     await sleep(1200);
     const faderMute = events.filter((event) => event.type === 'audioPathTelemetry'
       && event.nodeId === 'commercial-mixer' && sameGains(event.inputGainCoefficients, [0.5, 0])).at(-1);
@@ -156,8 +156,8 @@ const expression = `(async () => {
       'commercial Level/Mute did not remain explicit and static');
 
     after = events.length;
-    await command({ type: 'syncAudioGraph', nodes: audioGraph(0.5, 1, true, true) });
-    await waitFor((event) => event.type === 'audioGraphSynced', after, 'commercial all-muted graph');
+    await command({ type: 'syncAudioNetwork', nodes: audioNetwork(0.5, 1, true, true) });
+    await waitFor((event) => event.type === 'audioNetworkSynced', after, 'commercial all-muted network');
     await sleep(700);
     const quiet = events.slice(after).filter((event) => event.type === 'masterMeter').at(-1);
     assert(quiet && Math.max(Number(quiet.peakLeft) || 0, Number(quiet.peakRight) || 0) <= 0.0001,

@@ -98,8 +98,8 @@ test('a pasted node is fully independent of its source', () => {
   const hub = makeFullHub();
   const source = hub.nodes.create('vst');
   hub.nodes.getChain(source.id).append({ pluginId: 'P', name: 'Dexed', role: 'instrument' });
-  hub.graph.addNode({ id: 'src', name: 'Src', outputs: [{ id: 'midi-out', type: 'midi' }] });
-  hub.graph.connect('src', 'midi-out', source.id, 'midi-in');
+  hub.network.addNode({ id: 'src', name: 'Src', outputs: [{ id: 'midi-out', type: 'midi' }] });
+  hub.network.connect('src', 'midi-out', source.id, 'midi-in');
 
   const pasted = hub.nodes.createFromSnapshot({
     type: source.type,
@@ -107,7 +107,7 @@ test('a pasted node is fully independent of its source', () => {
   });
 
   assert.notEqual(pasted.id, source.id);
-  assert.equal(hub.graph.connectionsTo(pasted.id).length, 0, 'external routing is never copied');
+  assert.equal(hub.network.connectionsTo(pasted.id).length, 0, 'external routing is never copied');
   assert.equal(pasted.content.plugins.length, 1, 'internal chain is copied');
   assert.notEqual(pasted.content.plugins[0].id, source.content.plugins[0].id,
     'chain plugin instance ids are regenerated');

@@ -86,7 +86,7 @@ public:
 
     static std::vector<AudioDeviceDescription> enumerate(std::string& error);
     /** `enableInput` opens the WASAPI default capture endpoint in the same
-     *  duplex stream. It must stay false unless the live graph actually owns an
+     *  duplex stream. It must stay false unless the live network actually owns an
      *  `audio-input` node: the capture default is frequently a USB codec while
      *  the render endpoint is the onboard one, and aggregating two independent
      *  word clocks into one stream drifts and drops samples periodically. */

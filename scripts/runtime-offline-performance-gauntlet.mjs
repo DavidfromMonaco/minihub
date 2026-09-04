@@ -104,10 +104,10 @@ const expression = `(async () => {
     await waitFor((event) => event.type === 'sequencerSynced' && event.trackCount === 0,
       after, 'empty sequencer');
     after = events.length;
-    await command({ type: 'syncAudioGraph', nodes: [
+    await command({ type: 'syncAudioNetwork', nodes: [
       { id: 'audio-output', nodeType: 'audio-output', inputs: [] }
     ] });
-    await waitFor((event) => event.type === 'audioGraphSynced', after, 'empty audio graph');
+    await waitFor((event) => event.type === 'audioNetworkSynced', after, 'empty audio network');
     for (const plugin of loaded.splice(0).reverse()) {
       await command({ type: 'removeInstance', ...plugin });
     }
@@ -118,7 +118,7 @@ const expression = `(async () => {
     for (let index = 0; index < chains.length; index += 1) await loadChain(chains[index], index);
 
     let after = events.length;
-    await command({ type: 'syncAudioGraph', nodes: [
+    await command({ type: 'syncAudioNetwork', nodes: [
       ...chains.map((id) => ({ id, nodeType: 'vst', inputs: [] })),
       { id: 'perf-' + name + '-mixer', nodeType: 'mixer', masterLevel: 0.35,
         inputs: chains.map((sourceNodeId, index) => ({ portId: 'audio-in-' + (index + 1),
@@ -128,8 +128,8 @@ const expression = `(async () => {
           sourcePortId: 'audio-out', level: 1, muted: false }
       ] }
     ] });
-    await waitFor((event) => event.type === 'audioGraphSynced'
-      && event.nodeCount === trackCount + 2, after, name + ' audio graph');
+    await waitFor((event) => event.type === 'audioNetworkSynced'
+      && event.nodeCount === trackCount + 2, after, name + ' audio network');
 
     const tracks = chains.map((outputId, index) => ({
       id: 'perf-' + name + '-track-' + index,

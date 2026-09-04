@@ -1,12 +1,12 @@
 /**
- * Feeds incoming MIDI into the routing graph, for the lifetime of the app.
+ * Feeds incoming MIDI into the routing network, for the lifetime of the app.
  *
  * This used to live inside the MiniLab module's `mount()`, which tied signal
  * routing to UI focus: navigating away from the MiniLab page unsubscribed the
  * handler and MIDI silently stopped reaching every connected VST chain — you
  * could not play a plugin while looking at its own page. Routing must be
  * independent of which module is visible (that is the whole point of
- * `hub.graph`), so the subscription is owned by the Hub instead.
+ * `hub.network`), so the subscription is owned by the Hub instead.
  *
  * The MiniLab module still renders its own monitor/keyboard from the same
  * event; it just no longer owns the routing.
@@ -27,7 +27,7 @@ export function setupMidiRouting(hub) {
   const offMessage = hub.events.on('midi:message', (msg) => {
     // CONTROL is additive: never remove a physical event from its native MIDI
     // path merely because MiniHub can also expose it as CONTROL.
-    hub.graph.emitData(MINILAB_NODE_ID, 'midi-out', msg);
+    hub.network.emitData(MINILAB_NODE_ID, 'midi-out', msg);
   });
 
   // The controller vanished (or the user switched inputs) while notes were
@@ -37,7 +37,7 @@ export function setupMidiRouting(hub) {
   const offPanic = hub.events.on('midi:panic', () => {
     for (let channel = 1; channel <= 16; channel += 1) {
       for (const msg of panicMessages(channel)) {
-        hub.graph.emitData(MINILAB_NODE_ID, 'midi-out', msg);
+        hub.network.emitData(MINILAB_NODE_ID, 'midi-out', msg);
       }
     }
   });

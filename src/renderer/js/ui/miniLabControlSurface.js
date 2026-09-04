@@ -73,7 +73,7 @@ function svgEl(tag, attrs = {}) {
   return el;
 }
 
-/** Shared Patch Bay representation; port callbacks are supplied by the graph view. */
+/** Shared Patch Bay representation; port callbacks are supplied by the network view. */
 export function appendMiniLabControlSurfaceSvg(parent, { buildPort, connectedPortIds = new Set() }) {
   const root = svgEl('g', { class: 'minilab-control-surface-svg', 'data-minilab-surface': 'patch-bay' });
   const addPort = (control) => {

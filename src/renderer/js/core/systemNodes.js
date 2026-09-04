@@ -4,12 +4,12 @@
  * A user-created node draws its id from `NodeInstanceManager` (`vst-011`), and
  * a singleton node TYPE declares `stableId` in `nodeTypes.js`. The ids below
  * are a third case: exactly one of each exists, the id is part of the
- * persisted routing contract (`graphConnections`, `graphLayout`), and code
+ * persisted routing contract (`networkConnections`, `networkLayout`), and code
  * addresses it directly rather than looking it up.
  *
  * They used to be re-declared privately in nine modules, under three different
  * names (`NODE_ID`, `MINILAB_NODE_ID`, or an inline literal). Renaming one
- * meant finding every copy, and a missed copy fails silently: the graph simply
+ * meant finding every copy, and a missed copy fails silently: the network simply
  * never matches, so MIDI stops routing with no error anywhere.
  *
  * These are node IDS, not node TYPES. `'audio-output'` happens to be both the

@@ -5,7 +5,7 @@ import {
   normalizeArpeggiatorContent, degreeToMidi, legacyStepToSemitoneOffset,
   semitoneOffsetToMidi
 } from '../src/renderer/js/core/arpeggiatorState.js';
-import { Graph } from '../src/renderer/js/core/graph.js';
+import { Network } from '../src/renderer/js/core/network.js';
 
 test('all scale definitions retain the preset degree mapping',()=>{
   assert.equal(Object.keys(ARP_SCALES).length,11);
@@ -59,7 +59,7 @@ test('root transposes chromatic offsets while preserving pattern shape',()=>{
   assert.deepEqual([0,3,7].map((offset)=>semitoneOffsetToMidi(2,offset)),[62,65,69]);
 });
 
-test('MIDI graph rejects feedback without disturbing audio cycles',()=>{
-  const settings={set(){}};const events={emit(){}};const g=new Graph(events,settings);
+test('MIDI network rejects feedback without disturbing audio cycles',()=>{
+  const settings={set(){}};const events={emit(){}};const g=new Network(events,settings);
   const node=(id)=>({id,inputs:[{id:'in',type:'midi'}],outputs:[{id:'out',type:'midi'}]});g.addNode(node('a'));g.addNode(node('b'));g.connect('a','out','b','in');assert.throws(()=>g.connect('b','out','a','in'),/feedback cycle/);
 });

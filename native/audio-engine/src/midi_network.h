@@ -18,8 +18,8 @@ struct ArpConfig {
     int root=0, scale=0, mode=0, rate=2, patternLength=8; uint32_t randomSeed=0x5eed1234u;
     std::array<ArpStep,32> steps{};
 };
-struct MidiGraphNodeSpec { std::string id, kind; ArpConfig arp; std::vector<std::string> destinations; };
-struct MidiGraphSpec { std::vector<MidiGraphNodeSpec> nodes; };
+struct MidiNetworkNodeSpec { std::string id, kind; ArpConfig arp; std::vector<std::string> destinations; };
+struct MidiNetworkSpec { std::vector<MidiNetworkNodeSpec> nodes; };
 enum class MidiDestinationKind { chain, physicalOutput };
 struct MidiDestination {
     MidiDestinationKind kind = MidiDestinationKind::chain;
@@ -66,7 +66,7 @@ public:
         std::vector<MidiDestination> destinations;
         juce::MidiBuffer scheduledInput;
     };
-    static std::unique_ptr<MidiExecutionPlan> compile(const MidiGraphSpec&, const std::function<Chain*(const std::string&)>&, std::string&);
+    static std::unique_ptr<MidiExecutionPlan> compile(const MidiNetworkSpec&, const std::function<Chain*(const std::string&)>&, std::string&);
     void process(int numSamples, Transport&, MidiOutputSink* = nullptr,
                  double callbackStartMs = 0, double sampleRate = 48000) noexcept;
     bool pushInput(const std::string& nodeId, const juce::MidiMessage&) noexcept;

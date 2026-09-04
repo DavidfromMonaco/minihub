@@ -6,7 +6,7 @@ import { makeHub } from './helpers.mjs';
  * Contract: every UI route that creates a node produces an equivalent node.
  *
  * The Patch Bay toolbar ("+ New Node") and the canvas context menu
- * ("New Node > VST") must agree on naming, graph registration, layout
+ * ("New Node > VST") must agree on naming, network registration, layout
  * placement and selection. They used to disagree: the toolbar called
  * `hub.nodes.create()` directly, so its nodes were never placed and never
  * selected.
@@ -45,11 +45,11 @@ function makeContainer() {
 }
 
 function setupHub() {
-  const hub = makeHub({ graphViewport: { x: 0, y: 0, zoom: 1 } });
+  const hub = makeHub({ networkViewport: { x: 0, y: 0, zoom: 1 } });
   const modules = new ModuleSystem(hub);
   hub.modules = modules;
   hub.nodes = new NodeInstanceManager({
-    events: hub.events, settings: hub.settings, graph: hub.graph, modules
+    events: hub.events, settings: hub.settings, network: hub.network, modules
   });
   return hub;
 }
@@ -92,8 +92,8 @@ test('the Patch Bay toolbar creates a placed, selected node', () => {
   const [instance] = hub.nodes.list();
   assert.ok(instance, 'the toolbar must actually create an instance');
   assert.equal(instance.name, 'VST 1');
-  assert.ok(hub.graph.getNode(instance.id), 'registered in the routing graph');
-  assert.ok(hub.settings.get('graphLayout')[instance.id], 'given a layout position');
+  assert.ok(hub.network.getNode(instance.id), 'registered in the routing network');
+  assert.ok(hub.settings.get('networkLayout')[instance.id], 'given a layout position');
   assert.ok(nodeEl(svg, instance.id)._classSet.has('selected'), 'and selected');
 });
 
@@ -123,10 +123,10 @@ test('toolbar and context menu produce equivalent nodes', () => {
   assert.equal(a.id, b.id, 'same stable id for the first node of a type');
   assert.equal(a.type, b.type);
   assert.deepEqual(a.content, b.content, 'same default content');
-  assert.ok(viaToolbar.graph.getNode(a.id) && viaMenu.graph.getNode(b.id), 'both registered in the graph');
+  assert.ok(viaToolbar.network.getNode(a.id) && viaMenu.network.getNode(b.id), 'both registered in the network');
   assert.ok(viaToolbar.modules.get(a.id) && viaMenu.modules.get(b.id), 'both registered as modules');
   assert.ok(
-    viaToolbar.settings.get('graphLayout')[a.id] && viaMenu.settings.get('graphLayout')[b.id],
+    viaToolbar.settings.get('networkLayout')[a.id] && viaMenu.settings.get('networkLayout')[b.id],
     'both placed on the canvas'
   );
 });
@@ -143,9 +143,9 @@ test('hierarchical OmniBox menu creates every registered functional family', () 
   for (const [label,type,inputs,outputs] of expected) {
     const hub=setupHub();const {container,svg}=makeContainer();createRoutingModule(hub).mount(container);
     fireContextMenu(svg,240,180);assert.ok(clickMenuLabel(label),`OmniBox hierarchy offers ${label}`);
-    const instance=hub.nodes.list()[0], graphNode=hub.graph.getNode(instance.id);
-    assert.equal(instance.type,type);assert.deepEqual(graphNode.inputs.map((p)=>p.id),inputs);assert.deepEqual(graphNode.outputs.map((p)=>p.id),outputs);
-    assert.ok(hub.settings.get('graphLayout')[instance.id],`${label} uses context insertion positioning`);
+    const instance=hub.nodes.list()[0], networkNode=hub.network.getNode(instance.id);
+    assert.equal(instance.type,type);assert.deepEqual(networkNode.inputs.map((p)=>p.id),inputs);assert.deepEqual(networkNode.outputs.map((p)=>p.id),outputs);
+    assert.ok(hub.settings.get('networkLayout')[instance.id],`${label} uses context insertion positioning`);
   }
 });
 

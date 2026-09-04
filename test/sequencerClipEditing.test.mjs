@@ -13,7 +13,7 @@ function controllerRig() {
   const data = { transportBpm: 120 };
   const hub = {
     settings: { get: (key) => data[key], set: (key, value) => { data[key] = value; } },
-    graph: { connectionsTo: () => [], connectionsFrom: () => [], getNode: () => null },
+    network: { connectionsTo: () => [], connectionsFrom: () => [], getNode: () => null },
     engine: {
       setTransport: (state) => commands.push({ type: 'transport', ...state }),
       syncSequencer: (state) => commands.push({ type: 'sync', state })

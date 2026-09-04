@@ -50,7 +50,7 @@ struct Vst3BufferProcessTrace {
 /** A live Steinberg-SDK VST3 instance.
  *
  * JUCE types remain at this class boundary only because the existing MiniHub
- * graph/sequencer and JSON protocol use AudioBuffer, MidiBuffer and var.  The
+ * network/sequencer and JSON protocol use AudioBuffer, MidiBuffer and var.  The
  * module discovery, component/controller lifecycle, bus negotiation, process
  * call, parameter queues, state and IPlugView are all hosted directly through
  * the official VST3 SDK by DirectVst3Plugin.

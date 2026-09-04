@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHub } from '../src/renderer/js/core/hub.js';
-import { describeMidiGraph, setupEngineSync } from '../src/renderer/js/core/engineSync.js';
+import { describeMidiNetwork, setupEngineSync } from '../src/renderer/js/core/engineSync.js';
 import { createAudioOutputModule } from '../src/renderer/js/modules/audioOutput/audioOutputModule.js';
 import { getNodeType } from '../src/renderer/js/core/nodeTypes.js';
 import { setupMidiRouting } from '../src/renderer/js/core/midiRouting.js';
@@ -199,7 +199,7 @@ test('engine client serializes commands with the versioned protocol', async () =
   );
 });
 
-test('Master Export clones its snapshot while live graph, MIDI and transport stay immediate', async () => {
+test('Master Export clones its snapshot while live network, MIDI and transport stay immediate', async () => {
   const api = mockApi();
   const hub = createHub(api);
   await hub.engine.init();
@@ -212,8 +212,8 @@ test('Master Export clones its snapshot while live graph, MIDI and transport sta
   api.emitEvent({ type: 'sequencerExport', state: 'started', filePath: 'C:/frozen.wav' });
   api.emitEvent({ type: 'sequencerExport', state: 'progress', progress: 0.5, filePath: 'C:/frozen.wav' });
 
-  await hub.engine.syncAudioGraph([{ id: 'new-mixer', masterLevel: 0.25 }]);
-  await hub.engine.syncMidiGraph([{ id: 'new-arp', nodeType: 'arpeggiator' }]);
+  await hub.engine.syncAudioNetwork([{ id: 'new-mixer', masterLevel: 0.25 }]);
+  await hub.engine.syncMidiNetwork([{ id: 'new-arp', nodeType: 'arpeggiator' }]);
   await hub.engine.syncSequencer({ tracks: [{ id: 'edited-track', muted: true }] });
   await hub.engine.setChainMidiEnabled('vst-001', false);
   await hub.engine.setChainOutputEnabled('vst-001', false);
@@ -227,7 +227,7 @@ test('Master Export clones its snapshot while live graph, MIDI and transport sta
   await hub.engine.selectDevice('later-device', 48000, 256);
 
   assert.deepEqual(api.sent.map((message) => message.type), [
-    'sequencerExport', 'syncAudioGraph', 'syncMidiGraph', 'syncSequencer',
+    'sequencerExport', 'syncAudioNetwork', 'syncMidiNetwork', 'syncSequencer',
     'setChainMidiEnabled', 'setChainOutputEnabled', 'setTransport',
     'setBypass', 'setState', 'selectMidiOutput', 'midi', 'midi', 'sequencerPanic'
   ], 'all live state, including the held Note Off, addresses processors disjoint from the clones');
@@ -236,7 +236,7 @@ test('Master Export clones its snapshot while live graph, MIDI and transport sta
   api.emitEvent({ type: 'sequencerExport', state: 'complete', filePath: 'C:/frozen.wav' });
   await new Promise((resolve) => setImmediate(resolve));
   assert.deepEqual(api.sent.map((message) => message.type), [
-    'sequencerExport', 'syncAudioGraph', 'syncMidiGraph', 'syncSequencer',
+    'sequencerExport', 'syncAudioNetwork', 'syncMidiNetwork', 'syncSequencer',
     'setChainMidiEnabled', 'setChainOutputEnabled', 'setTransport',
     'setBypass', 'setState', 'selectMidiOutput', 'midi', 'midi', 'sequencerPanic',
     'selectDevice'
@@ -259,7 +259,7 @@ test('project quiesce remains an exact native barrier during an export', async (
   await hub.engine.sequencerExport({
     filePath: 'C:/cancelled.wav', bits: 24, startPpq: 0, endPpq: 8, tailSeconds: 0
   });
-  await hub.engine.syncAudioGraph([{ id: 'old-project-route' }]);
+  await hub.engine.syncAudioNetwork([{ id: 'old-project-route' }]);
   let settled = false;
   const quiesce = hub.engine.sequencerQuiesce().then((value) => { settled = true; return value; });
   await new Promise((resolve) => setImmediate(resolve));
@@ -274,17 +274,17 @@ test('project quiesce remains an exact native barrier during an export', async (
   api.emitEvent({ type: 'sequencerExport', state: 'complete', filePath: 'C:/cancelled.wav' });
   await new Promise((resolve) => setImmediate(resolve));
 
-  assert.deepEqual(api.sent.map((message) => message.type), ['sequencerExport', 'syncAudioGraph', 'sequencerQuiesce'],
+  assert.deepEqual(api.sent.map((message) => message.type), ['sequencerExport', 'syncAudioNetwork', 'sequencerQuiesce'],
     'the old live command is immediate and no delayed command can replay after the barrier');
 });
 
-test('native MIDI graph commands use the versioned engine boundary', async () => {
+test('native MIDI network commands use the versioned engine boundary', async () => {
   const api = mockApi();
   const hub = createHub(api);
-  await hub.engine.syncMidiGraph([{ id: 'arpeggiator-001', nodeType: 'arpeggiator' }]);
+  await hub.engine.syncMidiNetwork([{ id: 'arpeggiator-001', nodeType: 'arpeggiator' }]);
   await hub.engine.midiNode('arpeggiator-001', [0x90, 60, 100]);
-  assert.deepEqual(sentOf(api, 'syncMidiGraph')[0], {
-    v: 1, type: 'syncMidiGraph', nodes: [{ id: 'arpeggiator-001', nodeType: 'arpeggiator' }]
+  assert.deepEqual(sentOf(api, 'syncMidiNetwork')[0], {
+    v: 1, type: 'syncMidiNetwork', nodes: [{ id: 'arpeggiator-001', nodeType: 'arpeggiator' }]
   });
   assert.deepEqual(sentOf(api, 'midiNode')[0], {
     v: 1, type: 'midiNode', nodeId: 'arpeggiator-001', data: [0x90, 60, 100]
@@ -310,18 +310,18 @@ test('physical MIDI output discovery, state and selection cross the versioned en
   });
 });
 
-test('MIDI graph describes the existing Arpeggiator route to VST and hardware destinations', () => {
+test('MIDI network describes the existing Arpeggiator route to VST and hardware destinations', () => {
   const api = mockApi();
   const hub = createHub(api);
-  hub.graph.addNode({ id: 'sequencer', name: 'Sequencer', type: 'sequencer', inputs: [], outputs: [{ id: 'midi-out', type: 'midi' }] });
-  hub.graph.addNode({ id: 'arp-001', name: 'Arpeggiator', type: 'arpeggiator', inputs: [{ id: 'midi-in', type: 'midi' }], outputs: [{ id: 'midi-out', type: 'midi' }] });
-  hub.graph.addNode({ id: 'vst-001', name: 'VST', type: 'vst', inputs: [{ id: 'midi-in', type: 'midi' }], outputs: [] });
-  hub.graph.addNode({ id: 'minilab-3', name: 'MIDI Output', type: 'midi-output', inputs: [{ id: 'midi-in', type: 'midi' }], outputs: [] });
-  hub.graph.connect('sequencer', 'midi-out', 'arp-001', 'midi-in');
-  hub.graph.connect('arp-001', 'midi-out', 'vst-001', 'midi-in');
-  hub.graph.connect('arp-001', 'midi-out', 'minilab-3', 'midi-in');
+  hub.network.addNode({ id: 'sequencer', name: 'Sequencer', type: 'sequencer', inputs: [], outputs: [{ id: 'midi-out', type: 'midi' }] });
+  hub.network.addNode({ id: 'arp-001', name: 'Arpeggiator', type: 'arpeggiator', inputs: [{ id: 'midi-in', type: 'midi' }], outputs: [{ id: 'midi-out', type: 'midi' }] });
+  hub.network.addNode({ id: 'vst-001', name: 'VST', type: 'vst', inputs: [{ id: 'midi-in', type: 'midi' }], outputs: [] });
+  hub.network.addNode({ id: 'minilab-3', name: 'MIDI Output', type: 'midi-output', inputs: [{ id: 'midi-in', type: 'midi' }], outputs: [] });
+  hub.network.connect('sequencer', 'midi-out', 'arp-001', 'midi-in');
+  hub.network.connect('arp-001', 'midi-out', 'vst-001', 'midi-in');
+  hub.network.connect('arp-001', 'midi-out', 'minilab-3', 'midi-in');
 
-  const arp = describeMidiGraph(hub).find((node) => node.id === 'arp-001');
+  const arp = describeMidiNetwork(hub).find((node) => node.id === 'arp-001');
   assert.deepEqual(arp.incoming ?? arp.inputs, [{ sourceNodeId: 'sequencer', sourcePortId: 'midi-out' }]);
   assert.deepEqual(arp.destinations, ['vst-001', 'minilab-3']);
 });
@@ -373,35 +373,35 @@ test('Audio Output is a native/system node: non-deletable, non-copyable, AUDIO I
   assert.equal(hub.nodes.get('audio-output'), null);
   assert.equal(hub.nodes.delete('audio-output'), false);
 
-  const node = hub.graph.getNode('audio-output');
-  assert.ok(node, 'audio-output must exist in the graph');
+  const node = hub.network.getNode('audio-output');
+  assert.ok(node, 'audio-output must exist in the network');
   assert.deepEqual(node.inputs.map((p) => p.id), ['audio-in']);
   assert.equal(node.inputs[0].type, 'audio');
   assert.equal(node.outputs.length, 0);
 });
 
-// ---- graph MIDI connection controls MIDI forwarding ------------------------
+// ---- network MIDI connection controls MIDI forwarding ------------------------
 test('MIDI is forwarded to the engine only while MiniLab is connected to the VST node', async () => {
   const api = mockApi();
   const hub = createHub(api);
   hub.engine.init();
-  hub.graph.addNode({ id: 'minilab-3', name: 'MiniLab', outputs: [{ id: 'midi-out', type: 'midi' }] });
+  hub.network.addNode({ id: 'minilab-3', name: 'MiniLab', outputs: [{ id: 'midi-out', type: 'midi' }] });
   const inst = hub.nodes.create('vst');
 
   // Not connected yet -> no MIDI reaches the engine.
-  hub.graph.emitData('minilab-3', 'midi-out', { raw: [0x90, 60, 100] });
+  hub.network.emitData('minilab-3', 'midi-out', { raw: [0x90, 60, 100] });
   assert.equal(sentOf(api, 'midi').length, 0);
 
   // Connect MiniLab MIDI OUT -> VST MIDI IN.
-  hub.graph.connect('minilab-3', 'midi-out', inst.id, 'midi-in');
-  hub.graph.emitData('minilab-3', 'midi-out', { raw: [0x90, 60, 100] });
+  hub.network.connect('minilab-3', 'midi-out', inst.id, 'midi-in');
+  hub.network.emitData('minilab-3', 'midi-out', { raw: [0x90, 60, 100] });
   assert.equal(sentOf(api, 'midi').length, 1);
   assert.equal(sentOf(api, 'midi')[0].chainId, inst.id);
   assert.deepEqual(sentOf(api, 'midi')[0].data, [0x90, 60, 100]);
 
   // Disconnect -> new MIDI no longer reaches the engine.
-  hub.graph.disconnect('minilab-3', 'midi-out', inst.id, 'midi-in');
-  hub.graph.emitData('minilab-3', 'midi-out', { raw: [0x91, 60, 0] });
+  hub.network.disconnect('minilab-3', 'midi-out', inst.id, 'midi-in');
+  hub.network.emitData('minilab-3', 'midi-out', { raw: [0x91, 60, 0] });
   assert.equal(sentOf(api, 'midi').length, 1);
 });
 
@@ -409,11 +409,11 @@ test('physical ingress takes the processor boundary for MiniLab -> Arpeggiator -
   const api = mockApi();
   const hub = createHub(api);
   await hub.engine.init();
-  hub.graph.addNode({ id: 'minilab-3', name: 'MiniLab', outputs: [{ id: 'midi-out', type: 'midi' }] });
+  hub.network.addNode({ id: 'minilab-3', name: 'MiniLab', outputs: [{ id: 'midi-out', type: 'midi' }] });
   const arp = hub.nodes.create('arpeggiator');
   const vst = hub.nodes.create('vst');
-  hub.graph.connect('minilab-3', 'midi-out', arp.id, 'midi-in');
-  hub.graph.connect(arp.id, 'midi-out', vst.id, 'midi-in');
+  hub.network.connect('minilab-3', 'midi-out', arp.id, 'midi-in');
+  hub.network.connect(arp.id, 'midi-out', vst.id, 'midi-in');
   const dispose = setupMidiRouting(hub);
 
   hub.events.emit('midi:message', {
@@ -428,8 +428,8 @@ test('physical ingress takes the processor boundary for MiniLab -> Arpeggiator -
   dispose();
 });
 
-// ---- graph audio connection controls physical output assignment ------------
-test('authoritative audio graph controls VST assignment to Audio Output', () => {
+// ---- network audio connection controls physical output assignment ------------
+test('authoritative audio network controls VST assignment to Audio Output', () => {
   const api = mockApi();
   const hub = createHub(api);
   hub.engine.init();
@@ -437,18 +437,18 @@ test('authoritative audio graph controls VST assignment to Audio Output', () => 
   setupEngineSync(hub);
 
   const inst = hub.nodes.create('vst');
-  const lastGraph = () => sentOf(api, 'syncAudioGraph').at(-1).nodes;
+  const lastNetwork = () => sentOf(api, 'syncAudioNetwork').at(-1).nodes;
 
   // No audio connection yet -> output disabled.
-  assert.equal(lastGraph().find((n)=>n.id==='audio-output').inputs.length, 0);
+  assert.equal(lastNetwork().find((n)=>n.id==='audio-output').inputs.length, 0);
 
   // Connect VST AUDIO OUT -> Audio Output AUDIO IN.
-  hub.graph.connect(inst.id, 'audio-out', 'audio-output', 'audio-in');
-  assert.equal(lastGraph().find((n)=>n.id==='audio-output').inputs[0].sourceNodeId, inst.id);
+  hub.network.connect(inst.id, 'audio-out', 'audio-output', 'audio-in');
+  assert.equal(lastNetwork().find((n)=>n.id==='audio-output').inputs[0].sourceNodeId, inst.id);
 
   // Disconnect -> output disabled again.
-  hub.graph.disconnect(inst.id, 'audio-out', 'audio-output', 'audio-in');
-  assert.equal(lastGraph().find((n)=>n.id==='audio-output').inputs.length, 0);
+  hub.network.disconnect(inst.id, 'audio-out', 'audio-output', 'audio-in');
+  assert.equal(lastNetwork().find((n)=>n.id==='audio-output').inputs.length, 0);
 });
 
 // ---- plugin-chain synchronization commands ----------------------------------

@@ -1,5 +1,5 @@
 #include "sequencer.h"
-#include "midi_graph.h"
+#include "midi_network.h"
 #include "midi_output.h"
 #include "var_util.h"
 

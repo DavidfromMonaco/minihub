@@ -33,13 +33,13 @@ function fireDocumentPointer(target) {
 // ---- fixtures -----------------------------------------------------------------
 function setupHub() {
   // Seed a persisted 1:1 viewport so drag math is deterministic (no fit).
-  const hub = makeHub({ graphViewport: { x: 0, y: 0, zoom: 1 } });
+  const hub = makeHub({ networkViewport: { x: 0, y: 0, zoom: 1 } });
   const modules = new ModuleSystem(hub);
-  const nodes = new NodeInstanceManager({ events: hub.events, settings: hub.settings, graph: hub.graph, modules });
+  const nodes = new NodeInstanceManager({ events: hub.events, settings: hub.settings, network: hub.network, modules });
   hub.modules = modules;
   hub.nodes = nodes;
   // Native MiniLab routing node (not a user-created instance).
-  hub.graph.addNode({ id: 'minilab-3', name: 'MiniLab 3', outputs: [{ id: 'midi-out', type: 'midi' }] });
+  hub.network.addNode({ id: 'minilab-3', name: 'MiniLab 3', outputs: [{ id: 'midi-out', type: 'midi' }] });
   return hub;
 }
 
@@ -151,7 +151,7 @@ test('Ctrl + left-drag selects the node and snaps to grid', () => {
   fire(svg, 'pointermove', { clientX: 23, clientY: 17, ctrlKey: true });
   fire(svg, 'pointerup', {});
   assert.ok(vst._classSet.has('selected'), 'Ctrl-drag selects node');
-  const pos = hub.settings.get('graphLayout')['vst-001'];
+  const pos = hub.settings.get('networkLayout')['vst-001'];
   assert.ok(pos, 'node position persisted');
   assert.equal(pos.x % GRID_SIZE, 0, 'x snapped to grid');
   assert.equal(pos.y % GRID_SIZE, 0, 'y snapped to grid');
@@ -161,14 +161,14 @@ test('Ctrl + left-drag selects the node and snaps to grid', () => {
 test('selecting nodes does not change routing/cables', () => {
   const hub = setupHub();
   hub.nodes.create('vst'); // vst-001 (midi-in)
-  hub.graph.connect('minilab-3', 'midi-out', 'vst-001', 'midi-in');
-  const before = hub.graph.serialize();
+  hub.network.connect('minilab-3', 'midi-out', 'vst-001', 'midi-in');
+  const before = hub.network.serialize();
   const { svg, mod } = mount(hub);
   const layer = nodesLayerOf(svg);
   const vst = findNode(layer, 'vst-001');
   clickNode(svg, vst);
-  assert.deepEqual(hub.graph.serialize(), before, 'routing unchanged by selection');
-  assert.equal(hub.graph.connections().length, 1);
+  assert.deepEqual(hub.network.serialize(), before, 'routing unchanged by selection');
+  assert.equal(hub.network.connections().length, 1);
   mod.unmount();
 });
 
@@ -183,7 +183,7 @@ test('Delete removes the selected dynamic node', () => {
   assert.ok(vst._classSet.has('selected'));
   fireKey('Delete', svg);
   assert.equal(hub.nodes.get('vst-001'), null, 'instance removed');
-  assert.ok(!hub.graph.getNode('vst-001'), 'routing node removed');
+  assert.ok(!hub.network.getNode('vst-001'), 'routing node removed');
   mod.unmount();
 });
 
@@ -195,7 +195,7 @@ test('Delete does not remove the native MiniLab node', () => {
   clickNode(svg, ml);
   assert.ok(ml._classSet.has('selected'));
   fireKey('Delete', svg);
-  assert.ok(hub.graph.getNode('minilab-3'), 'native node still present');
+  assert.ok(hub.network.getNode('minilab-3'), 'native node still present');
   assert.ok(ml._classSet.has('selected'), 'selection untouched (do nothing)');
   mod.unmount();
 });

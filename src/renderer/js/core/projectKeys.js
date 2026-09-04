@@ -23,9 +23,9 @@ import { MASTER_OUTPUT_KEY } from './masterOutput.js';
  */
 export const PROJECT_KEYS = [
   'nodeInstances',
-  'graphConnections',
-  'graphLayout',
-  'graphViewport',
+  'networkConnections',
+  'networkLayout',
+  'networkViewport',
   'transportBpm',
   'sequencerState',
   MASTER_OUTPUT_KEY
@@ -33,3 +33,26 @@ export const PROJECT_KEYS = [
 
 /** Same list, for membership tests on the settings write path. */
 export const PROJECT_KEY_SET = new Set(PROJECT_KEYS);
+
+/**
+ * Names these keys carried before D-019 renamed `graph` to `network`.
+ *
+ * They exist only to be deleted. A `settings.json` written by an earlier build
+ * still holds them, and they are no longer in PROJECT_KEYS -- so `bootstrap()`
+ * would stop purging them and `applicationData()` would stop stripping them.
+ * The result is precisely the failure this file was written to prevent:
+ * project state surviving into a new project, and leaking into machine
+ * preferences where every other project would read it back.
+ *
+ * Nothing reads their values. Loading an old project goes through
+ * `ProjectManager.applySnapshot`, which accepts the old `graph` block of a
+ * `.minihub` file and writes the new keys.
+ */
+export const LEGACY_PROJECT_KEYS = [
+  'graphConnections',
+  'graphLayout',
+  'graphViewport'
+];
+
+/** Purge list: current keys plus the ones a previous build may have left. */
+export const PURGEABLE_PROJECT_KEYS = [...PROJECT_KEYS, ...LEGACY_PROJECT_KEYS];

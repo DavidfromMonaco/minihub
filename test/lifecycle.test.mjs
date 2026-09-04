@@ -42,11 +42,11 @@ function mockApi() {
 }
 
 function setupPatchBay() {
-  const hub = makeHub({ graphViewport: { x: 0, y: 0, zoom: 1 } });
+  const hub = makeHub({ networkViewport: { x: 0, y: 0, zoom: 1 } });
   const modules = new ModuleSystem(hub);
   hub.modules = modules;
   hub.nodes = new NodeInstanceManager({
-    events: hub.events, settings: hub.settings, graph: hub.graph, modules
+    events: hub.events, settings: hub.settings, network: hub.network, modules
   });
 
   const container = makeEl('div');
@@ -138,8 +138,8 @@ test('Delete key and context menu delete a node the same way', () => {
   const results = ['key', 'menu'].map((route) => {
     const { hub, svg } = setupPatchBay();
     const node = hub.nodes.create('vst');
-    hub.graph.addNode({ id: 'src', name: 'Src', outputs: [{ id: 'midi-out', type: 'midi' }] });
-    hub.graph.connect('src', 'midi-out', node.id, 'midi-in');
+    hub.network.addNode({ id: 'src', name: 'Src', outputs: [{ id: 'midi-out', type: 'midi' }] });
+    hub.network.connect('src', 'midi-out', node.id, 'midi-in');
     selectNode(svg, node.id);
 
     if (route === 'key') {
@@ -155,17 +155,17 @@ test('Delete key and context menu delete a node the same way', () => {
     return {
       route,
       instanceGone: hub.nodes.get(node.id) === null,
-      graphNodeGone: hub.graph.getNode(node.id) === undefined,
-      connectionsGone: hub.graph.connections().length === 0,
+      networkNodeGone: hub.network.getNode(node.id) === undefined,
+      connectionsGone: hub.network.connections().length === 0,
       moduleGone: hub.modules.get(node.id) === undefined,
-      layoutGone: !(hub.settings.get('graphLayout') || {})[node.id],
+      layoutGone: !(hub.settings.get('networkLayout') || {})[node.id],
       noSelectedElement: nodeEls(svg).every((el) => !el._classSet.has('selected'))
     };
   });
 
   for (const r of results) {
     assert.ok(r.instanceGone, `${r.route}: instance removed`);
-    assert.ok(r.graphNodeGone, `${r.route}: graph node removed`);
+    assert.ok(r.networkNodeGone, `${r.route}: network node removed`);
     assert.ok(r.connectionsGone, `${r.route}: connections removed`);
     assert.ok(r.moduleGone, `${r.route}: module unregistered`);
     assert.ok(r.layoutGone, `${r.route}: layout entry removed`);
@@ -218,7 +218,7 @@ test('the sidebar does rebuild when the set of modules changes', () => {
   const hub = makeHub();
   hub.modules = new ModuleSystem(hub);
   hub.nodes = new NodeInstanceManager({
-    events: hub.events, settings: hub.settings, graph: hub.graph, modules: hub.modules
+    events: hub.events, settings: hub.settings, network: hub.network, modules: hub.modules
   });
   const sidebarEl = makeEl('nav');
   buildSidebar(hub, sidebarEl, makeEl('main'));
@@ -246,7 +246,7 @@ test('the sidebar does rebuild when the set of modules changes', () => {
 const { setupEngineSync } = await import('../src/renderer/js/core/engineSync.js');
 const { createAudioOutputModule } = await import('../src/renderer/js/modules/audioOutput/audioOutputModule.js');
 
-test('audio execution graph is published only when AUDIO topology changes', async () => {
+test('audio execution network is published only when AUDIO topology changes', async () => {
   const api = mockApi();
   const hub = createHub(api);
   await hub.engine.init();
@@ -254,20 +254,20 @@ test('audio execution graph is published only when AUDIO topology changes', asyn
   const node = hub.nodes.create('vst');
   setupEngineSync(hub);
 
-  const enableCmds = () => api.sent.filter((m) => m.type === 'syncAudioGraph').length;
+  const enableCmds = () => api.sent.filter((m) => m.type === 'syncAudioNetwork').length;
 
   const afterInitial = enableCmds();
-  hub.graph.connect(node.id, 'audio-out', 'audio-output', 'audio-in');
+  hub.network.connect(node.id, 'audio-out', 'audio-output', 'audio-in');
   const afterConnect = enableCmds();
   assert.ok(afterConnect > afterInitial, 'a real change must be published');
 
-  // Graph changes that do not affect this chain must not re-publish it.
-  hub.graph.addNode({ id: 'src', name: 'Src', outputs: [{ id: 'midi-out', type: 'midi' }] });
-  hub.graph.addNode({ id: 'spare', name: 'Spare', inputs: [{ id: 'midi-in', type: 'midi' }] });
-  hub.graph.connect('src', 'midi-out', 'spare', 'midi-in');
-  assert.equal(enableCmds(), afterConnect, 'unrelated graph changes cause no engine chatter');
+  // Network changes that do not affect this chain must not re-publish it.
+  hub.network.addNode({ id: 'src', name: 'Src', outputs: [{ id: 'midi-out', type: 'midi' }] });
+  hub.network.addNode({ id: 'spare', name: 'Spare', inputs: [{ id: 'midi-in', type: 'midi' }] });
+  hub.network.connect('src', 'midi-out', 'spare', 'midi-in');
+  assert.equal(enableCmds(), afterConnect, 'unrelated network changes cause no engine chatter');
 
-  hub.graph.disconnect(node.id, 'audio-out', 'audio-output', 'audio-in');
+  hub.network.disconnect(node.id, 'audio-out', 'audio-output', 'audio-in');
   assert.ok(enableCmds() > afterConnect, 'disconnecting is a real change and is published');
 });
 
@@ -278,7 +278,7 @@ test('an engine restart re-publishes the routing topology', async () => {
   hub.modules.register(createAudioOutputModule(hub));
   const node = hub.nodes.create('vst');
   const sync = setupEngineSync(hub);
-  hub.graph.connect(node.id, 'audio-out', 'audio-output', 'audio-in');
+  hub.network.connect(node.id, 'audio-out', 'audio-output', 'audio-in');
 
   api.sent.length = 0;
   sync();
@@ -287,10 +287,10 @@ test('an engine restart re-publishes the routing topology', async () => {
   api.emitState({ state: 'error', error: 'engine crashed' });
   api.emitState({ state: 'running', error: null });
   assert.ok(
-    api.sent.some((m) => m.type === 'syncAudioGraph' && m.nodes.find((n)=>n.id==='audio-output')?.inputs.some((i)=>i.sourceNodeId===node.id)),
+    api.sent.some((m) => m.type === 'syncAudioNetwork' && m.nodes.find((n)=>n.id==='audio-output')?.inputs.some((i)=>i.sourceNodeId===node.id)),
     'the running transition immediately re-sends topology to the empty engine'
   );
-  assert.ok(api.sent.some((m) => m.type === 'syncMidiGraph'),
+  assert.ok(api.sent.some((m) => m.type === 'syncMidiNetwork'),
     'the running transition immediately restores the native MIDI execution plan');
   api.sent.length = 0;
   sync();

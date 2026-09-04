@@ -48,12 +48,12 @@ test('a rejected Sequencer sync fails closed and panics discarded destinations',
     'invalid project data must silence chains and physical MIDI before returning');
 });
 
-test('rejected native graph syncs publish empty plans instead of retaining hidden routes', () => {
-  const audioBody = bodyOf('void Engine::cmdSyncAudioGraph(');
-  const midiBody = bodyOf('void Engine::cmdSyncMidiGraph(');
-  assert.match(audioBody, /reject=\[this\][\s\S]*?clearAudioGraph\(\)/);
+test('rejected native network syncs publish empty plans instead of retaining hidden routes', () => {
+  const audioBody = bodyOf('void Engine::cmdSyncAudioNetwork(');
+  const midiBody = bodyOf('void Engine::cmdSyncMidiNetwork(');
+  assert.match(audioBody, /reject=\[this\][\s\S]*?clearAudioNetwork\(\)/);
   assert.match(audioBody, /if\s*\(!plan\)\s*\{\s*reject\(/);
-  assert.match(midiBody, /reject=\[this\][\s\S]*?clearMidiGraph\(\)/);
+  assert.match(midiBody, /reject=\[this\][\s\S]*?clearMidiNetwork\(\)/);
   assert.match(midiBody, /if\s*\(!plan\)\s*\{reject\(/);
 });
 
@@ -67,8 +67,8 @@ test('native export transaction defers only device reconfiguration', () => {
   const mutationBody = bodyOf('bool isExportMutation(');
   assert.match(mutationBody, /type == "selectDevice"/,
     'device prepare mutates the shared sample-rate contract even though it no longer clocks export');
-  assert.doesNotMatch(mutationBody, /syncAudioGraph|syncMidiGraph|syncSequencer|setTransport|midi|setState|setBypass/,
-    'cloned processors make every graph, plugin, transport and MIDI command immediately live-safe');
+  assert.doesNotMatch(mutationBody, /syncAudioNetwork|syncMidiNetwork|syncSequencer|setTransport|midi|setState|setBypass/,
+    'cloned processors make every network, plugin, transport and MIDI command immediately live-safe');
   assert.match(timerBody, /sequencerExport[\s\S]*?flushDeferredExportCommands\(\)/,
     'deferred mutations publish only after the terminal export event');
   assert.match(quiesceBody, /deferredExportCommands_\.clear\(\)/,
@@ -88,12 +88,12 @@ test('offline export owns a private transport and routes VST playhead timing to 
     'export receives the live transport read-only for tempo snapshotting');
   assert.match(callbackBody, /Transport&\s+blockTransport\s*=\s*transport_/);
   assert.match(callbackBody, /pluginPlayHead_\.select\(transport_\)/,
-    'the audible VST graph never receives the offline playhead');
+    'the audible VST network never receives the offline playhead');
   assert.match(exportBody, /setPlayHead\(&sequencer_\.exportTransport\(\)\)/,
     'only cloned VST chains receive the offline playhead');
   assert.match(engineHeader, /struct ExportContext[\s\S]*std::map<juce::String,\s*std::unique_ptr<Chain>>\s+chains[\s\S]*AudioBuffer<float>\s+audio/);
   assert.doesNotMatch(callbackBody, /ExportContext|processMaster|exportTransport/,
-    'the hardware callback contains no export clock, graph, writer or PCM');
+    'the hardware callback contains no export clock, network, writer or PCM');
   assert.match(renderBody, /ExportContext\*\s+context[\s\S]*context->audio\.getWritePointer[\s\S]*processMaster/,
     'private PCM is advanced by the dedicated offline worker');
   assert.doesNotMatch(renderBody, /sleep|waitFor|AudioDevice|outputChannelData/,
@@ -120,7 +120,7 @@ test('export is device-independent, publishes frame speed, and Cancel wakes the 
   assert.match(renderBody, /sequencer_\.exporting\(\)[\s\S]*finalizeRequestedCancel\(\)[\s\S]*consumeExportCleanupRequest\(\)/,
     'Cancel is observed and cleaned by the CPU worker without awaiting hardware');
   for (const stage of ['START', 'preparation', 'snapshot-project', 'render-context',
-    'prepare-vst', 'build-graph', 'timeline', 'render-blocks', 'finalization', 'DONE']) {
+    'prepare-vst', 'build-network', 'timeline', 'render-blocks', 'finalization', 'DONE']) {
     assert.match(engineSource, new RegExp(`"${stage}"`), `missing export trace stage ${stage}`);
   }
 });

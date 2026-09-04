@@ -13,7 +13,7 @@
  * the sidebar auto-populates — no shell changes required.
  *
  * A module may optionally declare `routingNode` (a node descriptor with
- * typed input/output ports) to become a routing node in the Hub's graph.
+ * typed input/output ports) to become a routing node in the Hub's network.
  * Purely UI modules simply omit it.
  */
 export class ModuleSystem {
@@ -31,8 +31,8 @@ export class ModuleSystem {
       throw new Error(`Module already registered: ${module.id}`);
     }
     this.modules.set(module.id, module);
-    if (module.routingNode && this.hub.graph) {
-      this.hub.graph.addNode(module.routingNode);
+    if (module.routingNode && this.hub.network) {
+      this.hub.network.addNode(module.routingNode);
     }
     if (typeof module.onRegister === 'function') {
       module.onRegister(this.hub);
@@ -85,8 +85,8 @@ export class ModuleSystem {
    * Remove a module (e.g. a deleted dynamic node instance).
    *
    * Exactly undoes `register`, routing node included. It used to undo only
-   * half of it: `register` added `routingNode` to the graph but `unregister`
-   * left it there, so every caller had to remember `hub.graph.removeNode()`
+   * half of it: `register` added `routingNode` to the network but `unregister`
+   * left it there, so every caller had to remember `hub.network.removeNode()`
    * separately. Forgetting it leaves a node with no module behind it — still
    * drawn in the Patch Bay, still cabled, still published to the native engine,
    * and impossible to open.
@@ -102,8 +102,8 @@ export class ModuleSystem {
       }
     }
     this.modules.delete(id);
-    if (module.routingNode && this.hub.graph) {
-      this.hub.graph.removeNode(module.routingNode.id);
+    if (module.routingNode && this.hub.network) {
+      this.hub.network.removeNode(module.routingNode.id);
     }
     if (this.activeId === id) this.activeId = null;
     this.hub.events.emit('module:unregistered', id);

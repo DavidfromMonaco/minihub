@@ -7,7 +7,7 @@ import {
   snapPoint,
   dragPosition
 } from '../src/renderer/js/core/grid.js';
-import { GraphLayout } from '../src/renderer/js/core/graphLayout.js';
+import { NetworkLayout } from '../src/renderer/js/core/networkLayout.js';
 
 const START = { x: 0, y: 0, clientX: 0, clientY: 0 };
 
@@ -98,14 +98,14 @@ test('free drag also produces identical world coords regardless of zoom', () => 
 // ---- pan/zoom do not change routing or node world positions ------------------
 test('pan/zoom do not change routing or node world positions', async () => {
   const hub = makeHub();
-  hub.graph.addNode({ id: 'a', name: 'A', outputs: [{ id: 'o', type: 'midi' }] });
-  hub.graph.addNode({ id: 'b', name: 'B', inputs: [{ id: 'i', type: 'midi' }] });
-  hub.graph.connect('a', 'o', 'b', 'i');
-  const layout = new GraphLayout(hub.settings);
+  hub.network.addNode({ id: 'a', name: 'A', outputs: [{ id: 'o', type: 'midi' }] });
+  hub.network.addNode({ id: 'b', name: 'B', inputs: [{ id: 'i', type: 'midi' }] });
+  hub.network.connect('a', 'o', 'b', 'i');
+  const layout = new NetworkLayout(hub.settings);
   await layout.set('a', 100, 100);
   await layout.set('b', 600, 100);
-  const beforeLayout = hub.settings.get('graphLayout');
-  const beforeGraph = hub.graph.serialize();
+  const beforeLayout = hub.settings.get('networkLayout');
+  const beforeNetwork = hub.network.serialize();
 
   // Simulate dragging at several zooms (free + snapped) and persisting.
   for (const zoom of [0.25, 0.5, 1, 1.5, 2.5]) {
@@ -116,8 +116,8 @@ test('pan/zoom do not change routing or node world positions', async () => {
   }
 
   // Routing is untouched by any of this.
-  assert.deepEqual(hub.graph.serialize(), beforeGraph);
-  assert.equal(hub.graph.connections().length, 1);
-  // Only node 'a' position changed; 'b' and the graph are intact.
-  assert.deepEqual(hub.settings.get('graphLayout').b, beforeLayout.b);
+  assert.deepEqual(hub.network.serialize(), beforeNetwork);
+  assert.equal(hub.network.connections().length, 1);
+  // Only node 'a' position changed; 'b' and the network are intact.
+  assert.deepEqual(hub.settings.get('networkLayout').b, beforeLayout.b);
 });

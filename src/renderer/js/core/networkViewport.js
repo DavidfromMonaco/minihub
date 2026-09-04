@@ -1,19 +1,19 @@
 /**
  * View-state persistence for the Patch Bay viewport (pan + zoom).
  *
- * Viewport state is purely visual and must never live inside `hub.graph`.
- * It is stored under the `graphViewport` settings key as:
+ * Viewport state is purely visual and must never live inside `hub.network`.
+ * It is stored under the `networkViewport` settings key as:
  *
- *   graphViewport: { x: 0, y: 0, zoom: 1 }
+ *   networkViewport: { x: 0, y: 0, zoom: 1 }
  *
  * where `x`/`y` are the world coordinate at the viewport's top-left corner
- * and `zoom` is the scale factor. Node positions stay in `graphLayout`.
+ * and `zoom` is the scale factor. Node positions stay in `networkLayout`.
  */
 import { DEFAULT_VIEWPORT, clampZoom } from './viewportMath.js';
 
-const KEY = 'graphViewport';
+const KEY = 'networkViewport';
 
-export class GraphViewport {
+export class NetworkViewport {
   constructor(settings) {
     this.settings = settings;
   }

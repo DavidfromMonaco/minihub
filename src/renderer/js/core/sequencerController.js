@@ -55,7 +55,7 @@ export class SequencerController {
       ? Math.max(0, Math.min(1, storedMetronomeVolume)) : 0.35;
     // Older projects stored the physical device as a renderer-only sentinel.
     // Migrate the selection to the real Patch Bay node, but deliberately do
-    // not create a cable: graphConnections remains the sole routing authority.
+    // not create a cable: networkConnections remains the sole routing authority.
     let migratedInput = false;
     for (const track of this.model.state.tracks) {
       if (track.type === 'audio' && track.inputId === LEGACY_DEVICE_INPUT_ID) {
@@ -143,7 +143,7 @@ export class SequencerController {
         }
       }),
       this.hub.events.on('midi:output', () => this._syncMidiOutput()),
-      this.hub.events.on('graph:change', (change) => {
+      this.hub.events.on('network:change', (change) => {
         const removedInputCable = change?.type === 'disconnect'
           && change.to?.nodeId === 'sequencer' && change.to?.portId === 'midi-in';
         const removedOutputCable = change?.type === 'disconnect'
@@ -466,12 +466,12 @@ export class SequencerController {
     queueMicrotask(() => {
       this._syncQueued = false;
       const state = this.model.snapshot();
-      const incomingMidi = this.hub.graph.connectionsTo('sequencer', 'midi-in')
+      const incomingMidi = this.hub.network.connectionsTo('sequencer', 'midi-in')
         .filter(isCanonicalMidiIngress);
-      const incomingAudio = new Set(this.hub.graph.connectionsTo('sequencer', 'audio-in')
+      const incomingAudio = new Set(this.hub.network.connectionsTo('sequencer', 'audio-in')
         .map((connection) => connection.from.nodeId));
-      const routedMidi = new Set(this.hub.graph.connectionsFrom('sequencer', 'midi-out').map((connection) => connection.to.nodeId));
-      const routedAudio = new Set(this.hub.graph.connectionsFrom('sequencer', 'audio-out').map((connection) => connection.to.nodeId));
+      const routedMidi = new Set(this.hub.network.connectionsFrom('sequencer', 'midi-out').map((connection) => connection.to.nodeId));
+      const routedAudio = new Set(this.hub.network.connectionsFrom('sequencer', 'audio-out').map((connection) => connection.to.nodeId));
       const native = {
         ...state,
         tracks: state.tracks.map((track) => ({
@@ -479,7 +479,7 @@ export class SequencerController {
           inputId: track.type === 'midi'
             ? (incomingMidi.length > 0 && track.inputId === this.hub.midi.selectedInputId ? track.inputId : '')
             : (incomingAudio.has(track.inputId) ? track.inputId : ''),
-          outputKind: this.hub.graph.getNode(track.outputId)?.type || '',
+          outputKind: this.hub.network.getNode(track.outputId)?.type || '',
           outputId: track.type === 'midi'
             ? (routedMidi.has(track.outputId) ? track.outputId : '')
             : (routedAudio.has(track.outputId) ? track.outputId : '')
@@ -491,9 +491,9 @@ export class SequencerController {
   }
 
   _liveDestinationIds() {
-    if (!this.hub.graph.connectionsTo(SEQUENCER_NODE_ID, 'midi-in').some(isCanonicalMidiIngress)) return [];
+    if (!this.hub.network.connectionsTo(SEQUENCER_NODE_ID, 'midi-in').some(isCanonicalMidiIngress)) return [];
     const selectedInputId = this.hub.midi.selectedInputId;
-    const connected = new Set(this.hub.graph.connectionsFrom(SEQUENCER_NODE_ID, 'midi-out')
+    const connected = new Set(this.hub.network.connectionsFrom(SEQUENCER_NODE_ID, 'midi-out')
       .map((connection) => connection.to.nodeId));
     return [...new Set(this.model.state.tracks
       .filter((track) => track.type === 'midi'
@@ -504,14 +504,14 @@ export class SequencerController {
   }
 
   _sendLiveMidi(destinationId, message, raw) {
-    const routed = this.hub.graph.emitDataTo?.(SEQUENCER_NODE_ID, 'midi-out', destinationId, {
+    const routed = this.hub.network.emitDataTo?.(SEQUENCER_NODE_ID, 'midi-out', destinationId, {
       ...message, raw: [...raw]
     }) === true;
     if (routed) return true;
     // A disconnect event is emitted after its cable disappears. Held-note
     // cleanup must still reach the old native destination in that narrow
     // window, otherwise the missing cable also removes the only Note Off path.
-    const node = this.hub.graph.getNode(destinationId);
+    const node = this.hub.network.getNode(destinationId);
     if (node?.type === 'vst') this.hub.engine.midi?.(destinationId, raw);
     else if (node?.type === 'arpeggiator') this.hub.engine.midiNode?.(destinationId, raw);
     else if (node?.type === 'midi-output') this.hub.midi.send?.(raw);
@@ -577,7 +577,7 @@ export class SequencerController {
   ensureRoute(track) {
     if (!track?.outputId) return false;
     const fromPort = track.type === 'midi' ? 'midi-out' : 'audio-out';
-    const target = this.hub.graph.getNode(track.outputId);
+    const target = this.hub.network.getNode(track.outputId);
     if (!target) return false;
     if (track.type === 'audio' && !this.canUseAudioOutput(track.outputId)) return false;
     let toPort = track.type === 'midi' ? 'midi-in' : 'audio-in';
@@ -585,10 +585,10 @@ export class SequencerController {
       toPort = target.inputs.find((port) => port.type === 'audio')?.id || '';
     }
     if (!toPort) return false;
-    const exists = this.hub.graph.connectionsFrom('sequencer', fromPort)
+    const exists = this.hub.network.connectionsFrom('sequencer', fromPort)
       .some((connection) => connection.to.nodeId === track.outputId);
     if (!exists) {
-      try { return this.hub.graph.connect('sequencer', fromPort, track.outputId, toPort); }
+      try { return this.hub.network.connect('sequencer', fromPort, track.outputId, toPort); }
       catch (_) { return false; }
     }
     return true;
@@ -597,16 +597,16 @@ export class SequencerController {
   ensureInputRoute(track) {
     if (track?.type !== 'audio' || !track.inputId) return false;
     if (!this.canUseAudioInput(track.inputId)) return false;
-    const source = this.hub.graph.getNode(track.inputId);
-    const target = this.hub.graph.getNode(SEQUENCER_NODE_ID);
+    const source = this.hub.network.getNode(track.inputId);
+    const target = this.hub.network.getNode(SEQUENCER_NODE_ID);
     if (!source || !target) return false;
     const fromPort = source.outputs.find((port) => port.id === 'audio-out' && port.type === 'audio')
       || source.outputs.find((port) => port.type === 'audio');
     const toPort = target.inputs.find((port) => port.id === 'audio-in' && port.type === 'audio');
     if (!fromPort || !toPort) return false;
-    const exists = this.hub.graph.connectionsFrom(source.id, fromPort.id)
+    const exists = this.hub.network.connectionsFrom(source.id, fromPort.id)
       .some((connection) => connection.to.nodeId === SEQUENCER_NODE_ID && connection.to.portId === toPort.id);
-    if (!exists) return this.hub.graph.connect(source.id, fromPort.id, SEQUENCER_NODE_ID, toPort.id);
+    if (!exists) return this.hub.network.connect(source.id, fromPort.id, SEQUENCER_NODE_ID, toPort.id);
     return true;
   }
 
@@ -615,9 +615,9 @@ export class SequencerController {
     const pending = [startNodeId];
     while (pending.length) {
       const nodeId = pending.pop();
-      for (const connection of this.hub.graph.connectionsFrom(nodeId)) {
-        const source = this.hub.graph.getNode(connection.from.nodeId);
-        const target = this.hub.graph.getNode(connection.to.nodeId);
+      for (const connection of this.hub.network.connectionsFrom(nodeId)) {
+        const source = this.hub.network.getNode(connection.from.nodeId);
+        const target = this.hub.network.getNode(connection.to.nodeId);
         const fromPort = source?.outputs.find((port) => port.id === connection.from.portId);
         const toPort = target?.inputs.find((port) => port.id === connection.to.portId);
         if (fromPort?.type !== 'audio' || toPort?.type !== 'audio' || reachable.has(connection.to.nodeId)) continue;
@@ -629,29 +629,29 @@ export class SequencerController {
   }
 
   canUseAudioInput(sourceNodeId) {
-    const source = this.hub.graph.getNode(sourceNodeId);
-    const sequencer = this.hub.graph.getNode(SEQUENCER_NODE_ID);
+    const source = this.hub.network.getNode(sourceNodeId);
+    const sequencer = this.hub.network.getNode(SEQUENCER_NODE_ID);
     if (!source || !sequencer || source.id === sequencer.id
         || !source.outputs.some((port) => port.type === 'audio')) return false;
     return !this._audioReachableFrom(SEQUENCER_NODE_ID).has(source.id);
   }
 
   canUseAudioOutput(targetNodeId) {
-    const target = this.hub.graph.getNode(targetNodeId);
-    const sequencer = this.hub.graph.getNode(SEQUENCER_NODE_ID);
+    const target = this.hub.network.getNode(targetNodeId);
+    const sequencer = this.hub.network.getNode(SEQUENCER_NODE_ID);
     if (!target || !sequencer || target.id === sequencer.id
         || !target.inputs.some((port) => port.type === 'audio')) return false;
     return !this._audioReachableFrom(target.id).has(SEQUENCER_NODE_ID);
   }
 
   hasInputRoute(track) {
-    if (!track?.inputId || !this.hub.graph.getNode(SEQUENCER_NODE_ID)) return false;
+    if (!track?.inputId || !this.hub.network.getNode(SEQUENCER_NODE_ID)) return false;
     if (track.type === 'midi') {
       return track.inputId === this.hub.midi.selectedInputId
-        && this.hub.graph.connectionsTo(SEQUENCER_NODE_ID, 'midi-in')
+        && this.hub.network.connectionsTo(SEQUENCER_NODE_ID, 'midi-in')
           .some(isCanonicalMidiIngress);
     }
-    return this.hub.graph.connectionsTo(SEQUENCER_NODE_ID, 'audio-in')
+    return this.hub.network.connectionsTo(SEQUENCER_NODE_ID, 'audio-in')
       .some((connection) => connection.from.nodeId === track.inputId);
   }
 
@@ -660,7 +660,7 @@ export class SequencerController {
     if (this.hub.project?._transitionPending) {
       return 'Cannot start recording while changing project. Wait for the project change to finish.';
     }
-    if (!this.hub.graph.getNode(SEQUENCER_NODE_ID)) {
+    if (!this.hub.network.getNode(SEQUENCER_NODE_ID)) {
       return 'Add the Sequencer node in Patch Bay before recording.';
     }
     if (this.hub.engine.state && this.hub.engine.state !== 'running') {
@@ -680,7 +680,7 @@ export class SequencerController {
       if (armedMidi.every((track) => !track.inputId)) {
         return 'Choose the detected MIDI port in the armed track Input field.';
       }
-      if (!this.hub.graph.connectionsTo(SEQUENCER_NODE_ID, 'midi-in').some(isCanonicalMidiIngress)) {
+      if (!this.hub.network.connectionsTo(SEQUENCER_NODE_ID, 'midi-in').some(isCanonicalMidiIngress)) {
         return 'Connect MiniLab 3 MIDI OUT to Sequencer MIDI IN in Patch Bay.';
       }
       return 'The armed MIDI track Input must match the selected MiniLab MIDI port.';
@@ -707,9 +707,9 @@ export class SequencerController {
     if (track?.type === 'audio' && 'inputId' in changes) {
       if (previousInput && previousInput !== track.inputId
           && !this.model.state.tracks.some((item) => item.id !== trackId && item.type === 'audio' && item.inputId === previousInput)) {
-        for (const connection of this.hub.graph.connectionsTo(SEQUENCER_NODE_ID, 'audio-in')
+        for (const connection of this.hub.network.connectionsTo(SEQUENCER_NODE_ID, 'audio-in')
           .filter((item) => item.from.nodeId === previousInput)) {
-          this.hub.graph.disconnect(connection.from.nodeId, connection.from.portId, SEQUENCER_NODE_ID, 'audio-in');
+          this.hub.network.disconnect(connection.from.nodeId, connection.from.portId, SEQUENCER_NODE_ID, 'audio-in');
         }
       }
       this.ensureInputRoute(track);
@@ -724,9 +724,9 @@ export class SequencerController {
       }
       if (previousOutput && previousOutput !== track.outputId
           && !this.model.state.tracks.some((item) => item.id !== trackId && item.type === track.type && item.outputId === previousOutput)) {
-        for (const connection of this.hub.graph.connectionsFrom('sequencer', port)
+        for (const connection of this.hub.network.connectionsFrom('sequencer', port)
           .filter((item) => item.to.nodeId === previousOutput)) {
-          this.hub.graph.disconnect('sequencer', port, connection.to.nodeId, connection.to.portId);
+          this.hub.network.disconnect('sequencer', port, connection.to.nodeId, connection.to.portId);
         }
       }
     }
@@ -750,16 +750,16 @@ export class SequencerController {
     if (!track || !this.model.removeTrack(trackId)) return false;
     if (track.type === 'audio' && track.inputId
         && !this.model.state.tracks.some((item) => item.type === 'audio' && item.inputId === track.inputId)) {
-      for (const connection of this.hub.graph.connectionsTo(SEQUENCER_NODE_ID, 'audio-in')
+      for (const connection of this.hub.network.connectionsTo(SEQUENCER_NODE_ID, 'audio-in')
         .filter((item) => item.from.nodeId === track.inputId)) {
-        this.hub.graph.disconnect(connection.from.nodeId, connection.from.portId, SEQUENCER_NODE_ID, 'audio-in');
+        this.hub.network.disconnect(connection.from.nodeId, connection.from.portId, SEQUENCER_NODE_ID, 'audio-in');
       }
     }
     const port = track.type === 'midi' ? 'midi-out' : 'audio-out';
     if (track.outputId && !this.model.state.tracks.some((item) => item.type === track.type && item.outputId === track.outputId)) {
-      for (const connection of this.hub.graph.connectionsFrom('sequencer', port)
+      for (const connection of this.hub.network.connectionsFrom('sequencer', port)
         .filter((item) => item.to.nodeId === track.outputId)) {
-        this.hub.graph.disconnect('sequencer', port, connection.to.nodeId, connection.to.portId);
+        this.hub.network.disconnect('sequencer', port, connection.to.nodeId, connection.to.portId);
       }
     }
     this.changed();

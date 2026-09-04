@@ -166,12 +166,12 @@ test('deleted highest plugin id is tombstoned across remount and restart', async
 });
 
 // ---- independence from Hub routing --------------------------------------------
-test('internal chain changes never alter hub.graph', () => {
+test('internal chain changes never alter hub.network', () => {
   const hub = makeFullHub();
   const inst = hub.nodes.create('vst');
-  hub.graph.addNode({ id: 'src', name: 'Src', outputs: [{ id: 'midi', type: 'midi' }] });
-  hub.graph.connect('src', 'midi', inst.id, 'midi-in');
-  const before = hub.graph.serialize();
+  hub.network.addNode({ id: 'src', name: 'Src', outputs: [{ id: 'midi', type: 'midi' }] });
+  hub.network.connect('src', 'midi', inst.id, 'midi-in');
+  const before = hub.network.serialize();
 
   const chain = hub.nodes.getChain(inst.id);
   chain.append({ name: 'A' });
@@ -180,10 +180,10 @@ test('internal chain changes never alter hub.graph', () => {
   chain.remove(chain.plugins[0].id);
   chain.setBypass(chain.plugins[0].id, true);
 
-  assert.deepEqual(hub.graph.serialize(), before, 'graph must be unchanged');
-  assert.equal(hub.graph.connections().length, 1);
+  assert.deepEqual(hub.network.serialize(), before, 'network must be unchanged');
+  assert.equal(hub.network.connections().length, 1);
   // The routing node still exposes the same structural ports.
-  const node = hub.graph.getNode(inst.id);
+  const node = hub.network.getNode(inst.id);
   assert.deepEqual(node.inputs.map((p) => p.id), ['midi-in', 'audio-in', 'ctrl-in']);
   assert.deepEqual(node.outputs.map((p) => p.id), ['audio-out']);
 });
@@ -199,6 +199,6 @@ test('VST node retains orange family identity regardless of internal roles', () 
 
   assert.equal(inst.type, 'vst');
   assert.equal(getNodeType('vst').accent, '--accent-vst');
-  // The graph node keeps the VST family type.
-  assert.equal(hub.graph.getNode(inst.id).type, 'vst');
+  // The network node keeps the VST family type.
+  assert.equal(hub.network.getNode(inst.id).type, 'vst');
 });

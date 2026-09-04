@@ -10,8 +10,8 @@ import {
   FIT_SINGLE_MAX_ZOOM,
   DEFAULT_VIEWPORT
 } from '../src/renderer/js/core/viewportMath.js';
-import { GraphViewport } from '../src/renderer/js/core/graphViewport.js';
-import { GraphLayout } from '../src/renderer/js/core/graphLayout.js';
+import { NetworkViewport } from '../src/renderer/js/core/networkViewport.js';
+import { NetworkLayout } from '../src/renderer/js/core/networkLayout.js';
 
 const CANVAS = { width: 800, height: 600 };
 
@@ -88,7 +88,7 @@ test('fit preserves padding around the node bounding box', () => {
 });
 
 // ---- zoom limits ------------------------------------------------------------
-test('fit respects zoom limits (huge graph clamps to min zoom)', () => {
+test('fit respects zoom limits (huge network clamps to min zoom)', () => {
   const rects = [
     { x: 0, y: 0, width: 200, height: 80 },
     { x: 20000, y: 20000, width: 200, height: 80 }
@@ -103,7 +103,7 @@ test('fit single node does not zoom above comfortable cap', () => {
   assert.equal(view.zoom, FIT_SINGLE_MAX_ZOOM);
 });
 
-// ---- empty graph ------------------------------------------------------------
+// ---- empty network ------------------------------------------------------------
 test('fit with no nodes falls back to the default viewport', () => {
   assert.deepEqual(fitViewport([], CANVAS), DEFAULT_VIEWPORT);
   assert.deepEqual(fitViewport(null, CANVAS), DEFAULT_VIEWPORT);
@@ -112,32 +112,32 @@ test('fit with no nodes falls back to the default viewport', () => {
 // ---- Reset View does not change node positions / routing --------------------
 test('fit + persist does not change node positions or routing', async () => {
   const hub = makeHub();
-  hub.graph.addNode({ id: 'a', name: 'A', outputs: [{ id: 'o', type: 'midi' }] });
-  hub.graph.addNode({ id: 'b', name: 'B', inputs: [{ id: 'i', type: 'midi' }] });
-  hub.graph.connect('a', 'o', 'b', 'i');
-  const layout = new GraphLayout(hub.settings);
+  hub.network.addNode({ id: 'a', name: 'A', outputs: [{ id: 'o', type: 'midi' }] });
+  hub.network.addNode({ id: 'b', name: 'B', inputs: [{ id: 'i', type: 'midi' }] });
+  hub.network.connect('a', 'o', 'b', 'i');
+  const layout = new NetworkLayout(hub.settings);
   await layout.set('a', 100, 100);
   await layout.set('b', 600, 100);
-  const beforeLayout = hub.settings.get('graphLayout');
-  const beforeGraph = hub.graph.serialize();
+  const beforeLayout = hub.settings.get('networkLayout');
+  const beforeNetwork = hub.network.serialize();
 
   const rects = [
     { x: 100, y: 100, width: 200, height: 80 },
     { x: 600, y: 100, width: 200, height: 80 }
   ];
   const fit = fitViewport(rects, CANVAS);
-  const vp = new GraphViewport(hub.settings);
+  const vp = new NetworkViewport(hub.settings);
   await vp.save(fit.x, fit.y, fit.zoom);
 
-  assert.deepEqual(hub.settings.get('graphLayout'), beforeLayout, 'node positions unchanged');
-  assert.deepEqual(hub.graph.serialize(), beforeGraph, 'routing unchanged');
-  assert.equal(hub.graph.connections().length, 1);
+  assert.deepEqual(hub.settings.get('networkLayout'), beforeLayout, 'node positions unchanged');
+  assert.deepEqual(hub.network.serialize(), beforeNetwork, 'routing unchanged');
+  assert.equal(hub.network.connections().length, 1);
 });
 
 // ---- persisted viewport restored on normal reopening ------------------------
 test('persisted viewport is restored on normal reopening', async () => {
   const hub = makeHub();
-  const vp = new GraphViewport(hub.settings);
+  const vp = new NetworkViewport(hub.settings);
   await vp.save(-300, 150, 0.8);
   // Simulate reopening: load from settings.
   const loaded = vp.load();

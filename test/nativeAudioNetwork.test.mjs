@@ -1,24 +1,24 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { makeFullHub } from './helpers.mjs';
-import { audioNodeValues, audioTopologyKey, buildRoutingSync, describeAudioGraph } from '../src/renderer/js/core/engineSync.js';
+import { audioNodeValues, audioTopologyKey, buildRoutingSync, describeAudioNetwork } from '../src/renderer/js/core/engineSync.js';
 
 function rig() {
   const hub=makeFullHub();
-  hub.graph.addNode({id:'audio-output',name:'Audio Output',type:'audio-output',inputs:[{id:'audio-in',type:'audio'}],outputs:[]});
+  hub.network.addNode({id:'audio-output',name:'Audio Output',type:'audio-output',inputs:[{id:'audio-in',type:'audio'}],outputs:[]});
   return hub;
 }
 
-test('Mixer ports grow with stable identities and graph contract is ordered',()=>{
+test('Mixer ports grow with stable identities and network contract is ordered',()=>{
   const hub=rig(); const a=hub.nodes.create('vst'),b=hub.nodes.create('vst'),m=hub.nodes.create('mixer');
-  hub.graph.connect(a.id,'audio-out',m.id,'audio-in-1');
+  hub.network.connect(a.id,'audio-out',m.id,'audio-in-1');
   assert.deepEqual(m.content.inputs.map((p)=>p.id),['audio-in-1','audio-in-2']);
-  hub.graph.connect(b.id,'audio-out',m.id,'audio-in-2');
+  hub.network.connect(b.id,'audio-out',m.id,'audio-in-2');
   assert.deepEqual(m.content.inputs.map((p)=>p.id),['audio-in-1','audio-in-2','audio-in-3']);
-  hub.graph.disconnect(a.id,'audio-out',m.id,'audio-in-1');
+  hub.network.disconnect(a.id,'audio-out',m.id,'audio-in-1');
   assert.deepEqual(m.content.inputs.map((p)=>p.id),['audio-in-1','audio-in-2','audio-in-3']);
-  hub.graph.connect(m.id,'audio-out','audio-output','audio-in');
-  const native=describeAudioGraph(hub).find((n)=>n.id===m.id);
+  hub.network.connect(m.id,'audio-out','audio-output','audio-in');
+  const native=describeAudioNetwork(hub).find((n)=>n.id===m.id);
   assert.deepEqual(native.inputs.map((p)=>p.portId),['audio-in-2']);
 });
 
@@ -33,19 +33,19 @@ test('Mixer and Morpher state is serialized without audio data',()=>{
   assert.equal(JSON.stringify(stored).includes('AudioBuffer'),false);
 });
 
-test('Morpher graph description preserves port order after reconnect',()=>{
+test('Morpher network description preserves port order after reconnect',()=>{
   const hub=rig();const a=hub.nodes.create('vst'),b=hub.nodes.create('vst'),m=hub.nodes.create('morpher');
-  hub.graph.connect(a.id,'audio-out',m.id,'audio-in-1');hub.graph.connect(b.id,'audio-out',m.id,'audio-in-2');
-  hub.graph.disconnect(a.id,'audio-out',m.id,'audio-in-1');hub.graph.connect(a.id,'audio-out',m.id,'audio-in-1');
-  const inputs=describeAudioGraph(hub).find((n)=>n.id===m.id).inputs;
+  hub.network.connect(a.id,'audio-out',m.id,'audio-in-1');hub.network.connect(b.id,'audio-out',m.id,'audio-in-2');
+  hub.network.disconnect(a.id,'audio-out',m.id,'audio-in-1');hub.network.connect(a.id,'audio-out',m.id,'audio-in-1');
+  const inputs=describeAudioNetwork(hub).find((n)=>n.id===m.id).inputs;
   assert.deepEqual(inputs.map((p)=>p.sourceNodeId),[a.id,b.id]);
 });
 
 test('Sequencer is the integrated AUDIO DAG source for arrangement playback',()=>{
   const hub=rig();
-  hub.graph.addNode({id:'sequencer',name:'Sequencer',type:'sequencer',inputs:[],outputs:[{id:'audio-out',type:'audio'}]});
-  hub.graph.connect('sequencer','audio-out','audio-output','audio-in');
-  const native=describeAudioGraph(hub),seq=native.find((node)=>node.id==='sequencer'),out=native.find((node)=>node.id==='audio-output');
+  hub.network.addNode({id:'sequencer',name:'Sequencer',type:'sequencer',inputs:[],outputs:[{id:'audio-out',type:'audio'}]});
+  hub.network.connect('sequencer','audio-out','audio-output','audio-in');
+  const native=describeAudioNetwork(hub),seq=native.find((node)=>node.id==='sequencer'),out=native.find((node)=>node.id==='audio-output');
   assert.deepEqual(seq.inputs,[]);
   assert.equal(out.inputs[0].sourceNodeId,'sequencer');assert.equal(out.inputs[0].sourcePortId,'audio-out');
 });
@@ -53,12 +53,12 @@ test('Sequencer is the integrated AUDIO DAG source for arrangement playback',()=
 test('physical Audio Input is a real routing-only AUDIO DAG source',()=>{
   const hub=rig();
   hub.nodes.create('audio-input');
-  hub.graph.addNode({
+  hub.network.addNode({
     id:'sequencer',name:'Sequencer',type:'sequencer',
     inputs:[{id:'audio-in',type:'audio'}],outputs:[{id:'audio-out',type:'audio'}]
   });
-  hub.graph.connect('audio-input','audio-out','sequencer','audio-in');
-  const native=describeAudioGraph(hub);
+  hub.network.connect('audio-input','audio-out','sequencer','audio-in');
+  const native=describeAudioNetwork(hub);
   const input=native.find((node)=>node.id==='audio-input');
   const sequencer=native.find((node)=>node.id==='sequencer');
   assert.deepEqual(input,{id:'audio-input',nodeType:'audio-input',inputs:[]});
@@ -69,13 +69,13 @@ test('physical Audio Input is a real routing-only AUDIO DAG source',()=>{
 
 test('a level or mute edit is not a topology change',()=>{
   const hub=rig(); const a=hub.nodes.create('vst'),m=hub.nodes.create('mixer');
-  hub.graph.connect(a.id,'audio-out',m.id,'audio-in-1');
-  hub.graph.connect(m.id,'audio-out','audio-output','audio-in');
-  const before=describeAudioGraph(hub);
+  hub.network.connect(a.id,'audio-out',m.id,'audio-in-1');
+  hub.network.connect(m.id,'audio-out','audio-output','audio-in');
+  const before=describeAudioNetwork(hub);
   const topologyBefore=audioTopologyKey(before);
   m.content.inputs[0].level=0.42;
   m.content.masterLevel=0.7;
-  const after=describeAudioGraph(hub);
+  const after=describeAudioNetwork(hub);
   assert.equal(audioTopologyKey(after),topologyBefore,'shape is unchanged');
   assert.notEqual(JSON.stringify(audioNodeValues(after)),
                   JSON.stringify(audioNodeValues(before)),'values did change');
@@ -86,29 +86,29 @@ test('a level or mute edit is not a topology change',()=>{
 
 test('connecting a cable IS a topology change',()=>{
   const hub=rig(); const a=hub.nodes.create('vst'),m=hub.nodes.create('mixer');
-  hub.graph.connect(a.id,'audio-out',m.id,'audio-in-1');
-  const before=audioTopologyKey(describeAudioGraph(hub));
-  hub.graph.connect(m.id,'audio-out','audio-output','audio-in');
-  assert.notEqual(audioTopologyKey(describeAudioGraph(hub)),before);
+  hub.network.connect(a.id,'audio-out',m.id,'audio-in-1');
+  const before=audioTopologyKey(describeAudioNetwork(hub));
+  hub.network.connect(m.id,'audio-out','audio-output','audio-in');
+  assert.notEqual(audioTopologyKey(describeAudioNetwork(hub)),before);
 });
 
-test('a fader drag sends values in place and never recompiles the graph',()=>{
+test('a fader drag sends values in place and never recompiles the network',()=>{
   const hub=rig(); const a=hub.nodes.create('vst'),m=hub.nodes.create('mixer');
-  hub.graph.connect(a.id,'audio-out',m.id,'audio-in-1');
-  hub.graph.connect(m.id,'audio-out','audio-output','audio-in');
+  hub.network.connect(a.id,'audio-out',m.id,'audio-in-1');
+  hub.network.connect(m.id,'audio-out','audio-output','audio-in');
   const calls=[];
   hub.engine={
-    setChainMidiEnabled(){}, syncMidiGraph(){},
-    syncAudioGraph(nodes){calls.push(['syncAudioGraph',nodes.length]);},
+    setChainMidiEnabled(){}, syncMidiNetwork(){},
+    syncAudioNetwork(nodes){calls.push(['syncAudioNetwork',nodes.length]);},
     setAudioNodeValues(nodes){calls.push(['setAudioNodeValues',nodes.length]);}
   };
   const sync=buildRoutingSync(hub);
   sync();
-  assert.deepEqual(calls.map((c)=>c[0]),['syncAudioGraph'],'first publish sends the graph');
+  assert.deepEqual(calls.map((c)=>c[0]),['syncAudioNetwork'],'first publish sends the network');
   // A drag: many distinct values, identical shape.
   for(const level of [0.9,0.8,0.7,0.6,0.5]){ m.content.inputs[0].level=level; sync(); }
   assert.deepEqual(calls.map((c)=>c[0]),
-    ['syncAudioGraph','setAudioNodeValues','setAudioNodeValues','setAudioNodeValues',
+    ['syncAudioNetwork','setAudioNodeValues','setAudioNodeValues','setAudioNodeValues',
      'setAudioNodeValues','setAudioNodeValues'],
     'the drag never recompiles the native plan');
   // An unchanged sync sends nothing at all.
@@ -118,11 +118,11 @@ test('a fader drag sends values in place and never recompiles the graph',()=>{
 
 test('a Morpher step is a value, its step count is topology',()=>{
   const hub=rig(); const p=hub.nodes.create('morpher');
-  const before=describeAudioGraph(hub);
+  const before=describeAudioNetwork(hub);
   p.content.steps[0]=0.25;
-  assert.equal(audioTopologyKey(describeAudioGraph(hub)),audioTopologyKey(before),
+  assert.equal(audioTopologyKey(describeAudioNetwork(hub)),audioTopologyKey(before),
                'moving a step keeps the shape');
   p.content.stepCount=8;
-  assert.notEqual(audioTopologyKey(describeAudioGraph(hub)),audioTopologyKey(before),
+  assert.notEqual(audioTopologyKey(describeAudioNetwork(hub)),audioTopologyKey(before),
                   'resizing the pattern is a recompile');
 });

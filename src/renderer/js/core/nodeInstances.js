@@ -26,19 +26,19 @@
  * Instances are persisted under the `nodeInstances` settings key, together with
  * the per-type monotonic id sequence. They integrate with the Hub by
  * registering a module (sidebar entry + editor shell) and a routing node in
- * `hub.graph`.
+ * `hub.network`.
  *
  * VST nodes now connect their internal plugin chain to the native engine:
  * every chain operation (add / remove / reorder / bypass) is synchronized to
- * the engine, and MIDI reaching a VST node through the graph is forwarded to
+ * the engine, and MIDI reaching a VST node through the network is forwarded to
  * the engine for that chain. The Patch Bay still sees the complete VST chain as
- * ONE VST node — individual plugins never enter `hub.graph`.
+ * ONE VST node — individual plugins never enter `hub.network`.
  *
  * Responsibilities are kept separate: `nodeInstances` owns instances,
- * `graphLayout` owns positions, `graphConnections` owns routing.
+ * `networkLayout` owns positions, `networkConnections` owns routing.
  */
 import { getNodeType, nodeDisplayName } from './nodeTypes.js';
-import { GraphLayout } from './graphLayout.js';
+import { NetworkLayout } from './networkLayout.js';
 import { VstChain, getVstRole, duplicateVstContent, groupPluginsByFamily } from './vstChain.js';
 import { escapeHtml } from './html.js';
 import { normalizeControlBinding, normalizeControlBindings } from './controlBindings.js';
@@ -52,7 +52,7 @@ import { createDisposers } from './disposers.js';
 
 /** Coalescing window for continuous native-value controls (Mixer / Morpher
  *  levels, mutes, master level, Morpher steps). Long enough to collapse a drag
- *  into a single settings write and a single native graph republish, short
+ *  into a single settings write and a single native network republish, short
  *  enough to stay imperceptible when the user simply clicks a slider. */
 const NATIVE_VALUE_COALESCE_MS = 120;
 
@@ -79,7 +79,7 @@ function renderGenericShell(instance, type) {
 
 function renderNativeAudioEditor(instance, type, hub) {
   const content = instance.content;
-  const connections = hub.graph.connectionsTo(instance.id);
+  const connections = hub.network.connectionsTo(instance.id);
   const sourceFor = (id) => connections.find((c) => c.to.portId === id)?.from.nodeId || 'Unconnected';
   const channels = content.inputs.map((input, index) => `<div class="row mt-10" data-audio-input="${input.id}">
     <strong>${index + 1}</strong><span class="muted">${escapeHtml(sourceFor(input.id))}</span>
@@ -300,7 +300,7 @@ function buildRoutingNode(instance, hub) {
       }
       // Forward raw MIDI to the native engine for this VST chain. This only
       // fires when the MiniLab is actually connected into this node in the
-      // graph (the graph only calls onInput for connected targets).
+      // network (the network only calls onInput for connected targets).
       if (instance.type === 'arpeggiator') {
         if (portId === 'midi-in' && data && Array.isArray(data.raw)) hub.engine?.midiNode(instance.id, data.raw);
         return;
@@ -354,10 +354,10 @@ export class NodeInstanceManager {
   constructor(hub) {
     this.hub = hub;
     this.instances = new Map(); // id -> instance
-    this.layout = new GraphLayout(hub.settings);
+    this.layout = new NetworkLayout(hub.settings);
     this._idSeq = {}; // type -> last used ID sequence number (never reused)
     this._expandingPorts = false;
-    hub.events.on('graph:change', () => this._ensureDynamicAudioPorts());
+    hub.events.on('network:change', () => this._ensureDynamicAudioPorts());
   }
 
   _ensureDynamicAudioPorts() {
@@ -365,15 +365,15 @@ export class NodeInstanceManager {
     this._expandingPorts = true; let changed=false;
     for (const instance of this.instances.values()) {
       if (instance.type !== 'mixer' && instance.type !== 'morpher') continue;
-      const graphNode=this.hub.graph.getNode(instance.id); if(!graphNode) continue;
-      const connected=new Set(this.hub.graph.connectionsTo(instance.id).map((c)=>c.to.portId));
+      const networkNode=this.hub.network.getNode(instance.id); if(!networkNode) continue;
+      const connected=new Set(this.hub.network.connectionsTo(instance.id).map((c)=>c.to.portId));
       if (instance.content.inputs.some((input)=>!connected.has(input.id))) continue;
       const seq=(instance.content.nextInputSeq||0)+1; instance.content.nextInputSeq=seq;
       const input={id:`audio-in-${seq}`,level:1,muted:false}; instance.content.inputs.push(input);
-      graphNode.inputs.push({id:input.id,type:'audio',label:`AUDIO IN ${instance.content.inputs.length}`}); changed=true;
+      networkNode.inputs.push({id:input.id,type:'audio',label:`AUDIO IN ${instance.content.inputs.length}`}); changed=true;
     }
     this._expandingPorts=false;
-    if(changed){this._persist();this.hub.events.emit('graph:change',{type:'ports',connections:this.hub.graph.serialize()});}
+    if(changed){this._persist();this.hub.events.emit('network:change',{type:'ports',connections:this.hub.network.serialize()});}
   }
 
   list() {
@@ -445,8 +445,8 @@ export class NodeInstanceManager {
     // absent from nodeInstances even when a saved project routed or positioned
     // it. Materialise that legacy project evidence once so existing projects
     // keep their source while fresh New projects remain free of Audio Input.
-    const connections = this.hub.settings.get('graphConnections');
-    const layout = this.hub.settings.get('graphLayout');
+    const connections = this.hub.settings.get('networkConnections');
+    const layout = this.hub.settings.get('networkLayout');
     const legacyAudioInputPresent = Array.isArray(connections)
       && connections.some((connection) => connection?.from?.nodeId === 'audio-input'
         || connection?.to?.nodeId === 'audio-input');
@@ -500,8 +500,8 @@ export class NodeInstanceManager {
     // prevents a later save from resurrecting the obsolete representation.
     if (migratedStableIds.size) {
       const migrateId = (id) => migratedStableIds.get(id) || id;
-      const connections = this.hub.settings.get('graphConnections');
-      if (Array.isArray(connections)) await this.hub.settings.set('graphConnections', connections.map((connection) => {
+      const connections = this.hub.settings.get('networkConnections');
+      if (Array.isArray(connections)) await this.hub.settings.set('networkConnections', connections.map((connection) => {
         if (!connection || typeof connection !== 'object') return connection;
         return {
           ...connection,
@@ -509,14 +509,14 @@ export class NodeInstanceManager {
           to: { ...connection.to, nodeId: migrateId(connection.to?.nodeId) }
         };
       }));
-      const layout = this.hub.settings.get('graphLayout');
+      const layout = this.hub.settings.get('networkLayout');
       if (layout && typeof layout === 'object') {
         const migratedLayout = { ...layout };
         for (const [oldId, stableId] of migratedStableIds) {
           if (!(stableId in migratedLayout) && oldId in migratedLayout) migratedLayout[stableId] = migratedLayout[oldId];
           delete migratedLayout[oldId];
         }
-        await this.hub.settings.set('graphLayout', migratedLayout);
+        await this.hub.settings.set('networkLayout', migratedLayout);
       }
     }
     if (migratedArpeggiator || migratedAudioInput || migratedStableIds.size) await this._persist();
@@ -569,7 +569,7 @@ export class NodeInstanceManager {
   /**
    * The single creation path. Every UI route (sidebar, Patch Bay toolbar,
    * context menu, paste, duplicate) ends up here, so naming, default content,
-   * module registration, graph registration and persistence cannot drift
+   * module registration, network registration and persistence cannot drift
    * apart between them.
    */
   _add(typeId, content) {
@@ -600,7 +600,7 @@ export class NodeInstanceManager {
   /**
    * Create a new independent instance duplicating a live instance's content.
    * The copy gets a fresh ID, its own display number and a separate layout
-   * entry; it starts externally disconnected (no copied graph connections).
+   * entry; it starts externally disconnected (no copied network connections).
    */
   duplicate(sourceId) {
     const source = this.instances.get(sourceId);
@@ -627,7 +627,7 @@ export class NodeInstanceManager {
     if (!instance) return false;
     if (getNodeType(instance.type)?.deletable === false) return false;
     // Tear the chain down in the engine FIRST. Deleting the node only removed
-    // it from the graph, so `engineSync` stopped seeing it and its chain kept
+    // it from the network, so `engineSync` stopped seeing it and its chain kept
     // its last `outputEnabled=true` — a deleted VST node went on making sound
     // and kept its plugins (and their editor windows) alive forever.
     if (instance.type === 'vst' && this.hub.engine) {
@@ -648,8 +648,8 @@ export class NodeInstanceManager {
     // make the editor — and therefore its Stop control / arrangement — vanish.
     // Its routing node has no module to unregister, so it is dropped directly;
     // every other node leaves through `unregister`, which now removes the
-    // routing node it registered (the graph cleans up its own connections).
-    if (getNodeType(instance.type)?.fixedModuleId) this.hub.graph.removeNode(id);
+    // routing node it registered (the network cleans up its own connections).
+    if (getNodeType(instance.type)?.fixedModuleId) this.hub.network.removeNode(id);
     else this.hub.modules.unregister(id);
     this.instances.delete(id);
     this._persist();
@@ -661,10 +661,10 @@ export class NodeInstanceManager {
     const manager = this;
     const hub = this.hub;
     // Sequencer keeps its existing fixed page/sidebar module. Its persisted
-    // project instance contributes only the graph node, avoiding a duplicate
+    // project instance contributes only the network node, avoiding a duplicate
     // module id while keeping NodeInstanceManager as the sole instance store.
     if (type.fixedModuleId) {
-      if (!hub.graph.getNode(instance.id)) hub.graph.addNode(buildRoutingNode(instance, hub));
+      if (!hub.network.getNode(instance.id)) hub.network.addNode(buildRoutingNode(instance, hub));
       return;
     }
     const module = {
@@ -957,7 +957,7 @@ export class NodeInstanceManager {
 
         // A `range` input fires `input` on every pixel of a drag. Each one used
         // to run a full synchronous settings write AND a complete native audio
-        // graph recompile - measured at up to 37 recompiles per second in the
+        // network recompile - measured at up to 37 recompiles per second in the
         // runtime log, every one of them resetting the PDC delay lines. The
         // model is still updated on the spot so the UI stays live; only the
         // persistence and the native republish are coalesced, and the `change`
@@ -968,7 +968,7 @@ export class NodeInstanceManager {
           manager._persist();
           hub.events.emit('nativeAudio:stateChanged', { nodeId: instance.id });
         };
-        // Unmount must not republish a graph nobody edited.
+        // Unmount must not republish a network nobody edited.
         const flushPendingNativeValues = () => {
           if (nativeValueTimer) flushNativeValues();
         };

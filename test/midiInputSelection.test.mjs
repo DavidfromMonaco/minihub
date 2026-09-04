@@ -110,9 +110,9 @@ async function routedHub(selectedInputId) {
   await hub.engine.init();
   setupMidiRouting(hub);
   setupEngineSync(hub);
-  hub.graph.addNode({ id: 'minilab-3', name: 'MiniLab 3', outputs: [{ id: 'midi-out', type: 'midi' }] });
+  hub.network.addNode({ id: 'minilab-3', name: 'MiniLab 3', outputs: [{ id: 'midi-out', type: 'midi' }] });
   const node = hub.nodes.create('vst');
-  hub.graph.connect('minilab-3', 'midi-out', node.id, 'midi-in');
+  hub.network.connect('minilab-3', 'midi-out', node.id, 'midi-in');
   hub.midi.selectInput(selectedInputId);
   api.sent.length = 0;
   return { hub, api, node };
@@ -167,7 +167,7 @@ test('no physical input is routed when nothing is explicitly selected', async ()
   const { hub, api } = await routedHub(null);
   hub.midi._onMessage('input-2', new Uint8Array([0x90, 60, 100]), 0);
   assert.equal(notesReaching(api).length, 0,
-    'an unselected physical port must not impersonate the visible MiniLab graph source');
+    'an unselected physical port must not impersonate the visible MiniLab network source');
 });
 
 // ---- hot-plug -----------------------------------------------------------------

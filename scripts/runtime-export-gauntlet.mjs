@@ -135,7 +135,7 @@ const expression = `(async () => {
       'runtime audio fixture import failed: ' + JSON.stringify(importedAudio));
 
     after = events.length;
-    await command({ type: 'syncAudioGraph', nodes: [
+    await command({ type: 'syncAudioNetwork', nodes: [
       { id: 'sequencer-runtime', nodeType: 'sequencer', inputs: [] },
       { id: 'mixer-runtime', nodeType: 'mixer', masterLevel: 0.65,
         inputs: [{ portId: 'audio-in-1', sourceNodeId: 'sequencer-runtime',
@@ -145,8 +145,8 @@ const expression = `(async () => {
           level: 1, muted: false }
       ] }
     ] });
-    await waitFor((event) => event.type === 'audioGraphSynced' && event.nodeCount === 3,
-      after, 'runtime audio graph sync', 5000);
+    await waitFor((event) => event.type === 'audioNetworkSynced' && event.nodeCount === 3,
+      after, 'runtime audio network sync', 5000);
 
     await sendAndWaitTransport({ bpm: 120, loop: { enabled: true, startPpq: 0.05, endPpq: 0.35 },
       seekPpq: 0.1, playing: false }, false);

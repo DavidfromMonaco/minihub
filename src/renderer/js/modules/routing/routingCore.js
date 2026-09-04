@@ -2,9 +2,9 @@
  * Pure, DOM-free logic for the Routing / Patch Bay editor.
  *
  * This module is the only place that translates between the visual editor
- * and `hub.graph`. It never stores routing state itself — it always derives
- * the visual model from the graph on demand, and it mutates routing only
- * through the graph API.
+ * and `hub.network`. It never stores routing state itself — it always derives
+ * the visual model from the network on demand, and it mutates routing only
+ * through the network API.
  *
  * Keeping this logic separate from the SVG rendering makes it directly
  * testable in Node without a DOM.
@@ -39,9 +39,9 @@ export function canConnect(fromPort, toPort) {
   );
 }
 
-/** Map graph nodes to the visual node model (id, name, type, inputs, outputs). */
-export function buildVisualNodes(graph) {
-  return graph.listNodes().map((node) => ({
+/** Map network nodes to the visual node model (id, name, type, inputs, outputs). */
+export function buildVisualNodes(network) {
+  return network.listNodes().map((node) => ({
     id: node.id,
     name: node.name,
     type: node.type || null,
@@ -50,9 +50,9 @@ export function buildVisualNodes(graph) {
   }));
 }
 
-/** Map graph connections to the visual cable model. */
-export function buildVisualConnections(graph) {
-  return graph.connections().map((c, i) => ({
+/** Map network connections to the visual cable model. */
+export function buildVisualConnections(network) {
+  return network.connections().map((c, i) => ({
     id: `cable-${i}`,
     from: { ...c.from },
     to: { ...c.to }
@@ -60,13 +60,13 @@ export function buildVisualConnections(graph) {
 }
 
 /**
- * Attempt to create a connection through the graph API.
+ * Attempt to create a connection through the network API.
  * Returns { ok: true } on success or { ok: false, reason } on rejection.
- * Never touches graph state directly — always goes through `graph.connect`.
+ * Never touches network state directly — always goes through `network.connect`.
  */
-export function createConnection(graph, from, to) {
-  const fromNode = graph.getNode(from.nodeId);
-  const toNode = graph.getNode(to.nodeId);
+export function createConnection(network, from, to) {
+  const fromNode = network.getNode(from.nodeId);
+  const toNode = network.getNode(to.nodeId);
   const fromPort = fromNode && fromNode.outputs.find((p) => p.id === from.portId);
   const toPort = toNode && toNode.inputs.find((p) => p.id === to.portId);
 
@@ -77,7 +77,7 @@ export function createConnection(graph, from, to) {
     return { ok: false, reason: 'incompatible' };
   }
   try {
-    graph.connect(from.nodeId, from.portId, to.nodeId, to.portId);
+    network.connect(from.nodeId, from.portId, to.nodeId, to.portId);
     return { ok: true };
   } catch (err) {
     // e.g. duplicate connection.
@@ -85,9 +85,9 @@ export function createConnection(graph, from, to) {
   }
 }
 
-/** Remove a connection through the graph API. Returns true if removed. */
-export function deleteConnection(graph, connection) {
-  return graph.disconnect(
+/** Remove a connection through the network API. Returns true if removed. */
+export function deleteConnection(network, connection) {
+  return network.disconnect(
     connection.from.nodeId,
     connection.from.portId,
     connection.to.nodeId,

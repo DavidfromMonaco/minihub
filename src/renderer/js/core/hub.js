@@ -1,7 +1,7 @@
 import { EventBus } from './eventBus.js';
 import { SettingsStore } from './settingsStore.js';
 import { ModuleSystem } from './moduleSystem.js';
-import { Graph } from './graph.js';
+import { Network } from './network.js';
 import { NodeInstanceManager } from './nodeInstances.js';
 import { MidiManager } from '../midi/midiManager.js';
 import { EngineClient } from './engineClient.js';
@@ -18,7 +18,7 @@ import { SequencerController } from './sequencerController.js';
  *   settings - persisted user settings
  *   midi     - MIDI device layer
  *   modules  - module registry (UI focus)
- *   graph    - routing graph (signal routing, independent of UI focus)
+ *   network    - routing network (signal routing, independent of UI focus)
  *   engine   - native audio engine client (VST3 + audio device)
  *   nodes    - node instance manager
  */
@@ -26,11 +26,11 @@ export function createHub(api) {
   const events = new EventBus();
   const settings = new SettingsStore(api);
   const midi = new MidiManager(events, settings);
-  const graph = new Graph(events, settings);
+  const network = new Network(events, settings);
   const engine = new EngineClient(api, events, settings);
   const diagnostics = createDiagnostics(api);
 
-  const hub = { events, settings, midi, graph, engine, diagnostics, api };
+  const hub = { events, settings, midi, network, engine, diagnostics, api };
   hub.hardware = new HardwareConfigManager(hub);
   // Both take the real hub: handing ModuleSystem a partial copy meant anything
   // it later needed (engine, nodes, diagnostics) was silently undefined.

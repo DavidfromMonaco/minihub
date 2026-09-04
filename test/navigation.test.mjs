@@ -12,8 +12,8 @@ import {
   panFromStart,
   DEFAULT_VIEWPORT
 } from '../src/renderer/js/core/viewportMath.js';
-import { GraphViewport } from '../src/renderer/js/core/graphViewport.js';
-import { GraphLayout } from '../src/renderer/js/core/graphLayout.js';
+import { NetworkViewport } from '../src/renderer/js/core/networkViewport.js';
+import { NetworkLayout } from '../src/renderer/js/core/networkLayout.js';
 
 const approx = (a, b, eps = 1e-6) => assert.ok(Math.abs(a - b) < eps, `${a} ~= ${b}`);
 
@@ -111,18 +111,18 @@ test('connection endpoints map to correct screen positions after pan/zoom', () =
 });
 
 // ---- viewport persistence ----------------------------------------------------
-test('viewport persists under graphViewport and loads back', async () => {
+test('viewport persists under networkViewport and loads back', async () => {
   const hub = makeHub();
-  const vp = new GraphViewport(hub.settings);
+  const vp = new NetworkViewport(hub.settings);
   await vp.save(120, -80, 1.5);
-  assert.deepEqual(hub.settings.get('graphViewport'), { x: 120, y: -80, zoom: 1.5 });
+  assert.deepEqual(hub.settings.get('networkViewport'), { x: 120, y: -80, zoom: 1.5 });
   const loaded = vp.load();
   assert.deepEqual(loaded, { x: 120, y: -80, zoom: 1.5 });
 });
 
 test('viewport load falls back to defaults and clamps zoom', async () => {
   const hub = makeHub();
-  const vp = new GraphViewport(hub.settings);
+  const vp = new NetworkViewport(hub.settings);
   assert.deepEqual(vp.load(), DEFAULT_VIEWPORT);
   await vp.save(0, 0, 9);
   assert.equal(vp.load().zoom, MAX_ZOOM);
@@ -130,29 +130,29 @@ test('viewport load falls back to defaults and clamps zoom', async () => {
 
 test('Reset View restores zoom 100% and default pan', async () => {
   const hub = makeHub();
-  const vp = new GraphViewport(hub.settings);
+  const vp = new NetworkViewport(hub.settings);
   await vp.save(300, -40, 2.2);
   await vp.reset();
-  assert.deepEqual(hub.settings.get('graphViewport'), DEFAULT_VIEWPORT);
+  assert.deepEqual(hub.settings.get('networkViewport'), DEFAULT_VIEWPORT);
   assert.deepEqual(vp.load(), DEFAULT_VIEWPORT);
 });
 
 // ---- routing state independent from viewport --------------------------------
 test('viewport changes never touch routing state', async () => {
   const hub = makeHub();
-  hub.graph.addNode({ id: 'a', name: 'A', outputs: [{ id: 'o', type: 'midi' }] });
-  hub.graph.addNode({ id: 'b', name: 'B', inputs: [{ id: 'i', type: 'midi' }] });
-  hub.graph.connect('a', 'o', 'b', 'i');
-  const before = hub.graph.serialize();
+  hub.network.addNode({ id: 'a', name: 'A', outputs: [{ id: 'o', type: 'midi' }] });
+  hub.network.addNode({ id: 'b', name: 'B', inputs: [{ id: 'i', type: 'midi' }] });
+  hub.network.connect('a', 'o', 'b', 'i');
+  const before = hub.network.serialize();
 
-  const vp = new GraphViewport(hub.settings);
+  const vp = new NetworkViewport(hub.settings);
   await vp.save(-500, 300, 0.5);
   await vp.reset();
   await vp.save(10, 20, 2);
 
-  assert.deepEqual(hub.graph.serialize(), before, 'routing must be unchanged');
-  assert.equal(hub.graph.connections().length, 1);
-  assert.deepEqual(hub.settings.get('graphConnections'), before);
+  assert.deepEqual(hub.network.serialize(), before, 'routing must be unchanged');
+  assert.equal(hub.network.connections().length, 1);
+  assert.deepEqual(hub.settings.get('networkConnections'), before);
 });
 
 // ---- pan interaction (fixed-start model) -------------------------------------
@@ -235,7 +235,7 @@ test('pan: repeated pointermove events do not accumulate or amplify', () => {
 // ---- node positions remain world coordinates --------------------------------
 test('node positions are stored as world coordinates, not screen', async () => {
   const hub = makeHub();
-  const layout = new GraphLayout(hub.settings);
+  const layout = new NetworkLayout(hub.settings);
   await layout.set('minilab-3', 120, 180);
   const stored = layout.get('minilab-3', 0);
   assert.deepEqual(stored, { x: 120, y: 180 });

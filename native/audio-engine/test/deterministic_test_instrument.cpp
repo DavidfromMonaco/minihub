@@ -7,7 +7,7 @@
  * plugin binary (not linked into the host) and turns incoming MIDI into a
  * deterministic stereo sine wave with immediate note-off cleanup. Like the
  * real instruments that exposed the silence bug, it declares 16 active stereo
- * outputs; MiniHub must negotiate that down to its stereo graph contract. */
+ * outputs; MiniHub must negotiate that down to its stereo network contract. */
 class DeterministicTestInstrument final : public juce::AudioProcessor {
 public:
     DeterministicTestInstrument()

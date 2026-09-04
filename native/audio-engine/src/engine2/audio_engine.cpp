@@ -60,13 +60,13 @@ RealtimeStats AudioEngine::realtimeStats() const noexcept
     RealtimeStats result;
     result.callbacks = portAudio.callbacks;
     result.processFailures = failures_.load(std::memory_order_acquire);
-    result.audioGraphProcessCalls = audioGraphProcessCalls_.load(std::memory_order_acquire);
+    result.audioNetworkProcessCalls = audioNetworkProcessCalls_.load(std::memory_order_acquire);
     result.masterOutputProcessCalls = masterOutputProcessCalls_.load(std::memory_order_acquire);
     result.outputWrites = portAudio.outputWrites;
     result.maximumCallbackFrames = portAudio.maximumCallbackFrames;
     result.lastCallbackFrames = portAudio.lastCallbackFrames;
     result.callbackSequenceId = portAudio.lastCallbackSequenceId;
-    result.audioGraphSequenceId = lastAudioGraphSequenceId_.load(std::memory_order_acquire);
+    result.audioNetworkSequenceId = lastAudioNetworkSequenceId_.load(std::memory_order_acquire);
     result.masterOutputSequenceId = lastMasterOutputSequenceId_.load(std::memory_order_acquire);
     result.outputWriteSequenceId = portAudio.lastOutputWriteSequenceId;
     result.outputUnderflows = portAudio.outputUnderflows;
@@ -121,8 +121,8 @@ void AudioEngine::processRealtime(const float* const* input, int inputChannels,
             if (input && input[channel]) inputSegment[channel] = input[channel] + processed;
         for (int channel = 0; channel < std::min(outputChannels, 2); ++channel)
             if (output[channel]) outputSegment[channel] = output[channel] + processed;
-        audioGraphProcessCalls_.fetch_add(1, std::memory_order_relaxed);
-        lastAudioGraphSequenceId_.store(callbackSequenceId, std::memory_order_release);
+        audioNetworkProcessCalls_.fetch_add(1, std::memory_order_relaxed);
+        lastAudioNetworkSequenceId_.store(callbackSequenceId, std::memory_order_release);
         process_(inputSegment, std::min(inputChannels, 2), outputSegment,
                  std::min(outputChannels, 2), static_cast<int>(segment));
         masterOutputProcessCalls_.fetch_add(1, std::memory_order_relaxed);

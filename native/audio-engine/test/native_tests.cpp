@@ -1,9 +1,9 @@
 #include "gesture_learn_state.h"
 #include "transport.h"
 #include "audio_take_writer.h"
-#include "audio_graph.h"
+#include "audio_network.h"
 #include "master_output.h"
-#include "midi_graph.h"
+#include "midi_network.h"
 #include "plugin_host.h"
 #include "sequencer.h"
 #include "var_util.h"
@@ -304,19 +304,19 @@ void testLatePluginInheritsChainPlayHead()
     expect(raw->assignedPlayHeadForTesting()==&transport,"late async plugin inherits live transport playhead");
 }
 
-mlh::AudioGraphNodeSpec graphNode(const char* id, mlh::AudioNodeKind kind)
+mlh::AudioNetworkNodeSpec networkNode(const char* id, mlh::AudioNodeKind kind)
 {
-    mlh::AudioGraphNodeSpec n; n.id=id; n.kind=kind; return n;
+    mlh::AudioNetworkNodeSpec n; n.id=id; n.kind=kind; return n;
 }
 
 void testAudioDagCompileAndCycles()
 {
-    mlh::AudioGraphSpec spec;
-    auto a=graphNode("source-a",mlh::AudioNodeKind::mixer);
-    auto b=graphNode("source-b",mlh::AudioNodeKind::mixer);
-    auto mix=graphNode("mixer-001",mlh::AudioNodeKind::mixer);
+    mlh::AudioNetworkSpec spec;
+    auto a=networkNode("source-a",mlh::AudioNodeKind::mixer);
+    auto b=networkNode("source-b",mlh::AudioNodeKind::mixer);
+    auto mix=networkNode("mixer-001",mlh::AudioNodeKind::mixer);
     mix.inputs={{"audio-in-1","source-a","audio-out",1,false},{"audio-in-2","source-b","audio-out",1,false}};
-    auto out=graphNode("audio-output",mlh::AudioNodeKind::output);
+    auto out=networkNode("audio-output",mlh::AudioNodeKind::output);
     out.inputs={{"audio-in","mixer-001","audio-out",1,false}};
     spec.nodes={out,mix,b,a}; std::string error;
     auto plan=mlh::AudioExecutionPlan::compile(spec,[](const std::string&){return (mlh::Chain*)nullptr;},nullptr,512,error);
@@ -362,15 +362,15 @@ void testPdcSourceDelayAcrossBlocks()
 
 void testAudioStageMeasurements()
 {
-    mlh::AudioGraphSpec spec;
-    auto input=graphNode("audio-input",mlh::AudioNodeKind::input);
-    auto mix=graphNode("mixer-stage",mlh::AudioNodeKind::mixer);
+    mlh::AudioNetworkSpec spec;
+    auto input=networkNode("audio-input",mlh::AudioNodeKind::input);
+    auto mix=networkNode("mixer-stage",mlh::AudioNodeKind::mixer);
     mix.inputs={{"audio-in-1","audio-input","audio-out",2.0f,false}};
-    auto out=graphNode("audio-output",mlh::AudioNodeKind::output);
+    auto out=networkNode("audio-output",mlh::AudioNodeKind::output);
     out.inputs={{"audio-in","mixer-stage","audio-out",1.0f,false}};
     spec.nodes={out,mix,input};std::string error;
     auto plan=mlh::AudioExecutionPlan::compile(spec,[](const std::string&){return (mlh::Chain*)nullptr;},nullptr,64,error);
-    expect(plan!=nullptr,"diagnostic Audio Input -> gain -> mix -> Audio Output graph compiles");
+    expect(plan!=nullptr,"diagnostic Audio Input -> gain -> mix -> Audio Output network compiles");
     if(!plan)return;
     juce::AudioBuffer<float> hardwareInput(2,64);hardwareInput.clear();
     for(int channel=0;channel<2;++channel)for(int sample=0;sample<64;++sample)
@@ -396,7 +396,7 @@ void testAudioStageMeasurements()
     expect(std::abs(outputStats.absolutePeak-1.6f)<.0001f&&outputStats.overRangeSamples==64,
            "Audio Output receives the unchanged over-range Mixer branch");
     expect(std::abs(juce::FloatVectorOperations::findMaximum(left,64)-1.6f)<.0001f,
-           "standalone graph output is an unclamped pre-Master float sum");
+           "standalone network output is an unclamped pre-Master float sum");
     const auto mixMeter=mixer&&mixer->signalMeter?mixer->signalMeter->takeTelemetrySnapshot():mlh::AudioSignalTelemetry{};
     expect(std::abs(mixMeter.inputPeak-1.6f)<.0001f
                &&std::abs(mixMeter.outputPeak-1.6f)<.0001f,
@@ -437,13 +437,13 @@ void testLinearFloatSummationAndMasterMetering()
         float firstGain = 0.0f;
     };
     const auto renderCopies = [blockSize](int sourceCount, float level) {
-        mlh::AudioGraphSpec spec;
-        auto input = graphNode("audio-input", mlh::AudioNodeKind::input);
-        auto mix = graphNode("mixer-linear", mlh::AudioNodeKind::mixer);
+        mlh::AudioNetworkSpec spec;
+        auto input = networkNode("audio-input", mlh::AudioNodeKind::input);
+        auto mix = networkNode("mixer-linear", mlh::AudioNodeKind::mixer);
         for (int i = 0; i < sourceCount; ++i)
             mix.inputs.push_back({ "audio-in-" + std::to_string(i + 1),
                                    "audio-input", "audio-out", 1.0f, false });
-        auto output = graphNode("audio-output", mlh::AudioNodeKind::output);
+        auto output = networkNode("audio-output", mlh::AudioNodeKind::output);
         output.inputs = {{ "audio-in", "mixer-linear", "audio-out", 1.0f, false }};
         spec.nodes = { output, mix, input };
         std::string error;
@@ -501,13 +501,13 @@ void testLinearFloatSummationAndMasterMetering()
 
     // D — an existing silent VST track is a pure zero addend.
     mlh::Chain silentChain("silent-vst");
-    mlh::AudioGraphSpec silenceSpec;
-    auto input=graphNode("audio-input",mlh::AudioNodeKind::input);
-    auto silent=graphNode("silent-vst",mlh::AudioNodeKind::vst);
-    auto mix=graphNode("mixer-silence",mlh::AudioNodeKind::mixer);
+    mlh::AudioNetworkSpec silenceSpec;
+    auto input=networkNode("audio-input",mlh::AudioNodeKind::input);
+    auto silent=networkNode("silent-vst",mlh::AudioNodeKind::vst);
+    auto mix=networkNode("mixer-silence",mlh::AudioNodeKind::mixer);
     mix.inputs={{"audio-in-1","audio-input","audio-out",1.0f,false},
                 {"audio-in-2","silent-vst","audio-out",1.0f,false}};
-    auto output=graphNode("audio-output",mlh::AudioNodeKind::output);
+    auto output=networkNode("audio-output",mlh::AudioNodeKind::output);
     output.inputs={{"audio-in","mixer-silence","audio-out",1.0f,false}};
     silenceSpec.nodes={output,mix,silent,input};std::string silenceError;
     auto silencePlan=mlh::AudioExecutionPlan::compile(silenceSpec,
@@ -729,7 +729,7 @@ void testSequencerPhysicalMidiOutputAndArpeggiatorRoute()
     transport.advance(12000);transport.beginBlock();hardware.captured.clear();sequencer.processMidi(12000,transport,nullptr,&hardware,4571.0);bool off=false;for(const auto& event:hardware.captured)off|=event.getMessage().isNoteOff()&&event.samplePosition==0;expect(off,"hardware MIDI schedules duration-derived Note Off");
     transport.seekPpq(.25);sequencer.panic();transport.beginBlock();hardware.captured.clear();sequencer.processMidi(256,transport,nullptr,&hardware,5000.0);bool chase=false;for(const auto& event:hardware.captured)chase|=event.getMessage().isNoteOn()&&event.samplePosition==0;expect(chase,"hardware MIDI seek performs native note chase");hardware.panic();expect(hardware.panics==1&&hardware.captured.isEmpty(),"hardware MIDI Stop/panic clears pending notes");
 
-    mlh::Chain destination("vst-arp-route");destination.setMidiEnabled(true);mlh::MidiGraphSpec graphSpec;mlh::MidiGraphNodeSpec arp;arp.id="arp-route";arp.kind="arpeggiator";arp.arp.rate=2;arp.arp.patternLength=16;arp.destinations={"vst-arp-route"};graphSpec.nodes.push_back(arp);auto midiPlan=mlh::MidiExecutionPlan::compile(graphSpec,[&](const std::string&id){return id=="vst-arp-route"?&destination:nullptr;},error);expect(midiPlan!=nullptr,"existing native Arpeggiator graph compiles for a Sequencer source");
+    mlh::Chain destination("vst-arp-route");destination.setMidiEnabled(true);mlh::MidiNetworkSpec networkSpec;mlh::MidiNetworkNodeSpec arp;arp.id="arp-route";arp.kind="arpeggiator";arp.arp.rate=2;arp.arp.patternLength=16;arp.destinations={"vst-arp-route"};networkSpec.nodes.push_back(arp);auto midiPlan=mlh::MidiExecutionPlan::compile(networkSpec,[&](const std::string&id){return id=="vst-arp-route"?&destination:nullptr;},error);expect(midiPlan!=nullptr,"existing native Arpeggiator network compiles for a Sequencer source");
     auto arpTrack=midiTrack("track-arp","arp-route");mlh::setProp(arpTrack,"outputKind","arpeggiator");juce::Array<juce::var> arpNotes;arpNotes.add(midiNote(.125,.5,60,100,4));replaceMidiNotes(arpTrack,arpNotes);tracks.clear();tracks.add(arpTrack);expect(sequencer.sync(makeSequencerProject(tracks),[](const std::string&){return (mlh::Chain*)nullptr;},48000,12000,info,error),"Sequencer track accepts the existing Arpeggiator node as destination");
     transport.setLoop(false,0,4);transport.seekPpq(0);transport.setPlaying(true);transport.beginBlock();sequencer.processMidi(12000,transport,midiPlan.get());midiPlan->process(12000,transport);juce::MidiBuffer midi;destination.pullMidi(midi,12000);int arpOnSample=-1;for(const auto& event:midi)if(event.getMessage().isNoteOn())arpOnSample=event.samplePosition;expect(arpOnSample==6000,"Sequencer timestamp enters the existing Arpeggiator before its exact next 1/16 step");
 }
@@ -888,24 +888,24 @@ void testDirectMiniHubVst3PlanarCapture(const mlh::PluginRecord& instrument,
              <<" outR=0x"<<fxTrace.outputRight<<std::dec<<"\n";
 }
 
-void testVariableFrameGraphBoundary(const mlh::PluginRecord& record)
+void testVariableFrameNetworkBoundary(const mlh::PluginRecord& record)
 {
     constexpr int capacity=256,frames=73;
     juce::String error;
     auto largePlugin=std::make_unique<mlh::PluginInstance>();auto exactPlugin=std::make_unique<mlh::PluginInstance>();
-    expect(largePlugin->create(record,48000,capacity,error)&&exactPlugin->create(record,48000,frames,error),"variable-frame graph loads independent capacity/reference instruments");
+    expect(largePlugin->create(record,48000,capacity,error)&&exactPlugin->create(record,48000,frames,error),"variable-frame network loads independent capacity/reference instruments");
     if(!largePlugin->isReady()||!exactPlugin->isReady())return;
     largePlugin->setInstanceId("large");exactPlugin->setInstanceId("exact");
     mlh::Chain largeChain("large-chain"),exactChain("exact-chain");largeChain.setMidiEnabled(true);exactChain.setMidiEnabled(true);
     expect(largeChain.insertPlugin(0,std::move(largePlugin))&&exactChain.insertPlugin(0,std::move(exactPlugin)),"variable-frame instruments enter independent chains");
     largeChain.prepareToPlay(48000,capacity);exactChain.prepareToPlay(48000,frames);
-    mlh::AudioGraphSpec graph;auto vst=graphNode("vst",mlh::AudioNodeKind::vst);auto output=graphNode("audio-output",mlh::AudioNodeKind::output);output.inputs={{"audio-in","vst","audio-out",1,false}};graph.nodes={output,vst};std::string compileError;
-    auto largePlan=mlh::AudioExecutionPlan::compile(graph,[&](const std::string&id){return id=="vst"?&largeChain:nullptr;},nullptr,capacity,compileError);
-    auto exactPlan=mlh::AudioExecutionPlan::compile(graph,[&](const std::string&id){return id=="vst"?&exactChain:nullptr;},nullptr,frames,compileError);
+    mlh::AudioNetworkSpec network;auto vst=networkNode("vst",mlh::AudioNodeKind::vst);auto output=networkNode("audio-output",mlh::AudioNodeKind::output);output.inputs={{"audio-in","vst","audio-out",1,false}};network.nodes={output,vst};std::string compileError;
+    auto largePlan=mlh::AudioExecutionPlan::compile(network,[&](const std::string&id){return id=="vst"?&largeChain:nullptr;},nullptr,capacity,compileError);
+    auto exactPlan=mlh::AudioExecutionPlan::compile(network,[&](const std::string&id){return id=="vst"?&exactChain:nullptr;},nullptr,frames,compileError);
     expect(largePlan&&exactPlan,"variable-frame VST -> Chain -> Audio Output plans compile");if(!largePlan||!exactPlan)return;
     juce::MidiBuffer note;note.addEvent(juce::MidiMessage::noteOn(1,60,(juce::uint8)100),0);largeChain.pushMidi(note);exactChain.pushMidi(note);
     mlh::Transport largeTransport,exactTransport;largeTransport.setSampleRate(48000);exactTransport.setSampleRate(48000);
-    for(int pass=0;pass<2;++pass){float largeLeft[frames]{},largeRight[frames]{},exactLeft[frames]{},exactRight[frames]{};float* largeOut[]={largeLeft,largeRight};float* exactOut[]={exactLeft,exactRight};juce::MidiBuffer scratch;largeTransport.beginBlock();exactTransport.beginBlock();largePlan->process(largeOut,2,frames,largeTransport,scratch);exactPlan->process(exactOut,2,frames,exactTransport,scratch);expect(std::memcmp(largeLeft,exactLeft,sizeof(largeLeft))==0&&std::memcmp(largeRight,exactRight,sizeof(largeRight))==0,"graph capacity does not change the real VST callback frame count or waveform");largeTransport.advance(frames);exactTransport.advance(frames);}
+    for(int pass=0;pass<2;++pass){float largeLeft[frames]{},largeRight[frames]{},exactLeft[frames]{},exactRight[frames]{};float* largeOut[]={largeLeft,largeRight};float* exactOut[]={exactLeft,exactRight};juce::MidiBuffer scratch;largeTransport.beginBlock();exactTransport.beginBlock();largePlan->process(largeOut,2,frames,largeTransport,scratch);exactPlan->process(exactOut,2,frames,exactTransport,scratch);expect(std::memcmp(largeLeft,exactLeft,sizeof(largeLeft))==0&&std::memcmp(largeRight,exactRight,sizeof(largeRight))==0,"network capacity does not change the real VST callback frame count or waveform");largeTransport.advance(frames);exactTransport.advance(frames);}
     const auto largeTrace=largeChain.copyPlugins()[0]->vst3BufferProcessTrace();
     expect((largeTrace.blockId&0xffffffffULL)==2&&largeTrace.processCallInBlock==1&&largeTrace.numSamples==frames,"callback block ID maps to exactly one VST process call with 73 real frames");
 }
@@ -918,10 +918,10 @@ void testRealVst3SequencerPlaybackArpAndMasterExport()
     const auto records=mlh::Vst3Scanner::scanFile(vst3.getFullPathName());expect(records.size()==1&&records[0].isInstrument,"real VST3 scanner discovers deterministic test instrument");if(records.empty())return;
     const auto effectPath=deterministicEffectVst3();expect(effectPath.isDirectory(),"deterministic validation effect VST3 bundle was built");if(!effectPath.isDirectory())return;const auto effectRecords=mlh::Vst3Scanner::scanFile(effectPath.getFullPathName());expect(effectRecords.size()==1&&!effectRecords[0].isInstrument,"real VST3 scanner distinguishes the deterministic effect");if(effectRecords.empty())return;
     testDirectMiniHubVst3PlanarCapture(records[0],effectRecords[0]);
-    testVariableFrameGraphBoundary(records[0]);
+    testVariableFrameNetworkBoundary(records[0]);
     if(!testDirectJuceVst3(records[0]))return;
     std::cerr << "[vst3-e2e] load\n";
-    auto plugin=std::make_unique<mlh::PluginInstance>();juce::String loadError;expect(plugin->create(records[0],48000,256,loadError),"real MiniHub VST3 host loads deterministic test instrument");if(!plugin->isReady())return;expect(plugin->totalInputChannelsForTesting()==0&&plugin->totalOutputChannelsForTesting()==2,"MiniHub negotiates the 32-output VST3 to its 0-in/2-out graph contract");expect(plugin->enabledOutputBusesForTesting()==1,"MiniHub keeps only the accepted main output bus enabled");plugin->setInstanceId("plugin-1");
+    auto plugin=std::make_unique<mlh::PluginInstance>();juce::String loadError;expect(plugin->create(records[0],48000,256,loadError),"real MiniHub VST3 host loads deterministic test instrument");if(!plugin->isReady())return;expect(plugin->totalInputChannelsForTesting()==0&&plugin->totalOutputChannelsForTesting()==2,"MiniHub negotiates the 32-output VST3 to its 0-in/2-out network contract");expect(plugin->enabledOutputBusesForTesting()==1,"MiniHub keeps only the accepted main output bus enabled");plugin->setInstanceId("plugin-1");
     mlh::Chain chain("vst-e2e");chain.setMidiEnabled(true);expect(chain.insertPlugin(0,std::move(plugin)),"real VST3 instance enters the MiniHub chain");chain.prepareToPlay(48000,256);
 
     auto secondPlugin=std::make_unique<mlh::PluginInstance>();
@@ -933,22 +933,22 @@ void testRealVst3SequencerPlaybackArpAndMasterExport()
            "second real VST3 instance enters an independent node chain");
     secondChain.prepareToPlay(48000,256);
 
-    mlh::AudioGraphSpec overloadGraph;
-    auto overloadA=graphNode("vst-e2e",mlh::AudioNodeKind::vst);
-    auto overloadB=graphNode("vst-e2e-b",mlh::AudioNodeKind::vst);
-    auto overloadMixer=graphNode("mixer-overload",mlh::AudioNodeKind::mixer);
+    mlh::AudioNetworkSpec overloadNetwork;
+    auto overloadA=networkNode("vst-e2e",mlh::AudioNodeKind::vst);
+    auto overloadB=networkNode("vst-e2e-b",mlh::AudioNodeKind::vst);
+    auto overloadMixer=networkNode("mixer-overload",mlh::AudioNodeKind::mixer);
     overloadMixer.inputs={{"audio-in-1","vst-e2e","audio-out",1,false},
                           {"audio-in-2","vst-e2e-b","audio-out",1,false}};
-    auto overloadOutput=graphNode("audio-output",mlh::AudioNodeKind::output);
+    auto overloadOutput=networkNode("audio-output",mlh::AudioNodeKind::output);
     overloadOutput.inputs={{"audio-in","mixer-overload","audio-out",1,false}};
-    overloadGraph.nodes={overloadOutput,overloadMixer,overloadB,overloadA};
-    std::string overloadError;auto overloadPlan=mlh::AudioExecutionPlan::compile(overloadGraph,[&](const std::string&id){if(id=="vst-e2e")return &chain;if(id=="vst-e2e-b")return &secondChain;return (mlh::Chain*)nullptr;},nullptr,256,overloadError);
+    overloadNetwork.nodes={overloadOutput,overloadMixer,overloadB,overloadA};
+    std::string overloadError;auto overloadPlan=mlh::AudioExecutionPlan::compile(overloadNetwork,[&](const std::string&id){if(id=="vst-e2e")return &chain;if(id=="vst-e2e-b")return &secondChain;return (mlh::Chain*)nullptr;},nullptr,256,overloadError);
     expect(overloadPlan!=nullptr,"two real VST nodes -> Mixer -> Audio Output compiles");
     if(overloadPlan){juce::MidiBuffer fullVelocity;fullVelocity.addEvent(juce::MidiMessage::noteOn(1,60,(juce::uint8)127),0);chain.pushMidi(fullVelocity);secondChain.pushMidi(fullVelocity);mlh::Transport overloadTransport;overloadTransport.setSampleRate(48000);overloadTransport.beginBlock();float overloadLeft[256]{},overloadRight[256]{};float* overloadHardware[]={overloadLeft,overloadRight};juce::MidiBuffer overloadScratch;overloadPlan->process(overloadHardware,2,256,overloadTransport,overloadScratch);const auto firstTelemetry=chain.copyPlugins()[0]->takeSignalTelemetry();const auto secondTelemetry=secondChain.copyPlugins()[0]->takeSignalTelemetry();const auto mixerNode=std::find_if(overloadPlan->nodes().begin(),overloadPlan->nodes().end(),[](const auto& node){return node.kind==mlh::AudioNodeKind::mixer;});const auto mixerTelemetry=mixerNode!=overloadPlan->nodes().end()&&mixerNode->signalMeter?mixerNode->signalMeter->takeTelemetrySnapshot():mlh::AudioSignalTelemetry{};const float reproducedRawPeak=firstTelemetry.outputPeak+secondTelemetry.outputPeak;expect(firstTelemetry.outputPeak>.94f&&secondTelemetry.outputPeak>.94f&&std::abs(juce::Decibels::gainToDecibels(reproducedRawPeak)-5.575f)<.03f,"two hosted VST processBlock outputs reproduce the real +5.575 dBFS sum");expect(mixerTelemetry.inputPeak>1.89f&&std::abs(mixerTelemetry.outputPeak-mixerTelemetry.inputPeak)<.0001f,"the summing node passes its completed float sum without gain reduction");expect(std::abs(juce::FloatVectorOperations::findMaximum(overloadLeft,256)-reproducedRawPeak)<.0001f,"two real VST outputs reach Audio Output as their exact linear sum");}
     chain.panic();secondChain.panic();
 
     std::cerr << "[vst3-e2e] loaded\n";mlh::SequencerEngine sequencer;sequencer.prepare(48000,256);auto track=midiTrack("track-vst-e2e","vst-e2e");juce::Array<juce::var> tracks;tracks.add(track);juce::Array<juce::var> info;std::string error;expect(sequencer.sync(makeSequencerProject(tracks),[&](const std::string&id){return id=="vst-e2e"?&chain:nullptr;},48000,256,info,error),"MIDI clip routes into the real VST3 chain");
-    auto makePlan=[&](float master,int blockSize=256){mlh::AudioGraphSpec graph;auto vst=graphNode("vst-e2e",mlh::AudioNodeKind::vst);auto mix=graphNode("mixer-e2e",mlh::AudioNodeKind::mixer);mix.masterLevel=master;mix.inputs={{"audio-in-1","vst-e2e","audio-out",1,false}};auto out=graphNode("audio-output",mlh::AudioNodeKind::output);out.inputs={{"audio-in","mixer-e2e","audio-out",1,false}};graph.nodes={out,mix,vst};return mlh::AudioExecutionPlan::compile(graph,[&](const std::string&id){return id=="vst-e2e"?&chain:nullptr;},&sequencer,blockSize,error);};
+    auto makePlan=[&](float master,int blockSize=256){mlh::AudioNetworkSpec network;auto vst=networkNode("vst-e2e",mlh::AudioNodeKind::vst);auto mix=networkNode("mixer-e2e",mlh::AudioNodeKind::mixer);mix.masterLevel=master;mix.inputs={{"audio-in-1","vst-e2e","audio-out",1,false}};auto out=networkNode("audio-output",mlh::AudioNodeKind::output);out.inputs={{"audio-in","mixer-e2e","audio-out",1,false}};network.nodes={out,mix,vst};return mlh::AudioExecutionPlan::compile(network,[&](const std::string&id){return id=="vst-e2e"?&chain:nullptr;},&sequencer,blockSize,error);};
     std::cerr << "[vst3-e2e] plans\n";auto unity=makePlan(1.0f),half=makePlan(.5f);expect(unity&&half,"VST3 -> Mixer -> Audio Output DAG compiles");if(!unity||!half)return;
     std::cerr << "[vst3-e2e] live\n";mlh::Transport transport;transport.setSampleRate(48000);transport.setBpm(120);transport.setPlaying(true);transport.beginBlock();float liveLeft[256]{},liveRight[256]{};float* live[]={liveLeft,liveRight};juce::MidiBuffer scratch;sequencer.processMidi(256,transport);unity->process(live,2,256,transport,scratch);expect(juce::FloatVectorOperations::findMaximum(liveLeft,256)>.1f,"chain A produces audible VST3 signal at the real Audio Output buffer");const auto& liveNodes=unity->nodes();const auto vstStage=std::find_if(liveNodes.begin(),liveNodes.end(),[](const auto& node){return node.kind==mlh::AudioNodeKind::vst;});const auto mixStage=std::find_if(liveNodes.begin(),liveNodes.end(),[](const auto& node){return node.kind==mlh::AudioNodeKind::mixer;});const auto outputStage=std::find_if(liveNodes.begin(),liveNodes.end(),[](const auto& node){return node.kind==mlh::AudioNodeKind::output;});const auto vstStats=vstStage!=liveNodes.end()?mlh::measureAudioBlock(vstStage->output,256):mlh::AudioBlockStatistics{};const auto mixStats=mixStage!=liveNodes.end()?mlh::measureAudioBlock(mixStage->output,256):mlh::AudioBlockStatistics{};const auto outputStats=outputStage!=liveNodes.end()?mlh::measureAudioBlock(outputStage->output,256):mlh::AudioBlockStatistics{};expect(vstStats.absolutePeak>.1f&&std::abs(vstStats.absolutePeak-mixStats.absolutePeak)<.0001f&&std::abs(mixStats.absolutePeak-outputStats.absolutePeak)<.0001f,"real multi-output VST3 peak is measured identically through unity Mixer and pre-Master Audio Output");chain.panic();
 
@@ -958,7 +958,7 @@ void testRealVst3SequencerPlaybackArpAndMasterExport()
     juce::AudioBuffer<float> mastered(2,256);for(int channel=0;channel<2;++channel)mastered.copyFrom(channel,0,live[channel],256);float* masteredChannels[]={mastered.getWritePointer(0),mastered.getWritePointer(1)};mlh::MasterOutput diagnosticMaster;diagnosticMaster.prepare(48000);diagnosticMaster.process(masteredChannels,2,256);bool masterExact=true;for(int channel=0;channel<2;++channel)masterExact&=std::memcmp(mastered.getReadPointer(channel),live[channel],256*sizeof(float))==0;expect(masterExact,"unity MasterOutput preserves every finite VST sample bit-for-bit");
     const auto liveBridgeTrace=chain.copyPlugins()[0]->vst3BufferProcessTrace();expect(liveBridgeTrace.copiedToPluginInstance&&liveBridgeTrace.processCallInBlock==1&&liveBridgeTrace.numSamples==256,"AudioBusBuffers -> PluginInstance trace is one exact 256-frame copy for the live block");
 
-    std::cerr << "[vst3-e2e] arp in 256-sample callbacks\n";mlh::MidiGraphSpec midiSpec;mlh::MidiGraphNodeSpec arp;arp.id="arp-e2e";arp.kind="arpeggiator";arp.arp.rate=2;arp.arp.patternLength=16;arp.destinations={"vst-e2e"};midiSpec.nodes.push_back(arp);auto midiPlan=mlh::MidiExecutionPlan::compile(midiSpec,[&](const std::string&id){return id=="vst-e2e"?&chain:nullptr;},error);auto arpTrack=midiTrack("track-vst-arp","arp-e2e");mlh::setProp(arpTrack,"outputKind","arpeggiator");juce::Array<juce::var> arpNotes;arpNotes.add(midiNote(.125,.5,60,100,1));replaceMidiNotes(arpTrack,arpNotes);tracks.clear();tracks.add(arpTrack);expect(midiPlan&&sequencer.sync(makeSequencerProject(tracks),[](const std::string&){return (mlh::Chain*)nullptr;},48000,256,info,error),"chain B routes Sequencer through existing Arpeggiator into real VST3");transport.seekPpq(0);transport.setPlaying(true);juce::AudioBuffer<float> arpRendered(2,12288);arpRendered.clear();for(int block=0;block<48;++block){transport.beginBlock();float left[256]{},right[256]{};float* output[]={left,right};sequencer.processMidi(256,transport,midiPlan.get());midiPlan->process(256,transport);unity->process(output,2,256,transport,scratch);arpRendered.copyFrom(0,block*256,left,256);arpRendered.copyFrom(1,block*256,right,256);transport.advance(256);}expect(arpRendered.getMagnitude(0,0,5900)==0&&arpRendered.getMagnitude(0,6100,5800)>.1f,"chain B is silent before the arp step and audible after its sample-exact trigger");midiPlan->panicAll();chain.panic();
+    std::cerr << "[vst3-e2e] arp in 256-sample callbacks\n";mlh::MidiNetworkSpec midiSpec;mlh::MidiNetworkNodeSpec arp;arp.id="arp-e2e";arp.kind="arpeggiator";arp.arp.rate=2;arp.arp.patternLength=16;arp.destinations={"vst-e2e"};midiSpec.nodes.push_back(arp);auto midiPlan=mlh::MidiExecutionPlan::compile(midiSpec,[&](const std::string&id){return id=="vst-e2e"?&chain:nullptr;},error);auto arpTrack=midiTrack("track-vst-arp","arp-e2e");mlh::setProp(arpTrack,"outputKind","arpeggiator");juce::Array<juce::var> arpNotes;arpNotes.add(midiNote(.125,.5,60,100,1));replaceMidiNotes(arpTrack,arpNotes);tracks.clear();tracks.add(arpTrack);expect(midiPlan&&sequencer.sync(makeSequencerProject(tracks),[](const std::string&){return (mlh::Chain*)nullptr;},48000,256,info,error),"chain B routes Sequencer through existing Arpeggiator into real VST3");transport.seekPpq(0);transport.setPlaying(true);juce::AudioBuffer<float> arpRendered(2,12288);arpRendered.clear();for(int block=0;block<48;++block){transport.beginBlock();float left[256]{},right[256]{};float* output[]={left,right};sequencer.processMidi(256,transport,midiPlan.get());midiPlan->process(256,transport);unity->process(output,2,256,transport,scratch);arpRendered.copyFrom(0,block*256,left,256);arpRendered.copyFrom(1,block*256,right,256);transport.advance(256);}expect(arpRendered.getMagnitude(0,0,5900)==0&&arpRendered.getMagnitude(0,6100,5800)>.1f,"chain B is silent before the arp step and audible after its sample-exact trigger");midiPlan->panicAll();chain.panic();
 
     tracks.clear();tracks.add(track);expect(sequencer.sync(makeSequencerProject(tracks),[&](const std::string&id){return id=="vst-e2e"?&chain:nullptr;},48000,256,info,error),"direct VST3 export route restores");transport.setPlaying(false);transport.seekPpq(0);
     auto renderExport=[&](mlh::AudioExecutionPlan& plan,const juce::String& tag){auto file=juce::File::getSpecialLocation(juce::File::tempDirectory).getNonexistentChildFile("MiniHub-vst3-e2e-"+tag,".wav");juce::String exportError;std::string snapshotError;expect(sequencer.prepareExportPlan([&](const std::string&id){return id=="vst-e2e"?&chain:nullptr;},snapshotError),"real VST3 export arrangement is cloned");expect(sequencer.startExport(file,24,0,1,0,transport,exportError),"successive real VST3 master export starts");float left[256]{},right[256]{};float* out[]={left,right};auto& offline=sequencer.exportTransport();while(sequencer.exporting()){juce::FloatVectorOperations::clear(left,256);juce::FloatVectorOperations::clear(right,256);offline.beginBlock();sequencer.processMidi(256,offline);plan.process(out,2,256,offline,scratch);sequencer.processMaster(out,2,256,offline);offline.advance(256);}expect(sequencer.consumeExportCleanupRequest(),"real VST3 export requests terminal MIDI cleanup");const auto events=sequencer.serviceEvents();expect(events.size()==1&&events[0]["state"].toString()=="complete","real VST3 master export completes");return file;};
@@ -976,27 +976,27 @@ void testSequencerAudioInputRoutingAuthority()
     juce::AudioBuffer<float> physical(2,256);for(int i=0;i<256;++i){physical.setSample(0,i,.25f);physical.setSample(1,i,-.5f);}
     float left[256]{},right[256]{};float* outputs[]={left,right};juce::MidiBuffer midi;
 
-    mlh::AudioGraphSpec disconnected;auto input=graphNode("audio-input",mlh::AudioNodeKind::input);auto seq=graphNode("sequencer",mlh::AudioNodeKind::sequencer);disconnected.nodes={input,seq};
+    mlh::AudioNetworkSpec disconnected;auto input=networkNode("audio-input",mlh::AudioNodeKind::input);auto seq=networkNode("sequencer",mlh::AudioNodeKind::sequencer);disconnected.nodes={input,seq};
     auto noCable=mlh::AudioExecutionPlan::compile(disconnected,[](const std::string&){return (mlh::Chain*)nullptr;},&sequencer,256,error);
     expect(noCable!=nullptr,"physical Audio Input and disconnected Sequencer compile as real DAG nodes");
     sequencer.beginRecording(transport);noCable->process(outputs,2,256,transport,midi,&physical);auto noCableTakes=sequencer.finishRecording(transport);
     expect(noCableTakes.isEmpty(),"physical input does not record without Audio Input -> Sequencer cable");
 
-    seq.inputs={{"audio-in","audio-input","audio-out",1,false}};mlh::AudioGraphSpec connected;connected.nodes={seq,input};
+    seq.inputs={{"audio-in","audio-input","audio-out",1,false}};mlh::AudioNetworkSpec connected;connected.nodes={seq,input};
     auto withCable=mlh::AudioExecutionPlan::compile(connected,[](const std::string&){return (mlh::Chain*)nullptr;},&sequencer,256,error);
     expect(withCable!=nullptr,"Audio Input -> Sequencer AUDIO IN compiles");
     sequencer.beginRecording(transport);withCable->process(outputs,2,256,transport,midi,&physical);auto cableTakes=sequencer.finishRecording(transport);
     expect(cableTakes.size()==1,"direct visible Audio Input cable captures one physical buffer");
     if(cableTakes.size()){juce::File take(cableTakes[0]["filePath"].toString());juce::WavAudioFormat wav;std::unique_ptr<juce::AudioFormatReader> reader(wav.createReaderFor(take.createInputStream().release(),true));juce::AudioBuffer<float> captured(2,256);if(reader)reader->read(&captured,0,256,0,true,true);expect(reader&&std::abs(captured.getSample(0,0)-.25f)<.001f&&std::abs(captured.getSample(1,0)+.5f)<.001f,"captured take contains the actual hardware input buffer");take.deleteFile();}
 
-    mlh::AudioGraphSpec monitor;auto out=graphNode("audio-output",mlh::AudioNodeKind::output);out.inputs={{"audio-in","audio-input","audio-out",1,false}};monitor.nodes={out,input};
+    mlh::AudioNetworkSpec monitor;auto out=networkNode("audio-output",mlh::AudioNodeKind::output);out.inputs={{"audio-in","audio-input","audio-out",1,false}};monitor.nodes={out,input};
     auto monitored=mlh::AudioExecutionPlan::compile(monitor,[](const std::string&){return (mlh::Chain*)nullptr;},&sequencer,256,error);
     juce::FloatVectorOperations::clear(left,256);juce::FloatVectorOperations::clear(right,256);monitored->process(outputs,2,256,transport,midi,&physical);
     expect(std::abs(left[0]-.25f)<.0001f&&std::abs(right[0]+.5f)<.0001f,"physical Audio Input node publishes the hardware buffer to the DAG");
 
     tracks.clear();tracks.add(audioTrack("track-hidden",juce::File(),true,"source-a"));
-    expect(sequencer.sync(makeSequencerProject(tracks),[](const std::string&){return (mlh::Chain*)nullptr;},48000,256,info,error),"armed graph-source track compiles");
-    mlh::AudioGraphSpec hidden;auto source=graphNode("source-a",mlh::AudioNodeKind::mixer);seq.inputs.clear();hidden.nodes={source,seq};
+    expect(sequencer.sync(makeSequencerProject(tracks),[](const std::string&){return (mlh::Chain*)nullptr;},48000,256,info,error),"armed network-source track compiles");
+    mlh::AudioNetworkSpec hidden;auto source=networkNode("source-a",mlh::AudioNodeKind::mixer);seq.inputs.clear();hidden.nodes={source,seq};
     auto hiddenPlan=mlh::AudioExecutionPlan::compile(hidden,[](const std::string&){return (mlh::Chain*)nullptr;},&sequencer,256,error);
     sequencer.beginRecording(transport);hiddenPlan->process(outputs,2,256,transport,midi,&physical);auto hiddenTakes=sequencer.finishRecording(transport);
     expect(hiddenTakes.isEmpty(),"nodes outside Sequencer direct upstreams have no hidden recording taps");
@@ -1032,7 +1032,7 @@ void testSequencerAudioRecordingAndMasterExport()
 
     sequencer.beginRecording(transport);juce::AudioBuffer<float> input(2,480);for(int i=0;i<480;++i){input.setSample(0,i,.2f);input.setSample(1,i,-.2f);}sequencer.captureSource("audio-input",input,480,transport);const auto takes=sequencer.finishRecording(transport);expect(takes.size()==1,"armed audio source creates one native take");if(takes.size()){juce::File take(takes[0]["filePath"].toString());juce::WavAudioFormat wav;std::unique_ptr<juce::AudioFormatReader> reader(wav.createReaderFor(take.createInputStream().release(),true));expect(reader&&reader->lengthInSamples==480&&reader->sampleRate==48000,"audio recording writes a valid sample-exact WAV before clip creation");take.deleteFile();}
 
-    mlh::AudioGraphSpec graph;auto seq=graphNode("sequencer",mlh::AudioNodeKind::sequencer);auto mix=graphNode("mixer-001",mlh::AudioNodeKind::mixer);mix.masterLevel=.5f;mix.inputs={{"audio-in-1","sequencer","audio-out",1,false}};auto out=graphNode("audio-output",mlh::AudioNodeKind::output);out.inputs={{"audio-in","mixer-001","audio-out",1,false}};graph.nodes={out,mix,seq};auto plan=mlh::AudioExecutionPlan::compile(graph,[](const std::string&){return (mlh::Chain*)nullptr;},&sequencer,256,error);expect(plan!=nullptr,"Sequencer routes through the real Mixer and AUDIO DAG");
+    mlh::AudioNetworkSpec network;auto seq=networkNode("sequencer",mlh::AudioNodeKind::sequencer);auto mix=networkNode("mixer-001",mlh::AudioNodeKind::mixer);mix.masterLevel=.5f;mix.inputs={{"audio-in-1","sequencer","audio-out",1,false}};auto out=networkNode("audio-output",mlh::AudioNodeKind::output);out.inputs={{"audio-in","mixer-001","audio-out",1,false}};network.nodes={out,mix,seq};auto plan=mlh::AudioExecutionPlan::compile(network,[](const std::string&){return (mlh::Chain*)nullptr;},&sequencer,256,error);expect(plan!=nullptr,"Sequencer routes through the real Mixer and AUDIO DAG");
     float singleLeft[256]{},singleRight[256]{};float* singleMaster[]={singleLeft,singleRight};juce::MidiBuffer sumMidi;transport.setLoop(false,0,1);transport.seekPpq(0);transport.setPlaying(true);transport.beginBlock();plan->process(singleMaster,2,256,transport,sumMidi);const float singleMagnitude=juce::FloatVectorOperations::findMaximum(singleLeft,256);
     juce::Array<juce::var> simultaneousTracks;simultaneousTracks.add(audioTrack("track-sum-a",sourceFile,true));simultaneousTracks.add(audioTrack("track-sum-b",sourceFile,false));simultaneousTracks.add(audioTrack("track-sum-c",sourceFile,true));expect(sequencer.sync(makeSequencerProject(simultaneousTracks),[](const std::string&){return (mlh::Chain*)nullptr;},48000,256,info,error),"three simultaneous Master tracks compile regardless of arm state");float sumLeft[256]{},sumRight[256]{};float* summedMaster[]={sumLeft,sumRight};transport.seekPpq(0);transport.beginBlock();plan->process(summedMaster,2,256,transport,sumMidi);expect(juce::FloatVectorOperations::findMaximum(sumLeft,256)>singleMagnitude*2.9f,"three simultaneous tracks are additively summed into one floating-point Master");
     expect(sequencer.sync(makeSequencerProject(tracks),[](const std::string&){return (mlh::Chain*)nullptr;},48000,256,info,error),"single-track arrangement restores after simultaneous sum proof");
@@ -1056,7 +1056,7 @@ void testSequencerAudioRecordingAndMasterExport()
     transport.setLoop(true,2,6);transport.seekPpq(3);transport.setPlaying(false);const auto preservedPpq=transport.ppqPosition();
     struct ExportCase{double start,end,tail;int64_t frames;};const ExportCase cases[]={{0,.2,0,4800},{.1,.2,.05,4800}};
     std::cerr << "[export] repeated-wav\n";
-    for(int pass=0;pass<2;++pass){const auto& test=cases[pass];auto destination=juce::File::getSpecialLocation(juce::File::tempDirectory).getNonexistentChildFile("MiniHub-master-e2e-"+juce::String(pass),".wav");juce::String exportError;std::string snapshotError;expect(sequencer.prepareExportPlan([](const std::string&){return (mlh::Chain*)nullptr;},snapshotError),"repeated master arrangement is cloned");expect(sequencer.startExport(destination,24,test.start,test.end,test.tail,transport,exportError),"master export starts repeatedly");float left[256]{},right[256]{};float* hardware[]={left,right};juce::MidiBuffer midiScratch;auto& offline=sequencer.exportTransport();while(sequencer.exporting()){juce::FloatVectorOperations::clear(left,256);juce::FloatVectorOperations::clear(right,256);offline.beginBlock();plan->process(hardware,2,256,offline,midiScratch);sequencer.processMaster(hardware,2,256,offline);offline.advance(256);}sequencer.consumeExportCleanupRequest();const auto events=sequencer.serviceEvents();expect(events.size()==1&&events[0]["state"].toString()=="complete","master export completes through the native writer");juce::WavAudioFormat wav;std::unique_ptr<juce::AudioFormatReader> reader(wav.createReaderFor(destination.createInputStream().release(),true));expect(reader&&reader->sampleRate==48000&&reader->lengthInSamples==test.frames&&reader->bitsPerSample==24,"end-to-end WAV has exact range, tail, rate, duration and format");if(reader){juce::AudioBuffer<float> check(2,(int)reader->lengthInSamples);reader->read(&check,0,(int)reader->lengthInSamples,0,true,true);expect(check.getMagnitude(0,0,std::min(2400,check.getNumSamples()))>.05f,"master WAV contains routed audio after Mixer gain");if(test.tail>0)expect(check.getMagnitude(0,2400,check.getNumSamples()-2400)<.0001f,"effect-tail range is preserved as exact post-source silence when the graph has no effect tail");}reader.reset();destination.deleteFile();}
+    for(int pass=0;pass<2;++pass){const auto& test=cases[pass];auto destination=juce::File::getSpecialLocation(juce::File::tempDirectory).getNonexistentChildFile("MiniHub-master-e2e-"+juce::String(pass),".wav");juce::String exportError;std::string snapshotError;expect(sequencer.prepareExportPlan([](const std::string&){return (mlh::Chain*)nullptr;},snapshotError),"repeated master arrangement is cloned");expect(sequencer.startExport(destination,24,test.start,test.end,test.tail,transport,exportError),"master export starts repeatedly");float left[256]{},right[256]{};float* hardware[]={left,right};juce::MidiBuffer midiScratch;auto& offline=sequencer.exportTransport();while(sequencer.exporting()){juce::FloatVectorOperations::clear(left,256);juce::FloatVectorOperations::clear(right,256);offline.beginBlock();plan->process(hardware,2,256,offline,midiScratch);sequencer.processMaster(hardware,2,256,offline);offline.advance(256);}sequencer.consumeExportCleanupRequest();const auto events=sequencer.serviceEvents();expect(events.size()==1&&events[0]["state"].toString()=="complete","master export completes through the native writer");juce::WavAudioFormat wav;std::unique_ptr<juce::AudioFormatReader> reader(wav.createReaderFor(destination.createInputStream().release(),true));expect(reader&&reader->sampleRate==48000&&reader->lengthInSamples==test.frames&&reader->bitsPerSample==24,"end-to-end WAV has exact range, tail, rate, duration and format");if(reader){juce::AudioBuffer<float> check(2,(int)reader->lengthInSamples);reader->read(&check,0,(int)reader->lengthInSamples,0,true,true);expect(check.getMagnitude(0,0,std::min(2400,check.getNumSamples()))>.05f,"master WAV contains routed audio after Mixer gain");if(test.tail>0)expect(check.getMagnitude(0,2400,check.getNumSamples()-2400)<.0001f,"effect-tail range is preserved as exact post-source silence when the network has no effect tail");}reader.reset();destination.deleteFile();}
     juce::var signatureA=audioTrack("track-signature-a",sourceFile,true);juce::var signatureB=audioTrack("track-signature-b",sourceFile,false);juce::var signatureC=audioTrack("track-signature-c",sourceFile,true);if(auto* clips=signatureB["clips"].getArray())mlh::setProp(clips->getReference(0),"startPpq",.25);if(auto* clips=signatureC["clips"].getArray())mlh::setProp(clips->getReference(0),"startPpq",.5);juce::Array<juce::var> repeatedTracks;repeatedTracks.add(signatureA);repeatedTracks.add(signatureB);repeatedTracks.add(signatureC);expect(sequencer.sync(makeSequencerProject(repeatedTracks),[](const std::string&){return (mlh::Chain*)nullptr;},48000,256,info,error),"three temporally distinct tracks are frozen for every codec export");
     auto retainCodecArtifact=[&](const juce::File& source){const char* directory=std::getenv("MLH_EXPORT_FORMAT_ARTIFACT_DIR");if(!directory||!*directory)return;juce::File targetDirectory(juce::String::fromUTF8(directory));targetDirectory.createDirectory();auto target=targetDirectory.getChildFile("sequencer-export-transport."+source.getFileExtension().trimCharactersAtStart("."));target.deleteFile();expect(source.copyFileTo(target),"validated codec artifact is retained");};
     auto validatePcm=[&](juce::AudioFormatReader* reader,int64_t expectedFrames,const juce::String& codec){expect(reader&&reader->sampleRate==48000&&reader->numChannels==2&&std::abs(reader->lengthInSamples-expectedFrames)<=2304,codec+" decodes as stereo at the expected rate and duration");if(!reader)return;juce::AudioBuffer<float> decoded(2,(int)reader->lengthInSamples);reader->read(&decoded,0,decoded.getNumSamples(),0,true,true);bool finite=true;for(int ch=0;ch<2;++ch)for(int i=0;i<decoded.getNumSamples();++i)finite=finite&&std::isfinite(decoded.getSample(ch,i));expect(finite&&decoded.getMagnitude(0,0,decoded.getNumSamples())>.02f,codec+" contains finite, non-silent Master PCM");const int windows[][2]={{960,3840},{6960,9840},{12960,15840}};for(int index=0;index<3;++index){const int start=std::min(windows[index][0],decoded.getNumSamples());const int count=std::max(0,std::min(windows[index][1],decoded.getNumSamples())-start);expect(count>0&&decoded.getMagnitude(0,start,count)>.02f,codec+" contains temporal signature from Track "+juce::String(index+1));}};
@@ -1119,7 +1119,7 @@ float isolationDifference(const juce::AudioBuffer<float>& a,const juce::AudioBuf
 }
 
 struct IsolationRender {
-    juce::AudioBuffer<float> track2Source,track2PostGain,track2MixerInput,mixerOutput,graphOutput,masterOutput;
+    juce::AudioBuffer<float> track2Source,track2PostGain,track2MixerInput,mixerOutput,networkOutput,masterOutput;
     const float* track1SourceAddress=nullptr;
     const float* track2SourceAddress=nullptr;
     const float* track1PostGainAddress=nullptr;
@@ -1128,27 +1128,27 @@ struct IsolationRender {
     const float* track2ScratchAddress=nullptr;
     const float* track1MixerInputAddress=nullptr;
     const float* track2MixerInputAddress=nullptr;
-    explicit IsolationRender(int samples):track2Source(2,samples),track2PostGain(2,samples),track2MixerInput(2,samples),mixerOutput(2,samples),graphOutput(2,samples),masterOutput(2,samples){}
+    explicit IsolationRender(int samples):track2Source(2,samples),track2PostGain(2,samples),track2MixerInput(2,samples),mixerOutput(2,samples),networkOutput(2,samples),masterOutput(2,samples){}
 };
 
-mlh::AudioGraphSpec isolationSineGraph(int64_t track1Start)
+mlh::AudioNetworkSpec isolationSineNetwork(int64_t track1Start)
 {
     constexpr double sampleRate=48000.0;
-    auto track1Source=graphNode("track-1-source",mlh::AudioNodeKind::diagnosticSine);
+    auto track1Source=networkNode("track-1-source",mlh::AudioNodeKind::diagnosticSine);
     track1Source.diagnosticCyclesPerSample=440.0/sampleRate;track1Source.diagnosticAmplitude=.2f;
     track1Source.diagnosticStartSample=track1Start;track1Source.diagnosticEndSample=track1Start+96000;track1Source.diagnosticLatencySamples=32;
-    auto track2Source=graphNode("track-2-source",mlh::AudioNodeKind::diagnosticSine);
+    auto track2Source=networkNode("track-2-source",mlh::AudioNodeKind::diagnosticSine);
     track2Source.diagnosticCyclesPerSample=880.0/sampleRate;track2Source.diagnosticAmplitude=.25f;
     track2Source.diagnosticStartSample=0;track2Source.diagnosticEndSample=336000;track2Source.diagnosticLatencySamples=0;
-    auto track1Gain=graphNode("track-1-post-gain",mlh::AudioNodeKind::mixer);track1Gain.masterLevel=.7f;
+    auto track1Gain=networkNode("track-1-post-gain",mlh::AudioNodeKind::mixer);track1Gain.masterLevel=.7f;
     track1Gain.inputs={{"audio-in-1","track-1-source","audio-out",1.0f,false}};
-    auto track2Gain=graphNode("track-2-post-gain",mlh::AudioNodeKind::mixer);track2Gain.masterLevel=.8f;
+    auto track2Gain=networkNode("track-2-post-gain",mlh::AudioNodeKind::mixer);track2Gain.masterLevel=.8f;
     track2Gain.inputs={{"audio-in-1","track-2-source","audio-out",1.0f,false}};
-    auto mixer=graphNode("isolation-mixer",mlh::AudioNodeKind::mixer);
+    auto mixer=networkNode("isolation-mixer",mlh::AudioNodeKind::mixer);
     mixer.inputs={{"audio-in-1","track-1-post-gain","audio-out",1.0f,false},{"audio-in-2","track-2-post-gain","audio-out",1.0f,false}};
-    auto output=graphNode("audio-output",mlh::AudioNodeKind::output);
+    auto output=networkNode("audio-output",mlh::AudioNodeKind::output);
     output.inputs={{"audio-in","isolation-mixer","audio-out",1.0f,false}};
-    mlh::AudioGraphSpec graph;graph.nodes={output,mixer,track2Gain,track1Gain,track2Source,track1Source};return graph;
+    mlh::AudioNetworkSpec network;network.nodes={output,mixer,track2Gain,track1Gain,track2Source,track1Source};return network;
 }
 
 IsolationRender renderIsolationSines(mlh::AudioExecutionPlan& plan)
@@ -1160,17 +1160,17 @@ IsolationRender renderIsolationSines(mlh::AudioExecutionPlan& plan)
     for(int offset=0;offset<totalSamples;offset+=blockSize){left.fill(0);right.fill(0);transport.beginBlock();plan.process(hardware,2,blockSize,transport,midi);
         const auto* source1=isolationNode(plan,"track-1-source");const auto* source2=isolationNode(plan,"track-2-source");const auto* gain1=isolationNode(plan,"track-1-post-gain");const auto* gain2=isolationNode(plan,"track-2-post-gain");const auto* mixer=isolationNode(plan,"isolation-mixer");const auto* output=isolationNode(plan,"audio-output");
         if(offset==0&&source1&&source2&&gain1&&gain2&&mixer){result.track1SourceAddress=source1->output.getReadPointer(0);result.track2SourceAddress=source2->output.getReadPointer(0);result.track1PostGainAddress=gain1->output.getReadPointer(0);result.track2PostGainAddress=gain2->output.getReadPointer(0);result.track1ScratchAddress=mixer->sourceDelays[0].output.getNumChannels()?mixer->sourceDelays[0].output.getReadPointer(0):nullptr;result.track2ScratchAddress=mixer->sourceDelays[1].output.getNumChannels()?mixer->sourceDelays[1].output.getReadPointer(0):nullptr;result.track1MixerInputAddress=mixer->processedSources[0]->getReadPointer(0);result.track2MixerInputAddress=mixer->processedSources[1]->getReadPointer(0);}
-        for(int channel=0;channel<2;++channel){result.track2Source.copyFrom(channel,offset,source2->output,channel,0,blockSize);result.track2PostGain.copyFrom(channel,offset,gain2->output,channel,0,blockSize);result.track2MixerInput.copyFrom(channel,offset,*mixer->processedSources[1],channel,0,blockSize);result.mixerOutput.copyFrom(channel,offset,mixer->output,channel,0,blockSize);result.graphOutput.copyFrom(channel,offset,output->output,channel,0,blockSize);}
+        for(int channel=0;channel<2;++channel){result.track2Source.copyFrom(channel,offset,source2->output,channel,0,blockSize);result.track2PostGain.copyFrom(channel,offset,gain2->output,channel,0,blockSize);result.track2MixerInput.copyFrom(channel,offset,*mixer->processedSources[1],channel,0,blockSize);result.mixerOutput.copyFrom(channel,offset,mixer->output,channel,0,blockSize);result.networkOutput.copyFrom(channel,offset,output->output,channel,0,blockSize);}
         master.process(hardware,2,blockSize);result.masterOutput.copyFrom(0,offset,left.data(),blockSize);result.masterOutput.copyFrom(1,offset,right.data(),blockSize);transport.advance(blockSize);}
     return result;
 }
 
 void testInternalSineCrossTrackIsolation(bool pdcEnabled)
 {
-    std::string error;auto referenceGraph=isolationSineGraph(400000);auto activeGraph=isolationSineGraph(144000);
-    auto reference=mlh::AudioExecutionPlan::compile(referenceGraph,[](const std::string&){return(mlh::Chain*)nullptr;},nullptr,480,error,pdcEnabled);
-    auto active=mlh::AudioExecutionPlan::compile(activeGraph,[](const std::string&){return(mlh::Chain*)nullptr;},nullptr,480,error,pdcEnabled);
-    expect(reference&&active,pdcEnabled?"crossTrackLevelIsolation sine graph compiles with PDC ON":"crossTrackLevelIsolation sine graph compiles with PDC OFF");if(!reference||!active)return;
+    std::string error;auto referenceNetwork=isolationSineNetwork(400000);auto activeNetwork=isolationSineNetwork(144000);
+    auto reference=mlh::AudioExecutionPlan::compile(referenceNetwork,[](const std::string&){return(mlh::Chain*)nullptr;},nullptr,480,error,pdcEnabled);
+    auto active=mlh::AudioExecutionPlan::compile(activeNetwork,[](const std::string&){return(mlh::Chain*)nullptr;},nullptr,480,error,pdcEnabled);
+    expect(reference&&active,pdcEnabled?"crossTrackLevelIsolation sine network compiles with PDC ON":"crossTrackLevelIsolation sine network compiles with PDC OFF");if(!reference||!active)return;
     const auto baseline=renderIsolationSines(*reference);const auto measured=renderIsolationSines(*active);
     const float sourceDifference=isolationDifference(baseline.track2Source,measured.track2Source);
     const float postDifference=isolationDifference(baseline.track2PostGain,measured.track2PostGain);
@@ -1201,9 +1201,9 @@ juce::var isolationAudioTrack(const char* id,const juce::File& file,const char* 
     juce::var track=mlh::makeObject();mlh::setProp(track,"id",id);mlh::setProp(track,"type","audio");mlh::setProp(track,"inputId","");mlh::setProp(track,"outputId",output);mlh::setProp(track,"armed",false);mlh::setProp(track,"muted",false);mlh::setProp(track,"volume",gain);juce::var clip=mlh::makeObject();mlh::setProp(clip,"id",juce::String("clip-")+id);mlh::setProp(clip,"filePath",file.getFullPathName());mlh::setProp(clip,"startPpq",startPpq);mlh::setProp(clip,"lengthPpq",lengthPpq);mlh::setProp(clip,"trimStartSeconds",0.0);mlh::setProp(clip,"trimEndSeconds",durationSeconds);mlh::setProp(clip,"gain",1.0);juce::Array<juce::var> clips;clips.add(clip);mlh::setProp(track,"clips",clips);return track;
 }
 
-mlh::AudioGraphSpec isolationAudioGraph()
+mlh::AudioNetworkSpec isolationAudioNetwork()
 {
-    auto sequencer=graphNode("sequencer",mlh::AudioNodeKind::sequencer);auto gain1=graphNode("audio-track-1-post-gain",mlh::AudioNodeKind::mixer);gain1.inputs={{"audio-in-1","sequencer","audio-out",1,false}};auto gain2=graphNode("audio-track-2-post-gain",mlh::AudioNodeKind::mixer);gain2.inputs={{"audio-in-1","sequencer","audio-out",1,false}};auto mixer=graphNode("audio-isolation-mixer",mlh::AudioNodeKind::mixer);mixer.inputs={{"audio-in-1","audio-track-1-post-gain","audio-out",1,false},{"audio-in-2","audio-track-2-post-gain","audio-out",1,false}};auto output=graphNode("audio-output",mlh::AudioNodeKind::output);output.inputs={{"audio-in","audio-isolation-mixer","audio-out",1,false}};mlh::AudioGraphSpec graph;graph.nodes={output,mixer,gain2,gain1,sequencer};return graph;
+    auto sequencer=networkNode("sequencer",mlh::AudioNodeKind::sequencer);auto gain1=networkNode("audio-track-1-post-gain",mlh::AudioNodeKind::mixer);gain1.inputs={{"audio-in-1","sequencer","audio-out",1,false}};auto gain2=networkNode("audio-track-2-post-gain",mlh::AudioNodeKind::mixer);gain2.inputs={{"audio-in-1","sequencer","audio-out",1,false}};auto mixer=networkNode("audio-isolation-mixer",mlh::AudioNodeKind::mixer);mixer.inputs={{"audio-in-1","audio-track-1-post-gain","audio-out",1,false},{"audio-in-2","audio-track-2-post-gain","audio-out",1,false}};auto output=networkNode("audio-output",mlh::AudioNodeKind::output);output.inputs={{"audio-in","audio-isolation-mixer","audio-out",1,false}};mlh::AudioNetworkSpec network;network.nodes={output,mixer,gain2,gain1,sequencer};return network;
 }
 
 void testAudioClipCrossTrackIsolation()
@@ -1211,7 +1211,7 @@ void testAudioClipCrossTrackIsolation()
     const auto track1File=makeIsolationSineWav("MiniHub-cross-track-440",440,96001);const auto track2File=makeIsolationSineWav("MiniHub-cross-track-880",880,336001);
     mlh::SequencerEngine referenceSequencer,activeSequencer;referenceSequencer.prepare(48000,480);activeSequencer.prepare(48000,480);juce::Array<juce::var> info;std::string error;const auto track2=isolationAudioTrack("audio-track-2",track2File,"audio-track-2-post-gain",0,14,7,.8);const auto track1=isolationAudioTrack("audio-track-1",track1File,"audio-track-1-post-gain",6,4,2,.7);juce::Array<juce::var> referenceTracks;referenceTracks.add(track2);juce::Array<juce::var> activeTracks;activeTracks.add(track1);activeTracks.add(track2);
     expect(referenceSequencer.sync(makeSequencerProject(referenceTracks),[](const std::string&){return(mlh::Chain*)nullptr;},48000,480,info,error)&&activeSequencer.sync(makeSequencerProject(activeTracks),[](const std::string&){return(mlh::Chain*)nullptr;},48000,480,info,error),"audio/audio isolation arrangements compile");
-    auto graph=isolationAudioGraph();auto reference=mlh::AudioExecutionPlan::compile(graph,[](const std::string&){return(mlh::Chain*)nullptr;},&referenceSequencer,480,error);auto active=mlh::AudioExecutionPlan::compile(graph,[](const std::string&){return(mlh::Chain*)nullptr;},&activeSequencer,480,error);expect(reference&&active,"audio/audio isolation graph compiles");if(!reference||!active){track1File.deleteFile();track2File.deleteFile();return;}
+    auto network=isolationAudioNetwork();auto reference=mlh::AudioExecutionPlan::compile(network,[](const std::string&){return(mlh::Chain*)nullptr;},&referenceSequencer,480,error);auto active=mlh::AudioExecutionPlan::compile(network,[](const std::string&){return(mlh::Chain*)nullptr;},&activeSequencer,480,error);expect(reference&&active,"audio/audio isolation network compiles");if(!reference||!active){track1File.deleteFile();track2File.deleteFile();return;}
     juce::AudioBuffer<float> referenceStem(2,336000),activeStem(2,336000),activeMixer(2,336000);mlh::Transport referenceTransport,activeTransport;for(auto* transport:{&referenceTransport,&activeTransport}){transport->setSampleRate(48000);transport->setBpm(120);transport->setPlaying(true);}juce::MidiBuffer midi;std::array<float,480> refLeft{},refRight{},activeLeft{},activeRight{};float* refOut[]={refLeft.data(),refRight.data()};float* activeOut[]={activeLeft.data(),activeRight.data()};
     for(int offset=0;offset<336000;offset+=480){refLeft.fill(0);refRight.fill(0);activeLeft.fill(0);activeRight.fill(0);referenceTransport.beginBlock();activeTransport.beginBlock();reference->process(refOut,2,480,referenceTransport,midi);active->process(activeOut,2,480,activeTransport,midi);const auto* refTrack2=isolationNode(*reference,"audio-track-2-post-gain");const auto* activeTrack2=isolationNode(*active,"audio-track-2-post-gain");const auto* mixer=isolationNode(*active,"audio-isolation-mixer");for(int channel=0;channel<2;++channel){referenceStem.copyFrom(channel,offset,refTrack2->output,channel,0,480);activeStem.copyFrom(channel,offset,activeTrack2->output,channel,0,480);activeMixer.copyFrom(channel,offset,mixer->output,channel,0,480);}referenceTransport.advance(480);activeTransport.advance(480);}
     const float difference=isolationDifference(referenceStem,activeStem);expect(difference<1.0e-6f,"audio/audio Track 2 stem is sample-identical while Track 1 starts and stops");const std::array<int,3> starts{48000,180000,288000};std::array<double,3> amplitudes{};for(size_t i=0;i<starts.size();++i)amplitudes[i]=isolationAmplitude(activeStem,starts[i],24000,880.0/48000.0);expect(std::abs(amplitudes[0]-amplitudes[1])<1.0e-6&&std::abs(amplitudes[0]-amplitudes[2])<1.0e-6,"audio/audio 880 Hz amplitude is invariant before/during/after Track 1");std::cerr<<"[cross-track][audio/audio] maxStemDifference="<<difference<<" track2(before/during/after)="<<amplitudes[0]<<'/'<<amplitudes[1]<<'/'<<amplitudes[2]<<" mixerPeaks="<<activeMixer.getMagnitude(0,0,144000)<<'/'<<activeMixer.getMagnitude(0,144000,96000)<<'/'<<activeMixer.getMagnitude(0,240000,96000)<<'\n';track1File.deleteFile();track2File.deleteFile();
@@ -1227,9 +1227,9 @@ juce::var isolationMidiTrack(const char* id,const char* output,double clipStart,
     juce::var track=mlh::makeObject();mlh::setProp(track,"id",id);mlh::setProp(track,"type","midi");mlh::setProp(track,"inputId","");mlh::setProp(track,"outputId",output);mlh::setProp(track,"armed",false);mlh::setProp(track,"muted",false);mlh::setProp(track,"volume",gain);juce::var clip=mlh::makeObject();mlh::setProp(clip,"id",juce::String("clip-")+id);mlh::setProp(clip,"startPpq",clipStart);mlh::setProp(clip,"lengthPpq",clipLength);juce::Array<juce::var> notes;const double noteLength=retrigger?2.0:clipLength;for(double start=0.0;start<clipLength;start+=noteLength){juce::var note=mlh::makeObject();mlh::setProp(note,"startPpq",start);mlh::setProp(note,"durationPpq",std::min(noteLength,clipLength-start));mlh::setProp(note,"pitch",pitch);mlh::setProp(note,"velocity",127);mlh::setProp(note,"channel",1);notes.add(note);}mlh::setProp(clip,"notes",notes);juce::Array<juce::var> clips;clips.add(clip);mlh::setProp(track,"clips",clips);return track;
 }
 
-mlh::AudioGraphSpec isolationVstGraph(const std::string& chainA,const std::string& chainB)
+mlh::AudioNetworkSpec isolationVstNetwork(const std::string& chainA,const std::string& chainB)
 {
-    auto a=graphNode(chainA.c_str(),mlh::AudioNodeKind::vst);auto b=graphNode(chainB.c_str(),mlh::AudioNodeKind::vst);auto mixer=graphNode("vst-isolation-mixer",mlh::AudioNodeKind::mixer);mixer.inputs={{"audio-in-1",chainA,"audio-out",1,false},{"audio-in-2",chainB,"audio-out",1,false}};auto output=graphNode("audio-output",mlh::AudioNodeKind::output);output.inputs={{"audio-in","vst-isolation-mixer","audio-out",1,false}};mlh::AudioGraphSpec graph;graph.nodes={output,mixer,b,a};return graph;
+    auto a=networkNode(chainA.c_str(),mlh::AudioNodeKind::vst);auto b=networkNode(chainB.c_str(),mlh::AudioNodeKind::vst);auto mixer=networkNode("vst-isolation-mixer",mlh::AudioNodeKind::mixer);mixer.inputs={{"audio-in-1",chainA,"audio-out",1,false},{"audio-in-2",chainB,"audio-out",1,false}};auto output=networkNode("audio-output",mlh::AudioNodeKind::output);output.inputs={{"audio-in","vst-isolation-mixer","audio-out",1,false}};mlh::AudioNetworkSpec network;network.nodes={output,mixer,b,a};return network;
 }
 
 bool loadIsolationPlugin(const mlh::PluginRecord& record,mlh::Chain& chain,const juce::String& instanceId,mlh::PluginInstance*& raw)
@@ -1244,7 +1244,7 @@ void testHostedVstPairIsolation(const mlh::PluginRecord& recordA,const mlh::Plug
     expect(activeAPlugin!=activeBPlugin&&activeAPlugin!=referenceAPlugin&&activeBPlugin!=referenceBPlugin&&referenceAPlugin!=referenceBPlugin,"Track 1/Track 2/reference PluginInstance pointers are all distinct");
     mlh::SequencerEngine activeSequencer,referenceSequencer;activeSequencer.prepare(48000,480);referenceSequencer.prepare(48000,480);juce::Array<juce::var> activeTracks,referenceTracks;const bool retriggerTrack2=recordB.name.containsIgnoreCase("Dexed");activeTracks.add(isolationMidiTrack("track-1","active-a",6,4,69,.7));activeTracks.add(isolationMidiTrack("track-2","active-b",0,14,81,.8,retriggerTrack2));referenceTracks.add(isolationMidiTrack("track-1","reference-a",20,4,69,.7));referenceTracks.add(isolationMidiTrack("track-2","reference-b",0,14,81,.8,retriggerTrack2));juce::Array<juce::var> info;std::string error;
     const auto activeLookup=[&](const std::string& id){if(id=="active-a")return activeA.get();if(id=="active-b")return activeB.get();return(mlh::Chain*)nullptr;};const auto referenceLookup=[&](const std::string& id){if(id=="reference-a")return referenceA.get();if(id=="reference-b")return referenceB.get();return(mlh::Chain*)nullptr;};expect(activeSequencer.sync(makeSequencerProject(activeTracks),activeLookup,48000,480,info,error)&&referenceSequencer.sync(makeSequencerProject(referenceTracks),referenceLookup,48000,480,info,error),"independent two-track VST Sequencer plans compile");expect(activeSequencer.setTrackControl("track-1",.7f,false)&&activeSequencer.setTrackControl("track-2",.8f,false),"stable track IDs update only their own DSP controls");
-    auto activeGraph=isolationVstGraph("active-a","active-b");auto referenceGraph=isolationVstGraph("reference-a","reference-b");auto activePlan=mlh::AudioExecutionPlan::compile(activeGraph,activeLookup,&activeSequencer,480,error);auto referencePlan=mlh::AudioExecutionPlan::compile(referenceGraph,referenceLookup,&referenceSequencer,480,error);expect(activePlan&&referencePlan,"two independent VST paths -> Mixer -> Master compile");if(!activePlan||!referencePlan)return;
+    auto activeNetwork=isolationVstNetwork("active-a","active-b");auto referenceNetwork=isolationVstNetwork("reference-a","reference-b");auto activePlan=mlh::AudioExecutionPlan::compile(activeNetwork,activeLookup,&activeSequencer,480,error);auto referencePlan=mlh::AudioExecutionPlan::compile(referenceNetwork,referenceLookup,&referenceSequencer,480,error);expect(activePlan&&referencePlan,"two independent VST paths -> Mixer -> Master compile");if(!activePlan||!referencePlan)return;
     mlh::Transport activeTransport,referenceTransport;for(auto* transport:{&activeTransport,&referenceTransport}){transport->setSampleRate(48000);transport->setBpm(120);transport->setPlaying(true);}activeA->setPlayHead(&activeTransport);activeB->setPlayHead(&activeTransport);referenceA->setPlayHead(&referenceTransport);referenceB->setPlayHead(&referenceTransport);
     juce::AudioBuffer<float> activeStem(2,336000),referenceStem(2,336000),activeMixerInput(2,336000),referenceMixerInput(2,336000),activeMixerOutput(2,336000),activeTrack1(2,336000);std::array<float,480> activeLeft{},activeRight{},referenceLeft{},referenceRight{};float* activeOutput[]={activeLeft.data(),activeRight.data()};float* referenceOutput[]={referenceLeft.data(),referenceRight.data()};juce::MidiBuffer activeMidi,referenceMidi;std::array<float,3> rawTrack2Peaks{},postTrack2Peaks{};std::array<mlh::SequencerEngine::TrackSignalTrace,3> track2Traces{};const float* activeAAddress=nullptr;const float* activeBAddress=nullptr;const float* activeMixerInputAAddress=nullptr;const float* activeMixerInputAddress=nullptr;
     for(int offset=0;offset<336000;offset+=480){activeLeft.fill(0);activeRight.fill(0);referenceLeft.fill(0);referenceRight.fill(0);activeTransport.beginBlock();referenceTransport.beginBlock();activeSequencer.processMidi(480,activeTransport);referenceSequencer.processMidi(480,referenceTransport);activePlan->process(activeOutput,2,480,activeTransport,activeMidi);referencePlan->process(referenceOutput,2,480,referenceTransport,referenceMidi);const auto* activeANode=isolationNode(*activePlan,"active-a");const auto* activeBNode=isolationNode(*activePlan,"active-b");const auto* referenceBNode=isolationNode(*referencePlan,"reference-b");const auto* activeMixer=isolationNode(*activePlan,"vst-isolation-mixer");const auto* referenceMixer=isolationNode(*referencePlan,"vst-isolation-mixer");if(offset==0){activeAAddress=activeANode->output.getReadPointer(0);activeBAddress=activeBNode->output.getReadPointer(0);activeMixerInputAAddress=activeMixer->processedSources[0]->getReadPointer(0);activeMixerInputAddress=activeMixer->processedSources[1]->getReadPointer(0);}for(int channel=0;channel<2;++channel){activeTrack1.copyFrom(channel,offset,activeANode->output,channel,0,480);activeStem.copyFrom(channel,offset,activeBNode->output,channel,0,480);referenceStem.copyFrom(channel,offset,referenceBNode->output,channel,0,480);activeMixerInput.copyFrom(channel,offset,*activeMixer->processedSources[1],channel,0,480);referenceMixerInput.copyFrom(channel,offset,*referenceMixer->processedSources[1],channel,0,480);activeMixerOutput.copyFrom(channel,offset,activeMixer->output,channel,0,480);}const auto blockEnd=offset+480;const size_t period=blockEnd==144000?0:blockEnd==240000?1:blockEnd==336000?2:3;if(period<3){const auto raw=activeBPlugin->takeSignalTelemetry();rawTrack2Peaks[period]=raw.outputPeak;const auto traces=activeSequencer.trackSignalTrace(&activeTransport);const auto found=std::find_if(traces.begin(),traces.end(),[](const auto& trace){return trace.trackId=="track-2";});if(found!=traces.end()){track2Traces[period]=*found;postTrack2Peaks[period]=found->peakAfterGain;}}activeTransport.advance(480);referenceTransport.advance(480);}
@@ -1258,7 +1258,7 @@ void testHostedVstPairIsolation(const mlh::PluginRecord& recordA,const mlh::Plug
                &&bridgeA.numSamples==480&&bridgeB.numSamples==480,
            "simultaneous commercial VST instances own disjoint planar buffers and execute once per 480-frame block");
     if(exact)expect(stemDifference<1.0e-6f&&mixerInputDifference<1.0e-6f,"deterministic VST Track 2 R == R2 sample-by-sample through Mixer input");else expect(activeRms[0]>1.0e-5&&activeRms[1]>1.0e-5&&activeRms[2]>1.0e-5&&ratioSpread<.02,"commercial VST Track 2/reference level ratio is invariant across Track 1 activation");expect(track1Rms[0]<1.0e-6&&track1Rms[1]>1.0e-5,"VST Track 1 is silent before its clip and audible during it");expect(std::all_of(track2Traces.begin(),track2Traces.end(),[](const auto& trace){return trace.trackId=="track-2"&&std::abs(trace.gainApplied-.8f)<1.0e-6f&&trace.destinationBuffer=="active-b:audio-in";}),"Track 2 keeps stable trackId/gain/chainId across Track 1 activation");
-    std::cerr<<"[cross-track]["<<label<<"] stemDiff="<<stemDifference<<" mixerInputDiff="<<mixerInputDifference<<" track2Rms="<<activeRms[0]<<'/'<<activeRms[1]<<'/'<<activeRms[2]<<" referenceRms="<<referenceRms[0]<<'/'<<referenceRms[1]<<'/'<<referenceRms[2]<<" ratio="<<ratios[0]<<'/'<<ratios[1]<<'/'<<ratios[2]<<" ratioSpread="<<ratioSpread<<" rawVst2Peaks="<<rawTrack2Peaks[0]<<'/'<<rawTrack2Peaks[1]<<'/'<<rawTrack2Peaks[2]<<" postGain2Peaks="<<postTrack2Peaks[0]<<'/'<<postTrack2Peaks[1]<<'/'<<postTrack2Peaks[2]<<" track1Rms="<<track1Rms[0]<<'/'<<track1Rms[1]<<'/'<<track1Rms[2]<<" mixerRms="<<mixerRms[0]<<'/'<<mixerRms[1]<<'/'<<mixerRms[2]<<" instances="<<(const void*)activeAPlugin<<'/'<<(const void*)activeBPlugin<<" graphBuffers="<<(const void*)activeAAddress<<'/'<<(const void*)activeBAddress<<" bridgeA(inL/inR/outL/outR)=0x"<<std::hex<<bridgeA.inputLeft<<"/0x"<<bridgeA.inputRight<<"/0x"<<bridgeA.outputLeft<<"/0x"<<bridgeA.outputRight<<" bridgeB(inL/inR/outL/outR)=0x"<<bridgeB.inputLeft<<"/0x"<<bridgeB.inputRight<<"/0x"<<bridgeB.outputLeft<<"/0x"<<bridgeB.outputRight<<std::dec<<" buses="<<bridgeA.inputBusCount<<'/'<<bridgeA.outputBusCount<<','<<bridgeB.inputBusCount<<'/'<<bridgeB.outputBusCount<<" channels="<<bridgeA.mainInputChannels<<'/'<<bridgeA.mainOutputChannels<<','<<bridgeB.mainInputChannels<<'/'<<bridgeB.mainOutputChannels<<" frames="<<bridgeA.numSamples<<'/'<<bridgeB.numSamples<<" calls="<<bridgeA.processCallInBlock<<'/'<<bridgeB.processCallInBlock<<" mixerInputs="<<(const void*)activeMixerInputAAddress<<'/'<<(const void*)activeMixerInputAddress<<'\n';
+    std::cerr<<"[cross-track]["<<label<<"] stemDiff="<<stemDifference<<" mixerInputDiff="<<mixerInputDifference<<" track2Rms="<<activeRms[0]<<'/'<<activeRms[1]<<'/'<<activeRms[2]<<" referenceRms="<<referenceRms[0]<<'/'<<referenceRms[1]<<'/'<<referenceRms[2]<<" ratio="<<ratios[0]<<'/'<<ratios[1]<<'/'<<ratios[2]<<" ratioSpread="<<ratioSpread<<" rawVst2Peaks="<<rawTrack2Peaks[0]<<'/'<<rawTrack2Peaks[1]<<'/'<<rawTrack2Peaks[2]<<" postGain2Peaks="<<postTrack2Peaks[0]<<'/'<<postTrack2Peaks[1]<<'/'<<postTrack2Peaks[2]<<" track1Rms="<<track1Rms[0]<<'/'<<track1Rms[1]<<'/'<<track1Rms[2]<<" mixerRms="<<mixerRms[0]<<'/'<<mixerRms[1]<<'/'<<mixerRms[2]<<" instances="<<(const void*)activeAPlugin<<'/'<<(const void*)activeBPlugin<<" networkBuffers="<<(const void*)activeAAddress<<'/'<<(const void*)activeBAddress<<" bridgeA(inL/inR/outL/outR)=0x"<<std::hex<<bridgeA.inputLeft<<"/0x"<<bridgeA.inputRight<<"/0x"<<bridgeA.outputLeft<<"/0x"<<bridgeA.outputRight<<" bridgeB(inL/inR/outL/outR)=0x"<<bridgeB.inputLeft<<"/0x"<<bridgeB.inputRight<<"/0x"<<bridgeB.outputLeft<<"/0x"<<bridgeB.outputRight<<std::dec<<" buses="<<bridgeA.inputBusCount<<'/'<<bridgeA.outputBusCount<<','<<bridgeB.inputBusCount<<'/'<<bridgeB.outputBusCount<<" channels="<<bridgeA.mainInputChannels<<'/'<<bridgeA.mainOutputChannels<<','<<bridgeB.mainInputChannels<<'/'<<bridgeB.mainOutputChannels<<" frames="<<bridgeA.numSamples<<'/'<<bridgeB.numSamples<<" calls="<<bridgeA.processCallInBlock<<'/'<<bridgeB.processCallInBlock<<" mixerInputs="<<(const void*)activeMixerInputAAddress<<'/'<<(const void*)activeMixerInputAddress<<'\n';
     activeA->panic();activeB->panic();referenceA->panic();referenceB->panic();
 }
 

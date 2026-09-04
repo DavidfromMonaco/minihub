@@ -6,7 +6,7 @@ import path from 'node:path';
 
 import { createHub } from '../src/renderer/js/core/hub.js';
 import { getNodeType } from '../src/renderer/js/core/nodeTypes.js';
-import { describeAudioGraph, describeMidiGraph } from '../src/renderer/js/core/engineSync.js';
+import { describeAudioNetwork, describeMidiNetwork } from '../src/renderer/js/core/engineSync.js';
 import { setupMidiRouting } from '../src/renderer/js/core/midiRouting.js';
 import { createConnection } from '../src/renderer/js/modules/routing/routingCore.js';
 import { createMiniLabModule } from '../src/renderer/js/modules/minilab/minilabModule.js';
@@ -131,7 +131,7 @@ test('Sequencer node type declares the exact four-port Patch Bay contract', () =
   exactSequencerPorts(type.ports);
 });
 
-test('MiniLab hardware MIDI input is a real graph sink, not a hidden route', () => {
+test('MiniLab hardware MIDI input is a real network sink, not a hidden route', () => {
   const delivered = [];
   const module = createMiniLabModule({
     midi: { send: (raw) => { delivered.push([...raw]); return true; } }
@@ -140,11 +140,11 @@ test('MiniLab hardware MIDI input is a real graph sink, not a hidden route', () 
   assert.deepEqual(sink, { id: 'midi-in', type: 'midi', label: 'Hardware MIDI In' });
   module.routingNode.onInput('midi-in', { raw: [0x90, 60, 100] });
   module.routingNode.onInput('other', { raw: [0x80, 60, 0] });
-  assert.deepEqual(delivered, [[0x90, 60, 100]], 'only a graph delivery to MIDI IN reaches hardware');
+  assert.deepEqual(delivered, [[0x90, 60, 100]], 'only a network delivery to MIDI IN reaches hardware');
 });
 
 test('Patch Bay + New Node explicitly creates and persists a routable Sequencer', async () => {
-  const { hub } = await makeRuntime({ graphViewport: { x: 0, y: 0, zoom: 1 } });
+  const { hub } = await makeRuntime({ networkViewport: { x: 0, y: 0, zoom: 1 } });
   registerSystemNodes(hub);
   const { container, newButton, newType } = routingContainer();
   const routing = createRoutingModule(hub);
@@ -157,12 +157,12 @@ test('Patch Bay + New Node explicitly creates and persists a routable Sequencer'
 
     const created = hub.nodes.list().filter((node) => node.type === 'sequencer');
     assert.equal(created.length, 1, 'one explicit click creates the requested Sequencer');
-    const graphNode = hub.graph.getNode(created[0].id);
-    assert.ok(graphNode, 'the created instance is a real routing node');
-    exactSequencerPorts(graphNode);
+    const networkNode = hub.network.getNode(created[0].id);
+    assert.ok(networkNode, 'the created instance is a real routing node');
+    exactSequencerPorts(networkNode);
     assert.ok(hub.settings.get('nodeInstances').instances.some((node) => node.id === created[0].id),
       'the existing node-instance persistence owns the Sequencer');
-    assert.ok(hub.settings.get('graphLayout')[created[0].id],
+    assert.ok(hub.settings.get('networkLayout')[created[0].id],
       'the existing Patch Bay creation path persists its position');
   } finally {
     routing.unmount();
@@ -170,9 +170,9 @@ test('Patch Bay + New Node explicitly creates and persists a routable Sequencer'
 });
 
 test('fresh project has only MiniLab and Audio Output; Audio Input is explicit, routable, and persistent', async () => {
-  const { hub } = await makeRuntime({ graphViewport: { x: 0, y: 0, zoom: 1 } });
+  const { hub } = await makeRuntime({ networkViewport: { x: 0, y: 0, zoom: 1 } });
   registerSystemNodes(hub);
-  assert.deepEqual(hub.graph.listNodes().map((node) => node.id).sort(), ['audio-output', 'minilab-3']);
+  assert.deepEqual(hub.network.listNodes().map((node) => node.id).sort(), ['audio-output', 'minilab-3']);
   assert.equal(hub.nodes.list().some((node) => node.type === 'audio-input'), false);
 
   const { container, newButton, newType } = routingContainer();
@@ -186,11 +186,11 @@ test('fresh project has only MiniLab and Audio Output; Audio Input is explicit, 
   }
   const input = hub.nodes.list().find((node) => node.type === 'audio-input');
   assert.equal(input?.id, 'audio-input');
-  assert.deepEqual(hub.graph.getNode(input.id).outputs, [
+  assert.deepEqual(hub.network.getNode(input.id).outputs, [
     { id: 'audio-out', type: 'audio', label: 'AUDIO OUT' }
   ]);
   const sequencer = hub.nodes.create('sequencer');
-  assert.equal(hub.graph.connect(input.id, 'audio-out', sequencer.id, 'audio-in'), true);
+  assert.equal(hub.network.connect(input.id, 'audio-out', sequencer.id, 'audio-in'), true);
 
   const saved = hub.project.snapshot();
   const { hub: restored } = await makeRuntime({}, false);
@@ -198,9 +198,9 @@ test('fresh project has only MiniLab and Audio Output; Audio Input is explicit, 
   registerSystemNodes(restored);
   restored.sequencer.load();
   await restored.nodes.load();
-  restored.graph.restore(restored.settings.get('graphConnections'));
+  restored.network.restore(restored.settings.get('networkConnections'));
   assert.equal(restored.nodes.list().filter((node) => node.type === 'audio-input').length, 1);
-  assert.ok(restored.graph.connectionsFrom('audio-input', 'audio-out')
+  assert.ok(restored.network.connectionsFrom('audio-input', 'audio-out')
     .some((connection) => connection.to.nodeId === 'sequencer' && connection.to.portId === 'audio-in'));
 });
 
@@ -211,8 +211,8 @@ test('deleting and re-adding the singleton removes only routing and preserves on
   hub.modules.register(fixedPage);
   const sequencer = hub.nodes.create('sequencer');
   const vst = hub.nodes.create('vst');
-  hub.graph.connect('minilab-3', 'midi-out', sequencer.id, 'midi-in');
-  hub.graph.connect(sequencer.id, 'midi-out', vst.id, 'midi-in');
+  hub.network.connect('minilab-3', 'midi-out', sequencer.id, 'midi-in');
+  hub.network.connect(sequencer.id, 'midi-out', vst.id, 'midi-in');
 
   const track = hub.sequencer.model.addTrack('midi');
   hub.sequencer.model.addMidiClip(track.id, 2, 4, [{
@@ -223,8 +223,8 @@ test('deleting and re-adding the singleton removes only routing and preserves on
 
   assert.equal(hub.nodes.delete(sequencer.id), true);
   assert.equal(hub.nodes.list().some((node) => node.type === 'sequencer'), false);
-  assert.equal(hub.graph.getNode(sequencer.id), undefined);
-  assert.equal(hub.graph.connections().some((connection) =>
+  assert.equal(hub.network.getNode(sequencer.id), undefined);
+  assert.equal(hub.network.connections().some((connection) =>
     connection.from.nodeId === sequencer.id || connection.to.nodeId === sequencer.id), false,
   'deletion removes all active Sequencer routing');
   assert.equal(hub.modules.get('sequencer'), fixedPage,
@@ -239,7 +239,7 @@ test('deleting and re-adding the singleton removes only routing and preserves on
   assert.equal(hub.nodes.create('sequencer'), null, 'a second Sequencer is rejected');
   assert.equal(hub.nodes.duplicate(readded.id), null, 'the Sequencer cannot be duplicated');
   assert.equal(hub.nodes.list().filter((node) => node.type === 'sequencer').length, 1);
-  assert.equal(hub.graph.connectionsTo(readded.id).length + hub.graph.connectionsFrom(readded.id).length, 0,
+  assert.equal(hub.network.connectionsTo(readded.id).length + hub.network.connectionsFrom(readded.id).length, 0,
     'deleted cables are not restored implicitly');
   assert.deepEqual(hub.sequencer.model.snapshot(), arrangement,
     're-add binds the node to the existing arrangement instead of creating another');
@@ -250,10 +250,10 @@ test('MiniLab -> Sequencer cable alone gates one MIDI capture and one playthroug
   registerSystemNodes(hub);
   const sequencer = hub.nodes.create('sequencer');
   const vst = hub.nodes.create('vst');
-  assert.deepEqual(createConnection(hub.graph,
+  assert.deepEqual(createConnection(hub.network,
     { nodeId: sequencer.id, portId: 'midi-out' },
     { nodeId: vst.id, portId: 'midi-in' }), { ok: true });
-  assert.deepEqual(createConnection(hub.graph,
+  assert.deepEqual(createConnection(hub.network,
     { nodeId: 'minilab-3', portId: 'midi-out' },
     { nodeId: sequencer.id, portId: 'midi-in' }), { ok: true },
   'MiniLab MIDI OUT can connect to Sequencer MIDI IN');
@@ -272,20 +272,20 @@ test('MiniLab -> Sequencer cable alone gates one MIDI capture and one playthroug
       sourceId: 'web-midi-port-7', offsetMs: -4, raw
     };
     // MidiManager emits both events for the selected physical input. The first
-    // is diagnostic only; the second is the authoritative graph feed.
+    // is diagnostic only; the second is the authoritative network feed.
     hub.events.emit('midi:inputMessage', message);
     hub.events.emit('midi:message', message);
   };
 
   try {
-    hub.graph.disconnect('minilab-3', 'midi-out', sequencer.id, 'midi-in');
+    hub.network.disconnect('minilab-3', 'midi-out', sequencer.id, 'midi-in');
     sendPhysicalInput([0x90, 60, 100]);
     assert.equal(sentOf(api, 'sequencerMidiInput').length, 0,
       'without the input cable there is no recording capture');
     assert.equal(sentOf(api, 'midi').length, 0,
       'without the input cable there is no VST playthrough');
 
-    hub.graph.connect('minilab-3', 'midi-out', sequencer.id, 'midi-in');
+    hub.network.connect('minilab-3', 'midi-out', sequencer.id, 'midi-in');
     sendPhysicalInput([0x90, 61, 101]);
     assert.equal(sentOf(api, 'sequencerMidiInput').length, 1,
       'one physical message is captured exactly once');
@@ -300,7 +300,7 @@ test('MiniLab -> Sequencer cable alone gates one MIDI capture and one playthroug
     assert.equal(track.clips.length, 1, 'the one routed native capture becomes one editable clip');
     assert.equal(track.clips[0].notes.length, 1);
 
-    hub.graph.disconnect('minilab-3', 'midi-out', sequencer.id, 'midi-in');
+    hub.network.disconnect('minilab-3', 'midi-out', sequencer.id, 'midi-in');
     assert.equal(sentOf(api, 'sequencerPanic').length, 1,
       'removing a cable with a held note triggers one native panic');
     const cleanup = sentOf(api, 'midi').slice(1);
@@ -329,19 +329,19 @@ test('Sequencer MIDI OUT remains routable directly to VST and through Arpeggiato
   const arp = hub.nodes.create('arpeggiator');
   const arpeggiatedVst = hub.nodes.create('vst');
 
-  assert.deepEqual(createConnection(hub.graph,
+  assert.deepEqual(createConnection(hub.network,
     { nodeId: sequencer.id, portId: 'midi-out' },
     { nodeId: directVst.id, portId: 'midi-in' }), { ok: true });
-  assert.deepEqual(createConnection(hub.graph,
+  assert.deepEqual(createConnection(hub.network,
     { nodeId: sequencer.id, portId: 'midi-out' },
     { nodeId: arp.id, portId: 'midi-in' }), { ok: true });
-  assert.deepEqual(createConnection(hub.graph,
+  assert.deepEqual(createConnection(hub.network,
     { nodeId: arp.id, portId: 'midi-out' },
     { nodeId: arpeggiatedVst.id, portId: 'midi-in' }), { ok: true });
 
-  assert.ok(hub.graph.connectionsFrom(sequencer.id, 'midi-out')
+  assert.ok(hub.network.connectionsFrom(sequencer.id, 'midi-out')
     .some((c) => c.to.nodeId === directVst.id && c.to.portId === 'midi-in'));
-  const nativeArp = describeMidiGraph(hub).find((node) => node.id === arp.id);
+  const nativeArp = describeMidiNetwork(hub).find((node) => node.id === arp.id);
   assert.deepEqual(nativeArp.inputs, [
     { sourceNodeId: sequencer.id, sourcePortId: 'midi-out' }
   ]);
@@ -368,13 +368,13 @@ test('audio capture input and Sequencer playback output are both cable-authorita
   assert.equal(nativeTrack.outputId, '',
     'a selected audio destination without a Patch Bay cable cannot receive clips');
 
-  assert.deepEqual(createConnection(hub.graph,
+  assert.deepEqual(createConnection(hub.network,
     { nodeId: source.id, portId: 'audio-out' },
     { nodeId: sequencer.id, portId: 'audio-in' }), { ok: true });
-  assert.deepEqual(createConnection(hub.graph,
+  assert.deepEqual(createConnection(hub.network,
     { nodeId: sequencer.id, portId: 'audio-out' },
     { nodeId: mixer.id, portId: 'audio-in-1' }), { ok: true });
-  assert.deepEqual(createConnection(hub.graph,
+  assert.deepEqual(createConnection(hub.network,
     { nodeId: mixer.id, portId: 'audio-out' },
     { nodeId: 'audio-output', portId: 'audio-in' }), { ok: true });
   hub.sequencer.changed();
@@ -387,14 +387,14 @@ test('audio capture input and Sequencer playback output are both cable-authorita
   assert.equal(nativeTrack.outputId, mixer.id,
     'the visible Sequencer AUDIO OUT -> Mixer cable enables playback');
 
-  const audioGraph = describeAudioGraph(hub);
-  assert.deepEqual(audioGraph.find((node) => node.id === sequencer.id).inputs, [{
+  const audioNetwork = describeAudioNetwork(hub);
+  assert.deepEqual(audioNetwork.find((node) => node.id === sequencer.id).inputs, [{
     portId: 'audio-in', sourceNodeId: source.id, sourcePortId: 'audio-out', level: 1, muted: false
   }]);
-  assert.equal(audioGraph.find((node) => node.id === mixer.id).inputs[0].sourceNodeId, sequencer.id);
-  assert.equal(audioGraph.find((node) => node.id === 'audio-output').inputs[0].sourceNodeId, mixer.id);
+  assert.equal(audioNetwork.find((node) => node.id === mixer.id).inputs[0].sourceNodeId, sequencer.id);
+  assert.equal(audioNetwork.find((node) => node.id === 'audio-output').inputs[0].sourceNodeId, mixer.id);
 
-  hub.graph.disconnect(source.id, 'audio-out', sequencer.id, 'audio-in');
+  hub.network.disconnect(source.id, 'audio-out', sequencer.id, 'audio-in');
   hub.sequencer.changed();
   await flush();
   nativeTrack = sentOf(api, 'syncSequencer').at(-1).project.tracks
@@ -409,11 +409,11 @@ test('project disk round-trip preserves Sequencer presence, ports, cables and cl
   const vst = hub.nodes.create('vst');
   const mixer = hub.nodes.create('mixer');
 
-  hub.graph.connect('minilab-3', 'midi-out', sequencer.id, 'midi-in');
-  hub.graph.connect(sequencer.id, 'midi-out', vst.id, 'midi-in');
-  hub.graph.connect(vst.id, 'audio-out', sequencer.id, 'audio-in');
-  hub.graph.connect(sequencer.id, 'audio-out', mixer.id, 'audio-in-1');
-  hub.graph.connect(mixer.id, 'audio-out', 'audio-output', 'audio-in');
+  hub.network.connect('minilab-3', 'midi-out', sequencer.id, 'midi-in');
+  hub.network.connect(sequencer.id, 'midi-out', vst.id, 'midi-in');
+  hub.network.connect(vst.id, 'audio-out', sequencer.id, 'audio-in');
+  hub.network.connect(sequencer.id, 'audio-out', mixer.id, 'audio-in-1');
+  hub.network.connect(mixer.id, 'audio-out', 'audio-output', 'audio-in');
 
   const midiTrack = hub.sequencer.model.addTrack('midi');
   hub.sequencer.model.updateTrack(midiTrack.id, {
@@ -445,13 +445,13 @@ test('project disk round-trip preserves Sequencer presence, ports, cables and cl
   registerSystemNodes(restored);
   restored.sequencer.load();
   await restored.nodes.load();
-  restored.graph.restore(restored.settings.get('graphConnections'));
+  restored.network.restore(restored.settings.get('networkConnections'));
   await flush();
 
   const restoredSequencer = restored.nodes.list().find((node) => node.type === 'sequencer');
   assert.ok(restoredSequencer, 'the explicitly-created Sequencer survives reload');
-  exactSequencerPorts(restored.graph.getNode(restoredSequencer.id));
-  assert.deepEqual(restored.graph.serialize(), reopened.graph.connections,
+  exactSequencerPorts(restored.network.getNode(restoredSequencer.id));
+  assert.deepEqual(restored.network.serialize(), reopened.network.connections,
     'all visible cables survive reload unchanged');
   assert.deepEqual(restored.sequencer.model.snapshot(), reopened.sequencer,
     'tracks, MIDI notes and audio clips survive reload unchanged');
@@ -471,7 +471,7 @@ test('project disk round-trip preserves Sequencer presence, ports, cables and cl
   registerSystemNodes(removedReload);
   removedReload.sequencer.load();
   await removedReload.nodes.load();
-  removedReload.graph.restore(removedReload.settings.get('graphConnections'));
+  removedReload.network.restore(removedReload.settings.get('networkConnections'));
   assert.equal(removedReload.nodes.list().some((node) => node.type === 'sequencer'), false,
     'save/reload keeps the routing node absent');
   assert.deepEqual(removedReload.sequencer.model.snapshot(), retainedArrangement,
@@ -488,7 +488,7 @@ test('project disk round-trip preserves Sequencer presence, ports, cables and cl
   registerSystemNodes(readdedReload);
   readdedReload.sequencer.load();
   await readdedReload.nodes.load();
-  readdedReload.graph.restore(readdedReload.settings.get('graphConnections'));
+  readdedReload.network.restore(readdedReload.settings.get('networkConnections'));
   assert.equal(readdedReload.nodes.list().filter((node) => node.type === 'sequencer').length, 1,
     'save/reload after re-add restores exactly one node');
   assert.deepEqual(readdedReload.sequencer.model.snapshot(), retainedArrangement,
@@ -498,7 +498,7 @@ test('project disk round-trip preserves Sequencer presence, ports, cables and cl
   const freshProject = {
     format: 'minihub-project', version: 1, projectId: 'fresh-new', name: 'Untitled',
     createdAt: now, modifiedAt: now,
-    graph: { connections: [], layout: {}, viewport: null },
+    network: { connections: [], layout: {}, viewport: null },
     nodeInstances: { instances: [], idSeq: {} }, transport: { bpm: 120 }
   };
   const { hub: fresh } = await makeRuntime({}, false);
@@ -506,12 +506,12 @@ test('project disk round-trip preserves Sequencer presence, ports, cables and cl
   registerSystemNodes(fresh);
   fresh.sequencer.load();
   await fresh.nodes.load();
-  fresh.graph.restore(fresh.settings.get('graphConnections'));
+  fresh.network.restore(fresh.settings.get('networkConnections'));
   assert.equal(fresh.nodes.list().some((node) => node.type === 'sequencer'), false);
   assert.equal(fresh.nodes.list().some((node) => node.type === 'audio-input'), false);
-  assert.equal(fresh.graph.listNodes().some((node) => node.type === 'sequencer'), false,
+  assert.equal(fresh.network.listNodes().some((node) => node.type === 'sequencer'), false,
     'a fresh New project does not inherit or inject the previous Sequencer');
-  assert.deepEqual(fresh.graph.listNodes().map((node) => node.id).sort(), ['audio-output', 'minilab-3']);
+  assert.deepEqual(fresh.network.listNodes().map((node) => node.id).sort(), ['audio-output', 'minilab-3']);
 });
 
 test('real renderer bootstrap of a staged New project does not inject a Sequencer', async () => {
@@ -533,7 +533,7 @@ test('real renderer bootstrap of a staged New project does not inject a Sequence
   const freshProject = {
     format: 'minihub-project', version: 1, projectId: 'staged-new', name: 'Untitled',
     createdAt: now, modifiedAt: now,
-    graph: { connections: [], layout: {}, viewport: null },
+    network: { connections: [], layout: {}, viewport: null },
     nodeInstances: { instances: [], idSeq: {} }, transport: { bpm: 120 }
   };
   const session = new Map([['minihub.stagedProject', JSON.stringify({
@@ -555,9 +555,9 @@ test('real renderer bootstrap of a staged New project does not inject a Sequence
     const listeners = [...(window._listeners.DOMContentLoaded || [])];
     assert.equal(listeners.length, 1, 'the real renderer entrypoint registered its bootstrap');
     listeners[0]();
-    for (let i = 0; i < 20 && sentOf(api, 'syncAudioGraph').length === 0; i += 1) await flush();
-    const published = sentOf(api, 'syncAudioGraph').at(-1);
-    assert.ok(published, 'renderer bootstrap published the real audio graph');
+    for (let i = 0; i < 20 && sentOf(api, 'syncAudioNetwork').length === 0; i += 1) await flush();
+    const published = sentOf(api, 'syncAudioNetwork').at(-1);
+    assert.ok(published, 'renderer bootstrap published the real audio network');
     assert.equal(published.nodes.some((node) => node.nodeType === 'sequencer'), false,
       'New reaches Patch Bay without an automatically injected Sequencer node');
     assert.equal(published.nodes.some((node) => node.nodeType === 'audio-input'), false,

@@ -102,7 +102,7 @@ bool isExportMutation(const juce::String& type)
 {
     // The worker never waits for the callback, but AudioDeviceAboutToStart also
     // republishes Sequencer sample-rate/block-size state. Defer that one live
-    // mutation so the captured export contract remains immutable; every graph,
+    // mutation so the captured export contract remains immutable; every network,
     // transport, gain, MIDI and plug-in command stays immediate.
     return type == "selectDevice";
 }
@@ -260,7 +260,7 @@ void Engine::timerCallback()
         if (exportTerminal)
         {
             // Publish the live transport exactly as it exists before replaying
-            // any graph mutations that arrived during the frozen transaction.
+            // any network mutations that arrived during the frozen transaction.
             // These fields make transport isolation directly observable in a
             // packaged-runtime gauntlet instead of inferred from UI labels.
             setProp(event, "livePlaying", transport_.playing());
@@ -350,7 +350,7 @@ void Engine::timerCallback()
             juce::var out=makeObject();setProp(out,"type","hostTiming");setProp(out,"nodeId",chain.first);setProp(out,"chainId",chain.first);setProp(out,"instanceId",plugin->instanceId());setProp(out,"bpm",transport_.bpm());setProp(out,"playing",transport_.playing());setProp(out,"ppqPosition",transport_.ppqPosition());setProp(out,"timeInSamples",transport_.samplePosition());setProp(out,"numerator",4);setProp(out,"denominator",4);ipc_.send(out);
             const auto signal=plugin->takeSignalTelemetry();const auto processing=plugin->takeProcessingTelemetry();juce::var diagnostic=makeObject();setProp(diagnostic,"type","audioPathTelemetry");setProp(diagnostic,"scope","vst");setProp(diagnostic,"nodeId",chain.first);setProp(diagnostic,"chainId",chain.first);setProp(diagnostic,"instanceId",plugin->instanceId());setProp(diagnostic,"pluginId",plugin->pluginId());setProp(diagnostic,"name",plugin->name());setProp(diagnostic,"role",plugin->isInstrument()?"instrument":"effect");setProp(diagnostic,"gainCoefficient",1.0f);setSignalTelemetry(diagnostic,signal);setProp(diagnostic,"processMilliseconds",processing.lastMilliseconds);setProp(diagnostic,"maximumRecentProcessMilliseconds",processing.maximumRecentMilliseconds);setProp(diagnostic,"maximumProcessMilliseconds",processing.maximumMilliseconds);setProp(diagnostic,"processCalls",static_cast<juce::int64>(processing.processCalls));ipc_.send(diagnostic);
         }
-        if(auto* plan=activeAudioPlan_.load(std::memory_order_acquire))for(const auto& node:plan->nodes())if(node.signalMeter){juce::var diagnostic=makeObject();setProp(diagnostic,"type","audioPathTelemetry");setProp(diagnostic,"scope","graph");setProp(diagnostic,"nodeId",juce::String(node.id));setProp(diagnostic,"role",node.kind==AudioNodeKind::mixer?"mixer":"morpher");setProp(diagnostic,"gainCoefficient",node.masterLevel());juce::Array<juce::var> inputGains;for(size_t i=0;i<node.sources.size();++i)inputGains.add(node.muted(i)?0.0f:node.level(i)*node.masterLevel());setProp(diagnostic,"inputGainCoefficients",inputGains);setSignalTelemetry(diagnostic,node.signalMeter->takeTelemetrySnapshot());ipc_.send(diagnostic);}
+        if(auto* plan=activeAudioPlan_.load(std::memory_order_acquire))for(const auto& node:plan->nodes())if(node.signalMeter){juce::var diagnostic=makeObject();setProp(diagnostic,"type","audioPathTelemetry");setProp(diagnostic,"scope","network");setProp(diagnostic,"nodeId",juce::String(node.id));setProp(diagnostic,"role",node.kind==AudioNodeKind::mixer?"mixer":"morpher");setProp(diagnostic,"gainCoefficient",node.masterLevel());juce::Array<juce::var> inputGains;for(size_t i=0;i<node.sources.size();++i)inputGains.add(node.muted(i)?0.0f:node.level(i)*node.masterLevel());setProp(diagnostic,"inputGainCoefficients",inputGains);setSignalTelemetry(diagnostic,node.signalMeter->takeTelemetrySnapshot());ipc_.send(diagnostic);}
         for(const auto& trace:sequencer_.trackSignalTrace(&transport_)){juce::var diagnostic=makeObject();setProp(diagnostic,"type","audioPathTelemetry");setProp(diagnostic,"scope","sequencer-track");setProp(diagnostic,"trackId",juce::String(trace.trackId));setProp(diagnostic,"trackType",juce::String(trace.trackType));setProp(diagnostic,"activeClips",trace.activeClips);setProp(diagnostic,"peakBeforeSum",trace.peakBeforeSum);setProp(diagnostic,"peakAfterSum",trace.peakAfterSum);setProp(diagnostic,"gainCoefficient",trace.gainApplied);setProp(diagnostic,"peakAfterGain",trace.peakAfterGain);setProp(diagnostic,"destinationBuffer",juce::String(trace.destinationBuffer));ipc_.send(diagnostic);}
         const float deadline = static_cast<float>(callbackDeadlineMilliseconds_);
         const float duration = callbackDurationMilliseconds_.load(std::memory_order_acquire);
@@ -382,10 +382,10 @@ void Engine::timerCallback()
         setProp(runtime, "portAudioCallbackFrames", static_cast<int>(realtime.lastCallbackFrames));
         setProp(runtime, "maximumPortAudioCallbackFrames",
                 static_cast<int>(realtime.maximumCallbackFrames));
-        setProp(runtime, "audioGraphProcessCalls",
-                static_cast<juce::int64>(realtime.audioGraphProcessCalls));
-        setProp(runtime, "audioGraphProcessId",
-                static_cast<juce::int64>(realtime.audioGraphSequenceId));
+        setProp(runtime, "audioNetworkProcessCalls",
+                static_cast<juce::int64>(realtime.audioNetworkProcessCalls));
+        setProp(runtime, "audioNetworkProcessId",
+                static_cast<juce::int64>(realtime.audioNetworkSequenceId));
         setProp(runtime, "masterOutputProcessCalls",
                 static_cast<juce::int64>(realtime.masterOutputProcessCalls));
         setProp(runtime, "masterOutputProcessId",
@@ -393,11 +393,11 @@ void Engine::timerCallback()
         setProp(runtime, "portAudioOutputWrites", static_cast<juce::int64>(realtime.outputWrites));
         setProp(runtime, "portAudioOutputWriteId",
                 static_cast<juce::int64>(realtime.outputWriteSequenceId));
-        setProp(runtime, "oneGraphMasterWritePerCallback",
-                realtime.callbacks == realtime.audioGraphProcessCalls
+        setProp(runtime, "oneNetworkMasterWritePerCallback",
+                realtime.callbacks == realtime.audioNetworkProcessCalls
                     && realtime.callbacks == realtime.masterOutputProcessCalls
                     && realtime.callbacks == realtime.outputWrites
-                    && realtime.callbackSequenceId == realtime.audioGraphSequenceId
+                    && realtime.callbackSequenceId == realtime.audioNetworkSequenceId
                     && realtime.callbackSequenceId == realtime.masterOutputSequenceId
                     && realtime.callbackSequenceId == realtime.outputWriteSequenceId);
         setProp(runtime, "paOutputUnderflows", static_cast<juce::int64>(realtime.outputUnderflows));
@@ -468,7 +468,7 @@ void Engine::handleCommand(const juce::var& msg)
 
     if (exportTransactionActive() && !replayingDeferredExportCommands_)
     {
-        // Only a device restart waits. Graph, plugin, transport and live MIDI
+        // Only a device restart waits. Network, plugin, transport and live MIDI
         // commands address processors that are disjoint from the export clones.
         if (isExportMutation(type))
         {
@@ -502,9 +502,9 @@ void Engine::handleCommand(const juce::var& msg)
     else if (type == "setTransport") cmdSetTransport(msg);
     else if (type == "getTransport") cmdGetTransport(msg);
     else if (type == "foregroundEditors") cmdForegroundEditors(msg);
-    else if (type == "syncAudioGraph") cmdSyncAudioGraph(msg);
+    else if (type == "syncAudioNetwork") cmdSyncAudioNetwork(msg);
     else if (type == "setAudioNodeValues") cmdSetAudioNodeValues(msg);
-    else if (type == "syncMidiGraph") cmdSyncMidiGraph(msg);
+    else if (type == "syncMidiNetwork") cmdSyncMidiNetwork(msg);
     else if (type == "setMetronome") cmdSetMetronome(msg);
     else if (type == "setMasterOutput") cmdSetMasterOutput(msg);
     else if (type == "resetMasterClip") cmdResetMasterClip(msg);
@@ -654,8 +654,8 @@ void Engine::sendChainChanged(const juce::String& chainId)
         return;
 
     // Plugin order/bypass/removal can change cumulative latency. Publish a
-    // freshly prepared immutable Engine 2 graph before advertising the chain.
-    republishActiveAudioGraph();
+    // freshly prepared immutable Engine 2 network before advertising the chain.
+    republishActiveAudioNetwork();
 
     juce::var out = makeObject();
     setProp(out, "type", "chainChanged");
@@ -993,7 +993,7 @@ void Engine::panicAllMidi()
     physicalMidiOutput_.panic();
 }
 
-void Engine::clearAudioGraph()
+void Engine::clearAudioNetwork()
 {
     activeAudioSpec_.nodes.clear();
     publishAudioPlan(std::make_unique<AudioExecutionPlan>());
@@ -1005,15 +1005,15 @@ void Engine::publishAudioPlan(std::unique_ptr<AudioExecutionPlan> plan)
     auto* published = plan.get();
     audioPlans_.push_back(std::move(plan));
     activeAudioPlan_.store(published, std::memory_order_release);
-    // A callback increments before loading activeAudioPlan_. Old graphs are
+    // A callback increments before loading activeAudioPlan_. Old networks are
     // reclaimed only when there is provably no reader in that interval.
-    if (audioGraphReaders_.load(std::memory_order_acquire) == 0)
+    if (audioNetworkReaders_.load(std::memory_order_acquire) == 0)
         audioPlans_.erase(std::remove_if(audioPlans_.begin(), audioPlans_.end(),
             [published](const auto& owned) { return owned.get() != published; }),
             audioPlans_.end());
 }
 
-void Engine::republishActiveAudioGraph()
+void Engine::republishActiveAudioNetwork()
 {
     if (activeAudioSpec_.nodes.empty())
         return;
@@ -1024,10 +1024,10 @@ void Engine::republishActiveAudioGraph()
     if (plan)
         publishAudioPlan(std::move(plan));
     else
-        sendError("audio-graph-rebuild", juce::String(error));
+        sendError("audio-network-rebuild", juce::String(error));
 }
 
-void Engine::clearMidiGraph()
+void Engine::clearMidiNetwork()
 {
     activeMidiSpec_.nodes.clear();
     // Silence old processor/chain/hardware destinations before publishing the
@@ -1557,7 +1557,7 @@ void Engine::cmdMidi(const juce::var& msg)
     Chain* chain = requireChain(chainId);
     if (chain == nullptr)
         return;
-    // Only forward MIDI to chains that are MIDI-connected in the Hub graph.
+    // Only forward MIDI to chains that are MIDI-connected in the Hub network.
     if (!chain->midiEnabled())
         return;
 
@@ -1654,16 +1654,16 @@ void Engine::cmdForegroundEditors(const juce::var&)
             plugin->foregroundEditorIfAllowed();
 }
 
-void Engine::cmdSyncAudioGraph(const juce::var& msg)
+void Engine::cmdSyncAudioNetwork(const juce::var& msg)
 {
-    AudioGraphSpec spec;
-    const auto reject=[this](const juce::String& message){clearAudioGraph();sendError("audio-graph-invalid",message);};
+    AudioNetworkSpec spec;
+    const auto reject=[this](const juce::String& message){clearAudioNetwork();sendError("audio-network-invalid",message);};
     const auto* nodes = msg["nodes"].getArray();
     if (nodes == nullptr) { reject("nodes must be an array"); return; }
     if (nodes->size() > 64) { reject("too many audio nodes"); return; }
     for (const auto& value : *nodes)
     {
-        AudioGraphNodeSpec node; node.id = value["id"].toString().toStdString();
+        AudioNetworkNodeSpec node; node.id = value["id"].toString().toStdString();
         const auto type = value["nodeType"].toString();
         if (type == "audio-input") node.kind = AudioNodeKind::input;
         else if (type == "vst") node.kind = AudioNodeKind::vst;
@@ -1679,7 +1679,7 @@ void Engine::cmdSyncAudioGraph(const juce::var& msg)
         if (const auto* inputs = value["inputs"].getArray())
         {
             if (inputs->size() > 64) { reject("too many audio inputs"); return; }
-            for (const auto& item : *inputs) { AudioGraphInput input; input.portId=item["portId"].toString().toStdString(); input.sourceNodeId=item["sourceNodeId"].toString().toStdString(); input.sourcePortId=item["sourcePortId"].toString().toStdString(); input.level=item.hasProperty("level")?(float)(double)item["level"]:1.0f; input.muted=item["muted"].isBool()?(bool)item["muted"]:false; node.inputs.push_back(std::move(input)); }
+            for (const auto& item : *inputs) { AudioNetworkInput input; input.portId=item["portId"].toString().toStdString(); input.sourceNodeId=item["sourceNodeId"].toString().toStdString(); input.sourcePortId=item["sourcePortId"].toString().toStdString(); input.level=item.hasProperty("level")?(float)(double)item["level"]:1.0f; input.muted=item["muted"].isBool()?(bool)item["muted"]:false; node.inputs.push_back(std::move(input)); }
         }
         spec.nodes.push_back(std::move(node));
     }
@@ -1689,14 +1689,14 @@ void Engine::cmdSyncAudioGraph(const juce::var& msg)
     activeAudioSpec_ = spec;
     publishAudioPlan(std::move(plan));
     applyAudioInputRequirement(std::any_of(spec.nodes.begin(), spec.nodes.end(),
-        [](const AudioGraphNodeSpec& node) { return node.kind == AudioNodeKind::input; }));
-    juce::var out=makeObject();setProp(out,"type","audioGraphSynced");setProp(out,"nodeCount",(int)spec.nodes.size());ipc_.send(out);
+        [](const AudioNetworkNodeSpec& node) { return node.kind == AudioNodeKind::input; }));
+    juce::var out=makeObject();setProp(out,"type","audioNetworkSynced");setProp(out,"nodeCount",(int)spec.nodes.size());ipc_.send(out);
 }
 
 void Engine::cmdSetAudioNodeValues(const juce::var& msg)
 {
     // Values-only update of the LIVE plan. This exists so a fader drag stops
-    // recompiling the graph: a recompile rebuilds every SourceDelay, which
+    // recompiling the network: a recompile rebuilds every SourceDelay, which
     // zeroed the PDC delay lines mid-stream on each gesture.
     const auto* nodes = msg["nodes"].getArray();
     if (nodes == nullptr)
@@ -1707,21 +1707,21 @@ void Engine::cmdSetAudioNodeValues(const juce::var& msg)
     auto* plan = activeAudioPlan_.load(std::memory_order_acquire);
     if (plan == nullptr)
     {
-        sendError("audio-values-stale", "no audio graph is published");
+        sendError("audio-values-stale", "no audio network is published");
         return;
     }
 
     // A values-only update must never invent topology. Anything that does not
     // line up with the published plan means the sender's view is stale, so it
     // is refused whole rather than applied in part; the renderer answers a
-    // stale error with a full syncAudioGraph.
+    // stale error with a full syncAudioNetwork.
     for (const auto& value : *nodes)
     {
         const auto id = value["id"].toString().toStdString();
         auto* node = plan->findNode(id);
         const auto spec = std::find_if(activeAudioSpec_.nodes.begin(),
                                        activeAudioSpec_.nodes.end(),
-                                       [&id](const AudioGraphNodeSpec& candidate)
+                                       [&id](const AudioNetworkNodeSpec& candidate)
                                        { return candidate.id == id; });
         if (node == nullptr || spec == activeAudioSpec_.nodes.end())
         {
@@ -1733,7 +1733,7 @@ void Engine::cmdSetAudioNodeValues(const juce::var& msg)
         {
             const auto master = static_cast<float>(static_cast<double>(value["masterLevel"]));
             node->setMasterLevel(master);
-            // The spec is what republishActiveAudioGraph() recompiles from, so
+            // The spec is what republishActiveAudioNetwork() recompiles from, so
             // it has to carry the new value or a later rebuild would revert it.
             spec->masterLevel = std::clamp(master, 0.0f, 2.0f);
         }
@@ -1779,14 +1779,14 @@ void Engine::cmdSetAudioNodeValues(const juce::var& msg)
     ipc_.send(out);
 }
 
-void Engine::cmdSyncMidiGraph(const juce::var& msg)
+void Engine::cmdSyncMidiNetwork(const juce::var& msg)
 {
-    const auto reject=[this](const juce::String& message){clearMidiGraph();sendError("midi-graph-invalid",message);};
-    MidiGraphSpec spec;const auto* nodes=msg["nodes"].getArray();if(!nodes){reject("nodes must be an array");return;}if(nodes->size()>64){reject("too many MIDI nodes");return;}
+    const auto reject=[this](const juce::String& message){clearMidiNetwork();sendError("midi-network-invalid",message);};
+    MidiNetworkSpec spec;const auto* nodes=msg["nodes"].getArray();if(!nodes){reject("nodes must be an array");return;}if(nodes->size()>64){reject("too many MIDI nodes");return;}
     const juce::StringArray scaleNames{"Chromatic","Major / Ionian","Natural Minor / Aeolian","Harmonic Minor","Dorian","Phrygian","Lydian","Mixolydian","Locrian","Major Pentatonic","Minor Pentatonic"};
     const juce::StringArray modeNames{"Up","Down","Up / Down","As Played","Random","Custom"};const juce::StringArray rateNames{"1/4","1/8","1/16","1/32"};
-    for(const auto&v:*nodes){if(v["nodeType"].toString()!="arpeggiator")continue;MidiGraphNodeSpec n;n.id=v["id"].toString().toStdString();n.kind="arpeggiator";n.arp.root=juce::jlimit(0,11,(int)v["root"]);n.arp.scale=std::max(0,scaleNames.indexOf(v["scale"].toString()));n.arp.mode=std::max(0,modeNames.indexOf(v["mode"].toString()));n.arp.rate=std::max(0,rateNames.indexOf(v["rate"].toString()));n.arp.patternLength=(int)v["patternLength"];if(n.arp.patternLength!=4&&n.arp.patternLength!=8&&n.arp.patternLength!=16&&n.arp.patternLength!=32){reject("invalid pattern length");return;}n.arp.randomSeed=(uint32_t)(juce::int64)v["randomSeed"];if(const auto*a=v["customPattern"].getArray())for(int i=0;i<std::min(32,a->size());++i){const auto&s=(*a)[i];auto&d=n.arp.steps[(size_t)i];d.semitoneOffset=juce::jlimit(-127,127,(int)s["semitoneOffset"]);d.velocity=juce::jlimit(1,127,(int)s["velocity"]);d.gate=juce::jlimit(.05f,1.f,(float)(double)s["gate"]);d.rest=s["rest"].isBool()?(bool)s["rest"]:false;d.tie=s["tie"].isBool()?(bool)s["tie"]:false;}if(const auto*a=v["destinations"].getArray())for(const auto&d:*a)n.destinations.push_back(d.toString().toStdString());spec.nodes.push_back(std::move(n));}
-    std::string error;auto plan=MidiExecutionPlan::compile(spec,[this](const std::string&id){return getOrCreateChain(juce::String(id));},error);if(!plan){reject(juce::String(error));return;}panicAllMidi();activeMidiSpec_=spec;auto*published=plan.get();midiPlans_.push_back(std::move(plan));activeMidiPlan_.store(published,std::memory_order_release);juce::var out=makeObject();setProp(out,"type","midiGraphSynced");setProp(out,"nodeCount",(int)spec.nodes.size());ipc_.send(out);
+    for(const auto&v:*nodes){if(v["nodeType"].toString()!="arpeggiator")continue;MidiNetworkNodeSpec n;n.id=v["id"].toString().toStdString();n.kind="arpeggiator";n.arp.root=juce::jlimit(0,11,(int)v["root"]);n.arp.scale=std::max(0,scaleNames.indexOf(v["scale"].toString()));n.arp.mode=std::max(0,modeNames.indexOf(v["mode"].toString()));n.arp.rate=std::max(0,rateNames.indexOf(v["rate"].toString()));n.arp.patternLength=(int)v["patternLength"];if(n.arp.patternLength!=4&&n.arp.patternLength!=8&&n.arp.patternLength!=16&&n.arp.patternLength!=32){reject("invalid pattern length");return;}n.arp.randomSeed=(uint32_t)(juce::int64)v["randomSeed"];if(const auto*a=v["customPattern"].getArray())for(int i=0;i<std::min(32,a->size());++i){const auto&s=(*a)[i];auto&d=n.arp.steps[(size_t)i];d.semitoneOffset=juce::jlimit(-127,127,(int)s["semitoneOffset"]);d.velocity=juce::jlimit(1,127,(int)s["velocity"]);d.gate=juce::jlimit(.05f,1.f,(float)(double)s["gate"]);d.rest=s["rest"].isBool()?(bool)s["rest"]:false;d.tie=s["tie"].isBool()?(bool)s["tie"]:false;}if(const auto*a=v["destinations"].getArray())for(const auto&d:*a)n.destinations.push_back(d.toString().toStdString());spec.nodes.push_back(std::move(n));}
+    std::string error;auto plan=MidiExecutionPlan::compile(spec,[this](const std::string&id){return getOrCreateChain(juce::String(id));},error);if(!plan){reject(juce::String(error));return;}panicAllMidi();activeMidiSpec_=spec;auto*published=plan.get();midiPlans_.push_back(std::move(plan));activeMidiPlan_.store(published,std::memory_order_release);juce::var out=makeObject();setProp(out,"type","midiNetworkSynced");setProp(out,"nodeCount",(int)spec.nodes.size());ipc_.send(out);
 }
 
 void Engine::cmdCapturePluginStates(const juce::var&)
@@ -1915,8 +1915,8 @@ void Engine::cmdSequencerExport(const juce::var& msg)
         postWorkerResult([this,alive,generation,cancel,context,buildError,audioSpec,midiSpec,file,start,end,tail,options,exportBpm,blockSize,sampleRate,vstTrace]() mutable {
             std::unique_ptr<ExportContext> owned(context);if(!*alive)return;if(generation!=exportGeneration_.load(std::memory_order_acquire)||cancel->load(std::memory_order_acquire))return;auto fail=[&](const juce::String& message){exportPreparing_.store(false,std::memory_order_release);exportCancel_.reset();exportTransactionStartedAtMs_=0.0;sendError("sequencer-export",message);auto failed=makeExportStage("error","render-context",file,options.format,"error");setProp(failed,"message",message);ipc_.send(failed);flushDeferredExportCommands();};if(buildError.isNotEmpty()){fail(buildError);return;}
             ipc_.send(makeExportStage("preparing", "prepare-vst", file, options.format, "end"));
-            ipc_.send(makeExportStage("preparing", "build-graph", file, options.format, "begin"));
-            const auto lookup=[&](const std::string& id)->Chain*{auto found=owned->chains.find(juce::String(id));return found==owned->chains.end()?nullptr:found->second.get();};std::string compileError;owned->midiPlan=MidiExecutionPlan::compile(midiSpec,lookup,compileError);if(!owned->midiPlan){fail(juce::String(compileError));return;}owned->audioPlan=AudioExecutionPlan::compile(audioSpec,lookup,&sequencer_,blockSize,compileError);if(!owned->audioPlan){fail(juce::String(compileError));return;}if(!sequencer_.prepareExportPlan(lookup,compileError)){fail(juce::String(compileError));return;}ipc_.send(makeExportStage("preparing", "build-graph", file, options.format, "end"));clearExportContext();exportContext_=std::move(owned);activeExportContext_.store(exportContext_.get(),std::memory_order_release);ipc_.send(makeExportStage("preparing", "render-context", file, options.format, "end"));ipc_.send(makeExportStage("preparing", "timeline", file, options.format, "begin"));Transport tempoSnapshot;tempoSnapshot.setSampleRate(sampleRate);tempoSnapshot.setBpm(exportBpm);juce::String startError;if(!sequencer_.startExport(file,start,end,tail,tempoSnapshot,options,startError)){clearExportContext();fail(startError);return;}ipc_.send(makeExportStage("preparing", "timeline", file, options.format, "end"));exportPreparing_.store(false,std::memory_order_release);exportCancel_.reset();lastPublishedExportFrames_=-1;exportProgressStartedAtMs_=juce::Time::getMillisecondCounterHiRes();exportLastAdvancedAtMs_=exportProgressStartedAtMs_;auto out=makeExportStage("started","render-blocks",file,options.format,"begin");setProp(out,"exportStartPpq",start);setProp(out,"exportEndPpq",end);setProp(out,"tailSeconds",tail);setProp(out,"livePlaying",transport_.playing());setProp(out,"liveRecording",transport_.recording());setProp(out,"livePpqPosition",transport_.ppqPosition());setProp(out,"liveSamplePosition",transport_.samplePosition());setProp(out,"liveLoopEnabled",transport_.loopEnabled());setProp(out,"liveLoopStartPpq",transport_.loopStart());setProp(out,"liveLoopEndPpq",transport_.loopEnd());auto& offline=sequencer_.exportTransport();setProp(out,"offlinePlaying",offline.playing());setProp(out,"offlinePpqPosition",offline.ppqPosition());setProp(out,"offlineSamplePosition",offline.samplePosition());setProp(out,"offlineLoopEnabled",offline.loopEnabled());setProp(out,"snapshot",sequencer_.exportSnapshotTrace());setProp(out,"vstSnapshot",vstTrace);setProp(out,"deferredMutationCount",0);setProp(out,"audibleTransport","live");setProp(out,"renderThread","offline-worker");setProp(out,"deviceIndependent",true);setProp(out,"hardwareOutput",false);ipc_.send(out);ipc_.send(makeExportStage("started","Master",file,options.format,"begin"));ipc_.send(makeExportStage("started","encoder",file,options.format,"begin"));launchWorker([this,generation](){renderOfflineExport(generation);});
+            ipc_.send(makeExportStage("preparing", "build-network", file, options.format, "begin"));
+            const auto lookup=[&](const std::string& id)->Chain*{auto found=owned->chains.find(juce::String(id));return found==owned->chains.end()?nullptr:found->second.get();};std::string compileError;owned->midiPlan=MidiExecutionPlan::compile(midiSpec,lookup,compileError);if(!owned->midiPlan){fail(juce::String(compileError));return;}owned->audioPlan=AudioExecutionPlan::compile(audioSpec,lookup,&sequencer_,blockSize,compileError);if(!owned->audioPlan){fail(juce::String(compileError));return;}if(!sequencer_.prepareExportPlan(lookup,compileError)){fail(juce::String(compileError));return;}ipc_.send(makeExportStage("preparing", "build-network", file, options.format, "end"));clearExportContext();exportContext_=std::move(owned);activeExportContext_.store(exportContext_.get(),std::memory_order_release);ipc_.send(makeExportStage("preparing", "render-context", file, options.format, "end"));ipc_.send(makeExportStage("preparing", "timeline", file, options.format, "begin"));Transport tempoSnapshot;tempoSnapshot.setSampleRate(sampleRate);tempoSnapshot.setBpm(exportBpm);juce::String startError;if(!sequencer_.startExport(file,start,end,tail,tempoSnapshot,options,startError)){clearExportContext();fail(startError);return;}ipc_.send(makeExportStage("preparing", "timeline", file, options.format, "end"));exportPreparing_.store(false,std::memory_order_release);exportCancel_.reset();lastPublishedExportFrames_=-1;exportProgressStartedAtMs_=juce::Time::getMillisecondCounterHiRes();exportLastAdvancedAtMs_=exportProgressStartedAtMs_;auto out=makeExportStage("started","render-blocks",file,options.format,"begin");setProp(out,"exportStartPpq",start);setProp(out,"exportEndPpq",end);setProp(out,"tailSeconds",tail);setProp(out,"livePlaying",transport_.playing());setProp(out,"liveRecording",transport_.recording());setProp(out,"livePpqPosition",transport_.ppqPosition());setProp(out,"liveSamplePosition",transport_.samplePosition());setProp(out,"liveLoopEnabled",transport_.loopEnabled());setProp(out,"liveLoopStartPpq",transport_.loopStart());setProp(out,"liveLoopEndPpq",transport_.loopEnd());auto& offline=sequencer_.exportTransport();setProp(out,"offlinePlaying",offline.playing());setProp(out,"offlinePpqPosition",offline.ppqPosition());setProp(out,"offlineSamplePosition",offline.samplePosition());setProp(out,"offlineLoopEnabled",offline.loopEnabled());setProp(out,"snapshot",sequencer_.exportSnapshotTrace());setProp(out,"vstSnapshot",vstTrace);setProp(out,"deferredMutationCount",0);setProp(out,"audibleTransport","live");setProp(out,"renderThread","offline-worker");setProp(out,"deviceIndependent",true);setProp(out,"hardwareOutput",false);ipc_.send(out);ipc_.send(makeExportStage("started","Master",file,options.format,"begin"));ipc_.send(makeExportStage("started","encoder",file,options.format,"begin"));launchWorker([this,generation](){renderOfflineExport(generation);});
         });
     });
 }
@@ -1935,7 +1935,7 @@ void Engine::cmdSequencerCancelExport(const juce::var&)
 void Engine::cmdSequencerQuiesce(const juce::var& msg)
 {
     // These edits belong to the project being replaced. They must not land in
-    // the fresh project once its renderer publishes a new graph.
+    // the fresh project once its renderer publishes a new network.
     deferredExportCommands_.clear();
     preCountGeneration_.fetch_add(1,std::memory_order_acq_rel);
     preCountActive_.store(false,std::memory_order_release);
@@ -1959,7 +1959,7 @@ void Engine::cmdSequencerPanic(const juce::var&)
     // Cable deletion must silence physical hardware immediately, even during
     // a long offline bounce. The Sequencer/chain/Arpeggiator panic state is
     // part of the frozen render and is therefore left untouched until export
-    // completion publishes the deferred graph.
+    // completion publishes the deferred network.
     if (sequencer_.exporting())
         physicalMidiOutput_.panic();
     else
@@ -2377,11 +2377,11 @@ void Engine::processEngine2Block(const float* const* inputChannelData,
     auto* hardwareMidi = &physicalMidiOutput_;
     sequencer_.processMidi(numSamples,blockTransport,midiPlan,hardwareMidi,midiStartMs);
     if(midiPlan)midiPlan->process(numSamples,blockTransport,hardwareMidi,midiStartMs,currentSampleRate_);
-    audioGraphReaders_.fetch_add(1, std::memory_order_acq_rel);
+    audioNetworkReaders_.fetch_add(1, std::memory_order_acq_rel);
     do { plan=activeAudioPlan_.load(std::memory_order_acquire); audioPlanHazard_.store(plan,std::memory_order_release); }
     while(plan!=activeAudioPlan_.load(std::memory_order_acquire));
     if (plan) plan->process(outputChannelData, numOutputChannels, numSamples, blockTransport, chainMidi_, &inputScratch_);
-    audioGraphReaders_.fetch_sub(1, std::memory_order_release);
+    audioNetworkReaders_.fetch_sub(1, std::memory_order_release);
     // The click is another live Audio Output source. The export context below
     // has its own buffer and never receives it.
     auto renderMetronomeClick=[&](int offset,bool accent,bool preCount,int64_t beat,
@@ -2427,7 +2427,7 @@ void Engine::processEngine2Block(const float* const* inputChannelData,
             renderMetronomeClick(i,accent,false,beat,q,beatInBar,absoluteSample);
         }
     }
-    // The graph reaches the Master as a direct floating-point sum. Metering is
+    // The network reaches the Master as a direct floating-point sum. Metering is
     // passive: no track-count compensation, ceiling, AGC, or gain envelope.
     const float* preMasterChannels[2]={numOutputChannels>0?outputChannelData[0]:nullptr,
                                       numOutputChannels>1?outputChannelData[1]:nullptr};

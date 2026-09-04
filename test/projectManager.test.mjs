@@ -393,7 +393,7 @@ test('failed Save As does not partially commit the candidate name or path', asyn
   let attemptedSnapshot;
   const hub = {
     events: { emit() {} },
-    graph: { serialize: () => [] },
+    network: { serialize: () => [] },
     settings: { get: () => null, async setMany() { throw new Error('must not update recents'); } },
     sequencer: { model: { snapshot: () => null } }
   };
@@ -512,7 +512,7 @@ test('a close-time save on a project with a file writes it in place, with no pic
   try {
     const hub = {
       events: { emit() {} },
-      graph: { serialize: () => [] },
+      network: { serialize: () => [] },
       settings: { get: () => null, async setMany() {} },
       sequencer: { model: { snapshot: () => null } }
     };
@@ -543,7 +543,7 @@ test('a close-time save reports a dismissed picker as cancelled, and a failure a
   try {
     const hub = {
       events: { emit() {} },
-      graph: { serialize: () => [] },
+      network: { serialize: () => [] },
       settings: { get: () => null, async setMany() {} },
       sequencer: { model: { snapshot: () => null } }
     };

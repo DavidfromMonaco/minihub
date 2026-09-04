@@ -58,7 +58,7 @@ export function normalizeControlBindings(values) {
 /**
  * Owns persistent CONTROL bindings and the one pending Learn selection.
  *
- * The graph remains topology authority: routing is possible only while the
+ * The network remains topology authority: routing is possible only while the
  * specific MiniLab CONTROL source has a cable into the VST node's CTRL IN.
  * Binding identity is node id + stable source id + plugin instance id + exact
  * plugin id + stable VST3 ParamID. Display names are metadata only.
@@ -77,7 +77,7 @@ export class ControlBindingManager {
       hub.events.on('engine:instanceStatus', (msg) => this._onInstanceStatus(msg)),
       hub.events.on('engine:chainChanged', (msg) => this._onChainChanged(msg)),
       hub.events.on('engine:editorStatus', (msg) => this._onEditorStatus(msg)),
-      hub.events.on('graph:change', (change) => this._onGraphChange(change))
+      hub.events.on('network:change', (change) => this._onNetworkChange(change))
     ];
   }
 
@@ -90,7 +90,7 @@ export class ControlBindingManager {
 
   connectedSources(nodeId) {
     const byId = new Map();
-    for (const connection of this.hub.graph.connectionsTo(nodeId, 'ctrl-in')) {
+    for (const connection of this.hub.network.connectionsTo(nodeId, 'ctrl-in')) {
       if (connection.from.nodeId !== MINILAB_NODE_ID) continue;
       const source = getMiniLabControlSourceByPort(connection.from.portId);
       if (source) byId.set(source.id, source);
@@ -101,7 +101,7 @@ export class ControlBindingManager {
   isConnected(nodeId, sourceControlId) {
     const source = getMiniLabControlSource(sourceControlId);
     if (!source) return false;
-    return this.hub.graph.connectionsTo(nodeId, 'ctrl-in').some((connection) => (
+    return this.hub.network.connectionsTo(nodeId, 'ctrl-in').some((connection) => (
       connection.from.nodeId === MINILAB_NODE_ID && connection.from.portId === source.portId
     ));
   }
@@ -247,7 +247,7 @@ export class ControlBindingManager {
     return { state: 'active', binding };
   }
 
-  /** Called only from a VST node's typed CTRL IN graph callback. */
+  /** Called only from a VST node's typed CTRL IN network callback. */
   route(nodeId, control) {
     if (!control || control.type !== 'control') return { ok: false, reason: 'invalid-control' };
     if (!getMiniLabControlSource(control.sourceControlId)) return { ok: false, reason: 'unknown-source' };
@@ -361,7 +361,7 @@ export class ControlBindingManager {
     this._changed(msg?.chainId || null);
   }
 
-  _onGraphChange(change) {
+  _onNetworkChange(change) {
     const pending = this.pendingLearn;
     if (pending && change?.type === 'remove' && change.nodeId === pending.nodeId) {
       this.cancelLearn(pending.nodeId, pending.sourceControlId, 'node-deleted');

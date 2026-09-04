@@ -112,8 +112,8 @@ add_executable(mlh_audio_engine
     src/var_util.h
     src/gesture_learn_state.h
     src/transport.h
-    src/audio_graph.h
-    src/audio_graph.cpp
+    src/audio_network.h
+    src/audio_network.cpp
     src/audio_take_writer.h
     src/audio_take_writer.cpp
     src/audio_signal_meter.h
@@ -122,8 +122,8 @@ add_executable(mlh_audio_engine
     src/master_output.cpp
     src/sequencer.h
     src/sequencer.cpp
-    src/midi_graph.h
-    src/midi_graph.cpp
+    src/midi_network.h
+    src/midi_network.cpp
     src/midi_output.h
     src/midi_output.cpp
     src/engine2/audio_engine.h
@@ -179,8 +179,8 @@ if(BUILD_TESTING)
         test/native_tests.cpp
         src/gesture_learn_state.h
         src/transport.h
-        src/audio_graph.h
-        src/audio_graph.cpp
+        src/audio_network.h
+        src/audio_network.cpp
         src/audio_take_writer.h
         src/audio_take_writer.cpp
         src/audio_signal_meter.h
@@ -189,8 +189,8 @@ if(BUILD_TESTING)
         src/master_output.cpp
         src/sequencer.h
         src/sequencer.cpp
-        src/midi_graph.h
-        src/midi_graph.cpp
+        src/midi_network.h
+        src/midi_network.cpp
         src/chain.h
         src/chain.cpp
         src/plugin_host.h

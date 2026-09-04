@@ -345,7 +345,7 @@ int PortAudioDevice::callback(const void* input, void* output, unsigned long fra
         self->otherStatusFlags_.fetch_add(1, std::memory_order_relaxed);
 
     auto* const interleavedOutput = static_cast<float*>(output);
-    // This happens before graph processing. Failure or partial graph output
+    // This happens before network processing. Failure or partial network output
     // therefore remains silence, never memory retained from a prior callback.
     if (!zeroPortAudioStereoOutput(interleavedOutput, frames)
         || frames > std::numeric_limits<std::uint32_t>::max())

@@ -5,7 +5,7 @@ MIDI controller: a Patch Bay of typed cables, a native VST3 host, a
 sample-accurate MIDI + audio sequencer, Mixer / Morpher / Arpeggiator nodes, and
 learning that binds physical knobs to VST3 parameters.
 
-The **graph** — not the page you happen to be looking at — decides what you hear.
+**Your cables** — not the page you happen to be looking at — decide what you hear.
 
 ---
 

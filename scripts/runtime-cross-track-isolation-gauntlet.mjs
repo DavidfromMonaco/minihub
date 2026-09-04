@@ -77,7 +77,7 @@ const expression = `(async () => {
       await command({ type: 'setChainOutputEnabled', chainId: plugin.chainId, enabled: true });
     }
     let after = events.length;
-    await command({ type: 'syncAudioGraph', nodes: [
+    await command({ type: 'syncAudioNetwork', nodes: [
       { id: plugins[0].chainId, nodeType: 'vst', inputs: [] },
       { id: plugins[1].chainId, nodeType: 'vst', inputs: [] },
       { id: 'isolation-mixer', nodeType: 'mixer', masterLevel: 1, inputs: [
@@ -88,7 +88,7 @@ const expression = `(async () => {
         { portId: 'audio-in', sourceNodeId: 'isolation-mixer', sourcePortId: 'audio-out', level: 1, muted: false }
       ] }
     ] });
-    await waitFor((event) => event.type === 'audioGraphSynced' && event.nodeCount === 4, after, 'isolation audio graph');
+    await waitFor((event) => event.type === 'audioNetworkSynced' && event.nodeCount === 4, after, 'isolation audio network');
     after = events.length;
     await command({ type: 'syncSequencer', project: { tracks: [
       { id: 'track-1', type: 'midi', armed: false, muted: false, volume: 0.7,
@@ -111,7 +111,7 @@ const expression = `(async () => {
       track1: playback.filter((event) => event.type === 'audioPathTelemetry' && event.scope === 'sequencer-track' && event.trackId === 'track-1' && inPhase(event, low, high)),
       track2: playback.filter((event) => event.type === 'audioPathTelemetry' && event.scope === 'sequencer-track' && event.trackId === 'track-2' && inPhase(event, low, high)),
       vst2: playback.filter((event) => event.type === 'audioPathTelemetry' && event.scope === 'vst' && event.nodeId === plugins[1].chainId && inPhase(event, low, high)),
-      mixer: playback.filter((event) => event.type === 'audioPathTelemetry' && event.scope === 'graph' && event.nodeId === 'isolation-mixer' && inPhase(event, low, high)),
+      mixer: playback.filter((event) => event.type === 'audioPathTelemetry' && event.scope === 'network' && event.nodeId === 'isolation-mixer' && inPhase(event, low, high)),
       master: playback.filter((event) => event.type === 'masterMeter' && inPhase(event, low, high))
     }));
     assert(phases.every((phase) => phase.track1.length && phase.track2.length && phase.vst2.length && phase.mixer.length && phase.master.length),

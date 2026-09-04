@@ -1,7 +1,7 @@
 /**
  * Pure world <-> viewport transform math for the Patch Bay canvas.
  *
- * World coordinates are the routing node positions (stored in `graphLayout`)
+ * World coordinates are the routing node positions (stored in `networkLayout`)
  * and cable geometry. The viewport is a single transform:
  *
  *   screen = (world - pan) * zoom

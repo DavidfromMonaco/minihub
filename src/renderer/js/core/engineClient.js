@@ -56,7 +56,7 @@ export class EngineClient {
     this._instanceGenerations = new Map(); // chainId -> Map(instanceId -> generation)
     this._editorStatuses = new Map(); // chainId -> Map(instanceId -> last native editorStatus)
     this._instanceErrors = new Map();
-    // Master export owns cloned processors and immutable graph/arrangement
+    // Master export owns cloned processors and immutable network/arrangement
     // plans. Live edits therefore remain immediate. Only an audio-device
     // restart is deferred because it would remove the callback driving both
     // contexts before the private writer reaches its terminal block.
@@ -412,7 +412,7 @@ export class EngineClient {
 
   _liveInputCommand(msg) {
     // The export owns cloned processors and its own clock. Live Note Offs must
-    // therefore continue to the live graph immediately; dropping them here
+    // therefore continue to the live network immediately; dropping them here
     // was the direct cause of notes held after a bounce. These messages are
     // never replayed or copied into the offline render.
     return this.command(msg);
@@ -541,7 +541,7 @@ export class EngineClient {
   }
 
   midiNode(nodeId, data) { return this._liveInputCommand({ type: 'midiNode', nodeId, data }); }
-  syncMidiGraph(nodes) { return this._renderCommand({ type: 'syncMidiGraph', nodes }); }
+  syncMidiNetwork(nodes) { return this._renderCommand({ type: 'syncMidiNetwork', nodes }); }
 
   setChainMidiEnabled(chainId, enabled) {
     return this._renderCommand({ type: 'setChainMidiEnabled', chainId, enabled });
@@ -567,10 +567,10 @@ export class EngineClient {
   }
 
   getTransport() { return this.command({ type: 'getTransport' }); }
-  syncAudioGraph(nodes) { return this._renderCommand({ type: 'syncAudioGraph', nodes }); }
+  syncAudioNetwork(nodes) { return this._renderCommand({ type: 'syncAudioNetwork', nodes }); }
   /** Values-only update of the published plan: levels, mutes, master level and
-   *  Morpher steps. Deliberately not a syncAudioGraph, which recompiles the
-   *  graph and rebuilds every PDC delay line. */
+   *  Morpher steps. Deliberately not a syncAudioNetwork, which recompiles the
+   *  network and rebuilds every PDC delay line. */
   setAudioNodeValues(nodes) { return this._renderCommand({ type: 'setAudioNodeValues', nodes }); }
   syncSequencer(project) { return this._renderCommand({ type: 'syncSequencer', project }); }
   setSequencerTrackControl(trackId, gain, muted) {

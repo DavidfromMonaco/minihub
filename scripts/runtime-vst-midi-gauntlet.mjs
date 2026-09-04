@@ -104,10 +104,10 @@ const expression = `(async () => {
   const filePath = ${JSON.stringify(exportPath)};
   let controller;
   try {
-    const [{ EventBus }, { Graph }, { EngineClient }, { SequencerController }, { SequencerModel }]
+    const [{ EventBus }, { Network }, { EngineClient }, { SequencerController }, { SequencerModel }]
       = await Promise.all([
         import('./js/core/eventBus.js'),
-        import('./js/core/graph.js'),
+        import('./js/core/network.js'),
         import('./js/core/engineClient.js'),
         import('./js/core/sequencerController.js'),
         import('./js/core/sequencerModel.js')
@@ -148,10 +148,10 @@ const expression = `(async () => {
     }
 
     let after = nativeEvents.length;
-    await command({ type: 'syncMidiGraph', nodes: [] });
-    await waitFor((event) => event.type === 'midiGraphSynced', after, 'empty MIDI processor graph');
+    await command({ type: 'syncMidiNetwork', nodes: [] });
+    await waitFor((event) => event.type === 'midiNetworkSynced', after, 'empty MIDI processor network');
     after = nativeEvents.length;
-    await command({ type: 'syncAudioGraph', nodes: [
+    await command({ type: 'syncAudioNetwork', nodes: [
       { id: chainA, nodeType: 'vst', inputs: [] },
       { id: chainB, nodeType: 'vst', inputs: [] },
       { id: 'runtime-vst-mixer', nodeType: 'mixer', masterLevel: 0.35, inputs: [
@@ -162,8 +162,8 @@ const expression = `(async () => {
         { portId: 'audio-in', sourceNodeId: 'runtime-vst-mixer', sourcePortId: 'audio-out', level: 1, muted: false }
       ] }
     ] });
-    await waitFor((event) => event.type === 'audioGraphSynced' && event.nodeCount === 4,
-      after, 'two-VST audio graph');
+    await waitFor((event) => event.type === 'audioNetworkSynced' && event.nodeCount === 4,
+      after, 'two-VST audio network');
 
     // Packaged gain-staging acceptance: hold one real hosted VST for 20 s,
     // then activate the second. Passive per-VST telemetry must prove that A's
@@ -217,7 +217,7 @@ const expression = `(async () => {
     // the ~1.9 floating-point sum with GR fixed at unity.
     await command({ type: 'setMasterOutput', gainDb: -60 });
     after = nativeEvents.length;
-    await command({ type: 'syncAudioGraph', nodes: [
+    await command({ type: 'syncAudioNetwork', nodes: [
       { id: chainA, nodeType: 'vst', inputs: [] },
       { id: chainB, nodeType: 'vst', inputs: [] },
       { id: 'runtime-vst-mixer', nodeType: 'mixer', masterLevel: 1, inputs: [
@@ -228,8 +228,8 @@ const expression = `(async () => {
         { portId: 'audio-in', sourceNodeId: 'runtime-vst-mixer', sourcePortId: 'audio-out', level: 1, muted: false }
       ] }
     ] });
-    await waitFor((event) => event.type === 'audioGraphSynced' && event.nodeCount === 4,
-      after, 'unity overload audio graph');
+    await waitFor((event) => event.type === 'audioNetworkSynced' && event.nodeCount === 4,
+      after, 'unity overload audio network');
     const overloadStart = nativeEvents.length;
     await command({ type: 'midi', chainId: chainA, data: [0x90, 60, 127], offsetMs: 0 });
     await command({ type: 'midi', chainId: chainB, data: [0x90, 60, 127], offsetMs: 0 });
@@ -249,7 +249,7 @@ const expression = `(async () => {
     await command({ type: 'midi', chainId: chainB, data: [0x80, 60, 0], offsetMs: 0 });
     await command({ type: 'setMasterOutput', gainDb: 0 });
     after = nativeEvents.length;
-    await command({ type: 'syncAudioGraph', nodes: [
+    await command({ type: 'syncAudioNetwork', nodes: [
       { id: chainA, nodeType: 'vst', inputs: [] },
       { id: chainB, nodeType: 'vst', inputs: [] },
       { id: 'runtime-vst-mixer', nodeType: 'mixer', masterLevel: 0.35, inputs: [
@@ -260,13 +260,13 @@ const expression = `(async () => {
         { portId: 'audio-in', sourceNodeId: 'runtime-vst-mixer', sourcePortId: 'audio-out', level: 1, muted: false }
       ] }
     ] });
-    await waitFor((event) => event.type === 'audioGraphSynced' && event.nodeCount === 4,
-      after, 'restored runtime audio graph');
+    await waitFor((event) => event.type === 'audioNetworkSynced' && event.nodeCount === 4,
+      after, 'restored runtime audio network');
 
-    const graph = new Graph(events, settings);
+    const network = new Network(events, settings);
     const midi = { selectedInputId: 'runtime-minilab-port', selectedOutputId: '', send: () => {}, getOutput: () => null };
     const hub = {
-      events, settings, graph, engine, midi,
+      events, settings, network, engine, midi,
       api: { clipEditorInvalidate: async () => {}, clipEditorPublishTransport: async () => {} },
       project: { currentProjectName: 'Runtime routing', projectId: 'runtime-routing-project' }
     };
@@ -274,17 +274,17 @@ const expression = `(async () => {
     const vstInput = (chainId) => (portId, message) => {
       if (portId === 'midi-in') engine.midi(chainId, message.raw);
     };
-    graph.addNode({ id: 'minilab-3', type: 'midi-input', outputs: [{ id: 'midi-out', type: 'midi' }] });
-    graph.addNode({ id: 'sequencer', type: 'sequencer',
+    network.addNode({ id: 'minilab-3', type: 'midi-input', outputs: [{ id: 'midi-out', type: 'midi' }] });
+    network.addNode({ id: 'sequencer', type: 'sequencer',
       inputs: [{ id: 'midi-in', type: 'midi' }], outputs: [{ id: 'midi-out', type: 'midi' }],
       onInput: (portId, message) => { if (portId === 'midi-in') controller.receiveMidiInput(message); } });
-    graph.addNode({ id: chainA, type: 'vst', inputs: [{ id: 'midi-in', type: 'midi' }],
+    network.addNode({ id: chainA, type: 'vst', inputs: [{ id: 'midi-in', type: 'midi' }],
       outputs: [{ id: 'audio-out', type: 'audio' }], onInput: vstInput(chainA) });
-    graph.addNode({ id: chainB, type: 'vst', inputs: [{ id: 'midi-in', type: 'midi' }],
+    network.addNode({ id: chainB, type: 'vst', inputs: [{ id: 'midi-in', type: 'midi' }],
       outputs: [{ id: 'audio-out', type: 'audio' }], onInput: vstInput(chainB) });
-    graph.connect('minilab-3', 'midi-out', 'sequencer', 'midi-in');
-    graph.connect('sequencer', 'midi-out', chainA, 'midi-in');
-    graph.connect('sequencer', 'midi-out', chainB, 'midi-in');
+    network.connect('minilab-3', 'midi-out', 'sequencer', 'midi-in');
+    network.connect('sequencer', 'midi-out', chainA, 'midi-in');
+    network.connect('sequencer', 'midi-out', chainB, 'midi-in');
 
     controller.model = new SequencerModel({
       focusedTrackId: 'track-vst-a',
@@ -314,7 +314,7 @@ const expression = `(async () => {
       after, 'renderer-routed two-track sequencer');
     assert(controller.model.arrangementEndPpq() === 2, 'true arrangement end is not 2 PPQ');
 
-    const ingress = (data) => graph.emitData('minilab-3', 'midi-out', {
+    const ingress = (data) => network.emitData('minilab-3', 'midi-out', {
       raw: data, sourceId: 'runtime-minilab-port'
     });
     const routeStartA = routedMidi.length;

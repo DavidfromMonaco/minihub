@@ -5,7 +5,7 @@ const ALLOWED_ENGINE_COMMANDS = new Set([
   'createInstance','removeInstance','reorderChain','setBypass','midi',
   'setChainMidiEnabled','setChainOutputEnabled','openEditor','closeEditor',
   'getState','setState','getVstParameters','setVstParameter','setVstParameterLearn',
-  'setTransport','getTransport','foregroundEditors','syncAudioGraph','setAudioNodeValues','syncMidiGraph',
+  'setTransport','getTransport','foregroundEditors','syncAudioNetwork','setAudioNodeValues','syncMidiNetwork',
   'midiNode','setMetronome','setMasterOutput','resetMasterClip','syncSequencer','setSequencerTrackControl','sequencerMidiInput',
   'sequencerRecord','sequencerExport','sequencerCancelExport','sequencerQuiesce','sequencerPanic'
 ]);

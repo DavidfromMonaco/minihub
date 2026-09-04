@@ -64,7 +64,7 @@ try {
         action: el.dataset.action || null, moduleId: el.dataset.moduleId || null,
         title: el.title || null
       })),
-      graphNodes: [...document.querySelectorAll('[data-node-id]')].map((el) => ({
+      networkNodes: [...document.querySelectorAll('[data-node-id]')].map((el) => ({
         nodeId: el.dataset.nodeId, className: el.className, text: String(el.innerText || el.textContent || '').trim()
       })),
       ports: [...document.querySelectorAll('[data-port-id]')].map((el) => ({

@@ -24,7 +24,7 @@ struct MasterMeterSnapshot {
 
 /** Master Gain + post-gain meter shared by hardware monitoring and master
  *  export. There is no automatic gain reduction anywhere in this stage or at
- *  upstream graph boundaries. This stage owns no callback-time storage. */
+ *  upstream network boundaries. This stage owns no callback-time storage. */
 class MasterOutput {
 public:
     static constexpr double gainSmoothingSeconds = 0.020;

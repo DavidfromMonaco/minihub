@@ -81,10 +81,10 @@ const expression = `(async () => {
     }
 
     let after = events.length;
-    await command({ type: 'syncMidiGraph', nodes: [] });
-    await waitFor((event) => event.type === 'midiGraphSynced', after, 'empty MIDI graph');
+    await command({ type: 'syncMidiNetwork', nodes: [] });
+    await waitFor((event) => event.type === 'midiNetworkSynced', after, 'empty MIDI network');
     after = events.length;
-    await command({ type: 'syncAudioGraph', nodes: [
+    await command({ type: 'syncAudioNetwork', nodes: [
       { id: 'stop-dexed', nodeType: 'vst', inputs: [] },
       { id: 'stop-vital', nodeType: 'vst', inputs: [] },
       { id: 'stop-mixer', nodeType: 'mixer', masterLevel: 0.25, inputs: [
@@ -95,8 +95,8 @@ const expression = `(async () => {
         { portId: 'audio-in', sourceNodeId: 'stop-mixer', sourcePortId: 'audio-out', level: 1, muted: false }
       ] }
     ] });
-    await waitFor((event) => event.type === 'audioGraphSynced' && event.nodeCount === 4,
-      after, 'two-plugin audio graph');
+    await waitFor((event) => event.type === 'audioNetworkSynced' && event.nodeCount === 4,
+      after, 'two-plugin audio network');
     after = events.length;
     await command({ type: 'syncSequencer', project: { tracks: plugins.map((plugin, index) => ({
       id: 'stop-track-' + index, type: 'midi', armed: false, muted: false, volume: 1,

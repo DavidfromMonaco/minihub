@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { EventBus } from '../src/renderer/js/core/eventBus.js';
-import { Graph } from '../src/renderer/js/core/graph.js';
+import { Network } from '../src/renderer/js/core/network.js';
 import { ModuleSystem } from '../src/renderer/js/core/moduleSystem.js';
 import { NodeInstanceManager } from '../src/renderer/js/core/nodeInstances.js';
 import { getNodeType, listNodeTypes, NODE_TYPES } from '../src/renderer/js/core/nodeTypes.js';
@@ -18,10 +18,10 @@ function mockSettings(initial = {}) {
 function makeFullHub(settingsData = {}) {
   const settings = mockSettings(settingsData);
   const events = new EventBus();
-  const graph = new Graph(events, settings);
-  const modules = new ModuleSystem({ events, settings, graph });
-  const nodes = new NodeInstanceManager({ events, settings, graph, modules });
-  return { events, settings, graph, modules, nodes };
+  const network = new Network(events, settings);
+  const modules = new ModuleSystem({ events, settings, network });
+  const nodes = new NodeInstanceManager({ events, settings, network, modules });
+  return { events, settings, network, modules, nodes };
 }
 
 // ---- Node Type Registry -----------------------------------------------------
@@ -105,7 +105,7 @@ test('dynamic instances register a module with a nav entry', () => {
 test('VST instance registers a routing node with the type ports', () => {
   const hub = makeFullHub();
   const inst = hub.nodes.create('vst');
-  const node = hub.graph.getNode(inst.id);
+  const node = hub.network.getNode(inst.id);
   assert.ok(node);
   assert.equal(node.type, 'vst');
   assert.deepEqual(node.inputs.map((p) => p.id), ['midi-in', 'audio-in', 'ctrl-in']);
@@ -116,20 +116,20 @@ test('VST instance registers a routing node with the type ports', () => {
 test('deleting an instance removes module, routing node, and connections', () => {
   const hub = makeFullHub();
   const inst = hub.nodes.create('vst');
-  hub.graph.addNode({ id: 'src', name: 'Src', outputs: [{ id: 'o', type: 'midi' }] });
-  hub.graph.connect('src', 'o', inst.id, 'midi-in');
-  assert.equal(hub.graph.connections().length, 1);
+  hub.network.addNode({ id: 'src', name: 'Src', outputs: [{ id: 'o', type: 'midi' }] });
+  hub.network.connect('src', 'o', inst.id, 'midi-in');
+  assert.equal(hub.network.connections().length, 1);
 
   const removed = hub.nodes.delete(inst.id);
   assert.equal(removed, true);
   assert.equal(hub.modules.get(inst.id), undefined);
-  assert.equal(hub.graph.getNode(inst.id), undefined);
-  assert.equal(hub.graph.connections().length, 0);
+  assert.equal(hub.network.getNode(inst.id), undefined);
+  assert.equal(hub.network.connections().length, 0);
 });
 
 test('unregister undoes register: the routing node leaves with the module', () => {
   // The symmetry future modules rely on. `register` adds `routingNode` to the
-  // graph, so `unregister` must remove it; when it did not, deleting a node
+  // network, so `unregister` must remove it; when it did not, deleting a node
   // left a module-less node still drawn, still cabled, still published to the
   // engine. Exercised directly on ModuleSystem, not through NodeInstanceManager,
   // so the guarantee holds for any module that declares a routing node.
@@ -139,29 +139,29 @@ test('unregister undoes register: the routing node leaves with the module', () =
     name: 'Probe',
     routingNode: { id: 'probe', name: 'Probe', type: 'vst', inputs: [{ id: 'midi-in', type: 'midi' }], outputs: [] }
   });
-  hub.graph.addNode({ id: 'src', name: 'Src', outputs: [{ id: 'o', type: 'midi' }] });
-  hub.graph.connect('src', 'o', 'probe', 'midi-in');
-  assert.ok(hub.graph.getNode('probe'), 'registered in the graph');
+  hub.network.addNode({ id: 'src', name: 'Src', outputs: [{ id: 'o', type: 'midi' }] });
+  hub.network.connect('src', 'o', 'probe', 'midi-in');
+  assert.ok(hub.network.getNode('probe'), 'registered in the network');
 
   assert.equal(hub.modules.unregister('probe'), true);
   assert.equal(hub.modules.get('probe'), undefined);
-  assert.equal(hub.graph.getNode('probe'), undefined, 'routing node removed with the module');
-  assert.equal(hub.graph.connections().length, 0, 'its cables went with it');
+  assert.equal(hub.network.getNode('probe'), undefined, 'routing node removed with the module');
+  assert.equal(hub.network.connections().length, 0, 'its cables went with it');
 });
 
-test('unregistering a module without a routing node touches no graph node', () => {
+test('unregistering a module without a routing node touches no network node', () => {
   const hub = makeFullHub();
-  hub.graph.addNode({ id: 'keep', name: 'Keep', outputs: [] });
+  hub.network.addNode({ id: 'keep', name: 'Keep', outputs: [] });
   hub.modules.register({ id: 'ui-only', name: 'UI only' });
   assert.equal(hub.modules.unregister('ui-only'), true);
-  assert.ok(hub.graph.getNode('keep'), 'unrelated nodes are untouched');
+  assert.ok(hub.network.getNode('keep'), 'unrelated nodes are untouched');
 });
 
 test('native MiniLab cannot be deleted through dynamic-node deletion', () => {
   const hub = makeFullHub();
-  hub.graph.addNode({ id: 'minilab-3', name: 'MiniLab 3', outputs: [{ id: 'midi-out', type: 'midi' }] });
+  hub.network.addNode({ id: 'minilab-3', name: 'MiniLab 3', outputs: [{ id: 'midi-out', type: 'midi' }] });
   assert.equal(hub.nodes.delete('minilab-3'), false);
-  assert.ok(hub.graph.getNode('minilab-3'));
+  assert.ok(hub.network.getNode('minilab-3'));
 });
 
 // ---- duplication (copy/paste model) ----------------------------------------
@@ -221,15 +221,15 @@ test('createFromSnapshot rejects unknown types and empty snapshots', () => {
   assert.equal(hub.nodes.duplicate('ghost'), null);
 });
 
-test('duplicate does not copy external graph connections', () => {
+test('duplicate does not copy external network connections', () => {
   const hub = makeFullHub();
-  hub.graph.addNode({ id: 'src', name: 'Src', outputs: [{ id: 'o', type: 'midi' }] });
+  hub.network.addNode({ id: 'src', name: 'Src', outputs: [{ id: 'o', type: 'midi' }] });
   const inst = hub.nodes.create('vst');
-  hub.graph.connect('src', 'o', inst.id, 'midi-in');
-  assert.equal(hub.graph.connections().length, 1);
+  hub.network.connect('src', 'o', inst.id, 'midi-in');
+  assert.equal(hub.network.connections().length, 1);
   const dup = hub.nodes.duplicate(inst.id);
-  assert.equal(hub.graph.connections().length, 1, 'no copied connections');
-  assert.equal(hub.graph.connectionsTo(dup.id).length, 0);
+  assert.equal(hub.network.connections().length, 1, 'no copied connections');
+  assert.equal(hub.network.connectionsTo(dup.id).length, 0);
 });
 
 // ---- persistence / reload ---------------------------------------------------
@@ -247,8 +247,8 @@ test('instances persist and reload', async () => {
   assert.equal(hub2.nodes.list().length, 2);
   assert.ok(hub2.modules.get('vst-001'));
   assert.ok(hub2.modules.get('video-001'));
-  assert.ok(hub2.graph.getNode('vst-001'));
-  assert.equal(hub2.graph.getNode('vst-001').type, 'vst');
+  assert.ok(hub2.network.getNode('vst-001'));
+  assert.equal(hub2.network.getNode('vst-001').type, 'vst');
 });
 
 test('reload continues the ID counter (no reuse across sessions)', async () => {
@@ -280,11 +280,11 @@ test('reload migrates legacy Sequencer identity across instance, cables, and lay
   const legacyId = 'sequencer-007';
   const hub = makeFullHub({
     nodeInstances: { instances: [{ id: legacyId, type: 'sequencer', ordinal: 1, content: null }], idSeq: { sequencer: 7 } },
-    graphConnections: [
+    networkConnections: [
       { from: { nodeId: 'minilab-3', portId: 'midi-out' }, to: { nodeId: legacyId, portId: 'midi-in' } },
       { from: { nodeId: legacyId, portId: 'audio-out' }, to: { nodeId: 'mixer-001', portId: 'audio-in-1' } }
     ],
-    graphLayout: { [legacyId]: { x: 321, y: 654 }, 'mixer-001': { x: 700, y: 80 } }
+    networkLayout: { [legacyId]: { x: 321, y: 654 }, 'mixer-001': { x: 700, y: 80 } }
   });
   await hub.nodes.load();
 
@@ -292,25 +292,25 @@ test('reload migrates legacy Sequencer identity across instance, cables, and lay
   assert.equal(hub.nodes.get('sequencer')?.id, 'sequencer');
   assert.equal(hub.settings.get('nodeInstances').instances[0].id, 'sequencer',
     'canonical instance identity is persisted immediately');
-  const migratedConnections = hub.settings.get('graphConnections');
+  const migratedConnections = hub.settings.get('networkConnections');
   assert.equal(migratedConnections[0].to.nodeId, 'sequencer');
   assert.equal(migratedConnections[1].from.nodeId, 'sequencer');
-  assert.deepEqual(hub.settings.get('graphLayout').sequencer, { x: 321, y: 654 });
-  assert.equal(legacyId in hub.settings.get('graphLayout'), false);
+  assert.deepEqual(hub.settings.get('networkLayout').sequencer, { x: 321, y: 654 });
+  assert.equal(legacyId in hub.settings.get('networkLayout'), false);
 });
 
 test('reload materialises a legacy saved Audio Input route as an explicit persisted node', async () => {
   const hub = makeFullHub({
     nodeInstances: { instances: [], idSeq: {} },
-    graphConnections: [
+    networkConnections: [
       { from: { nodeId: 'audio-input', portId: 'audio-out' }, to: { nodeId: 'sequencer', portId: 'audio-in' } }
     ],
-    graphLayout: { 'audio-input': { x: 120, y: 240 } }
+    networkLayout: { 'audio-input': { x: 120, y: 240 } }
   });
   await hub.nodes.load();
 
   assert.equal(hub.nodes.get('audio-input')?.type, 'audio-input');
-  assert.ok(hub.graph.getNode('audio-input'));
+  assert.ok(hub.network.getNode('audio-input'));
   assert.equal(hub.settings.get('nodeInstances').instances.filter((node) => node.type === 'audio-input').length, 1);
 });
 
@@ -318,23 +318,23 @@ test('reload materialises a legacy saved Audio Input route as an explicit persis
 test('instance state is separate from routing and layout', () => {
   const hub = makeFullHub();
   hub.nodes.create('vst');
-  assert.equal(hub.graph.connections().length, 0);
-  assert.equal(hub.settings.get('graphConnections'), undefined);
-  assert.equal(hub.settings.get('graphLayout'), undefined);
+  assert.equal(hub.network.connections().length, 0);
+  assert.equal(hub.settings.get('networkConnections'), undefined);
+  assert.equal(hub.settings.get('networkLayout'), undefined);
   assert.ok(hub.settings.get('nodeInstances'));
 });
 
 test('creating empty dynamic nodes does not alter existing MIDI routing', () => {
   const hub = makeFullHub();
-  hub.graph.addNode({ id: 'minilab-3', name: 'MiniLab 3', outputs: [{ id: 'midi-out', type: 'midi' }] });
-  hub.graph.addNode({ id: 'dst', name: 'Dst', inputs: [{ id: 'midi-in', type: 'midi' }] });
-  hub.graph.connect('minilab-3', 'midi-out', 'dst', 'midi-in');
-  const before = hub.graph.serialize();
+  hub.network.addNode({ id: 'minilab-3', name: 'MiniLab 3', outputs: [{ id: 'midi-out', type: 'midi' }] });
+  hub.network.addNode({ id: 'dst', name: 'Dst', inputs: [{ id: 'midi-in', type: 'midi' }] });
+  hub.network.connect('minilab-3', 'midi-out', 'dst', 'midi-in');
+  const before = hub.network.serialize();
 
   hub.nodes.create('vst');
   hub.nodes.create('video');
   hub.nodes.create('image');
 
-  assert.deepEqual(hub.graph.serialize(), before);
-  assert.equal(hub.graph.connections().length, 1);
+  assert.deepEqual(hub.network.serialize(), before);
+  assert.equal(hub.network.connections().length, 1);
 });

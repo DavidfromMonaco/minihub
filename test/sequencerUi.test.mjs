@@ -193,7 +193,7 @@ function routingContainer() {
   return { container, svg };
 }
 
-function graphNodeElement(svg, nodeId) {
+function networkNodeElement(svg, nodeId) {
   const nodes = findClass(svg, 'nodes');
   const stack = [...(nodes?.children || [])];
   while (stack.length) {
@@ -240,27 +240,27 @@ test('Audio Input is a real AUDIO OUT source and cable inconsistencies stay visi
   hub.modules.activate('sequencer', view.container);
 
   assert.match(view.markup(), /value="audio-input" selected>Audio Input<\/option>/,
-    'the physical source is the graph node exposed by Audio Input AUDIO OUT');
+    'the physical source is the network node exposed by Audio Input AUDIO OUT');
   assert.doesNotMatch(view.markup(), /device-input/);
   assert.match(view.markup(), /seq-route-warning">! Input selected, Patch Bay cable missing/);
-  assert.equal(hub.graph.connectionsTo('sequencer', 'audio-in').length, 0);
+  assert.equal(hub.network.connectionsTo('sequencer', 'audio-in').length, 0);
 
   hub.sequencer.setTrack(track.id, { inputId: 'audio-input' });
-  const cables = hub.graph.connectionsTo('sequencer', 'audio-in');
+  const cables = hub.network.connectionsTo('sequencer', 'audio-in');
   assert.deepEqual(cables.map((cable) => [cable.from.nodeId, cable.from.portId]),
-    [['audio-input', 'audio-out']], 'the selector creates one authoritative graph cable');
+    [['audio-input', 'audio-out']], 'the selector creates one authoritative network cable');
   assert.match(view.markup(), /seq-route-ok">✓ Input cable connected/);
 
-  hub.graph.disconnect('audio-input', 'audio-out', 'sequencer', 'audio-in');
+  hub.network.disconnect('audio-input', 'audio-out', 'sequencer', 'audio-in');
   assert.match(view.markup(), /seq-route-warning">! Input selected, Patch Bay cable missing/,
     'manual cable removal is reported immediately instead of leaving a false routed state');
 
   hub.sequencer.setTrack(track.id, { inputId: '' });
-  hub.graph.connect('audio-input', 'audio-out', 'sequencer', 'audio-in');
+  hub.network.connect('audio-input', 'audio-out', 'sequencer', 'audio-in');
   assert.match(view.markup(), /seq-route-warning">! Input cable present, source not selected/,
     'a manual Patch Bay cable remains primary and asks only for track assignment');
   hub.sequencer.setTrack(track.id, { inputId: 'audio-input' });
-  assert.equal(hub.graph.connectionsTo('sequencer', 'audio-in').length, 1,
+  assert.equal(hub.network.connectionsTo('sequencer', 'audio-in').length, 1,
     'assigning an already-cabled source never creates a parallel route');
   assert.match(view.markup(), /seq-route-ok">✓ Input cable connected/);
 
@@ -271,7 +271,7 @@ test('Audio Input is a real AUDIO OUT source and cable inconsistencies stay visi
     'a downstream audio destination is filtered from every source selector');
   const feedbackTrack = hub.sequencer.model.addTrack('audio');
   hub.sequencer.setTrack(feedbackTrack.id, { inputId: vst.id });
-  assert.equal(hub.graph.connectionsTo('sequencer', 'audio-in')
+  assert.equal(hub.network.connectionsTo('sequencer', 'audio-in')
     .some((cable) => cable.from.nodeId === vst.id), false,
   'controller rejects the same feedback route even if requested outside the selector');
 });
@@ -435,8 +435,8 @@ test('MIDI source selector exposes only the WebMIDI input feeding MiniLab routin
   hub.midi.selectedInputId = 'selected-midi';
   const track = hub.sequencer.model.addTrack('midi');
   hub.sequencer.model.updateTrack(track.id, { inputId: 'selected-midi', armed: true });
-  hub.graph.addNode({ id: 'rogue-midi', type: 'arpeggiator', inputs: [], outputs: [{ id: 'midi-out', type: 'midi' }] });
-  hub.graph.connect('rogue-midi', 'midi-out', 'sequencer', 'midi-in');
+  hub.network.addNode({ id: 'rogue-midi', type: 'arpeggiator', inputs: [], outputs: [{ id: 'midi-out', type: 'midi' }] });
+  hub.network.connect('rogue-midi', 'midi-out', 'sequencer', 'midi-in');
   hub.modules.register(createSequencerModule(hub));
   const view = captureContainer();
   hub.modules.activate('sequencer', view.container);
@@ -455,28 +455,28 @@ test('legacy physical-input selection migrates without inventing a cable', async
     sequencerState: {
       tracks: [{ id: 'track-audio', type: 'audio', name: 'Audio 1', inputId: 'device-input', clips: [] }]
     },
-    graphConnections: []
+    networkConnections: []
   });
   const track = hub.sequencer.model.state.tracks[0];
   assert.equal(track.inputId, 'audio-input');
   assert.equal(api.data.sequencerState.tracks[0].inputId, 'audio-input');
-  assert.deepEqual(hub.graph.connections(), [], 'migration changes selection metadata only');
+  assert.deepEqual(hub.network.connections(), [], 'migration changes selection metadata only');
 });
 
 test('the explicit Patch Bay Sequencer node opens the fixed Sequencer page', async () => {
-  const { hub } = await runtime({ graphViewport: { x: 0, y: 0, zoom: 1 } });
+  const { hub } = await runtime({ networkViewport: { x: 0, y: 0, zoom: 1 } });
   hub.modules.register(createSequencerModule(hub));
   const sequencer = hub.nodes.create('sequencer');
   const view = routingContainer();
   const routing = createRoutingModule(hub);
   routing.mount(view.container);
-  const { candidate, nodes } = graphNodeElement(view.svg, sequencer.id);
+  const { candidate, nodes } = networkNodeElement(view.svg, sequencer.id);
   assert.ok(candidate, 'the explicit Sequencer is visible in Patch Bay');
 
   const activations = [];
   hub.modules.activate = (id, container) => { activations.push([id, container]); return true; };
   fire(nodes, 'dblclick', { target: candidate });
   assert.deepEqual(activations, [['sequencer', view.container]],
-    'double-clicking the graph node opens the existing fixed page');
+    'double-clicking the network node opens the existing fixed page');
   routing.unmount();
 });

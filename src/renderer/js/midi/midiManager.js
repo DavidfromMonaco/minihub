@@ -133,7 +133,7 @@ export class MidiManager {
     // Hot-plug: the preferred port has (re)appeared while nothing is armed.
     // Without this, plugging the controller in after launch left the selection
     // empty, which silently routed EVERY input - including the MiniLab's
-    // control-surface port - into the graph.
+    // control-surface port - into the network.
     if (!this.selectedInputId) {
       const preferred = this._inputPreference();
       let match = this._resolveInputPreference(preferred);

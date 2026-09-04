@@ -14,7 +14,7 @@ const { withDirectory, withDirectoryOfFile, carryDirectoryMemory } = require('./
 // cannot import that ES module, so the rule is stated instead: nothing below
 // may appear in PROJECT_KEYS, and vice versa.
 //
-// `graphConnections` used to be declared here, which was the visible symptom of
+// `networkConnections` used to be declared here, which was the visible symptom of
 // the confusion: it is project state, and the default `[]` it injected was
 // discarded moments later by the bootstrap that deletes every project key.
 const DEFAULTS = {
@@ -55,7 +55,7 @@ function loadSettings() {
  */
 function saveSettings(settings, { owner = 'renderer' } = {}) {
   const next = owner === 'main' ? settings : carryDirectoryMemory(settings, loadSettings());
-  // Atomic write: settings are saved on every graph/layout change, so a crash
+  // Atomic write: settings are saved on every network/layout change, so a crash
   // (or a power cut) mid-write used to leave a truncated JSON file, which
   // loadSettings then silently discarded along with every node and cable.
   const target = settingsPath();

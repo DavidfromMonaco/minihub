@@ -314,7 +314,7 @@ body {
   grid-template-columns: 1fr 1fr;
 }
 
-/* ---------- Typography helpers ---------- */
+/* ---------- Typonetworky helpers ---------- */
 .muted {
   color: var(--text-dim);
 }
@@ -632,7 +632,7 @@ body {
   font-weight: 500;
 }
 
-/* ---------- Utility spacing / typography ---------- */
+/* ---------- Utility spacing / typonetworky ---------- */
 .m-0 { margin: 0; }
 .mb-6 { margin-bottom: 6px; }
 .mb-16 { margin-bottom: 16px; }

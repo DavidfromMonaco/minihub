@@ -43,7 +43,7 @@ other is to be rejected or rethought.
 | Use | What it demands |
 |---|---|
 | **Finish a complete track** | The sequencer, recording and export must be solid and faithful enough to finish a track with no other software. Exact timing, export without surprises, projects that reopen intact. |
-| **Play generative music live** | The graph must stay editable while sound is running. No routine operation may force an audio dropout, a reload, or a state rebuilt by hand. |
+| **Play generative music live** | The network must stay editable while sound is running. No routine operation may force an audio dropout, a reload, or a state rebuilt by hand. |
 
 The tension between the two is the heart of the architecture: it explains the
 topology/values split ([DECISIONS.md](DECISIONS.md) D-004), the append-only VST
@@ -51,7 +51,7 @@ chains that outlive plans, and the absolute ban on blocking the audio thread.
 
 ## 4. What MiniHub is
 
-- A **Patch Bay** where nodes are joined by typed cables, and where the graph is
+- A **Patch Bay** where nodes are joined by typed cables, and where the network is
   the sole routing authority.
 - A native **VST3 host**: serial chains, native editors, persistent plugin state.
 - A **sequencer** for sample-accurate MIDI + audio arrangement, with recording,
@@ -65,7 +65,7 @@ The MiniLab 3 is the **reference use case**: it is what gets modelled, drawn and
 tested, and it is what trade-offs are settled against.
 
 But the architecture must **not make a second controller impossible**. A hardware
-identifier rooted in the core of the graph is a defect, not a simplification —
+identifier rooted in the core of the network is a defect, not a simplification —
 that is what [DECISIONS.md](DECISIONS.md) D-008 fixed on the JS side and has not
 finished fixing on the C++ side.
 
@@ -82,7 +82,7 @@ proposed "just in case" is to be refused.
 - **Not a multi-user product.** No accounts, no profiles, no sync, no sharing of
   projects between machines.
 - **Not a service.** Startup depends on no server, no database, no account. The
-  application must stay fully usable with no network (see §7).
+  application must stay fully usable offline (see §7).
 - **Not an extensible platform.** No in-house plugin system, no user scripting
   language, no public API. The plugins are VST3.
 - **Not a project with dependencies.** The absence of a bundler, a framework and
@@ -92,7 +92,7 @@ proposed "just in case" is to be refused.
   is justified by one of the two uses in §3.
 
 **Out of scope by default**: sends, sidechains, minimap, undo/redo, automatic
-graph layout, node groups. The `video` and `image` node types exist in the
+network layout, node groups. The `video` and `image` node types exist in the
 registry with empty ports; **nothing must implement them** until this line
 changes.
 
@@ -100,23 +100,23 @@ The refusal is not permanent on principle: it is permanent **by default**.
 Lifting one of these is done here, explicitly, with its reason — as preset
 management was in §8, and automation in §8 bis.
 
-## 7. The network: allowed, confined
+## 7. The internet: allowed, confined
 
 MiniHub **is not an offline application on principle**: nothing in its
-architecture forbids the network. But **no feature uses the network today**, and
+architecture forbids reaching the internet. But **no feature uses it today**, and
 none is planned — the preset module that motivated this section was abandoned
 ([DECISIONS.md](DECISIONS.md) D-013).
 
 What follows therefore does not describe anything that exists: it is the frame
-the first use of the network will have to respect, the day there is one.
+the first network call will have to respect, the day there is one.
 
-- **The application stays fully usable with no network.** No existing feature may
-  start depending on it. A missing connection degrades; it never prevents playing
-  or opening a project.
+- **The application stays fully usable offline.** No existing feature may start
+  depending on a connection. Losing one degrades; it never prevents playing or
+  opening a project.
 - **No user data leaves.** No telemetry, no usage statistics, no project upload,
   no account.
-- **The network belongs to the main process.** The renderer has neither disk nor
-  network: its CSP is `default-src 'self'` and must not be widened. Every request
+- **Network access belongs to the main process.** The renderer has neither disk
+  nor sockets: its CSP is `default-src 'self'` and must not be widened. Every request
   goes through an allow-listed command, with its validator, like everything else
   ([ARCHITECTURE.md](ARCHITECTURE.md) §4).
 - **All remote content is an external value.** It is validated before entering
@@ -138,8 +138,8 @@ plugin's state inside the project.
 Do not reopen this on the argument "there are presets to recover". What would
 legitimately reopen it is something else, and D-013 names it: **recalling a
 MiniHub configuration** — a VST chain plus an arpeggiator plus MiniLab bindings,
-recallable in another project. No plugin will ever do that, and it crosses no
-network.
+recallable in another project. No plugin will ever do that, and it leaves the
+machine at no point.
 
 ## 8 bis. Refusal lifted: automation, in the form of a Matrix node
 
@@ -163,7 +163,7 @@ What **stays** out of scope, and what the Matrix must never become:
 - no **automation lane** in the sequencer — no line, no point, no curve drawn on
   the arrangement. That is the DAW automation of §6, and it stays refused;
 - no scripting language (§6, "not an extensible platform");
-- no model- or network-driven generation (§7);
+- no model-driven or online generation (§7);
 - no second DAW inside the application.
 
 The difference fits in one sentence: the Matrix **governs nodes**, it does not
@@ -199,12 +199,12 @@ rule — otherwise it is only a wish.
 
 ## 10. What failure looks like
 
-- The graph stops being the authority: what you hear depends on the open page.
+- The network stops being the authority: what you hear depends on the open page.
 - The audio thread starts blocking, and dropouts become "normal".
 - Playing live requires an audio dropout to change anything.
 - Adding a node type becomes a multi-file workstream again.
 - A dependency, a bundler or a framework enters the renderer.
-- The application stops working without a network.
+- The application stops working offline.
 - The documentation starts lying again: `dist/` diverges from `src/`, a stated
   invariant is no longer true, a decision is undone with no entry in
   [DECISIONS.md](DECISIONS.md).

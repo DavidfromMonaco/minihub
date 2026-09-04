@@ -83,7 +83,7 @@ const expression = `(async () => {
     await command({ type: 'setChainMidiEnabled', chainId, enabled: true });
     await command({ type: 'setChainOutputEnabled', chainId, enabled: true });
   };
-  const graphFor = async (chains) => {
+  const networkFor = async (chains) => {
     const after = events.length;
     const nodes = chains.map((chainId) => ({ id: chainId, nodeType: 'vst', inputs: [] }));
     if (chains.length === 1) {
@@ -96,12 +96,12 @@ const expression = `(async () => {
       nodes.push({ id: 'audio-output', nodeType: 'audio-output', inputs: [{ portId: 'audio-in',
         sourceNodeId: 'realtime-output-mixer', sourcePortId: 'audio-out', level: 1, muted: false }] });
     }
-    await command({ type: 'syncAudioGraph', nodes });
-    await waitFor((event) => event.type === 'audioGraphSynced' && event.nodeCount === nodes.length,
-      after, 'audio graph ' + chains.join('+'));
+    await command({ type: 'syncAudioNetwork', nodes });
+    await waitFor((event) => event.type === 'audioNetworkSynced' && event.nodeCount === nodes.length,
+      after, 'audio network ' + chains.join('+'));
   };
   const exercisePlugins = async (name, chains, notes) => {
-    await graphFor(chains);
+    await networkFor(chains);
     const beforeRuntime = events.filter((event) => event.type === 'audioRuntimeTelemetry').at(-1);
     const after = events.length;
     for (let index = 0; index < chains.length; index += 1)
@@ -160,14 +160,14 @@ const expression = `(async () => {
       assert(nonFinite(runtime) === 0,
         'non-finite PortAudio output at ' + bufferSize + ': ' + JSON.stringify(runtime));
       assert(Number(runtime.portAudioCallbackId) >= Number(runtime.portAudioOutputWriteId)
-        && Number(runtime.audioGraphProcessId) >= Number(runtime.portAudioOutputWriteId)
+        && Number(runtime.audioNetworkProcessId) >= Number(runtime.portAudioOutputWriteId)
         && Number(runtime.masterOutputProcessId) >= Number(runtime.portAudioOutputWriteId),
-      'callback/graph/Master/write sequence invariant failed: ' + JSON.stringify(runtime));
+      'callback/network/Master/write sequence invariant failed: ' + JSON.stringify(runtime));
       buffers.push({
         requestedFrames: bufferSize,
         actualFrames: Number(runtime.portAudioCallbackFrames),
         callbackId: Number(runtime.portAudioCallbackId),
-        audioGraphProcessId: Number(runtime.audioGraphProcessId),
+        audioNetworkProcessId: Number(runtime.audioNetworkProcessId),
         masterOutputProcessId: Number(runtime.masterOutputProcessId),
         outputWriteId: Number(runtime.portAudioOutputWriteId),
         outputUnderflowDelta: (Number(runtime.paOutputUnderflows) || 0)

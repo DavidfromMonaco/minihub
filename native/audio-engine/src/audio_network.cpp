@@ -1,4 +1,4 @@
-#include "audio_graph.h"
+#include "audio_network.h"
 #include "sequencer.h"
 #include <algorithm>
 #include <atomic>
@@ -41,7 +41,7 @@ const juce::AudioBuffer<float>& AudioExecutionPlan::SourceDelay::process(
 }
 
 std::unique_ptr<AudioExecutionPlan> AudioExecutionPlan::compile(
-    const AudioGraphSpec& spec, const std::function<Chain*(const std::string&)>& chainLookup,
+    const AudioNetworkSpec& spec, const std::function<Chain*(const std::string&)>& chainLookup,
     SequencerEngine* sequencer, int maxBlockSize, std::string& error,
     bool pdcEnabled)
 {
@@ -144,7 +144,7 @@ void AudioExecutionPlan::process(float* const* hw,int hwChannels,int count,Trans
             // Preserve the exact pre-Master Audio Output signal in the node's
             // preallocated buffer. This is both the authoritative final mix
             // tap and a deterministic diagnostic point; no callback-time
-            // allocation or copy outside the existing stereo graph occurs.
+            // allocation or copy outside the existing stereo network occurs.
             for(size_t source=0;source<n.sources.size();++source)for(int ch=0;ch<2;++ch)
                 n.output.addFrom(ch,0,sourceBuffer(source),ch,0,count);
             for(int ch=0;ch<std::min(2,hwChannels);++ch)

@@ -8,7 +8,7 @@
  * sample rate, buffer size, engine state).
  *
  * The engine only sends audio to the physical output for VST chains that are
- * connected here in `hub.graph` (VST AUDIO OUT -> Audio Output AUDIO IN).
+ * connected here in `hub.network` (VST AUDIO OUT -> Audio Output AUDIO IN).
  */
 import { icon } from '../../ui/icons.js';
 import {
@@ -257,8 +257,8 @@ export function createAudioOutputModule(hub) {
     els.clip.setAttribute('aria-pressed', meter.clip === true ? 'true' : 'false');
     els.preGainPeak.textContent = formatDb(Number(meter.preGainPeakDb));
     els.automaticGainReduction.textContent = meter.automaticGainReduction === true ? 'ON' : 'OFF';
-    pathTelemetry.set('graph:audio-output', {
-      ...observation, scope: 'graph', nodeId: AUDIO_OUTPUT_NODE_ID, role: 'output',
+    pathTelemetry.set('network:audio-output', {
+      ...observation, scope: 'network', nodeId: AUDIO_OUTPUT_NODE_ID, role: 'output',
       gainCoefficient: Number(meter.gainCoefficient) || 0,
       name: 'Audio Output', receivedAt: Date.now()
     });

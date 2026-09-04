@@ -4,8 +4,8 @@
 #include "ipc.h"
 #include "vst3_scanner.h"
 #include "transport.h"
-#include "audio_graph.h"
-#include "midi_graph.h"
+#include "audio_network.h"
+#include "midi_network.h"
 #include "midi_output.h"
 #include "master_output.h"
 #include "sequencer.h"
@@ -94,9 +94,9 @@ private:
     void cmdSetTransport(const juce::var& msg);
     void cmdGetTransport(const juce::var& msg);
     void cmdForegroundEditors(const juce::var& msg);
-    void cmdSyncAudioGraph(const juce::var& msg);
+    void cmdSyncAudioNetwork(const juce::var& msg);
     void cmdSetAudioNodeValues(const juce::var& msg);
-    void cmdSyncMidiGraph(const juce::var& msg);
+    void cmdSyncMidiNetwork(const juce::var& msg);
     void cmdCapturePluginStates(const juce::var& msg);
     void cmdSetMetronome(const juce::var& msg);
     void cmdSetMasterOutput(const juce::var& msg);
@@ -141,7 +141,7 @@ private:
     /** Open the system's default WASAPI shared output so the engine is audible before the
      *  user has ever visited the Audio Output panel. */
     void openDefaultOutput();
-    /** Reopen the live stream when, and only when, the graph's need for the
+    /** Reopen the live stream when, and only when, the network's need for the
      *  hardware capture endpoint changed. No-op while the need is unchanged. */
     void applyAudioInputRequirement(bool required);
     void sendError(const juce::String& code, const juce::String& message);
@@ -149,10 +149,10 @@ private:
     void sendDeviceState();
     void sendMidiOutputState();
     void panicAllMidi();
-    void clearAudioGraph();
+    void clearAudioNetwork();
     void publishAudioPlan(std::unique_ptr<AudioExecutionPlan> plan);
-    void republishActiveAudioGraph();
-    void clearMidiGraph();
+    void republishActiveAudioNetwork();
+    void clearMidiNetwork();
     void sendInstanceStatus(const juce::String& chainId, PluginInstance* inst);
     void sendParameterTouched(PluginInstance& inst,
                               const PluginInstance::TouchedParameter& touched);
@@ -220,7 +220,7 @@ private:
     std::vector<std::unique_ptr<AudioExecutionPlan>> audioPlans_;
     std::atomic<AudioExecutionPlan*> activeAudioPlan_ { nullptr };
     std::atomic<AudioExecutionPlan*> audioPlanHazard_ { nullptr };
-    std::atomic<std::uint32_t> audioGraphReaders_ { 0 };
+    std::atomic<std::uint32_t> audioNetworkReaders_ { 0 };
     std::vector<std::unique_ptr<MidiExecutionPlan>> midiPlans_;
     std::atomic<MidiExecutionPlan*> activeMidiPlan_ { nullptr };
     std::atomic<MidiExecutionPlan*> midiPlanHazard_ { nullptr };
@@ -229,7 +229,7 @@ private:
     std::atomic<bool> midiPanicPending_ { false };
     int timingDiagnosticTicks_ = 0;
     // Commands in this list describe the state *after* the current bounce.
-    // Keeping them off the live native graph makes one master export consume
+    // Keeping them off the live native network makes one master export consume
     // one immutable routing/state snapshot from its first block to its last.
     std::vector<juce::var> deferredExportCommands_;
     bool replayingDeferredExportCommands_ = false;
@@ -255,8 +255,8 @@ private:
     std::unique_ptr<ExportContext> exportContext_;
     std::atomic<ExportContext*> activeExportContext_ { nullptr };
     std::atomic<ExportContext*> exportContextHazard_ { nullptr };
-    AudioGraphSpec activeAudioSpec_;
-    MidiGraphSpec activeMidiSpec_;
+    AudioNetworkSpec activeAudioSpec_;
+    MidiNetworkSpec activeMidiSpec_;
     std::atomic<bool> exportPreparing_ { false };
     std::atomic<uint64_t> exportGeneration_ { 0 };
     std::shared_ptr<std::atomic<bool>> exportCancel_;
@@ -292,7 +292,7 @@ private:
     bool shutdownFinished_ = false;
     bool scanning_ = false;
     std::map<juce::String, juce::int64> instanceGenerations_;
-    // An export cannot capture a deterministic initial processor graph while
+    // An export cannot capture a deterministic initial processor network while
     // an asynchronous VST creation can still install itself. Values are the
     // generation so a stale worker cannot clear a replacement load.
     std::map<juce::String, juce::int64> pendingPluginLoads_;

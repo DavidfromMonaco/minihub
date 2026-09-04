@@ -1,5 +1,5 @@
 import { DEFAULT_MASTER_OUTPUT, MASTER_OUTPUT_KEY, normalizeMasterOutput } from './masterOutput.js';
-import { PROJECT_KEYS } from './projectKeys.js';
+import { PROJECT_KEYS, PURGEABLE_PROJECT_KEYS } from './projectKeys.js';
 
 const STAGED_KEY = 'minihub.stagedProject';
 export const PROJECT_WORKSPACE_MODULE = 'routing';
@@ -30,14 +30,18 @@ export class ProjectManager {
       // Legacy global session snapshots are not projects and must not rebuild
       // nodes/VSTs merely because Home opened. Machine preferences and cached
       // recent-project metadata remain in the application settings object.
-      for (const key of PROJECT_KEYS) delete this.hub.settings.data[key];
+      for (const key of PURGEABLE_PROJECT_KEYS) delete this.hub.settings.data[key];
     }
     this.publish();
   }
   finishBootstrap() { this._loading = false; this.publish(); }
   applySnapshot(project, filePath) {
-    const graph = project.graph || {};
-    Object.assign(this.hub.settings.data, { nodeInstances: project.nodeInstances, graphConnections: graph.connections || [], graphLayout: graph.layout || {}, graphViewport: graph.viewport || null, transportBpm: project.transport?.bpm || 120, sequencerState: project.sequencer || null, [MASTER_OUTPUT_KEY]: normalizeMasterOutput(project.master) });
+    // D-019 renamed graph to network. A .minihub file written before that
+    // carries the block under `graph`, and the format has no version bump to
+    // key off -- both spellings are version 1. Read either, write only
+    // `network`: an old project opens once and is saved forward.
+    const network = project.network || project.graph || {};
+    Object.assign(this.hub.settings.data, { nodeInstances: project.nodeInstances, networkConnections: network.connections || [], networkLayout: network.layout || {}, networkViewport: network.viewport || null, transportBpm: project.transport?.bpm || 120, sequencerState: project.sequencer || null, [MASTER_OUTPUT_KEY]: normalizeMasterOutput(project.master) });
     Object.assign(this, { projectId: project.projectId, currentProjectName: project.name, createdAt: project.createdAt, currentProjectPath: filePath, dirty: false });
   }
   markDirty() { if (!this._loading && !this.dirty) { this.dirty = true; this.publish(); } }
@@ -80,7 +84,7 @@ export class ProjectManager {
     return confirmed;
   }
   snapshot({ name = this.currentProjectName } = {}) {
-    return { format: 'minihub-project', version: 1, projectId: this.projectId, name, createdAt: this.createdAt, modifiedAt: new Date().toISOString(), graph: { connections: this.hub.graph.serialize(), layout: this.hub.settings.get('graphLayout') || {}, viewport: this.hub.settings.get('graphViewport') || null }, nodeInstances: this.hub.settings.get('nodeInstances') || { instances: [], idSeq: {} }, transport: { bpm: Number(this.hub.settings.get('transportBpm')) || 120 }, master: normalizeMasterOutput(this.hub.settings.get(MASTER_OUTPUT_KEY)), sequencer: this.hub.sequencer?.model.snapshot() || this.hub.settings.get('sequencerState') || null };
+    return { format: 'minihub-project', version: 1, projectId: this.projectId, name, createdAt: this.createdAt, modifiedAt: new Date().toISOString(), network: { connections: this.hub.network.serialize(), layout: this.hub.settings.get('networkLayout') || {}, viewport: this.hub.settings.get('networkViewport') || null }, nodeInstances: this.hub.settings.get('nodeInstances') || { instances: [], idSeq: {} }, transport: { bpm: Number(this.hub.settings.get('transportBpm')) || 120 }, master: normalizeMasterOutput(this.hub.settings.get(MASTER_OUTPUT_KEY)), sequencer: this.hub.sequencer?.model.snapshot() || this.hub.settings.get('sequencerState') || null };
   }
   /** Save / Save As driven by the user: failures are reported on screen. */
   async save(as = false) {
@@ -179,13 +183,13 @@ export class ProjectManager {
     if (this._blockWhileRecording('create a new project')) return false;
     if (!this._confirmDiscardChanges('create a new project')) return false;
     const now = new Date().toISOString();
-    return this._replace({ format: 'minihub-project', version: 1, projectId: newId(), name: 'Untitled', createdAt: now, modifiedAt: now, graph: { connections: [], layout: {}, viewport: null }, nodeInstances: { instances: [], idSeq: {} }, transport: { bpm: 120 }, master: { ...DEFAULT_MASTER_OUTPUT } }, null, true, { discardApproved: true });
+    return this._replace({ format: 'minihub-project', version: 1, projectId: newId(), name: 'Untitled', createdAt: now, modifiedAt: now, network: { connections: [], layout: {}, viewport: null }, nodeInstances: { instances: [], idSeq: {} }, transport: { bpm: 120 }, master: { ...DEFAULT_MASTER_OUTPUT } }, null, true, { discardApproved: true });
   }
   async newFromBasicTemplate() {
     if (this._blockWhileRecording('create a new project')) return false;
     if (!this._confirmDiscardChanges('create a project from the Basic template')) return false;
     const now = new Date().toISOString();
-    const project = { format: 'minihub-project', version: 1, projectId: newId(), name: 'Basic', createdAt: now, modifiedAt: now, graph: { connections: [], layout: {}, viewport: null }, nodeInstances: { instances: [], idSeq: {} }, transport: { bpm: 120 }, master: { ...DEFAULT_MASTER_OUTPUT } };
+    const project = { format: 'minihub-project', version: 1, projectId: newId(), name: 'Basic', createdAt: now, modifiedAt: now, network: { connections: [], layout: {}, viewport: null }, nodeInstances: { instances: [], idSeq: {} }, transport: { bpm: 120 }, master: { ...DEFAULT_MASTER_OUTPUT } };
     return this._replace(project, null, true, { discardApproved: true });
   }
   async _replace(project, filePath, unsaved = false, { discardApproved = false } = {}) {

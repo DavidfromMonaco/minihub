@@ -36,12 +36,12 @@ async function setupRoute() {
   const hub = createHub(api);
   await hub.engine.init();
   setupMidiRouting(hub);
-  // Same wiring as app.js: the graph is what tells the engine which chains
+  // Same wiring as app.js: the network is what tells the engine which chains
   // still have a MIDI route.
   setupEngineSync(hub);
-  hub.graph.addNode({ id: 'minilab-3', name: 'MiniLab 3', outputs: [{ id: 'midi-out', type: 'midi' }] });
+  hub.network.addNode({ id: 'minilab-3', name: 'MiniLab 3', outputs: [{ id: 'midi-out', type: 'midi' }] });
   const node = hub.nodes.create('vst');
-  hub.graph.connect('minilab-3', 'midi-out', node.id, 'midi-in');
+  hub.network.connect('minilab-3', 'midi-out', node.id, 'midi-in');
   api.sent.length = 0;
   return { api, hub, node };
 }
@@ -126,7 +126,7 @@ test('pulling the MIDI cable stops further notes reaching the chain', async () =
   assert.equal(midiSent(api).length, 1);
 
   const mark = api.sent.length;
-  hub.graph.disconnect('minilab-3', 'midi-out', node.id, 'midi-in');
+  hub.network.disconnect('minilab-3', 'midi-out', node.id, 'midi-in');
   hub.events.emit('midi:message', { type: 'noteoff', channel: 1, note: 60, velocity: 0, raw: [0x80, 60, 0] });
 
   const after = api.sent.slice(mark);

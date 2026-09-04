@@ -143,7 +143,7 @@ export function duplicateVstContent(content) {
 /**
  * Ordered plugin chain bound to a VST node's `content` object.
  *
- * Mutations affect only the internal chain and never touch `hub.graph`.
+ * Mutations affect only the internal chain and never touch `hub.network`.
  * `onChange` (optional) is invoked after each mutation so the owner can
  * persist. Plugin instance IDs are stable and unique within the chain; the
  * counter is derived from existing plugins so reloads never collide.

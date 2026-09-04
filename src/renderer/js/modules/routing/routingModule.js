@@ -2,9 +2,9 @@
  * Routing / Patch Bay module.
  *
  * A Reason-style rear-panel cable editor rendered in SVG. Nodes and cables
- * are always derived from `hub.graph` — this editor is never the source of
+ * are always derived from `hub.network` — this editor is never the source of
  * truth for routing. Node positions are view state persisted separately via
- * `GraphLayout` under the `graphLayout` settings key.
+ * `NetworkLayout` under the `networkLayout` settings key.
  *
  * Interactions:
  *   - drag a node body to move it (position is view state only)
@@ -19,8 +19,8 @@
  * Rendering uses native SVG (no framework): nodes are `<g>` groups positioned
  * with `transform`, ports are jack glyphs, cables are cubic bezier paths.
  */
-import { GraphLayout } from '../../core/graphLayout.js';
-import { GraphViewport } from '../../core/graphViewport.js';
+import { NetworkLayout } from '../../core/networkLayout.js';
+import { NetworkViewport } from '../../core/networkViewport.js';
 import { GRID_SIZE, dragPosition } from '../../core/grid.js';
 import { getNodeType, listNodeTypes, listOmniBoxCategories } from '../../core/nodeTypes.js';
 import {
@@ -103,8 +103,8 @@ export function createRoutingModule(hub) {
   // ---------- rendering ----------
 
   function render() {
-    const nodes = buildVisualNodes(hub.graph);
-    const cables = buildVisualConnections(hub.graph);
+    const nodes = buildVisualNodes(hub.network);
+    const cables = buildVisualConnections(hub.network);
 
     // Ensure positions exist for every node (deterministic defaults).
     nodes.forEach((node, i) => {
@@ -120,7 +120,7 @@ export function createRoutingModule(hub) {
     }
 
     // Clear stale selection/context target if the node disappeared for any
-    // reason (deletion elsewhere, graph change, etc.).
+    // reason (deletion elsewhere, network change, etc.).
     if (selectedNodeId && !ids.has(selectedNodeId)) selectedNodeId = null;
     if (contextNodeId && !ids.has(contextNodeId)) contextNodeId = null;
 
@@ -387,7 +387,7 @@ export function createRoutingModule(hub) {
   /**
    * Delete a dynamic node and clear every Patch Bay reference to it.
    *
-   * `hub.nodes.delete` owns the real teardown (engine chain, graph
+   * `hub.nodes.delete` owns the real teardown (engine chain, network
    * connections, layout, module registration, persistence); this only clears
    * the view state that would otherwise keep pointing at a node that is gone.
    */
@@ -454,7 +454,7 @@ export function createRoutingModule(hub) {
     const synth = { inputs: ports.inputs || [], outputs: ports.outputs || [] };
     const geo = nodeGeometry(synth, { x: 0, y: 0 });
     let pos = { x: worldPos.x, y: worldPos.y };
-    const nodes = buildVisualNodes(hub.graph);
+    const nodes = buildVisualNodes(hub.network);
     let attempts = 0;
     while (attempts < 10) {
       let overlap = false;
@@ -741,7 +741,7 @@ export function createRoutingModule(hub) {
 
     // Left-drag a connected input endpoint to physically unplug that cable.
     if (portEl && portEl.dataset.side === 'input') {
-      const conns = hub.graph.connectionsTo(portEl.dataset.nodeId, portEl.dataset.portId);
+      const conns = hub.network.connectionsTo(portEl.dataset.nodeId, portEl.dataset.portId);
       if (conns.length > 0) {
         startUnplugDrag(e, portEl, conns[0]);
         return;
@@ -923,7 +923,7 @@ export function createRoutingModule(hub) {
   function startCableDrag(e, portEl) {
     const nodeId = portEl.dataset.nodeId;
     const portId = portEl.dataset.portId;
-    const node = hub.graph.getNode(nodeId);
+    const node = hub.network.getNode(nodeId);
     const port = node && node.outputs.find((p) => p.id === portId);
     if (!port) return;
 
@@ -971,7 +971,7 @@ export function createRoutingModule(hub) {
     const portEl = target && target.closest ? target.closest('.port') : null;
 
     if (portEl && portEl.dataset.side === 'input') {
-      const result = createConnection(hub.graph, {
+      const result = createConnection(hub.network, {
         nodeId: d.fromNodeId,
         portId: d.fromPortId
       }, {
@@ -981,7 +981,7 @@ export function createRoutingModule(hub) {
       if (!result.ok) {
         flashReject(portEl, result.reason);
       }
-      // On success, graph:change re-renders automatically.
+      // On success, network:change re-renders automatically.
     } else if (portEl && portEl.dataset.side === 'output') {
       flashReject(portEl, 'output-to-output');
     }
@@ -1011,7 +1011,7 @@ export function createRoutingModule(hub) {
   }
 
   function startUnplugDrag(e, portEl, connection) {
-    const fromNode = hub.graph.getNode(connection.from.nodeId);
+    const fromNode = hub.network.getNode(connection.from.nodeId);
     if (!fromNode) return;
     const fromPos = positions.get(connection.from.nodeId);
     const fromGeo = nodeGeometry(
@@ -1063,7 +1063,7 @@ export function createRoutingModule(hub) {
     // Release on empty canvas (not over any port) disconnects; releasing over
     // a port (original input or otherwise) keeps the connection unchanged.
     if (!portEl) {
-      deleteConnection(hub.graph, d.connection);
+      deleteConnection(hub.network, d.connection);
     }
 
     drag = null;
@@ -1077,8 +1077,8 @@ export function createRoutingModule(hub) {
     const cableId = el.dataset.cableId;
     // Ctrl + left click -> immediate disconnect (no selection step).
     if (e.ctrlKey) {
-      const cable = buildVisualConnections(hub.graph).find((c) => c.id === cableId);
-      if (cable) deleteConnection(hub.graph, cable);
+      const cable = buildVisualConnections(hub.network).find((c) => c.id === cableId);
+      if (cable) deleteConnection(hub.network, cable);
       return;
     }
     setSelectedCable(cableId);
@@ -1113,10 +1113,10 @@ export function createRoutingModule(hub) {
     if (e.key !== 'Delete' && e.key !== 'Backspace') return;
 
     if (selectedCableId) {
-      const cable = buildVisualConnections(hub.graph).find((c) => c.id === selectedCableId);
+      const cable = buildVisualConnections(hub.network).find((c) => c.id === selectedCableId);
       if (cable) {
-        deleteConnection(hub.graph, cable);
-        // graph:change re-renders and clears selection.
+        deleteConnection(hub.network, cable);
+        // network:change re-renders and clears selection.
       }
       e.preventDefault();
       return;
@@ -1142,8 +1142,8 @@ export function createRoutingModule(hub) {
   }
 
   function updateCables() {
-    const nodes = buildVisualNodes(hub.graph);
-    const cables = buildVisualConnections(hub.graph);
+    const nodes = buildVisualNodes(hub.network);
+    const cables = buildVisualConnections(hub.network);
     const geo = new Map();
     nodes.forEach((node) => geo.set(node.id, nodeGeometry(node, positions.get(node.id))));
 
@@ -1171,7 +1171,7 @@ export function createRoutingModule(hub) {
   }
 
   function fitToNodes() {
-    const nodes = buildVisualNodes(hub.graph);
+    const nodes = buildVisualNodes(hub.network);
     const rects = nodes.map((node) => {
       const pos = positions.get(node.id) || layout.get(node.id, 0);
       const geo = nodeGeometry(node, { x: 0, y: 0 });
@@ -1186,7 +1186,7 @@ export function createRoutingModule(hub) {
   function applyViewSide() {
     if (!svg || !cablesLayer || !nodesLayer) return;
     // appendChild moves an existing SVG layer without recreating ports/cables.
-    // This changes presentation only; hub.graph remains the topology authority.
+    // This changes presentation only; hub.network remains the topology authority.
     if (rearView) {
       if (cablesLayer.parentNode === svg) svg.removeChild(cablesLayer);
       svg.appendChild(cablesLayer);
@@ -1215,9 +1215,9 @@ export function createRoutingModule(hub) {
   function mount(el) {
     container = el;
     container.classList.add('routing-host');
-    layout = new GraphLayout(hub.settings);
-    viewportStore = new GraphViewport(hub.settings);
-    const hasPersisted = isPersistedViewport(hub.settings.get('graphViewport'));
+    layout = new NetworkLayout(hub.settings);
+    viewportStore = new NetworkViewport(hub.settings);
+    const hasPersisted = isPersistedViewport(hub.settings.get('networkViewport'));
     viewport = viewportStore.load();
 
     container.innerHTML = `
@@ -1297,7 +1297,7 @@ export function createRoutingModule(hub) {
     window.addEventListener('resize', applyViewBox);
 
     subs.push(
-      hub.events.on('graph:change', onGraphChange),
+      hub.events.on('network:change', onNetworkChange),
       () => window.removeEventListener('resize', applyViewBox)
     );
   }
@@ -1430,8 +1430,8 @@ export function createRoutingModule(hub) {
     else if (drag.kind === 'pan') endPan();
   }
 
-  function onGraphChange() {
-    // Graph is the source of truth; re-derive the visual model.
+  function onNetworkChange() {
+    // Network is the source of truth; re-derive the visual model.
     render();
   }
 

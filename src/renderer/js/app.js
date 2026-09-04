@@ -44,7 +44,7 @@ async function main() {
   await hub.nodes.load();
 
   // Restore persisted routing connections (nodes must exist first).
-  hub.graph.restore(hub.settings.get('graphConnections'));
+  hub.network.restore(hub.settings.get('networkConnections'));
   // The first Sequencer publication happened before the Patch Bay cables were
   // restored. Republish now so persisted per-track destinations are audible
   // even when the native engine was already running before this renderer.
@@ -61,7 +61,7 @@ async function main() {
   buildSidebar(hub, sidebarEl, contentEl);
   buildHeader(hub, statusEl);
   buildSettingsModal(hub, modalRoot, settingsButton);
-  // Native audio engine client + graph sync. Initialized BEFORE any module is
+  // Native audio engine client + network sync. Initialized BEFORE any module is
   // activated so event listeners are always registered before a command can
   // trigger a response (no missed events).
   // EngineClient.init() resolves the current engine state and, when the engine
@@ -71,7 +71,7 @@ async function main() {
   hub.engine.init();
   setupMasterOutput(hub);
   const syncRouting = setupEngineSync(hub);
-  // MIDI reaches the graph for the whole app lifetime, not just while the
+  // MIDI reaches the network for the whole app lifetime, not just while the
   // MiniLab page happens to be mounted.
   setupMidiRouting(hub);
   setupControlRouting(hub);

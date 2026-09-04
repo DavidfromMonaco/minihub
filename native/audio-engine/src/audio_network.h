@@ -18,7 +18,7 @@ class SequencerEngine;
 
 enum class AudioNodeKind { input, vst, mixer, morpher, sequencer, output, diagnosticSine };
 
-struct AudioGraphInput {
+struct AudioNetworkInput {
     std::string portId;
     std::string sourceNodeId;
     std::string sourcePortId;
@@ -26,15 +26,15 @@ struct AudioGraphInput {
     bool muted = false;
 };
 
-struct AudioGraphNodeSpec {
+struct AudioNetworkNodeSpec {
     std::string id;
     AudioNodeKind kind = AudioNodeKind::vst;
-    std::vector<AudioGraphInput> inputs;
+    std::vector<AudioNetworkInput> inputs;
     float masterLevel = 1.0f;
     int stepCount = 4;
     std::array<float, 32> steps {};
     /** Native-test-only deterministic source. It is deliberately absent from
-     *  the IPC graph parser, so a project can never persist or instantiate it. */
+     *  the IPC network parser, so a project can never persist or instantiate it. */
     double diagnosticCyclesPerSample = 0.0;
     float diagnosticAmplitude = 0.0f;
     int64_t diagnosticStartSample = 0;
@@ -42,13 +42,13 @@ struct AudioGraphNodeSpec {
     int diagnosticLatencySamples = 0;
 };
 
-struct AudioGraphSpec { std::vector<AudioGraphNodeSpec> nodes; };
+struct AudioNetworkSpec { std::vector<AudioNetworkNodeSpec> nodes; };
 
 /** The mutable half of a compiled node.
  *
  *  Input levels, mutes, the master level and the Morpher steps are the only
  *  things a user changes continuously, and none of them alters the shape of the
- *  graph. Holding them here - behind atomics, in their own allocation - lets the
+ *  network. Holding them here - behind atomics, in their own allocation - lets the
  *  control thread update an already published plan in place instead of
  *  recompiling it. Recompiling rebuilt every SourceDelay, so a single fader drag
  *  used to zero the PDC delay lines mid-stream, repeatedly.
@@ -154,7 +154,7 @@ public:
     };
 
     static std::unique_ptr<AudioExecutionPlan> compile(
-        const AudioGraphSpec&, const std::function<Chain*(const std::string&)>&,
+        const AudioNetworkSpec&, const std::function<Chain*(const std::string&)>&,
         SequencerEngine*, int maxBlockSize, std::string& error,
         bool pdcEnabled = true);
 

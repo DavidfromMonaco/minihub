@@ -53,7 +53,7 @@ build step) — C++17 audio engine (JUCE 9, PortAudio/WASAPI, VST3 SDK).
 | what is left to do | [ROADMAP.md](ROADMAP.md) |
 | a long, multi-session task | [PLANS.md](PLANS.md), then `plans/active/` |
 | IPC, the engine protocol | ARCHITECTURE §4 |
-| the graph, ports, cycles | ARCHITECTURE §6 |
+| the network, ports, cycles | ARCHITECTURE §6 |
 | the native engine, real time | ARCHITECTURE §7 and §8 |
 | the sequencer | ARCHITECTURE §9 |
 | the UI, the CSP, styling | ARCHITECTURE §10 — visual references in `docs/design-references/` |
@@ -65,7 +65,7 @@ These twelve invariants are detailed and justified in **ARCHITECTURE §13**.
 Breaking one is a failure, not a trade-off.
 
 1. **No audio sample ever crosses the IPC.** Control and MIDI only.
-2. **The graph is the routing authority.** The page on screen never influences the signal.
+2. **The network is the routing authority.** The page on screen never influences the signal.
 3. **The audio thread never blocks.** No lock, no allocation inside the callback.
 4. **A node `id` is never reused.** The `ordinal` is display only.
 5. **`register` and `unregister` are symmetric**, routing node included.
@@ -141,7 +141,7 @@ scope; here are the technical prohibitions:
 
 ```bash
 npm install              # Electron + rcedit
-npm test                 # 586 JS tests, node:test runner, ~5 s
+npm test                 # 590 JS tests, node:test runner, ~5 s
 npm run check            # invariant checker (Node stdlib, ~1 s)
 npm run build:native     # native Release build (CMake + MSBuild)
 npm run build:native:tests

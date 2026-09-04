@@ -17,13 +17,13 @@ constexpr std::uint32_t kMaximumBlockSize = 4096;
 struct RealtimeStats final {
     std::uint64_t callbacks = 0;
     std::uint64_t processFailures = 0;
-    std::uint64_t audioGraphProcessCalls = 0;
+    std::uint64_t audioNetworkProcessCalls = 0;
     std::uint64_t masterOutputProcessCalls = 0;
     std::uint64_t outputWrites = 0;
     std::uint32_t maximumCallbackFrames = 0;
     std::uint32_t lastCallbackFrames = 0;
     std::uint64_t callbackSequenceId = 0;
-    std::uint64_t audioGraphSequenceId = 0;
+    std::uint64_t audioNetworkSequenceId = 0;
     std::uint64_t masterOutputSequenceId = 0;
     std::uint64_t outputWriteSequenceId = 0;
     std::uint64_t outputUnderflows = 0;
@@ -48,7 +48,7 @@ struct RealtimeStats final {
  * Electron's native Engine object is now a control/IPC facade.  This class owns
  * both the one live Transport and the one PortAudioDevice, and is the only
  * object entered by the WASAPI callback.  The render function targets the
- * currently published immutable MiniHub graph; graph construction and plugin
+ * currently published immutable MiniHub network; network construction and plugin
  * lifecycle remain control-thread work.
  */
 class AudioEngine final {
@@ -96,9 +96,9 @@ private:
     Transport transport_;
     PortAudioDevice device_;
     std::atomic<std::uint64_t> failures_ {0};
-    std::atomic<std::uint64_t> audioGraphProcessCalls_ {0};
+    std::atomic<std::uint64_t> audioNetworkProcessCalls_ {0};
     std::atomic<std::uint64_t> masterOutputProcessCalls_ {0};
-    std::atomic<std::uint64_t> lastAudioGraphSequenceId_ {0};
+    std::atomic<std::uint64_t> lastAudioNetworkSequenceId_ {0};
     std::atomic<std::uint64_t> lastMasterOutputSequenceId_ {0};
     std::atomic<std::uint32_t> maximumProcessFrames_ {kTargetBlockSize};
 };

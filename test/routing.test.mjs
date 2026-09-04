@@ -28,34 +28,34 @@ const {
   canConnect,
   portTypeInfo
 } = await import('../src/renderer/js/modules/routing/routingCore.js');
-const { GraphLayout } = await import('../src/renderer/js/core/graphLayout.js');
-const { GraphViewport } = await import('../src/renderer/js/core/graphViewport.js');
+const { NetworkLayout } = await import('../src/renderer/js/core/networkLayout.js');
+const { NetworkViewport } = await import('../src/renderer/js/core/networkViewport.js');
 const { GRID_SIZE } = await import('../src/renderer/js/core/grid.js');
 const { NodeInstanceManager } = await import('../src/renderer/js/core/nodeInstances.js');
 
 test('Front/Rear view swaps cable layer order without changing topology', () => {
-  const hub = makeHub({ graphViewport: { x: 0, y: 0, zoom: 1 } });
-  seedGraph(hub);
-  hub.graph.connect('src', 'midi-out', 'dst', 'midi-in');
+  const hub = makeHub({ networkViewport: { x: 0, y: 0, zoom: 1 } });
+  seedNetwork(hub);
+  hub.network.connect('src', 'midi-out', 'dst', 'midi-in');
   const { container, svg } = makeContainer();
   const mod = createRoutingModule(hub);
   mod.mount(container);
   const cables = findClass(svg, 'cables');
   const nodes = findClass(svg, 'nodes');
   assert.ok(svg.children.indexOf(cables) < svg.children.indexOf(nodes), 'Front keeps cables behind panels');
-  const before = hub.graph.connections.length;
+  const before = hub.network.connections.length;
   assert.equal(mod.setRearView(true), true);
   assert.ok(svg.children.indexOf(cables) > svg.children.indexOf(nodes), 'Rear raises cables above panels');
   assert.equal(cables.classList.contains('rear'), true);
-  assert.equal(hub.graph.connections.length, before, 'view swap does not mutate graph');
+  assert.equal(hub.network.connections.length, before, 'view swap does not mutate network');
   mod.setRearView(false);
   assert.ok(svg.children.indexOf(cables) < svg.children.indexOf(nodes));
   mod.unmount();
 });
 
 // ---- fixtures ---------------------------------------------------------------
-function seedGraph(hub) {
-  hub.graph.addNode({
+function seedNetwork(hub) {
+  hub.network.addNode({
     id: 'src',
     name: 'Source',
     outputs: [
@@ -63,7 +63,7 @@ function seedGraph(hub) {
       { id: 'audio-out', type: 'audio', label: 'Audio Out' }
     ]
   });
-  hub.graph.addNode({
+  hub.network.addNode({
     id: 'dst',
     name: 'Target',
     inputs: [
@@ -88,7 +88,7 @@ test('routing module registers through the module system', () => {
 });
 
 test('double-clicking a dynamic Patch Bay node opens its detailed editor', () => {
-  const hub=makeHub({graphViewport:{x:0,y:0,zoom:1}});
+  const hub=makeHub({networkViewport:{x:0,y:0,zoom:1}});
   hub.modules=new ModuleSystem(hub);hub.nodes=new NodeInstanceManager(hub);
   const arp=hub.nodes.create('arpeggiator');
   const activated=[];hub.modules.activate=(id,el)=>activated.push([id,el]);
@@ -118,7 +118,7 @@ function findClassDeep(el,className){
 }
 
 test('an Arpeggiator card carries an OPEN control that reaches its editor in one click',()=>{
-  const hub=makeHub({graphViewport:{x:0,y:0,zoom:1}});
+  const hub=makeHub({networkViewport:{x:0,y:0,zoom:1}});
   hub.modules=new ModuleSystem(hub);hub.nodes=new NodeInstanceManager(hub);
   const arp=hub.nodes.create('arpeggiator');
   const activated=[];hub.modules.activate=(id,el)=>activated.push([id,el]);
@@ -133,7 +133,7 @@ test('an Arpeggiator card carries an OPEN control that reaches its editor in one
 
 // ---- VST OPEN button: contextual native-editor vs VST-page navigation -------
 function makeVstHub(primaryStatus) {
-  const hub = makeHub({ graphViewport: { x: 0, y: 0, zoom: 1 } });
+  const hub = makeHub({ networkViewport: { x: 0, y: 0, zoom: 1 } });
   hub.modules = new ModuleSystem(hub);
   hub.nodes = new NodeInstanceManager(hub);
   const opened = [];
@@ -196,7 +196,7 @@ test('VST OPEN with a not-ready primary plugin navigates to the VST page', () =>
 });
 
 test('pressing a node without moving it twice opens the editor; a drag does not',()=>{
-  const hub=makeHub({graphViewport:{x:0,y:0,zoom:1}});
+  const hub=makeHub({networkViewport:{x:0,y:0,zoom:1}});
   hub.modules=new ModuleSystem(hub);hub.nodes=new NodeInstanceManager(hub);
   const arp=hub.nodes.create('arpeggiator');
   const activated=[];hub.modules.activate=(id,el)=>activated.push([id,el]);
@@ -220,11 +220,11 @@ test('pressing a node without moving it twice opens the editor; a drag does not'
   mod.unmount();
 });
 
-// ---- graph -> visual mapping -------------------------------------------------
-test('graph nodes map to visual nodes with typed ports', () => {
+// ---- network -> visual mapping -------------------------------------------------
+test('network nodes map to visual nodes with typed ports', () => {
   const hub = makeHub();
-  seedGraph(hub);
-  const visual = buildVisualNodes(hub.graph);
+  seedNetwork(hub);
+  const visual = buildVisualNodes(hub.network);
   assert.equal(visual.length, 2);
   const src = visual.find((n) => n.id === 'src');
   assert.equal(src.name, 'Source');
@@ -235,11 +235,11 @@ test('graph nodes map to visual nodes with typed ports', () => {
   assert.equal(dst.inputs[1].type, 'control');
 });
 
-test('graph connections map to visual cables', () => {
+test('network connections map to visual cables', () => {
   const hub = makeHub();
-  seedGraph(hub);
-  hub.graph.connect('src', 'midi-out', 'dst', 'midi-in');
-  const cables = buildVisualConnections(hub.graph);
+  seedNetwork(hub);
+  hub.network.connect('src', 'midi-out', 'dst', 'midi-in');
+  const cables = buildVisualConnections(hub.network);
   assert.equal(cables.length, 1);
   assert.equal(cables[0].from.nodeId, 'src');
   assert.equal(cables[0].from.portId, 'midi-out');
@@ -250,34 +250,34 @@ test('graph connections map to visual cables', () => {
 // ---- connection creation / rejection ----------------------------------------
 test('compatible connection creation through UI logic', () => {
   const hub = makeHub();
-  seedGraph(hub);
-  const result = createConnection(hub.graph, { nodeId: 'src', portId: 'midi-out' }, { nodeId: 'dst', portId: 'midi-in' });
+  seedNetwork(hub);
+  const result = createConnection(hub.network, { nodeId: 'src', portId: 'midi-out' }, { nodeId: 'dst', portId: 'midi-in' });
   assert.deepEqual(result, { ok: true });
-  assert.equal(hub.graph.connections().length, 1);
+  assert.equal(hub.network.connections().length, 1);
 });
 
 test('incompatible connection is rejected', () => {
   const hub = makeHub();
-  seedGraph(hub);
-  const result = createConnection(hub.graph, { nodeId: 'src', portId: 'midi-out' }, { nodeId: 'dst', portId: 'ctrl-in' });
+  seedNetwork(hub);
+  const result = createConnection(hub.network, { nodeId: 'src', portId: 'midi-out' }, { nodeId: 'dst', portId: 'ctrl-in' });
   assert.equal(result.ok, false);
   assert.equal(result.reason, 'incompatible');
-  assert.equal(hub.graph.connections().length, 0);
+  assert.equal(hub.network.connections().length, 0);
 });
 
 test('duplicate connection is rejected', () => {
   const hub = makeHub();
-  seedGraph(hub);
-  createConnection(hub.graph, { nodeId: 'src', portId: 'midi-out' }, { nodeId: 'dst', portId: 'midi-in' });
-  const dup = createConnection(hub.graph, { nodeId: 'src', portId: 'midi-out' }, { nodeId: 'dst', portId: 'midi-in' });
+  seedNetwork(hub);
+  createConnection(hub.network, { nodeId: 'src', portId: 'midi-out' }, { nodeId: 'dst', portId: 'midi-in' });
+  const dup = createConnection(hub.network, { nodeId: 'src', portId: 'midi-out' }, { nodeId: 'dst', portId: 'midi-in' });
   assert.equal(dup.ok, false);
-  assert.equal(hub.graph.connections().length, 1);
+  assert.equal(hub.network.connections().length, 1);
 });
 
 test('unknown ports are rejected', () => {
   const hub = makeHub();
-  seedGraph(hub);
-  const result = createConnection(hub.graph, { nodeId: 'src', portId: 'nope' }, { nodeId: 'dst', portId: 'midi-in' });
+  seedNetwork(hub);
+  const result = createConnection(hub.network, { nodeId: 'src', portId: 'nope' }, { nodeId: 'dst', portId: 'midi-in' });
   assert.equal(result.ok, false);
   assert.equal(result.reason, 'unknown-port');
 });
@@ -299,19 +299,19 @@ test('port type info provides shape + label (not color alone)', () => {
 // ---- connection deletion -----------------------------------------------------
 test('connection deletion through UI logic', () => {
   const hub = makeHub();
-  seedGraph(hub);
-  hub.graph.connect('src', 'midi-out', 'dst', 'midi-in');
-  assert.equal(hub.graph.connections().length, 1);
-  const cable = buildVisualConnections(hub.graph)[0];
-  const removed = deleteConnection(hub.graph, cable);
+  seedNetwork(hub);
+  hub.network.connect('src', 'midi-out', 'dst', 'midi-in');
+  assert.equal(hub.network.connections().length, 1);
+  const cable = buildVisualConnections(hub.network)[0];
+  const removed = deleteConnection(hub.network, cable);
   assert.equal(removed, true);
-  assert.equal(hub.graph.connections().length, 0);
+  assert.equal(hub.network.connections().length, 0);
 });
 
 // ---- node position persistence ----------------------------------------------
-test('node position persistence via graphLayout', async () => {
+test('node position persistence via networkLayout', async () => {
   const hub = makeHub();
-  const layout = new GraphLayout(hub.settings);
+  const layout = new NetworkLayout(hub.settings);
   // Deterministic default when nothing stored.
   const def = layout.get('minilab-3', 0);
   assert.equal(typeof def.x, 'number');
@@ -320,25 +320,25 @@ test('node position persistence via graphLayout', async () => {
   await layout.set('minilab-3', 120, 180);
   const stored = layout.get('minilab-3', 0);
   assert.deepEqual(stored, { x: 120, y: 180 });
-  assert.deepEqual(hub.settings.get('graphLayout'), { 'minilab-3': { x: 120, y: 180 } });
+  assert.deepEqual(hub.settings.get('networkLayout'), { 'minilab-3': { x: 120, y: 180 } });
 });
 
-test('routing graph is unchanged when moving nodes (view state only)', async () => {
+test('routing network is unchanged when moving nodes (view state only)', async () => {
   const hub = makeHub();
-  seedGraph(hub);
-  hub.graph.connect('src', 'midi-out', 'dst', 'midi-in');
-  const before = hub.graph.serialize();
-  const layout = new GraphLayout(hub.settings);
+  seedNetwork(hub);
+  hub.network.connect('src', 'midi-out', 'dst', 'midi-in');
+  const before = hub.network.serialize();
+  const layout = new NetworkLayout(hub.settings);
   await layout.set('src', 400, 500);
   await layout.set('dst', 900, 300);
-  assert.deepEqual(hub.graph.serialize(), before, 'moving nodes must not alter routing');
-  assert.equal(hub.graph.connections().length, 1);
+  assert.deepEqual(hub.network.serialize(), before, 'moving nodes must not alter routing');
+  assert.equal(hub.network.connections().length, 1);
 });
 
-// ---- graph updates propagate to the editor ----------------------------------
-test('graph changes propagate to the mounted editor', () => {
+// ---- network updates propagate to the editor ----------------------------------
+test('network changes propagate to the mounted editor', () => {
   const hub = makeHub();
-  seedGraph(hub);
+  seedNetwork(hub);
   const { container, svg } = makeContainer();
   const mod = createRoutingModule(hub);
   mod.mount(container);
@@ -353,16 +353,16 @@ test('graph changes propagate to the mounted editor', () => {
   assert.equal(nodesLayer.children.length, 2, 'two nodes rendered');
   assert.equal(countCables(cablesLayer), 0, 'no cables yet');
 
-  // Simulate another part of the app creating a connection through the graph.
-  hub.graph.connect('src', 'midi-out', 'dst', 'midi-in');
-  assert.equal(countCables(cablesLayer), 1, 'editor re-rendered after graph:change');
+  // Simulate another part of the app creating a connection through the network.
+  hub.network.connect('src', 'midi-out', 'dst', 'midi-in');
+  assert.equal(countCables(cablesLayer), 1, 'editor re-rendered after network:change');
 
   // Simulate removal elsewhere.
-  hub.graph.disconnect('src', 'midi-out', 'dst', 'midi-in');
+  hub.network.disconnect('src', 'midi-out', 'dst', 'midi-in');
   assert.equal(countCables(cablesLayer), 0, 'editor updated after disconnect');
 
   // Simulate a node being added elsewhere.
-  hub.graph.addNode({ id: 'extra', name: 'Extra', outputs: [{ id: 'o', type: 'midi' }] });
+  hub.network.addNode({ id: 'extra', name: 'Extra', outputs: [{ id: 'o', type: 'midi' }] });
   assert.equal(nodesLayer.children.length, 3, 'editor updated after node add');
 
   mod.unmount();
@@ -370,7 +370,7 @@ test('graph changes propagate to the mounted editor', () => {
 
 test('routing module unmount cleans up', () => {
   const hub = makeHub();
-  seedGraph(hub);
+  seedNetwork(hub);
   const { container } = makeContainer();
   const mod = createRoutingModule(hub);
   mod.mount(container);
@@ -381,7 +381,7 @@ test('routing module unmount cleans up', () => {
 
 test('initial open fits nodes when no persisted viewport exists', () => {
   const hub = makeHub();
-  hub.graph.addNode({ id: 'minilab-3', name: 'MiniLab 3', outputs: [{ id: 'midi-out', type: 'midi' }] });
+  hub.network.addNode({ id: 'minilab-3', name: 'MiniLab 3', outputs: [{ id: 'midi-out', type: 'midi' }] });
   const { container, svg } = makeContainer();
   const mod = createRoutingModule(hub);
   mod.mount(container);
@@ -393,8 +393,8 @@ test('initial open fits nodes when no persisted viewport exists', () => {
 
 test('initial open restores a valid persisted viewport', async () => {
   const hub = makeHub();
-  hub.graph.addNode({ id: 'minilab-3', name: 'MiniLab 3', outputs: [{ id: 'midi-out', type: 'midi' }] });
-  const vp = new GraphViewport(hub.settings);
+  hub.network.addNode({ id: 'minilab-3', name: 'MiniLab 3', outputs: [{ id: 'midi-out', type: 'midi' }] });
+  const vp = new NetworkViewport(hub.settings);
   await vp.save(123, 456, 1.25);
   const { container, svg } = makeContainer();
   const mod = createRoutingModule(hub);
@@ -407,7 +407,7 @@ test('initial open restores a valid persisted viewport', async () => {
 
 test('visual grid pattern uses the shared GRID_SIZE', () => {
   const hub = makeHub();
-  hub.graph.addNode({ id: 'minilab-3', name: 'MiniLab 3', outputs: [{ id: 'midi-out', type: 'midi' }] });
+  hub.network.addNode({ id: 'minilab-3', name: 'MiniLab 3', outputs: [{ id: 'midi-out', type: 'midi' }] });
   const { container, svg } = makeContainer();
   const mod = createRoutingModule(hub);
   mod.mount(container);
@@ -421,7 +421,7 @@ test('visual grid pattern uses the shared GRID_SIZE', () => {
 test('dynamic nodes render with a type accent class in the Patch Bay', () => {
   const hub = makeHub();
   const modules = new ModuleSystem(hub);
-  const nodes = new NodeInstanceManager({ events: hub.events, settings: hub.settings, graph: hub.graph, modules });
+  const nodes = new NodeInstanceManager({ events: hub.events, settings: hub.settings, network: hub.network, modules });
   hub.modules = modules;
   hub.nodes = nodes;
   nodes.create('vst');
@@ -438,11 +438,11 @@ test('dynamic nodes render with a type accent class in the Patch Bay', () => {
 test('port elements carry the correct node id for cable drag', () => {
   const hub = makeHub();
   const modules = new ModuleSystem(hub);
-  const nodes = new NodeInstanceManager({ events: hub.events, settings: hub.settings, graph: hub.graph, modules });
+  const nodes = new NodeInstanceManager({ events: hub.events, settings: hub.settings, network: hub.network, modules });
   hub.modules = modules;
   hub.nodes = nodes;
   // Native MiniLab routing node + dynamic VST instance.
-  hub.graph.addNode({ id: 'minilab-3', name: 'MiniLab 3', outputs: [{ id: 'midi-out', type: 'midi' }] });
+  hub.network.addNode({ id: 'minilab-3', name: 'MiniLab 3', outputs: [{ id: 'midi-out', type: 'midi' }] });
   nodes.create('vst'); // vst-001 with midi-in
 
   const { container, svg } = makeContainer();
@@ -472,9 +472,9 @@ test('port elements carry the correct node id for cable drag', () => {
 
 test('cables render a visible path + wide hit path with endpoint metadata', () => {
   const hub = makeHub();
-  hub.graph.addNode({ id: 'a', name: 'A', outputs: [{ id: 'o', type: 'midi' }] });
-  hub.graph.addNode({ id: 'b', name: 'B', inputs: [{ id: 'i', type: 'midi' }] });
-  hub.graph.connect('a', 'o', 'b', 'i');
+  hub.network.addNode({ id: 'a', name: 'A', outputs: [{ id: 'o', type: 'midi' }] });
+  hub.network.addNode({ id: 'b', name: 'B', inputs: [{ id: 'i', type: 'midi' }] });
+  hub.network.connect('a', 'o', 'b', 'i');
 
   const { container, svg } = makeContainer();
   const mod = createRoutingModule(hub);

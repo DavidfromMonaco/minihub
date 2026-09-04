@@ -21,14 +21,14 @@ test('Master owns only explicit static gain and discards legacy hidden ceilings'
   const data = {};
   const hub = {
     settings: { data, get: (key) => data[key] },
-    graph: { serialize: () => [] },
+    network: { serialize: () => [] },
     sequencer: { model: { snapshot: () => null } },
     events: { emit() {} }
   };
   const project = new ProjectManager(hub, {});
   project.applySnapshot({
     projectId: 'legacy', name: 'Legacy', createdAt: '2026-01-01',
-    graph: {}, nodeInstances: { instances: [], idSeq: {} }, transport: { bpm: 120 }
+    network: {}, nodeInstances: { instances: [], idSeq: {} }, transport: { bpm: 120 }
   }, null);
   assert.deepEqual(data.masterOutput, { gainDb: 0 },
     'old projects retain unity Master gain and remove every hidden limiter field');

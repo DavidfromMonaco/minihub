@@ -13,7 +13,7 @@
 namespace mlh {
 
 /**
- * A serial chain of VST3 plugin instances for one VST node in the Hub graph.
+ * A serial chain of VST3 plugin instances for one VST node in the Hub network.
  *
  * The order of the plugin list is the processing order.
  *

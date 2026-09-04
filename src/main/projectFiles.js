@@ -12,7 +12,7 @@ function validateProject(value) {
   if (value.version !== VERSION) throw new Error(`Unsupported MiniHub project version: ${value.version}`);
   if (!value.projectId || typeof value.projectId !== 'string') throw new Error('Project is missing projectId');
   if (!value.name || typeof value.name !== 'string') throw new Error('Project is missing name');
-  if (!value.graph || typeof value.graph !== 'object') throw new Error('Project is missing graph state');
+  if (!value.network || typeof value.network !== 'object') throw new Error('Project is missing network state');
   if (!Array.isArray(value.nodeInstances?.instances)) throw new Error('Project is missing node instances');
   return value;
 }

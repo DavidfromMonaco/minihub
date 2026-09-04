@@ -274,7 +274,7 @@ export function createMiniLabModule(hub) {
     els.count.textContent = String(msgCount);
     renderLastEvent(msg);
     pushMonitor(msg);
-    // Routing is NOT done here: `core/midiRouting.js` feeds the graph for the
+    // Routing is NOT done here: `core/midiRouting.js` feeds the network for the
     // whole app lifetime, so MIDI keeps flowing when this page is not visible.
   }
 

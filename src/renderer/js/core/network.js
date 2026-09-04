@@ -1,23 +1,23 @@
 /**
- * Routing graph owned by the Hub.
+ * Routing network owned by the Hub.
  *
  * Nodes declare typed input/output ports. Connections link a source output
  * port to a compatible target input port (same type). Data flows from a
- * source node through the graph to connected targets — modules never call
+ * source node through the network to connected targets — modules never call
  * each other directly.
  *
  * Port types: 'midi' | 'audio' | 'control'.
  *   midi     carries real MIDI events through `emitData` to connected nodes
- *   audio    carries no samples through this graph - audio never crosses the
+ *   audio    carries no samples through this network - audio never crosses the
  *            Electron boundary - but the connection is authoritative: a VST
  *            chain reaches the physical output only while its `audio-out` is
  *            connected to the Audio Output node (see engineSync.js)
  *   control  carries normalized semantic control values (for example K1..K8)
  *
  * Routing state is fully independent of UI focus: changing which module is
- * visible never affects the graph.
+ * visible never affects the network.
  */
-export class Graph {
+export class Network {
   constructor(events, settings) {
     this.events = events;
     this.settings = settings;
@@ -207,8 +207,8 @@ export class Graph {
   // ---------- data flow ----------
 
   /**
-   * A source node pushes data into the graph on one of its output ports.
-   * The graph forwards it to every connected target's onInput handler.
+   * A source node pushes data into the network on one of its output ports.
+   * The network forwards it to every connected target's onInput handler.
    */
   emitData(nodeId, portId, data) {
     const node = this._nodes.get(nodeId);
@@ -221,7 +221,7 @@ export class Graph {
         try {
           target.onInput(conn.to.portId, data);
         } catch (err) {
-          console.error(`[graph] onInput failed for "${target.id}":`, err);
+          console.error(`[network] onInput failed for "${target.id}":`, err);
         }
       }
     }
@@ -244,7 +244,7 @@ export class Graph {
       target.onInput(connection.to.portId, data);
       return true;
     } catch (err) {
-      console.error(`[graph] onInput failed for "${target.id}":`, err);
+      console.error(`[network] onInput failed for "${target.id}":`, err);
       return false;
     }
   }
@@ -259,7 +259,7 @@ export class Graph {
   }
 
   _persist() {
-    this.settings.set('graphConnections', this.serialize());
+    this.settings.set('networkConnections', this.serialize());
   }
 
   /** Restore persisted connections (after nodes have been registered). */
@@ -270,12 +270,12 @@ export class Graph {
         this.connect(c.from.nodeId, c.from.portId, c.to.nodeId, c.to.portId);
       } catch (err) {
         // Skip invalid/stale connections (e.g. a node no longer present).
-        console.warn('[graph] skipped invalid connection:', err.message);
+        console.warn('[network] skipped invalid connection:', err.message);
       }
     }
   }
 
   _emit(change) {
-    this.events.emit('graph:change', { ...change, connections: this.serialize() });
+    this.events.emit('network:change', { ...change, connections: this.serialize() });
   }
 }

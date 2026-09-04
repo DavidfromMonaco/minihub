@@ -237,7 +237,7 @@ void Chain::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& mid
         // stale pre-panic notes without swallowing the new transport block.
         pullMidi(midi, numSamples);
     }
-    // Only pull MIDI into chains that are MIDI-connected in the Hub graph.
+    // Only pull MIDI into chains that are MIDI-connected in the Hub network.
     else if (midiEnabled())
     {
         pullMidi(midi, numSamples);
