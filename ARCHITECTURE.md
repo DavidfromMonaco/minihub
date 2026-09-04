@@ -824,8 +824,20 @@ d'une capture forcée à l'extinction.
 
 `sidebar.js`, `header.js`, `settingsModal.js`, `icons.js`,
 `miniLabControlSurface.js`, `omniPearl.js` — et côté MIDI `midiManager.js`,
-`parseMidi.js`, `controllerProfile.js`, `portRoles.js`, `minilab.js`,
-`minilabControls.js`, plus `profiles/` (one JSON file per controller).
+`parseMidi.js`, `controllerProfile.js`, `portRoles.js`, `decodeControl.js`,
+`minilab.js`, `minilabControls.js`, plus `profiles/` (one JSON file per
+controller).
+
+Four of those are one artefact, not four files: `parseMidi.js` (bytes to
+message), `controllerProfile.js` (the schema and its validator), `portRoles.js`
+(which port may speak) and `decodeControl.js` (message to control). They import
+each other and nothing else, and the site Builder runs a byte-for-byte copy of
+the set — specification §3.5. `test/conformance/midi-corpus.json` is the only
+proof the two copies still agree, which is why it is frozen: regenerating it to
+make it pass destroys the thing it is for. `minilabControls.js` sits outside the
+set on purpose, because it is where the profile's answer acquires MiniHub's
+names (`minilab-3:k1`, node `minilab-3`, port `control-k1`) and those are
+persisted in projects.
 
 ### `native/audio-engine/src/`
 

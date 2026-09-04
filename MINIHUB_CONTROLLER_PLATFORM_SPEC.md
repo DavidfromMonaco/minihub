@@ -680,6 +680,7 @@ Les critères de la v1 étaient en prose. Ceux-ci sont des commandes.
 | `profile is data` | une valeur de profil qui n'est pas un scalaire, un tableau ou un objet — donc toute fonction, toute URL exécutable, tout chemin système |
 | `immutable control ids` | un `controlId` présent dans une révision publiée et absent de la suivante (§3.2) |
 | `no hardware literal` | `minilab-3` écrit en dur hors de `systemNodes.js` et du profil de référence |
+| `shared decoder` | an import reaching outside the shared set (`parseMidi.js`, `controllerProfile.js`, `portRoles.js`, `decodeControl.js`) — added while implementing §3.5, which named the artefact but nothing kept it copyable |
 
 ### Tests à ajouter
 

@@ -9,7 +9,7 @@ nothing in `src/` assumes which device is plugged in.
 entry of [plans/done/controller-profile.md](../done/controller-profile.md), which
 named the decoder's remaining dependency on `midi/minilab.js`.
 
-**Status** — step 1 of 6 done.
+**Status** — steps 1 and 2 of 6 done.
 
 ## Context
 
@@ -69,7 +69,7 @@ D-021, D-022.
       Check: `npm test` — `hardwarePersistence.test.mjs` and
       `midiInputSelection.test.mjs` unchanged, and a new test where a profile
       with different port names selects the right input.
-- [ ] 2. `decodeMiniLabControl()` asks the resolver instead of importing
+- [x] 2. `decodeMiniLabControl()` asks the resolver instead of importing
       `midi/minilab.js`. The decoder becomes copyable verbatim, which is what
       spec §3.5 asks and Étape A left owed.
       Check: the frozen corpus passes **unchanged**.
@@ -162,3 +162,42 @@ rather than from a fixture: `%APPDATA%/minilab-hub/settings.json` holds
 `midiInputPreference.name = "Minilab3 MIDI"` — the port name this machine
 actually saw is the one the profile declares, verbatim. The real-application
 check the plan still owes is therefore not a blind one.
+
+2026-09-04 — Step 2 done. The decoding left `minilabControls.js` for
+`src/renderer/js/midi/decodeControl.js`. The frozen corpus passes **unchanged**
+— `test/conformance/midi-corpus.json` is untouched, byte for byte. 654 JS tests
+(8 new in `test/decodeControl.test.mjs`), 13 check rules, `sync:dist` run.
+
+The step as written said "asks the resolver instead of importing
+`midi/minilab.js`". Doing only that would have left the decoder unshareable for
+a second reason the step did not name, so the extraction went further:
+
+- **What made the decoder uncopyable was not the device name, it was the node
+  id.** `decodeMiniLabControl()` returned `sourceNodeId`, `control-<id>` port
+  ids and the legacy `semantics` word — MiniHub's names for the thing that
+  answered, not the decoding of the message. The shared decoder returns the
+  profile's own `control` and `binding` plus the numbers, and nothing else;
+  `minilabControls.js` puts the four persisted names on afterwards, in nine
+  lines. Swapping one import would have removed the device name and kept the
+  file unshareable.
+- **The corpus cannot see this boundary.** It checks the finished CONTROL event,
+  so a decoder that quietly went back to knowing a node id would still pass all
+  94 cases. `test/decodeControl.test.mjs` watches the seam instead of the
+  result: the shared result carries none of `type`, `sourceNodeId`,
+  `sourcePortId`, `sourceControlId`, `semantics`, `label`.
+- **A fourth `npm run check` rule, `shared decoder`.** "Copyable verbatim" was
+  prose, and the way it breaks is silent: an import that is perfectly legitimate
+  here, a corpus that still passes here, and a divergence that surfaces on the
+  other side of a repository boundary. The rule names the set — `parseMidi.js`,
+  `controllerProfile.js`, `portRoles.js`, `decodeControl.js` — and refuses any
+  import leaving it. Verified by breaking it on purpose before restoring.
+  Recorded in the specification's §9 table, which had listed three rules to add
+  and did not foresee this one.
+- **The index is cached per profile in a WeakMap.** Deriving the `kind:number`
+  table per message would rebuild twenty-five controls' worth of Map entries for
+  every knob tick, and a knob sweep is a hundred messages a second. Keyed on the
+  profile object, so two profiles never share a table — which is a test, because
+  a coarser cache would answer the second profile with the first one's controls.
+
+`midi/minilab.js` now has exactly one caller left, `midiManager.js`. Steps 3 to 5
+are what remove it.

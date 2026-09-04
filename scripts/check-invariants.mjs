@@ -356,6 +356,37 @@ rule('no hardware literal', () => {
   }
 });
 
+// --- Specification 3.5: the shared decoder stays copyable -------------------
+//
+// MiniHub and the site Builder have to answer "what control is this message"
+// identically, and the only thing keeping them identical is that one set of
+// files is copied byte for byte from here into there, with a conformance corpus
+// both sides run. That copy stops being possible the moment one of those files
+// imports something outside the set -- and it stops being possible silently: the
+// import is legitimate here, the corpus still passes here, and the breakage
+// surfaces on the other side of a repository boundary as a profile that decodes
+// differently. So the set is named, and its imports are checked.
+rule('shared decoder', () => {
+  const dir = 'src/renderer/js/midi';
+  const set = ['parseMidi.js', 'controllerProfile.js', 'portRoles.js', 'decodeControl.js'];
+  const allowed = new Set(set.map((name) => `./${name}`));
+  for (const name of set) {
+    const file = `${dir}/${name}`;
+    if (!fs.existsSync(path.join(repo, file))) {
+      fail('shared decoder', `${file} is gone. The set is named in ARCHITECTURE.md; name it there too.`);
+      continue;
+    }
+    for (const [, specifier] of read(file).matchAll(/^\s*import\s[^'"]*from\s*['"]([^'"]+)['"]/gm)) {
+      if (allowed.has(specifier)) continue;
+      fail(
+        'shared decoder',
+        `${file} imports '${specifier}', which is outside the shared set (${set.join(', ')}). `
+        + 'Specification section 3.5: these files travel as one artefact into the Builder.'
+      );
+    }
+  }
+});
+
 // --- No runtime dependency ------------------------------------------------
 rule('no runtime dependency', () => {
   const pkg = JSON.parse(read('package.json'));
@@ -381,6 +412,6 @@ for (const { rule: name, message } of failures) {
   console.error(`  [${name}] ${message}`);
 }
 console.error('\nEach rule maps to an invariant in ARCHITECTURE.md section 13, or to a rule of');
-console.error('MINIHUB_CONTROLLER_PLATFORM_SPEC.md section 9 for the three profile rules.');
+console.error('MINIHUB_CONTROLLER_PLATFORM_SPEC.md, sections 3.5 and 9, for the profile rules.');
 console.error('If a rule is wrong, fix the rule -- do not weaken the invariant it guards.');
 process.exit(1);

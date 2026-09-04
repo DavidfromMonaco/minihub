@@ -1,12 +1,19 @@
 /**
- * The MiniLab 3's control surface, read from its profile.
+ * MiniHub's names for the MiniLab 3's controls, and the one profile that ships.
  *
  * This file used to hold the 25 control sources as a JavaScript literal. That
  * literal WAS a profile -- ids, CC numbers, pad notes, port ids -- with the
  * hardware welded into the core, which INTENT.md section 5 calls a defect and
- * DECISIONS.md D-020 lifted the refusal on. It now derives them from
- * profiles/minilab-3.json, and derives nothing else: the exported shape, the
- * lookup helpers and the decoding are what they were.
+ * DECISIONS.md D-020 lifted the refusal on. It derives them from
+ * profiles/minilab-3.json instead, and the exported shape did not move an inch
+ * while that happened.
+ *
+ * What it no longer holds is the decoding. A message becoming a control is
+ * something MiniHub and the site Builder have to answer identically
+ * (specification section 3.5), and it could not be shared while it was written
+ * against one device's node id and port ids. It moved to decodeControl.js, which
+ * takes a profile and returns the profile's own control; this file is what turns
+ * that answer into the four names a saved project contains.
  *
  * The built-in profile is NOT validated at startup. It ships with the
  * application and a test holds it against the format; paying for validation on
@@ -14,7 +21,7 @@
  * from anywhere else is a different matter, and validateControllerProfile() in
  * controllerProfile.js is what it goes through.
  */
-import { isMiniLabName, isPerformanceInputName } from './minilab.js';
+import { decodeControl } from './decodeControl.js';
 import { MINILAB_NODE_ID } from '../core/systemNodes.js';
 import profile from './profiles/minilab-3.json' with { type: 'json' };
 
@@ -99,58 +106,24 @@ const BY_PORT = new Map(MINILAB_CONTROL_SOURCES.map((item) => [item.portId, item
 export function getMiniLabControlSource(id) { return BY_ID.get(id) || null; }
 export function getMiniLabControlSourceByPort(id) { return BY_PORT.get(id) || null; }
 
-/**
- * Which profile `kind` a parsed message can answer to.
- *
- * A pad's three phases -- struck, released, leaned on -- are one control and one
- * binding, distinguished in the result by `phase` rather than by three
- * declarations. That is why `polyaftertouch` maps to `note` here: the profile
- * kind of the same name exists for a device that would use aftertouch as a
- * control in its own right, which the MiniLab 3 does not.
- */
-const KIND_BY_MESSAGE_TYPE = Object.freeze({
-  cc: 'cc',
-  pitchbend: 'pitchbend',
-  noteon: 'note',
-  noteoff: 'note',
-  polyaftertouch: 'note'
-});
-
-/**
- * `kind:number` -> the controls that answer it, in profile order.
- *
- * A binding with no channel answers on any channel, which is what the MiniLab 3
- * does for everything but its pads: move the keyboard's global channel and K1 is
- * still K1. The pads are the exception, and the only place a channel is written
- * down. The validator refuses two bindings that could both answer one message,
- * so the first match is the only match.
- */
-const MATCHERS = new Map();
-profile.controls.forEach((control, index) => {
-  const source = MINILAB_CONTROL_SOURCES[index];
-  for (const binding of control.bindings) {
-    const key = `${binding.when.kind}:${binding.when.number ?? '-'}`;
-    const answers = MATCHERS.get(key) ?? [];
-    answers.push({ source, channel: binding.when.channel });
-    MATCHERS.set(key, answers);
-  }
-});
-
-function sourceAnswering(kind, number, channel) {
-  const answers = MATCHERS.get(`${kind}:${number ?? '-'}`);
-  if (!answers) return null;
-  const hit = answers.find((entry) => entry.channel === undefined || entry.channel === channel);
-  return hit ? hit.source : null;
-}
-
-function result(item, msg, normalizedValue, extra = {}) {
-  return { type: 'control', sourceControlId: item.id, sourceNodeId: MINILAB_NODE_ID,
-    sourcePortId: item.portId, label: item.label, semantics: item.semantics,
-    normalizedValue, rawValue: msg.value ?? msg.velocity ?? msg.bend, ...extra };
-}
+const BY_KEY = new Map(MINILAB_CONTROL_SOURCES.map((item) => [item.key, item]));
 
 /**
  * Additively project one documented physical message into CONTROL.
+ *
+ * The decoding itself is not here any more -- it is `decodeControl.js`, which
+ * knows a profile and nothing else, and which the site Builder runs from its own
+ * copy. What is left here is the naming: the profile answers "control k1", and
+ * MiniHub calls that `minilab-3:k1` on node `minilab-3` through port
+ * `control-k1`, with the legacy `semantics` word attached. Those four names are
+ * persisted inside saved projects, which is why they are built by rule and never
+ * invented -- and why they stay on this side of the line.
+ *
+ * `binding` is dropped deliberately rather than forwarded: which declaration
+ * answered is the decoder's business, and a CONTROL event that carried it would
+ * be a second, unversioned copy of the profile travelling through the network.
+ * Anything the decoder adds later and this line does not name fails the
+ * conformance corpus loudly, which is the intended way round.
  *
  * Additively is the invariant, not the adverb: a message that becomes a control
  * is never taken off its MIDI path. A note played on the keys stays music, and
@@ -158,27 +131,19 @@ function result(item, msg, normalizedValue, extra = {}) {
  * section 6.7, and `controlRouting.test.mjs` is what holds it.
  */
 export function decodeMiniLabControl(msg) {
-  if (!msg || !isMiniLabName(msg.sourceName) || !isPerformanceInputName(msg.sourceName)) return null;
-  const kind = KIND_BY_MESSAGE_TYPE[msg.type];
-  if (!kind) return null;
-
-  if (kind === 'pitchbend') {
-    if (!Number.isInteger(msg.bend) || msg.bend < 0 || msg.bend > 16383) return null;
-    const item = sourceAnswering('pitchbend', undefined, msg.channel);
-    if (!item) return null;
-    return result(item, msg, msg.bend / 16383, { bipolarValue: Math.max(-1, (msg.bend - 8192) / 8191) });
-  }
-
-  if (kind === 'cc') {
-    if (!Number.isInteger(msg.value) || msg.value < 0 || msg.value > 127) return null;
-    const item = sourceAnswering('cc', msg.controller, msg.channel);
-    return item ? result(item, msg, msg.value / 127) : null;
-  }
-
-  if (!Number.isInteger(msg.note)) return null;
-  const item = sourceAnswering('note', msg.note, msg.channel);
-  if (!item) return null;
-  const raw = msg.type === 'noteoff' ? 0 : (msg.velocity ?? msg.value);
-  if (!Number.isInteger(raw) || raw < 0 || raw > 127) return null;
-  return result(item, msg, raw / 127, { phase: msg.type, note: msg.note });
+  const hit = decodeControl(profile, msg);
+  if (!hit) return null;
+  const { control, binding, normalizedValue, rawValue, ...extra } = hit;
+  const item = BY_KEY.get(control.id);
+  return {
+    type: 'control',
+    sourceControlId: item.id,
+    sourceNodeId: MINILAB_NODE_ID,
+    sourcePortId: item.portId,
+    label: item.label,
+    semantics: item.semantics,
+    normalizedValue,
+    rawValue,
+    ...extra
+  };
 }
