@@ -141,8 +141,8 @@ scope; here are the technical prohibitions:
 
 ```bash
 npm install              # Electron + rcedit
-npm test                 # 590 JS tests, node:test runner, ~5 s
-npm run check            # invariant checker (Node stdlib, ~1 s)
+npm test                 # 627 JS tests, node:test runner, ~5 s
+npm run check            # 12 rules (Node stdlib + the profile validator, ~1 s)
 npm run build:native     # native Release build (CMake + MSBuild)
 npm run build:native:tests
 npm run sync:dist        # promotes src/ + engine into dist/MiniHub

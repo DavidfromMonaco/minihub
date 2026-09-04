@@ -276,7 +276,7 @@ files. Extracting it is owed whether or not a second controller ever exists
 Specification: [MINIHUB_CONTROLLER_PLATFORM_SPEC.md](MINIHUB_CONTROLLER_PLATFORM_SPEC.md).
 Execution plan:
 [plans/active/controller-profile.md](plans/active/controller-profile.md) — 9
-steps, 1 to 6 done.
+steps, 1 to 7 done.
 
 Order, and it is the one thing here that costs money if missed:
 

@@ -102,9 +102,12 @@ Named explicitly, because each will be tempting once the format exists:
       Check: `npm test` + `npm run check` — 627 green, 9 rules clean, application
       launched. Probed: one control moved in the profile fails two tests, and
       `core/nodeGeometry.js` no longer imports `core/systemNodes.js` at all.
-- [ ] 7. Three `npm run check` rules: `profile is data`, `immutable control ids`,
+- [x] 7. Three `npm run check` rules: `profile is data`, `immutable control ids`,
       `no hardware literal`.
       Check: each rule must fail on a deliberate probe, then pass once removed.
+      12 rules now, 627 tests green. Each probe fired **one** rule and named the
+      exact line: an executable URL in the profile, a shipped control id gone
+      from a profile, and a second data file spelling the device's name.
 - [ ] 8. Finish D-008 on the C++ side: `native/audio-engine/src/midi_output.h:49`
       hard-codes `id == "minilab-3"` in `isPhysicalMidiDestination()`.
       Check: `npm run build:native` + the four native binaries.
@@ -373,3 +376,37 @@ The launch was clean. One Chromium line — `Network service crashed or was
 terminated` — appeared once, at a forced shutdown, and did not reappear on a
 second run held twenty seconds and killed the same way. Recorded rather than
 explained away.
+
+2026-09-04 — Step 7 done. `npm run check` goes from 9 rules to 12.
+
+- **`profile is data`** runs the application's own `validateControllerProfile()`
+  over every file in the profiles folder. It does not re-implement D-020's
+  sentence with a heuristic, which is the only way a rule and a runtime can never
+  disagree about what a profile may contain. It is also the first rule in this
+  script that imports something outside the stdlib — deliberately, and the import
+  is a file that itself imports nothing.
+- **`immutable control ids`** compares each profile against
+  `test/conformance/published-control-ids.json`, a hand-written record of the ids
+  that have shipped. A profile that has lost one is refused.
+- **`no hardware literal`** covers **data**, where `system node ids` covers code.
+  In code the answer to a hardware name is to import `MINILAB_NODE_ID`; in JSON
+  there is nothing to import, so the only file allowed to name a device is the
+  profile describing it. What it really catches is a second profile claiming a
+  `profileId` that is taken — which would collide on the node id, every port id
+  and every binding key at once.
+
+The register deserves its own note, because the obvious "improvement" would
+destroy it: **it is a record, not a copy.** Generating it from the profiles it
+guards would make it agree with them always, including at the exact moment one of
+them is wrong. Adding a control therefore costs one deliberate line in a second
+file. That is the price of an id that can never quietly leave, and it is why the
+file says so in its own `rule` field.
+
+It lives in `test/conformance/` rather than beside the profiles, for two reasons:
+it is not runtime data and has no business shipping, and putting it next to the
+profiles would have forced `no hardware literal` to carry a second exemption —
+weakening a rule to accommodate a file is how rules start meaning nothing.
+
+Probed one at a time, and each probe fired exactly one rule with the offending
+line named. The script's closing line was corrected too: it claimed every rule
+maps to an ARCHITECTURE §13 invariant, which stopped being true with these three.

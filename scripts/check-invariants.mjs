@@ -19,6 +19,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+// The one import that is not stdlib, and it is deliberate: the profile rules
+// below run the application's own validator rather than a second opinion about
+// what a profile may contain. controllerProfile.js imports nothing itself.
+import { validateControllerProfile } from '../src/renderer/js/midi/controllerProfile.js';
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const failures = [];
@@ -51,6 +55,9 @@ const isCommentLine = (line) => /^\s*(\/\/|\/\*|\*)/.test(line);
 function fail(rule, message) {
   failures.push({ rule, message });
 }
+
+const PROFILE_DIR = 'src/renderer/js/midi/profiles';
+const profileFiles = () => walk(PROFILE_DIR, ['.json']).map(rel);
 
 function rule(name, fn) {
   checked.push(name);
@@ -241,6 +248,114 @@ rule('renderer isolation', () => {
   }
 });
 
+// --- D-020: a profile is data, and the validator is what decides -----------
+//
+// Specification section 9. A profile file is the one thing in MiniHub that may
+// arrive from a stranger, and D-020's boundary is "extensible by data, never by
+// code". The rule does not re-implement that sentence with a heuristic: it runs
+// the same validator the application runs, over every profile in the folder, so
+// a rule and a runtime can never disagree about what a profile is allowed to be.
+rule('profile is data', () => {
+  const files = profileFiles();
+  if (files.length === 0) {
+    fail('profile is data', `${PROFILE_DIR} holds no profile -- the rule would pass by checking nothing.`);
+    return;
+  }
+  for (const file of files) {
+    let parsed;
+    try {
+      parsed = JSON.parse(read(file));
+    } catch (error) {
+      fail('profile is data', `${file} is not valid JSON: ${error.message}`);
+      continue;
+    }
+    for (const error of validateControllerProfile(parsed).errors) {
+      fail('profile is data', `${file} ${error.path}: ${error.message}`);
+    }
+  }
+});
+
+// --- Specification 3.2: a published control id is permanent ----------------
+//
+// A control id becomes a Patch Bay port id and a binding key, and both are
+// written inside saved projects. Removing or renaming one cuts the cables of
+// every project that used it -- in silence, because the network simply stops
+// matching. So the ids that have shipped are recorded, and a profile is refused
+// if it has lost one.
+//
+// The register is a RECORD, not a copy, and that distinction is the whole point:
+// generating it from the profiles it guards would make it agree with them
+// always, including the moment one of them is wrong. Adding a control therefore
+// costs one deliberate line, which is the price of an id that can never quietly
+// leave.
+rule('immutable control ids', () => {
+  const registerPath = 'test/conformance/published-control-ids.json';
+  if (!fs.existsSync(path.join(repo, registerPath))) {
+    fail('immutable control ids', `${registerPath} is missing -- nothing records what has shipped.`);
+    return;
+  }
+  const register = JSON.parse(read(registerPath)).profiles ?? {};
+
+  for (const file of profileFiles()) {
+    let profile;
+    try {
+      profile = JSON.parse(read(file));
+    } catch {
+      continue; // 'profile is data' already reported this file
+    }
+    const declared = new Set((profile.controls ?? []).map((control) => control?.id));
+    const published = register[profile.profileId];
+    if (!Array.isArray(published)) {
+      fail(
+        'immutable control ids',
+        `${file} declares the profile '${profile.profileId}', which ${registerPath} does not record. `
+        + 'Add it with its control ids: an id becomes permanent the moment it ships.'
+      );
+      continue;
+    }
+    for (const id of published) {
+      if (!declared.has(id)) {
+        fail(
+          'immutable control ids',
+          `${file} no longer declares the control '${id}', which has already shipped. `
+          + 'A revision may add, never remove: every project that cabled it would lose that cable in silence.'
+        );
+      }
+    }
+    for (const id of declared) {
+      if (!published.includes(id)) {
+        fail(
+          'immutable control ids',
+          `${file} declares the control '${id}', which ${registerPath} does not list. `
+          + 'Record it there, so it can never quietly leave later.'
+        );
+      }
+    }
+  }
+});
+
+// --- Specification 9: no hardware literal in data --------------------------
+//
+// The 'system node ids' rule above covers code, where the answer is to import
+// MINILAB_NODE_ID. This one covers DATA, where there is nothing to import: the
+// only file that may name a device is the profile describing it. Any other JSON
+// under src/ spelling that name is a copy of an identity -- typically a second
+// profile claiming a profileId that is already taken, which would collide on the
+// node id, the port ids and every binding key at once.
+rule('no hardware literal', () => {
+  const owner = `${PROFILE_DIR}/minilab-3.json`;
+  for (const file of walk('src', ['.json'])) {
+    if (rel(file) === owner) continue;
+    read(rel(file)).split('\n').forEach((line, index) => {
+      if (!/['"`]minilab-3['"`]/.test(line)) return;
+      fail(
+        'no hardware literal',
+        `${rel(file)}:${index + 1} names 'minilab-3'. Only ${owner} describes that device.`
+      );
+    });
+  }
+});
+
 // --- No runtime dependency ------------------------------------------------
 rule('no runtime dependency', () => {
   const pkg = JSON.parse(read('package.json'));
@@ -265,6 +380,7 @@ console.error(`check-invariants: ${failures.length} violation(s) across ${checke
 for (const { rule: name, message } of failures) {
   console.error(`  [${name}] ${message}`);
 }
-console.error('\nEach rule maps to an invariant in ARCHITECTURE.md section 13.');
+console.error('\nEach rule maps to an invariant in ARCHITECTURE.md section 13, or to a rule of');
+console.error('MINIHUB_CONTROLLER_PLATFORM_SPEC.md section 9 for the three profile rules.');
 console.error('If a rule is wrong, fix the rule -- do not weaken the invariant it guards.');
 process.exit(1);

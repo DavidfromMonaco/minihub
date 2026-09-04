@@ -1,0 +1,7 @@
+{
+  "why": "A published control id can never be renamed or removed. It becomes a Patch Bay port id and a binding key, and both are written inside saved projects: taking one away cuts the cables of every project that used it, in silence. Specification 3.2.",
+  "rule": "This file is a RECORD, not a copy. It is written by hand when a control ships, and it is worth nothing the day it is generated from the profiles it guards. npm run check compares the two and refuses a profile that has lost an id, or gained one nobody recorded.",
+  "profiles": {
+    "minilab-3": ["k1", "k2", "k3", "k4", "k5", "k6", "k7", "k8", "f1", "f2", "f3", "f4", "main-encoder", "main-click", "pitch-bend", "modulation", "shift", "p1", "p2", "p3", "p4", "p5", "p6", "p7", "p8"]
+  }
+}
