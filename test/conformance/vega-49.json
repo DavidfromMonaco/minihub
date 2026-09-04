@@ -1,0 +1,174 @@
+{
+  "formatVersion": 1,
+  "profileId": "vega-49",
+  "revision": 1,
+  "name": "Nebula Vega 49",
+  "author": "MiniHub test fixture",
+  "createdAt": "2026-09-04",
+  "completeness": {
+    "declared": 8,
+    "observed": 4,
+    "inferred": 1,
+    "untested": 1
+  },
+  "device": {
+    "vendor": "Nebula Instruments",
+    "model": "Vega 49",
+    "layout": {
+      "width": 620,
+      "height": 240
+    },
+    "ports": [
+      {
+        "role": "performance",
+        "priority": 9,
+        "match": { "name": "Vega49 Keys" }
+      },
+      {
+        "role": "control-surface",
+        "priority": 6,
+        "match": { "name": "Vega49 Mix" },
+        "note": "ranked above a performance port on purpose: role decides whether a port may be armed, priority only orders the ports that may"
+      },
+      {
+        "role": "performance",
+        "priority": 2,
+        "match": { "name": "Vega49 Aux" },
+        "note": "the second cable, when both are plugged"
+      },
+      {
+        "role": "ignore",
+        "priority": 0,
+        "match": { "name": "Vega49 Thru" }
+      },
+      {
+        "role": "ignore",
+        "priority": 0,
+        "match": { "name": "Vega49" },
+        "note": "the catch-all the matcher allows: anything else this device enumerates is refused rather than guessed at, and a longer declaration above still wins"
+      }
+    ]
+  },
+  "layers": [
+    { "id": "default", "label": "Play" },
+    { "id": "shift", "label": "Shift held" }
+  ],
+  "controls": [
+    {
+      "id": "dial-one",
+      "label": "Dial 1",
+      "family": "knob",
+      "layout": { "x": 60, "y": 40 },
+      "bindings": [
+        {
+          "layer": "default",
+          "when": { "kind": "cc", "number": 74 },
+          "mode": "absolute",
+          "range": [0, 127],
+          "confidence": "observed"
+        },
+        {
+          "layer": "shift",
+          "when": { "kind": "cc", "number": 21 },
+          "mode": "absolute",
+          "range": [0, 127],
+          "confidence": "documented"
+        }
+      ]
+    },
+    {
+      "id": "mod-wheel",
+      "label": "Mod",
+      "family": "wheel",
+      "layout": { "x": 24, "y": 120 },
+      "bindings": [
+        {
+          "layer": "*",
+          "when": { "kind": "cc", "number": 1 },
+          "mode": "absolute",
+          "confidence": "observed"
+        }
+      ]
+    },
+    {
+      "id": "swell",
+      "label": "Swell",
+      "family": "pedal",
+      "layout": { "x": 560, "y": 190 },
+      "bindings": [
+        {
+          "layer": "*",
+          "when": { "kind": "cc", "channel": 4, "number": 11 },
+          "mode": "absolute",
+          "confidence": "documented"
+        }
+      ]
+    },
+    {
+      "id": "bender",
+      "label": "Bend",
+      "family": "wheel",
+      "layout": { "x": 24, "y": 60 },
+      "bindings": [
+        {
+          "layer": "*",
+          "when": { "kind": "pitchbend" },
+          "mode": "bipolar",
+          "range": [0, 16383],
+          "confidence": "observed"
+        }
+      ]
+    },
+    {
+      "id": "trigger-a",
+      "label": "Trigger A",
+      "family": "pad",
+      "layout": { "x": 300, "y": 150 },
+      "bindings": [
+        {
+          "layer": "*",
+          "when": { "kind": "note", "channel": 3, "number": 60 },
+          "mode": "velocity",
+          "confidence": "observed"
+        }
+      ]
+    },
+    {
+      "id": "stepper",
+      "label": "Stepper",
+      "family": "encoder",
+      "layout": { "x": 140, "y": 40 },
+      "bindings": [
+        {
+          "layer": "default",
+          "when": { "kind": "cc", "number": 22 },
+          "mode": "relative",
+          "encoding": "signed-bit",
+          "confidence": "inferred"
+        }
+      ]
+    },
+    {
+      "id": "macro",
+      "label": "Macro",
+      "family": "fader",
+      "layout": { "x": 420, "y": 40 },
+      "bindings": [
+        {
+          "layer": "default",
+          "when": { "kind": "cc14", "number": 12, "lsbNumber": 44 },
+          "mode": "absolute",
+          "range": [0, 16383],
+          "confidence": "documented"
+        }
+      ]
+    },
+    {
+      "id": "wheel-two",
+      "label": "Wheel 2",
+      "family": "wheel",
+      "layout": { "x": 24, "y": 180 },
+      "bindings": []
+    }
+  ]
+}

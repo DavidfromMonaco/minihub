@@ -286,8 +286,26 @@ it: the single controller slot becomes a profile slot, so a friend with another
 keyboard can use MiniHub — and the plural (`selectedInputId`, N controller nodes,
 multi-input `MidiManager`) is refused until a second keyboard exists on a desk.
 The author owns one controller, asked directly on 2026-09-04. Plan:
-[plans/active/other-controller.md](plans/active/other-controller.md), 6 steps,
-not started.
+[plans/active/other-controller.md](plans/active/other-controller.md), 6 steps of
+6 done on 2026-09-04, each with the command that proved it. Nothing under
+`src/renderer/js/core/` or `src/renderer/js/ui/` names a device any more: the
+shell asks the routing node what the controller is called, and the node takes
+that name from the profile. A fixture profile for a device nobody owns
+(`test/conformance/vega-49.json`, with its own 27-case corpus) is what says the
+machinery follows a profile rather than the profile that ships. Two check rules
+were added -- `device name out of the shell` and `one profile ships`.
+
+Still owed before the plan moves to `plans/done/`: the port selection verified
+with the controller actually plugged in. The application was launched and every
+device name on screen comes from the profile, but no MIDI port was enumerated
+that day, and port selection is exactly what `npm test` cannot see.
+
+Two gaps the fixture surfaced, recorded in its corpus rather than left to be
+found: `cc14` and `channelpressure` are declarable kinds with no decoding path,
+so a profile can declare a 14-bit fader and MiniHub answers nothing; and `mode`
+/ `range` are validated and read by nobody, so a `relative` encoder decodes as
+an absolute byte. Both are behaviour to add, not regressions -- and both are
+cheapest to do while the corpus that will check them already exists.
 
 Proof of the end: 631 JS tests, 12 `npm run check` rules (three of them new and
 about profiles), 3,954 native checks, and the author's own project opening with

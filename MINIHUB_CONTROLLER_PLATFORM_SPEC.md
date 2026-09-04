@@ -682,6 +682,7 @@ Les critères de la v1 étaient en prose. Ceux-ci sont des commandes.
 | `no hardware literal` | `minilab-3` écrit en dur hors de `systemNodes.js` et du profil de référence |
 | `shared decoder` | an import reaching outside the shared set (`parseMidi.js`, `controllerProfile.js`, `portRoles.js`, `decodeControl.js`) — added while implementing §3.5, which named the artefact but nothing kept it copyable |
 | `device name out of the shell` | a device's own words (taken from the shipped profiles) written as prose under `core/` or `ui/` — the shell names the controller from its routing node, and only the controller's module reads that name from the profile. Identifiers, CSS classes and data attributes are single tokens and pass; MiniHub's own names (AGENTS.md §2) are subtracted first |
+| `one profile ships` | a second profile under `src/renderer/js/midi/profiles/`, or a loader pointing at a file that is not there — D-022 refuses the plural until a second keyboard exists, and a profile nothing loads is dead data that looks like support |
 
 ### Tests à ajouter
 
@@ -695,6 +696,7 @@ Les critères de la v1 étaient en prose. Ceux-ci sont des commandes.
 | brancher / débrancher / rebrancher restaure les mappings sans les réécrire | hot-plug |
 | un profil de `formatVersion` inconnue est refusé sans toucher aux projets | §3.2 |
 | le corpus de conformité donne le même résultat des deux côtés | §3.5 |
+| un profil fixture qui ne partage rien avec le MiniLab décode son propre corpus, entrelacé avec celui du MiniLab | §4.1 à l'envers — le format décrit un appareil pour lequel il n'a pas été écrit, et deux profils ne partagent jamais une table de correspondance |
 
 ### Ce qui reste manuel
 

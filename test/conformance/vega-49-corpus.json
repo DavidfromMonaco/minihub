@@ -1,0 +1,662 @@
+{
+  "formatVersion": 1,
+  "profileId": "vega-49",
+  "recordedAt": "2026-09-04",
+  "note": "A fixture, and it says so: Nebula Instruments and the Vega 49 do not exist. It is here because a format that has only ever described one device has not been shown to describe a device. Every expectation was derived from the byte layout and the normalisation rules of the specification, never from a run of the decoder -- an expectation taken from the code under test proves only that the code equals itself. Expectations are in the PROFILE's vocabulary, a control id and which of its bindings answered, not in MiniHub's: naming is what the host adds afterwards, and the shared decoder must not know those names.",
+  "cases": [
+    {
+      "id": "dial-one-default",
+      "why": "Dial 1 on the play layer, and it is CC 74 -- the same message the MiniLab 3 sends from K1",
+      "sourceName": "Vega49 Keys",
+      "bytes": [
+        176,
+        74,
+        13
+      ],
+      "parsed": {
+        "type": "cc",
+        "channel": 1,
+        "controller": 74,
+        "value": 13,
+        "raw": [
+          176,
+          74,
+          13
+        ]
+      },
+      "expect": {
+        "controlId": "dial-one",
+        "bindingIndex": 0,
+        "normalizedValue": 0.10236220472440945,
+        "rawValue": 13
+      }
+    },
+    {
+      "id": "dial-one-shift",
+      "why": "the same control, the other layer, another CC: one control emits a SET of messages (spec 4.3)",
+      "sourceName": "Vega49 Keys",
+      "bytes": [
+        176,
+        21,
+        100
+      ],
+      "parsed": {
+        "type": "cc",
+        "channel": 1,
+        "controller": 21,
+        "value": 100,
+        "raw": [
+          176,
+          21,
+          100
+        ]
+      },
+      "expect": {
+        "controlId": "dial-one",
+        "bindingIndex": 1,
+        "normalizedValue": 0.7874015748031497,
+        "rawValue": 100
+      }
+    },
+    {
+      "id": "dial-one-on-second-performance-port",
+      "why": "any performance port carries what is played, not only the highest ranked one",
+      "sourceName": "Vega49 Aux",
+      "bytes": [
+        176,
+        74,
+        127
+      ],
+      "parsed": {
+        "type": "cc",
+        "channel": 1,
+        "controller": 74,
+        "value": 127,
+        "raw": [
+          176,
+          74,
+          127
+        ]
+      },
+      "expect": {
+        "controlId": "dial-one",
+        "bindingIndex": 0,
+        "normalizedValue": 1.0,
+        "rawValue": 127
+      }
+    },
+    {
+      "id": "mod-wheel-full",
+      "why": "a binding on layer '*' answers whatever layer is held",
+      "sourceName": "Vega49 Keys",
+      "bytes": [
+        176,
+        1,
+        127
+      ],
+      "parsed": {
+        "type": "cc",
+        "channel": 1,
+        "controller": 1,
+        "value": 127,
+        "raw": [
+          176,
+          1,
+          127
+        ]
+      },
+      "expect": {
+        "controlId": "mod-wheel",
+        "bindingIndex": 0,
+        "normalizedValue": 1.0,
+        "rawValue": 127
+      }
+    },
+    {
+      "id": "mod-wheel-zero",
+      "why": "the bottom of the range is a value, not an absence",
+      "sourceName": "Vega49 Keys",
+      "bytes": [
+        176,
+        1,
+        0
+      ],
+      "parsed": {
+        "type": "cc",
+        "channel": 1,
+        "controller": 1,
+        "value": 0,
+        "raw": [
+          176,
+          1,
+          0
+        ]
+      },
+      "expect": {
+        "controlId": "mod-wheel",
+        "bindingIndex": 0,
+        "normalizedValue": 0.0,
+        "rawValue": 0
+      }
+    },
+    {
+      "id": "swell-declared-channel",
+      "why": "CC 11 is declared on channel 4, and this is channel 4",
+      "sourceName": "Vega49 Keys",
+      "bytes": [
+        179,
+        11,
+        64
+      ],
+      "parsed": {
+        "type": "cc",
+        "channel": 4,
+        "controller": 11,
+        "value": 64,
+        "raw": [
+          179,
+          11,
+          64
+        ]
+      },
+      "expect": {
+        "controlId": "swell",
+        "bindingIndex": 0,
+        "normalizedValue": 0.5039370078740157,
+        "rawValue": 64
+      }
+    },
+    {
+      "id": "stepper-relative-is-not-interpreted",
+      "why": "mode 'relative' is the caller's to read: the decoder reports which control answered and the byte it carried",
+      "sourceName": "Vega49 Keys",
+      "bytes": [
+        176,
+        22,
+        65
+      ],
+      "parsed": {
+        "type": "cc",
+        "channel": 1,
+        "controller": 22,
+        "value": 65,
+        "raw": [
+          176,
+          22,
+          65
+        ]
+      },
+      "expect": {
+        "controlId": "stepper",
+        "bindingIndex": 0,
+        "normalizedValue": 0.5118110236220472,
+        "rawValue": 65
+      }
+    },
+    {
+      "id": "bender-centre",
+      "why": "the centre of a 14-bit bend is 8192, and bipolar 0 rather than 0.5",
+      "sourceName": "Vega49 Keys",
+      "bytes": [
+        224,
+        0,
+        64
+      ],
+      "parsed": {
+        "type": "pitchbend",
+        "channel": 1,
+        "bend": 8192,
+        "raw": [
+          224,
+          0,
+          64
+        ]
+      },
+      "expect": {
+        "controlId": "bender",
+        "bindingIndex": 0,
+        "normalizedValue": 0.5000305194408838,
+        "rawValue": 8192,
+        "bipolarValue": 0.0
+      }
+    },
+    {
+      "id": "bender-min",
+      "why": "fully down: the bipolar value clamps at -1, because 8192 steps below centre are one more than the 8191 above",
+      "sourceName": "Vega49 Keys",
+      "bytes": [
+        224,
+        0,
+        0
+      ],
+      "parsed": {
+        "type": "pitchbend",
+        "channel": 1,
+        "bend": 0,
+        "raw": [
+          224,
+          0,
+          0
+        ]
+      },
+      "expect": {
+        "controlId": "bender",
+        "bindingIndex": 0,
+        "normalizedValue": 0.0,
+        "rawValue": 0,
+        "bipolarValue": -1.0
+      }
+    },
+    {
+      "id": "bender-max",
+      "why": "fully up",
+      "sourceName": "Vega49 Keys",
+      "bytes": [
+        224,
+        127,
+        127
+      ],
+      "parsed": {
+        "type": "pitchbend",
+        "channel": 1,
+        "bend": 16383,
+        "raw": [
+          224,
+          127,
+          127
+        ]
+      },
+      "expect": {
+        "controlId": "bender",
+        "bindingIndex": 0,
+        "normalizedValue": 1.0,
+        "rawValue": 16383,
+        "bipolarValue": 1.0
+      }
+    },
+    {
+      "id": "trigger-a-struck",
+      "why": "a pad struck on the channel its binding declares",
+      "sourceName": "Vega49 Keys",
+      "bytes": [
+        146,
+        60,
+        96
+      ],
+      "parsed": {
+        "type": "noteon",
+        "channel": 3,
+        "note": 60,
+        "velocity": 96,
+        "raw": [
+          146,
+          60,
+          96
+        ]
+      },
+      "expect": {
+        "controlId": "trigger-a",
+        "bindingIndex": 0,
+        "normalizedValue": 0.7559055118110236,
+        "rawValue": 96,
+        "phase": "noteon",
+        "note": 60
+      }
+    },
+    {
+      "id": "trigger-a-released",
+      "why": "a release normalises to 0 while its raw byte keeps the release velocity: both facts are true",
+      "sourceName": "Vega49 Keys",
+      "bytes": [
+        130,
+        60,
+        64
+      ],
+      "parsed": {
+        "type": "noteoff",
+        "channel": 3,
+        "note": 60,
+        "velocity": 64,
+        "raw": [
+          130,
+          60,
+          64
+        ]
+      },
+      "expect": {
+        "controlId": "trigger-a",
+        "bindingIndex": 0,
+        "normalizedValue": 0.0,
+        "rawValue": 64,
+        "phase": "noteoff",
+        "note": 60
+      }
+    },
+    {
+      "id": "trigger-a-note-on-velocity-zero",
+      "why": "Note On with velocity 0 is a release, and the decoder sees the release",
+      "sourceName": "Vega49 Keys",
+      "bytes": [
+        146,
+        60,
+        0
+      ],
+      "parsed": {
+        "type": "noteoff",
+        "channel": 3,
+        "note": 60,
+        "velocity": 0,
+        "raw": [
+          146,
+          60,
+          0
+        ]
+      },
+      "expect": {
+        "controlId": "trigger-a",
+        "bindingIndex": 0,
+        "normalizedValue": 0.0,
+        "rawValue": 0,
+        "phase": "noteoff",
+        "note": 60
+      }
+    },
+    {
+      "id": "trigger-a-leaned-on",
+      "why": "polyphonic aftertouch is the same control in a third phase, not a fourth declaration",
+      "sourceName": "Vega49 Keys",
+      "bytes": [
+        162,
+        60,
+        40
+      ],
+      "parsed": {
+        "type": "polyaftertouch",
+        "channel": 3,
+        "note": 60,
+        "value": 40,
+        "raw": [
+          162,
+          60,
+          40
+        ]
+      },
+      "expect": {
+        "controlId": "trigger-a",
+        "bindingIndex": 0,
+        "normalizedValue": 0.31496062992125984,
+        "rawValue": 40,
+        "phase": "polyaftertouch",
+        "note": 60
+      }
+    },
+    {
+      "id": "refuse-control-surface-port",
+      "why": "the mixer port outranks a performance port and still carries nothing: role decides, priority only orders",
+      "sourceName": "Vega49 Mix",
+      "bytes": [
+        176,
+        74,
+        64
+      ],
+      "parsed": {
+        "type": "cc",
+        "channel": 1,
+        "controller": 74,
+        "value": 64,
+        "raw": [
+          176,
+          74,
+          64
+        ]
+      },
+      "expect": null
+    },
+    {
+      "id": "refuse-pass-through-port",
+      "why": "the pass-through carries another instrument's traffic",
+      "sourceName": "Vega49 Thru",
+      "bytes": [
+        176,
+        74,
+        64
+      ],
+      "parsed": {
+        "type": "cc",
+        "channel": 1,
+        "controller": 74,
+        "value": 64,
+        "raw": [
+          176,
+          74,
+          64
+        ]
+      },
+      "expect": null
+    },
+    {
+      "id": "refuse-catch-all-port",
+      "why": "a port this device enumerates but the profile does not name falls to the catch-all, which is 'ignore' -- refused, not guessed at",
+      "sourceName": "Vega49 Pedal 1",
+      "bytes": [
+        176,
+        74,
+        64
+      ],
+      "parsed": {
+        "type": "cc",
+        "channel": 1,
+        "controller": 74,
+        "value": 64,
+        "raw": [
+          176,
+          74,
+          64
+        ]
+      },
+      "expect": null
+    },
+    {
+      "id": "refuse-another-device",
+      "why": "the MiniLab 3's port belongs to no declaration of this profile",
+      "sourceName": "Minilab3 MIDI",
+      "bytes": [
+        176,
+        74,
+        64
+      ],
+      "parsed": {
+        "type": "cc",
+        "channel": 1,
+        "controller": 74,
+        "value": 64,
+        "raw": [
+          176,
+          74,
+          64
+        ]
+      },
+      "expect": null
+    },
+    {
+      "id": "refuse-decorated-name-of-another-device",
+      "why": "the operating system decorates port names, and decoration never makes a stranger's port ours",
+      "sourceName": "MIDIIN2 (Minilab3 MIDI)",
+      "bytes": [
+        176,
+        74,
+        64
+      ],
+      "parsed": {
+        "type": "cc",
+        "channel": 1,
+        "controller": 74,
+        "value": 64,
+        "raw": [
+          176,
+          74,
+          64
+        ]
+      },
+      "expect": null
+    },
+    {
+      "id": "refuse-no-source-name",
+      "why": "a message with no port cannot be attributed to a port role",
+      "sourceName": "",
+      "bytes": [
+        176,
+        74,
+        64
+      ],
+      "parsed": {
+        "type": "cc",
+        "channel": 1,
+        "controller": 74,
+        "value": 64,
+        "raw": [
+          176,
+          74,
+          64
+        ]
+      },
+      "expect": null
+    },
+    {
+      "id": "refuse-undeclared-cc",
+      "why": "CC 3 is not declared by any control of this profile",
+      "sourceName": "Vega49 Keys",
+      "bytes": [
+        176,
+        3,
+        64
+      ],
+      "parsed": {
+        "type": "cc",
+        "channel": 1,
+        "controller": 3,
+        "value": 64,
+        "raw": [
+          176,
+          3,
+          64
+        ]
+      },
+      "expect": null
+    },
+    {
+      "id": "refuse-swell-on-undeclared-channel",
+      "why": "CC 11 is declared on channel 4 only, so channel 1 answers nothing",
+      "sourceName": "Vega49 Keys",
+      "bytes": [
+        176,
+        11,
+        64
+      ],
+      "parsed": {
+        "type": "cc",
+        "channel": 1,
+        "controller": 11,
+        "value": 64,
+        "raw": [
+          176,
+          11,
+          64
+        ]
+      },
+      "expect": null
+    },
+    {
+      "id": "refuse-trigger-on-undeclared-channel",
+      "why": "the pad is declared on channel 3; the keys send the same note number on channel 1",
+      "sourceName": "Vega49 Keys",
+      "bytes": [
+        144,
+        60,
+        96
+      ],
+      "parsed": {
+        "type": "noteon",
+        "channel": 1,
+        "note": 60,
+        "velocity": 96,
+        "raw": [
+          144,
+          60,
+          96
+        ]
+      },
+      "expect": null
+    },
+    {
+      "id": "refuse-14-bit-pair",
+      "why": "the format declares 14-bit pairs and the decoder does not implement them. This case is the RECORD of that gap: it becomes a decode the day cc14 is decoded, and until then it says so out loud",
+      "sourceName": "Vega49 Keys",
+      "bytes": [
+        176,
+        12,
+        64
+      ],
+      "parsed": {
+        "type": "cc",
+        "channel": 1,
+        "controller": 12,
+        "value": 64,
+        "raw": [
+          176,
+          12,
+          64
+        ]
+      },
+      "expect": null
+    },
+    {
+      "id": "refuse-program-change",
+      "why": "a program change is not a control message of any profile the decoder answers",
+      "sourceName": "Vega49 Keys",
+      "bytes": [
+        192,
+        5
+      ],
+      "parsed": {
+        "type": "programchange",
+        "channel": 1,
+        "value": 5,
+        "raw": [
+          192,
+          5
+        ]
+      },
+      "expect": null
+    },
+    {
+      "id": "refuse-channel-pressure",
+      "why": "channel pressure is declarable as a kind and has no decoding path, like cc14",
+      "sourceName": "Vega49 Keys",
+      "bytes": [
+        208,
+        90
+      ],
+      "parsed": {
+        "type": "channelpressure",
+        "channel": 1,
+        "value": 90,
+        "raw": [
+          208,
+          90
+        ]
+      },
+      "expect": null
+    },
+    {
+      "id": "refuse-system-real-time",
+      "why": "a clock byte parses to nothing at all, one step before the decoder",
+      "sourceName": "Vega49 Keys",
+      "bytes": [
+        248
+      ],
+      "parsed": null,
+      "expect": null
+    }
+  ]
+}

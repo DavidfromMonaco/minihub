@@ -387,6 +387,38 @@ rule('shared decoder', () => {
   }
 });
 
+// --- D-022: exactly one profile ships, and it is the one that is loaded -----
+//
+// The plural is refused until a second keyboard exists on a desk: N controller
+// nodes, a multi-input MidiManager and a settings migration are a workstream,
+// not a file drop. A second profile appearing under src/ would not break
+// loudly -- `loadedProfile.js` names its file, so the newcomer is simply dead
+// data that looks like support for a device MiniHub cannot actually select.
+//
+// The second half of the rule is the one that catches a real mistake: the
+// profile that ships has to BE the profile that is loaded. A test fixture
+// belongs in test/, where `test/deviceAgnostic.test.mjs` reads it.
+rule('one profile ships', () => {
+  const loader = 'src/renderer/js/midi/loadedProfile.js';
+  const specifier = /import\s+profile\s+from\s*['"]([^'"]+)['"]/.exec(read(loader))?.[1];
+  if (!specifier) {
+    fail('one profile ships', `${loader} no longer imports a profile by name. That import IS the decision.`);
+    return;
+  }
+  const loaded = `src/renderer/js/midi/${specifier.replace(/^\.\//, '')}`;
+  const shipped = profileFiles();
+  if (shipped.length !== 1) {
+    fail(
+      'one profile ships',
+      `${PROFILE_DIR} holds ${shipped.length} profiles (${shipped.join(', ')}). `
+      + 'DECISIONS.md D-022: one controller until a second keyboard exists. A fixture goes in test/.'
+    );
+  }
+  if (!shipped.includes(loaded)) {
+    fail('one profile ships', `${loader} loads '${loaded}', which is not among ${shipped.join(', ') || 'anything shipped'}.`);
+  }
+});
+
 // --- The shell never names a device ----------------------------------------
 //
 // A header that says "No MiniLab 3 detected" tells a user with another keyboard
@@ -403,26 +435,40 @@ rule('shared decoder', () => {
 // So identifiers, CSS classes and data attributes pass untouched, and a sentence
 // does not.
 //
-// One subtraction, and it is not an exception to the rule: MiniHub's own names
-// (AGENTS.md section 2) contain the device's, for historical reasons that are
-// now on the user's disk. "MiniLab Hub" is this application, not the hardware.
+// A multi-word vendor is matched WHOLE and never word by word. "Nebula
+// Instruments" must not turn the ordinary word "instruments" into a violation --
+// that is the false-positive class this rule dies of, since a rule everyone has
+// learned to ignore guards nothing. A model whose words are themselves ordinary
+// English would reopen it; the answer that day is to name the exception here,
+// with its reason, and not to delete the rule.
+//
+// One subtraction, and it is not an exception: MiniHub's own names (AGENTS.md
+// section 2) contain the device's, for historical reasons that are now on the
+// user's disk. "MiniLab Hub" is this application, not the hardware.
 rule('device name out of the shell', () => {
   const appNames = ['MiniLab Hub', 'MiniHub', 'minilab-hub', 'mlh'];
   const words = new Set();
+  const phrases = new Set();
   for (const file of profileFiles()) {
     const profile = JSON.parse(read(file));
-    const naming = [profile?.name, profile?.device?.vendor, profile?.device?.model];
-    for (const text of naming) {
-      if (typeof text !== 'string') continue;
-      for (const word of text.split(/[^A-Za-z0-9]+/)) {
-        if (word.length >= 4) words.add(word.toLowerCase());
-      }
+    const model = profile?.device?.model;
+    for (const text of [profile?.name, profile?.device?.vendor, model]) {
+      if (typeof text !== 'string' || !text.trim()) continue;
+      const parts = text.trim().split(/\s+/);
+      if (parts.length > 1) phrases.add(parts.join(' ').toLowerCase());
+      if (parts.length > 1 && text !== model) continue;
+      for (const part of parts) if (part.length >= 4) words.add(part.toLowerCase());
     }
   }
-  if (words.size === 0) {
+  if (words.size === 0 && phrases.size === 0) {
     fail('device name out of the shell', `no profile under ${PROFILE_DIR} names a device to look for.`);
     return;
   }
+  const say = (file, index, what) => fail(
+    'device name out of the shell',
+    `${file}:${index + 1} says '${what}'. The shell asks \`controllerName(network)\` for the `
+    + "device it is talking about; only the controller's own module reads that from the profile."
+  );
   for (const dir of ['src/renderer/js/core', 'src/renderer/js/ui']) {
     for (const file of walk(dir, ['.js'])) {
       read(rel(file)).split('\n').forEach((line, index) => {
@@ -430,13 +476,11 @@ rule('device name out of the shell', () => {
         let text = line;
         for (const name of appNames) text = text.split(name).join(' ');
         for (const token of text.split(/[^A-Za-z0-9_-]+/)) {
-          if (!words.has(token.toLowerCase())) continue;
-          fail(
-            'device name out of the shell',
-            `${rel(file)}:${index + 1} says '${token}'. The shell asks `
-            + '`controllerName(network)` for the device it is talking about; only '
-            + "the controller's own module reads that from the profile."
-          );
+          if (words.has(token.toLowerCase())) say(rel(file), index, token);
+        }
+        const flattened = text.toLowerCase().replace(/\s+/g, ' ');
+        for (const phrase of phrases) {
+          if (flattened.includes(phrase)) say(rel(file), index, phrase);
         }
       });
     }
