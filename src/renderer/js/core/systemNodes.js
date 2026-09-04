@@ -16,10 +16,28 @@
  * id of the Audio Output node and the name of its node type; only the id
  * belongs here. Lists of node types (see `engineSync.js`) keep their literals.
  */
+import { LOADED_PROFILE } from '../midi/loadedProfile.js';
 
-/** Physical MiniLab 3 controller. Has no NODE_TYPES entry: it is a hardware
- *  endpoint, not a creatable family. */
-export const MINILAB_NODE_ID = 'minilab-3';
+/**
+ * The physical controller. Has no NODE_TYPES entry: it is a hardware endpoint,
+ * not a creatable family.
+ *
+ * The VALUE comes from the loaded profile, the DECLARATION stays here. Those are
+ * two different things and invariant 7 only asks for the second: one place code
+ * imports "the id of the controller node" from. Deriving it is what stops the
+ * application from having an opinion about which controller it is talking to --
+ * a profile whose `profileId` is `vega-49` makes the node `vega-49`, with
+ * nothing else edited.
+ *
+ * It is also load-bearing for saved projects, in a way a literal hid. The id is
+ * written into every `.minihub` file's connections and layout, and the profile
+ * id is written into every learned binding key (`minilab-3:k1`). If the two ever
+ * disagreed, projects would open with cables that match nothing and bindings
+ * that resolve to nothing, silently -- so they are one string, and
+ * `test/minilabProfile.test.mjs` pins that string against a frozen recording of
+ * what shipped.
+ */
+export const MINILAB_NODE_ID = LOADED_PROFILE.profileId;
 
 /** Physical audio output owned by the native engine. Same reasoning. Its
  *  module id is deliberately identical, which is what lets the Patch Bay find

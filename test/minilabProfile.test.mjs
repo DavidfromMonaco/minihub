@@ -29,6 +29,7 @@ const readJson = (relative) => JSON.parse(fs.readFileSync(new URL(relative, impo
 
 const profile = readJson('../src/renderer/js/midi/profiles/minilab-3.json');
 const frozen = readJson('./conformance/control-sources.json');
+const published = readJson('./conformance/published-control-ids.json');
 
 test('the reference profile is a valid profile', () => {
   const result = validateControllerProfile(profile);
@@ -47,8 +48,22 @@ test('the profile produces the 25 control sources, field for field', () => {
  * cut those projects silently.
  */
 test('no identity a project has already written to disk moves', () => {
-  assert.equal(profile.profileId, MINILAB_NODE_ID,
-    'the profile id and the network node id are the same string, or the node stops matching');
+  // MINILAB_NODE_ID is the loaded profile's id now, so asserting the two equal
+  // proves nothing at all -- it is the same expression twice. What has to hold
+  // is that the DERIVED value is still the word saved projects contain, so it is
+  // pinned against the literal and against the register where control ids were
+  // published. A profile edit that renamed the device would fail here rather
+  // than open every old project with cables matching nothing.
+  assert.equal(MINILAB_NODE_ID, 'minilab-3',
+    'the network node id sits in every saved project; it cannot move');
+  assert.ok(published.profiles[MINILAB_NODE_ID],
+    'the node id is a published profile id, not whatever the profile says today');
+  // And it is still DERIVED: `profile` here is a fresh read of the file from
+  // disk, so this fails the day someone writes the literal back into
+  // systemNodes.js and the profile is renamed afterwards. `npm run check` cannot
+  // catch that one -- systemNodes.js is the rule's owner and is skipped.
+  assert.equal(MINILAB_NODE_ID, profile.profileId,
+    'the node id reads the profile; a second copy of the word would drift from it');
 
   const byKey = (key) => profile.controls.find((control) => control.id === key);
   for (const key of ['k1', 'f2', 'p3', 'pitch-bend', 'main-encoder', 'main-click', 'shift', 'modulation']) {

@@ -23,7 +23,7 @@
  */
 import { decodeControl } from './decodeControl.js';
 import { MINILAB_NODE_ID } from '../core/systemNodes.js';
-import profile from './profiles/minilab-3.json' with { type: 'json' };
+import { LOADED_PROFILE as profile } from './loadedProfile.js';
 
 /**
  * The legacy `semantics` string, rebuilt from the set of modes a control's

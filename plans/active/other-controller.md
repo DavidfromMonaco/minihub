@@ -9,7 +9,7 @@ nothing in `src/` assumes which device is plugged in.
 entry of [plans/done/controller-profile.md](../done/controller-profile.md), which
 named the decoder's remaining dependency on `midi/minilab.js`.
 
-**Status** — steps 1 and 2 of 6 done.
+**Status** — steps 1 to 3 of 6 done.
 
 ## Context
 
@@ -73,7 +73,7 @@ D-021, D-022.
       `midi/minilab.js`. The decoder becomes copyable verbatim, which is what
       spec §3.5 asks and Étape A left owed.
       Check: the frozen corpus passes **unchanged**.
-- [ ] 3. The controller node's identity comes from the loaded profile.
+- [x] 3. The controller node's identity comes from the loaded profile.
       `MINILAB_NODE_ID` keeps its value and its declaration; what changes is that
       the module reads it from the profile and a test pins the two equal.
       Check: `npm test` + `npm run check`, and
@@ -201,3 +201,35 @@ a second reason the step did not name, so the extraction went further:
 
 `midi/minilab.js` now has exactly one caller left, `midiManager.js`. Steps 3 to 5
 are what remove it.
+
+2026-09-04 — Step 3 done. `MINILAB_NODE_ID` keeps its name and its declaration
+in `core/systemNodes.js`; its value is now `LOADED_PROFILE.profileId`. 654 JS
+tests, 13 check rules, `sync:dist` run. `test/projectCompatibility.test.mjs`
+opens the pre-profile project whole, unchanged.
+
+- **A fourth file was reading `./profiles/minilab-3.json` by path.** Which
+  profile is loaded was a decision written three times — in `minilab.js`, in
+  `minilabControls.js`, and about to be written again in `systemNodes.js`. It is
+  `midi/loadedProfile.js` now, one line of substance, and the day the profile
+  stops shipping and starts being chosen it is the file that changes rather than
+  every reader. Three imports, one decision.
+- **The test that guarded this identity became tautological, and had to be
+  replaced rather than kept.** `minilabProfile.test.mjs` asserted
+  `profile.profileId === MINILAB_NODE_ID`; with the id derived, that is the same
+  expression twice. It now pins the derived value against the literal
+  `'minilab-3'` and against `published-control-ids.json`, the hand-written
+  register of what shipped — the node id has to be a *published* identity, not
+  whatever the profile says today. Losing this quietly was the real risk of the
+  step: the assertion would have kept passing forever while guarding nothing.
+- **One drift `npm run check` cannot see.** The `system node ids` rule skips
+  `systemNodes.js`, since that file is its owner — so writing the literal back
+  in there breaks no rule. The third assertion compares `MINILAB_NODE_ID`
+  against a fresh read of the profile file from disk, which is what fails if the
+  constant becomes a second copy of the word and the profile is renamed later.
+- **What is NOT proved, plainly.** That a profile with `profileId: 'vega-49'`
+  makes the node `vega-49` is one property access evaluated at module load, and
+  no test can swap it: `mock.module` needs
+  `--experimental-test-module-mocks`, and adding that flag to `npm test` for one
+  assertion costs the whole suite a warning and an experimental API. It is read,
+  not run. Step 4 is where the same question becomes testable, because
+  `isCanonicalMidiIngress` takes its node as an argument.

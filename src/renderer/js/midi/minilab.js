@@ -16,7 +16,7 @@
  * caller; what changed is that none of them can answer without the profile.
  */
 import { resolvePortRole, isPerformancePort, bestPerformancePort } from './portRoles.js';
-import profile from './profiles/minilab-3.json' with { type: 'json' };
+import { LOADED_PROFILE as profile } from './loadedProfile.js';
 
 /** True when the profile recognises this port as one of the controller's own. */
 export function isMiniLabName(name) {
