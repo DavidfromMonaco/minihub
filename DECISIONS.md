@@ -752,3 +752,85 @@ let code in through it.
 **Proof in the code** — `src/renderer/js/midi/minilabControls.js`
 (`MINILAB_CONTROL_SOURCES`, the profile already written as a literal),
 `INTENT.md` §8 ter, and `MINIHUB_CONTROLLER_PLATFORM_SPEC.md` §3.1 and §9.
+
+---
+
+## D-021 — The bindings bar docks under the plugin window, and stays HTML
+
+**Status**: in force · 2026-09-04 · **decided, not implemented**
+
+**Context** — Learning a knob today costs two windows and a head movement. The
+MiniLab surface, the Learn button and the binding list live in MiniHub; the
+plugin editor whose parameter is being learned is a separate window, opened by
+the engine, usually covering what you were just reading. The author asked for one
+window.
+
+Verified before answering, because it decides everything: the plugin editor is
+**not** an Electron window. It is a hand-built Win32 frame created in the engine
+process — `WS_OVERLAPPEDWINDOW`, with a `STATIC` child the VST3 view attaches to
+by `kPlatformTypeHWND`. Chromium runs in another process and cannot draw one
+pixel inside it.
+
+**Decision** — A separate frameless Electron window, rendering the existing
+bindings interface, **docked under** the plugin editor and moving with it as one
+piece. Not one window: two that share an edge and are never seen apart.
+
+**It replaces the panel, it does not duplicate it.** Once the docked bar exists,
+`renderControlBindings()` leaves the VST node's editor inside MiniHub: bindings
+are reached from the plugin window and from nowhere else. That is what makes this
+one place instead of two, and it is why the interface is moved rather than
+cloned — a second copy would be a second thing to keep in step.
+
+Two alternatives were weighed and refused:
+
+- **A host strip inside the plugin frame.** The frame is ours, the child could be
+  shortened, and every DAW does exactly this. It is refused because the strip
+  would have to be drawn in C++/Win32, in the engine process: a second
+  implementation of an interface that already exists in HTML, in a third visual
+  vocabulary that is neither `base.css` nor `omni-pearl`, added to the one process
+  that must never die because it owns the audio device.
+- **Reparenting the plugin `HWND` into the Electron window.** It works on
+  Windows. It also marries two processes that were separated on purpose — the
+  engine is a singleton child so that it can own the device independently — and it
+  makes a plugin crash take the visual host down with it.
+
+The choice is reversible in the direction that matters: the IPC the docked window
+needs is exactly the IPC a host strip would need. If docking proves not to be
+enough, A is still reachable; if it proves enough, A is never built.
+
+**Consequence** — One piece of native work, and it is small: `editorStatus`
+reports `width` and `height` but **no position**, and nothing is emitted when the
+user drags the window. The engine has to report the frame's position, on move and
+on resize. Everything else is renderer work reusing `renderControlBindings()`
+unchanged.
+
+Ordering, and it is the same trap as the specification's §6.8: **D-018** — one
+armed Learn in the application, with a named owner — refactors
+`ControlBindingManager`, which is what this docked window drives. Built in the
+wrong order, that refactor is paid twice. This comes after Étape A, and after or
+with D-018, never before.
+
+Because the panel goes away, one case has to be answered while building rather
+than after: **a plugin with no editor of its own, or an editor that refuses to
+open, would leave no way to bind it at all.** Either the bar can be opened on its
+own for such a plugin, or those plugins keep the in-app panel as a fallback. The
+answer is whichever costs less once the bar exists; it is not a reason to keep
+two interfaces for every other plugin.
+
+Settled while building, not in advance: stacking order against a plugin window
+that is itself always-on-top, behaviour across monitors at different DPI, what
+happens when the editor is minimised, and what the bar does when the plugin
+window sits at the very bottom of the screen.
+
+**What would justify revisiting it** — A plugin whose window cannot be tracked
+reliably, or a stacking behaviour that makes the bar flicker or steal focus during
+ordinary use. Either would mean docking cannot be made to feel like one window,
+and the answer would then be the host strip of option A, not a worse dock.
+
+**Proof in the code** — `native/audio-engine/src/plugin_host.cpp`
+(`EditorWindow::open()`, the `CreateWindowExW` frame and its `STATIC` content
+child), `native/audio-engine/src/engine.cpp` (the `editorStatus` payload:
+`width` and `height`, no position), `src/main/engineCommandPolicy.js` (the
+allow-list a new command has to enter), and
+`src/renderer/js/core/nodeInstances.js` (`renderControlBindings()`, the interface
+being reused rather than rebuilt).

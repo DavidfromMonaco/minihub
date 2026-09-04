@@ -7,7 +7,7 @@ Counter-intuitive choices: [DECISIONS.md](DECISIONS.md). Long workstreams:
 [PLANS.md](PLANS.md).
 
 **Current state** — branch `master`.
-621 JS tests green, 3,952 native checks green, clean Release build, `dist/`
+625 JS tests green, 3,952 native checks green, clean Release build, `dist/`
 synchronised with the sources.
 
 One caveat on that build, recorded here so it stops being invisible: it reports
@@ -275,7 +275,7 @@ files. Extracting it is owed whether or not a second controller ever exists
 Specification: [MINIHUB_CONTROLLER_PLATFORM_SPEC.md](MINIHUB_CONTROLLER_PLATFORM_SPEC.md).
 Execution plan:
 [plans/active/controller-profile.md](plans/active/controller-profile.md) — 9
-steps, 1 to 4 done.
+steps, 1 to 5 done.
 
 Order, and it is the one thing here that costs money if missed:
 
@@ -296,6 +296,29 @@ A  →  (the gate of §2)  →  B  →  C  →  D
 **Device cards land in C** — spec §5.4. One page per device: photo, history,
 specifications, connectors, keybed, and a blueprint generated from the profile
 rather than drawn by hand. Written by the author, after the rest.
+
+### 9. The bindings bar, docked under the plugin window
+
+Decided 2026-09-04, not started: [DECISIONS.md](DECISIONS.md) D-021. Learning a
+knob costs two windows today, and the plugin editor usually covers what you were
+reading. A frameless Electron window carrying the existing bindings interface
+docks under the plugin editor and moves with it.
+
+It **replaces** the bindings panel rather than duplicating it: afterwards,
+`renderControlBindings()` is gone from the VST node's editor and bindings are
+reached from the plugin window only.
+
+The plugin editor is a hand-built Win32 frame owned by the **engine process**, so
+Chromium cannot draw inside it — which is why this is a second window rather than
+a strip, and why the alternatives were refused. See D-021.
+
+Native work, and it is the whole of it: `editorStatus` reports `width` and
+`height` but no position, and nothing is emitted when the window is dragged. The
+engine has to report the frame's position on move and on resize.
+
+**Order**: after item 8's Étape A, and after or with D-018 — that decision
+refactors `ControlBindingManager`, which is what this window drives. Out of
+order, the refactor is paid twice.
 
 ---
 
