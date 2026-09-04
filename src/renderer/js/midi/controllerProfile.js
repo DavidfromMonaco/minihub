@@ -103,12 +103,13 @@ const ROOT_KEYS = Object.freeze([
   'formatVersion', 'profileId', 'revision', 'name', 'author',
   'createdAt', 'completeness', 'device', 'layers', 'controls'
 ]);
-const DEVICE_KEYS = Object.freeze(['vendor', 'model', 'ports']);
+const DEVICE_KEYS = Object.freeze(['vendor', 'model', 'layout', 'ports']);
 const PORT_KEYS = Object.freeze(['role', 'priority', 'match', 'note']);
 const MATCH_KEYS = Object.freeze(['name']);
 const LAYER_KEYS = Object.freeze(['id', 'label']);
 const CONTROL_KEYS = Object.freeze(['id', 'label', 'family', 'layout', 'bindings']);
 const LAYOUT_KEYS = Object.freeze(['x', 'y']);
+const SURFACE_KEYS = Object.freeze(['width', 'height']);
 const BINDING_KEYS = Object.freeze(['layer', 'when', 'mode', 'encoding', 'range', 'confidence']);
 const WHEN_KEYS = Object.freeze(['kind', 'channel', 'number', 'lsbNumber']);
 const COMPLETENESS_KEYS = Object.freeze(['declared', 'observed', 'inferred', 'untested']);
@@ -282,6 +283,16 @@ function validateDevice(device, errors) {
   checkKeys(device, 'profile.device', DEVICE_KEYS, errors);
   stringField(device, 'profile.device', 'vendor', errors);
   stringField(device, 'profile.device', 'model', errors);
+
+  // The box every control's layout is expressed in. Without it, a coordinate is
+  // a number with no scale: the Patch Bay cannot fit the surface into a node,
+  // and the site's blueprint has no viewBox to draw into.
+  const layout = objectField(device, 'profile.device', 'layout', errors);
+  if (layout) {
+    checkKeys(layout, 'profile.device.layout', SURFACE_KEYS, errors);
+    integerField(layout, 'profile.device.layout', 'width', errors, { min: 1, max: LIMITS.coordinate });
+    integerField(layout, 'profile.device.layout', 'height', errors, { min: 1, max: LIMITS.coordinate });
+  }
   const ports = arrayField(device, 'profile.device', 'ports', errors, { max: LIMITS.ports });
   if (!ports) return;
   ports.forEach((port, index) => {

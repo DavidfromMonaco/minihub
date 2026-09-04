@@ -76,6 +76,23 @@ function toControlSource(control) {
 /** Stable physical CONTROL identities; original MIDI is never consumed. */
 export const MINILAB_CONTROL_SOURCES = Object.freeze(profile.controls.map(toControlSource));
 
+/**
+ * Where the controls sit, kept apart from what they send.
+ *
+ * `layout` is not on a control source because a source is an identity that gets
+ * persisted and compared field for field; a coordinate is a drawing input that
+ * changes when a faceplate is redrawn. Mixing them would make a repaint look
+ * like a hardware change.
+ *
+ * `box` is the coordinate space those positions are expressed in -- the Patch Bay
+ * scales it into a node, and the site's blueprint will use it as a viewBox.
+ */
+export const MINILAB_SURFACE_BOX = Object.freeze({ ...profile.device.layout });
+
+const LAYOUT_BY_KEY = new Map(profile.controls.map((control) => [control.id, Object.freeze({ ...control.layout })]));
+
+export function getMiniLabControlLayout(key) { return LAYOUT_BY_KEY.get(key) || null; }
+
 const BY_ID = new Map(MINILAB_CONTROL_SOURCES.map((item) => [item.id, item]));
 const BY_PORT = new Map(MINILAB_CONTROL_SOURCES.map((item) => [item.portId, item]));
 

@@ -27,6 +27,7 @@ const profile = () => ({
   device: {
     vendor: 'Test',
     model: 'One',
+    layout: { width: 480, height: 180 },
     ports: [
       { role: 'performance', priority: 5, match: { name: 'Test One MIDI' } },
       { role: 'control-surface', priority: 1, match: { name: 'Test One MCU' }, note: 'never carries played notes' }

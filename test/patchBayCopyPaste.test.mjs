@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { MINILAB_SURFACE } from '../src/renderer/js/ui/miniLabControlSurface.js';
 import { makeHub } from './helpers.mjs';
 import { makeEl, installDom, fire, fireKey, findClass } from './domShim.mjs';
 
@@ -27,8 +28,11 @@ const { listOmniBoxCategories } = await import('../src/renderer/js/core/nodeType
 const {
   nodeGeometry,
   nodeHeight,
+  dockHeight,
   NODE_WIDTH,
-  IDENTITY_H
+  IDENTITY_H,
+  SURFACE_NODE_HEIGHT,
+  SURFACE_PORT_ROW_Y
 } = await import('../src/renderer/js/core/nodeGeometry.js');
 const { fitViewport } = await import('../src/renderer/js/core/viewportMath.js');
 
@@ -405,6 +409,7 @@ test('redesigned node geometry produces correct cable endpoints', () => {
 test('MiniLab MIDI OUT uses one canonical socket center for drag and cables', () => {
   const node = {
     id: 'minilab-3',
+    surface: MINILAB_SURFACE,
     inputs: [{ id: 'midi-in', type: 'midi' }],
     outputs: [{ id: 'midi-out', type: 'midi' }]
   };
@@ -419,6 +424,39 @@ test('MiniLab MIDI OUT uses one canonical socket center for drag and cables', ()
   // Viewport zoom/pan never enters canonical world geometry; SVG viewBox
   // transforms this same point for both temporary and committed paths.
   assert.deepEqual(nodeGeometry(node, { x: 137, y: 91 }).outputs[0], socket);
+});
+
+/**
+ * The Patch Bay used to decide by name: `node.id === MINILAB_NODE_ID` chose
+ * between a faceplate and a stack of ports, which meant a second controller would
+ * have got 25 ports at 30 px each — a node roughly 760 px tall. It now decides by
+ * what the node declares, and this test is the one that would notice the name
+ * creeping back in.
+ */
+test('geometry follows the declared surface, not the node name', () => {
+  const named = {
+    id: 'minilab-3',
+    inputs: [{ id: 'midi-in', type: 'midi' }],
+    outputs: [{ id: 'midi-out', type: 'midi' }]
+  };
+  const dock = nodeGeometry(named, { x: 0, y: 0 });
+  assert.equal(dock.height, IDENTITY_H + dockHeight(named), 'the famous id alone buys nothing');
+  assert.ok(dock.outputs[0].y < SURFACE_PORT_ROW_Y, 'a node with no surface stacks its ports in the dock');
+
+  const stranger = {
+    id: 'launchkey-49',
+    surface: MINILAB_SURFACE,
+    inputs: [{ id: 'midi-in', type: 'midi' }],
+    outputs: [{ id: 'midi-out', type: 'midi' }]
+  };
+  const surface = nodeGeometry(stranger, { x: 0, y: 0 });
+  assert.equal(surface.height, SURFACE_NODE_HEIGHT, 'any node that declares a surface gets one');
+  assert.deepEqual(
+    { x: surface.outputs.at(-1).x, y: surface.outputs.at(-1).y },
+    { x: NODE_WIDTH, y: SURFACE_PORT_ROW_Y },
+    'and its remaining ports keep their single row below the faceplate'
+  );
+  assert.equal(surface.outputs.length, 1, 'control ports it does not declare are not invented');
 });
 
 test('fit/reset includes the complete redesigned node bounds', () => {

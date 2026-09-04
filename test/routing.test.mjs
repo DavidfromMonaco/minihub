@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { MINILAB_SURFACE } from '../src/renderer/js/ui/miniLabControlSurface.js';
 import { makeHub } from './helpers.mjs';
 import { makeEl, installDom, fire, fireKey, findClass } from './domShim.mjs';
 
@@ -381,7 +382,7 @@ test('routing module unmount cleans up', () => {
 
 test('initial open fits nodes when no persisted viewport exists', () => {
   const hub = makeHub();
-  hub.network.addNode({ id: 'minilab-3', name: 'MiniLab 3', outputs: [{ id: 'midi-out', type: 'midi' }] });
+  hub.network.addNode({ id: 'minilab-3', name: 'MiniLab 3', surface: MINILAB_SURFACE, outputs: [{ id: 'midi-out', type: 'midi' }] });
   const { container, svg } = makeContainer();
   const mod = createRoutingModule(hub);
   mod.mount(container);
@@ -393,7 +394,7 @@ test('initial open fits nodes when no persisted viewport exists', () => {
 
 test('initial open restores a valid persisted viewport', async () => {
   const hub = makeHub();
-  hub.network.addNode({ id: 'minilab-3', name: 'MiniLab 3', outputs: [{ id: 'midi-out', type: 'midi' }] });
+  hub.network.addNode({ id: 'minilab-3', name: 'MiniLab 3', surface: MINILAB_SURFACE, outputs: [{ id: 'midi-out', type: 'midi' }] });
   const vp = new NetworkViewport(hub.settings);
   await vp.save(123, 456, 1.25);
   const { container, svg } = makeContainer();
@@ -407,7 +408,7 @@ test('initial open restores a valid persisted viewport', async () => {
 
 test('visual grid pattern uses the shared GRID_SIZE', () => {
   const hub = makeHub();
-  hub.network.addNode({ id: 'minilab-3', name: 'MiniLab 3', outputs: [{ id: 'midi-out', type: 'midi' }] });
+  hub.network.addNode({ id: 'minilab-3', name: 'MiniLab 3', surface: MINILAB_SURFACE, outputs: [{ id: 'midi-out', type: 'midi' }] });
   const { container, svg } = makeContainer();
   const mod = createRoutingModule(hub);
   mod.mount(container);
@@ -442,7 +443,7 @@ test('port elements carry the correct node id for cable drag', () => {
   hub.modules = modules;
   hub.nodes = nodes;
   // Native MiniLab routing node + dynamic VST instance.
-  hub.network.addNode({ id: 'minilab-3', name: 'MiniLab 3', outputs: [{ id: 'midi-out', type: 'midi' }] });
+  hub.network.addNode({ id: 'minilab-3', name: 'MiniLab 3', surface: MINILAB_SURFACE, outputs: [{ id: 'midi-out', type: 'midi' }] });
   nodes.create('vst'); // vst-001 with midi-in
 
   const { container, svg } = makeContainer();

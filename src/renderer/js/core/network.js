@@ -40,6 +40,10 @@ export class Network {
       type: node.type || null,
       inputs: node.inputs || [],
       outputs: node.outputs || [],
+      // A device that draws its ports on a faceplate instead of stacking them in
+      // a dock declares it here, as data: { width, height, ports: {id: {x,y}} }.
+      // The Patch Bay reads this rather than testing which node it is looking at.
+      surface: node.surface || null,
       onInput: typeof node.onInput === 'function' ? node.onInput : null
     });
     this._emit({ type: 'add', nodeId: node.id });

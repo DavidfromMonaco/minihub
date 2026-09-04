@@ -7,7 +7,7 @@ Counter-intuitive choices: [DECISIONS.md](DECISIONS.md). Long workstreams:
 [PLANS.md](PLANS.md).
 
 **Current state** — branch `master`.
-625 JS tests green, 3,952 native checks green, clean Release build, `dist/`
+627 JS tests green, 3,952 native checks green, clean Release build, `dist/`
 synchronised with the sources.
 
 One caveat on that build, recorded here so it stops being invisible: it reports
@@ -155,8 +155,9 @@ Inventory established during the audit; everything below is verified.
 **Over-exported** (used only inside its own file): `clearFollowingTies`,
 `pitchRowsForPattern`, `pitchLabel`, `TEMPO_MIN`, `TEMPO_MAX`,
 `PLUGIN_FAMILIES`, `knobArcDash`, `knobPointerTransform`, `pearlKnob`,
-`dockHeight`, `DOCK_MIN_H`, `PORT_ROW`, `PAD_BOTTOM`, `MINILAB_NODE_HEIGHT`,
-`renderControlBindings`.
+`DOCK_MIN_H`, `PORT_ROW`, `PAD_BOTTOM`, `renderControlBindings`.
+`MINILAB_NODE_HEIGHT` left this list by disappearing (item 8, step 6), and
+`dockHeight` left it by acquiring a test.
 
 **Duplicates**:
 
@@ -275,7 +276,7 @@ files. Extracting it is owed whether or not a second controller ever exists
 Specification: [MINIHUB_CONTROLLER_PLATFORM_SPEC.md](MINIHUB_CONTROLLER_PLATFORM_SPEC.md).
 Execution plan:
 [plans/active/controller-profile.md](plans/active/controller-profile.md) — 9
-steps, 1 to 5 done.
+steps, 1 to 6 done.
 
 Order, and it is the one thing here that costs money if missed:
 

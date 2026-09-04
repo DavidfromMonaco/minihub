@@ -22,7 +22,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { MINILAB_CONTROL_SOURCES, decodeMiniLabControl } from '../src/renderer/js/midi/minilabControls.js';
 import { MINILAB_NODE_ID } from '../src/renderer/js/core/systemNodes.js';
-import { MINILAB_SURFACE_LAYOUT } from '../src/renderer/js/ui/miniLabControlSurface.js';
+import { MINILAB_SURFACE_LAYOUT, miniLabPatchPortPosition } from '../src/renderer/js/ui/miniLabControlSurface.js';
 import { computeCompleteness, validateControllerProfile } from '../src/renderer/js/midi/controllerProfile.js';
 
 const readJson = (relative) => JSON.parse(fs.readFileSync(new URL(relative, import.meta.url), 'utf8'));
@@ -65,7 +65,19 @@ test('no identity a project has already written to disk moves', () => {
   }
 });
 
-test('the profile carries the layout the surface draws today', () => {
+/**
+ * The coordinates are no longer computed by a formula in the drawing code — the
+ * knobs were `155 + (index % 4) * 52`, which is "four per row" written as
+ * arithmetic. Every position now comes out of the file, and this holds the two
+ * ends together.
+ */
+test('the surface is drawn where the profile says, and nowhere else', () => {
+  assert.deepEqual(
+    { width: MINILAB_SURFACE_LAYOUT.width, height: MINILAB_SURFACE_LAYOUT.height },
+    profile.device.layout,
+    'the box the coordinates live in comes from the profile too'
+  );
+
   const positionOf = (key) => {
     for (const group of ['knobs', 'faders', 'pads']) {
       const hit = MINILAB_SURFACE_LAYOUT[group].find((item) => item.key === key);
@@ -75,11 +87,37 @@ test('the profile carries the layout the surface draws today', () => {
   };
   for (const control of profile.controls) {
     const drawn = positionOf(control.id);
-    if (!drawn) continue; // shift, the strips and the encoder are placed one by one, step 6
-    assert.deepEqual(control.layout, drawn, `${control.id} would move on screen`);
+    if (!drawn) continue; // shift, the strips and the encoder are not in a row
+    assert.deepEqual(drawn, control.layout, `${control.id} is not drawn where the profile puts it`);
   }
-  const encoder = profile.controls.find((control) => control.id === 'main-encoder');
-  assert.deepEqual(encoder.layout, { x: 122, y: 68 });
+
+  // Nothing moved when the formula went: these are the positions the code used
+  // to compute, spelled out so a silent shift cannot pass.
+  const knobs = MINILAB_SURFACE_LAYOUT.knobs.map((item) => `${item.key}@${item.x},${item.y}`);
+  assert.deepEqual(knobs, [
+    'k1@155,43', 'k2@207,43', 'k3@259,43', 'k4@311,43',
+    'k5@155,91', 'k6@207,91', 'k7@259,91', 'k8@311,91'
+  ]);
+  assert.deepEqual(MINILAB_SURFACE_LAYOUT.pads.map((item) => item.x), [90, 138, 186, 234, 282, 330, 378, 426]);
+  assert.deepEqual(profile.controls.find((control) => control.id === 'main-encoder').layout, { x: 122, y: 68 });
+});
+
+/**
+ * A port hangs off the shape its family draws, and the shape sits where the
+ * profile puts the control. Specification section 4.4 in one line — and the
+ * faders' stagger is decoration, which used to be written as the two names
+ * 'f2' and 'f4'.
+ */
+test('a port sits at its control, offset by what its family draws', () => {
+  assert.deepEqual(miniLabPatchPortPosition('control-k1'), { x: 155 + 15, y: 43 });
+  assert.deepEqual(miniLabPatchPortPosition('control-p1'), { x: 90 + 11, y: 126 + 10 });
+  assert.deepEqual(miniLabPatchPortPosition('control-f1'), { x: 355 + 13, y: 63 });
+  assert.deepEqual(miniLabPatchPortPosition('control-f2'), { x: 392 + 13, y: 63 + 24 },
+    'every second fader cap sits lower, and the port with it');
+  assert.deepEqual(miniLabPatchPortPosition('control-f4'), { x: 466 + 13, y: 63 + 24 });
+  assert.deepEqual(miniLabPatchPortPosition('control-pitch-bend'), { x: 22, y: 105 },
+    'a family with no shape offset sits exactly where the profile says');
+  assert.equal(miniLabPatchPortPosition('control-nothing'), null);
 });
 
 test('the profile grades itself as complete, and is right', () => {

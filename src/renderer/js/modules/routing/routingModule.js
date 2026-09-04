@@ -27,9 +27,9 @@ import {
   NODE_WIDTH,
   IDENTITY_H,
   identityHeight,
-  MINILAB_SURFACE_SCALE,
-  MINILAB_SURFACE_Y,
-  MINILAB_SURFACE_X,
+  SURFACE_SCALE,
+  SURFACE_Y,
+  SURFACE_X,
   portY,
   nodeGeometry
 } from '../../core/nodeGeometry.js';
@@ -48,7 +48,6 @@ import {
   portTypeInfo
 } from './routingCore.js';
 import { appendMiniLabControlSurfaceSvg } from '../../ui/miniLabControlSurface.js';
-import { MINILAB_NODE_ID } from '../../core/systemNodes.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
@@ -222,11 +221,11 @@ export function createRoutingModule(hub) {
 
       g.appendChild(clipped);
 
-      if (node.id === MINILAB_NODE_ID) {
+      if (node.surface) {
         const connectedPortIds = new Set(cables
           .filter((cable) => cable.from.nodeId === node.id)
           .map((cable) => cable.from.portId));
-        const surfaceHolder = svgEl('g', { transform: `translate(${MINILAB_SURFACE_X} ${MINILAB_SURFACE_Y}) scale(${MINILAB_SURFACE_SCALE})` });
+        const surfaceHolder = svgEl('g', { transform: `translate(${SURFACE_X} ${SURFACE_Y}) scale(${SURFACE_SCALE})` });
         appendMiniLabControlSurfaceSvg(surfaceHolder, {
           connectedPortIds,
           buildPort: (control, x, y) => buildPort(
@@ -245,7 +244,7 @@ export function createRoutingModule(hub) {
         g.appendChild(buildPort(port, 'input', 0, portY(node, i), node.id));
       });
       // Outputs on the right (I/O dock).
-      if (node.id !== MINILAB_NODE_ID) node.outputs.forEach((port, i) => {
+      if (!node.surface) node.outputs.forEach((port, i) => {
           g.appendChild(buildPort(port, 'output', NODE_WIDTH, portY(node, i), node.id));
         });
 

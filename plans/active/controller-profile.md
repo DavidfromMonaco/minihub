@@ -97,9 +97,11 @@ Named explicitly, because each will be tempting once the format exists:
       save/load cycle. 625 green, 9 rules clean, application relaunched. Both
       halves probed separately: restoring the membership check fails all four new
       tests, removing the `missing-target` branch fails only the status one.
-- [ ] 6. `layout` moves from `core/nodeGeometry.js` into the profile;
+- [x] 6. `layout` moves from `core/nodeGeometry.js` into the profile;
       `MINILAB_NODE_HEIGHT` and the `node.id === MINILAB_NODE_ID` branch go.
-      Check: `npm test` + `npm run check`
+      Check: `npm test` + `npm run check` — 627 green, 9 rules clean, application
+      launched. Probed: one control moved in the profile fails two tests, and
+      `core/nodeGeometry.js` no longer imports `core/systemNodes.js` at all.
 - [ ] 7. Three `npm run check` rules: `profile is data`, `immutable control ids`,
       `no hardware literal`.
       Check: each rule must fail on a deliberate probe, then pass once removed.
@@ -319,3 +321,55 @@ plugged in at all.
 is invisible rather than shown as `missing-target`. With one built-in profile
 that cannot go missing, there is nothing to display today; the orphan needs a
 place on screen only when a profile can really be absent, which is Étape B.
+
+2026-09-04 — Step 6 done. The Patch Bay stops deciding by name.
+
+`node.id === MINILAB_NODE_ID` is replaced by `node.surface`: data a node
+declares, `{ width, height, ports: { portId: { x, y } } }`. The module builds it
+from the profile, `core/network.js` carries it, and `nodeGeometry.js` reads it.
+That file now imports `core/systemNodes.js` **not at all** — which is the real
+measure of the step.
+
+The branch was never decoration. Stacking 25 control ports at `PORT_ROW = 30`
+gives a node about 760 px tall, so it was the only thing between a controller and
+an unusable node. Now any node that declares a surface gets one, and the name
+`minilab-3` buys nothing — a test asserts both directions.
+
+What the coordinates used to be: `155 + (index % 4) * 52` for the knobs, a single
+row for the pads, and a vertical offset keyed on the strings `'f2'` and `'f4'`.
+Three hardware facts written as arithmetic, in a file that draws. A device with
+three knobs per row could not be drawn at all. Every coordinate now comes out of
+the profile, and the fader stagger — which is decoration, not hardware — is index
+parity instead of two control names.
+
+The format gained `device.layout { width, height }`: the box the control
+coordinates live in. Without it a coordinate is a number with no scale, and both
+readers need it — the Patch Bay to fit the surface into a node, the site's
+blueprint as a viewBox. Required, so no profile can carry positions with nothing
+to measure them against. **Third change with no `formatVersion` bump**, on the
+same argument as steps 4 and 5: nothing outside this repository holds a profile.
+That argument expires the day the site Builder ships a file, and it should be
+spent before then, not after.
+
+Two things worth carrying forward:
+
+- **`buildVisualNodes()` dropped the field**, and a failing test found it. The
+  visual model is where the drawing decision is made, so anything the drawing
+  depends on has to survive that projection. It is the same class of bug as a
+  copy of a shared identity: silent, and only visible as "the faceplate is gone".
+- **Two existing tests asserted the old discriminator** — a node called
+  `minilab-3` gets a faceplate. They now declare a surface, which is the contract
+  that actually holds, and a new test proves a stranger with a surface gets one
+  while the famous name alone gets nothing.
+
+Still in code, and named so it is not mistaken for an oversight: the pad function
+labels (Arp, Pad, Prog…) and the faceplate's decoration — the body rectangle, the
+display, the SHIFT/HOLD legends, the strip labels. They are hardware text and
+hardware drawing with no field in the format yet, and no second device to prove
+what those fields should be. They go when the Patch Bay node becomes generic,
+Étape B.
+
+The launch was clean. One Chromium line — `Network service crashed or was
+terminated` — appeared once, at a forced shutdown, and did not reappear on a
+second run held twenty seconds and killed the same way. Recorded rather than
+explained away.

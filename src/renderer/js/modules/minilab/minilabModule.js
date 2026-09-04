@@ -1,5 +1,6 @@
 import { describeMessage, noteName } from '../../midi/parseMidi.js';
 import { MINILAB_CONTROL_SOURCES } from '../../midi/minilabControls.js';
+import { MINILAB_SURFACE } from '../../ui/miniLabControlSurface.js';
 import { escapeHtml } from '../../core/html.js';
 import { MINILAB_NODE_ID } from '../../core/systemNodes.js';
 
@@ -343,6 +344,7 @@ export function createMiniLabModule(hub) {
       id: MINILAB_NODE_ID,
       name: 'MiniLab 3',
       type: 'midi-output',
+      surface: MINILAB_SURFACE,
       inputs: [
         { id: 'midi-in', type: 'midi', label: 'Hardware MIDI In' }
       ],

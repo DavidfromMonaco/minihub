@@ -45,6 +45,11 @@ export function buildVisualNodes(network) {
     id: node.id,
     name: node.name,
     type: node.type || null,
+    // Carried through because it is what decides how the node is drawn: a device
+    // with a faceplate puts its ports where the hardware has them, everything
+    // else stacks them in the dock. Dropped here, the Patch Bay would have to ask
+    // which node it is looking at again.
+    surface: node.surface || null,
     inputs: (node.inputs || []).map((p) => ({ ...p })),
     outputs: (node.outputs || []).map((p) => ({ ...p }))
   }));

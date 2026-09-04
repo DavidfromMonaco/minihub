@@ -1,36 +1,89 @@
 import { escapeHtml } from '../core/html.js';
-import { MINILAB_CONTROL_SOURCES } from '../midi/minilabControls.js';
+import {
+  MINILAB_CONTROL_SOURCES,
+  MINILAB_SURFACE_BOX,
+  getMiniLabControlLayout
+} from '../midi/minilabControls.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
-// One physical layout drives both the Patch Bay SVG and the Hub HTML/SVG view.
+/**
+ * The secondary function printed under each pad. Still in code, and named here
+ * so it is not mistaken for an oversight: it is hardware text with no field in
+ * the profile format yet, and no second device to prove what that field should
+ * be. It goes when the Patch Bay node becomes generic, Étape B.
+ */
+const PAD_FUNCTION_LABELS = ['Arp', 'Pad', 'Prog', 'Loop', 'Stop', 'Play', 'Record', 'Tap'];
+
+const positioned = (source, extra = {}) =>
+  Object.freeze({ ...source, ...getMiniLabControlLayout(source.key), ...extra });
+
+const ofFamily = (family) => MINILAB_CONTROL_SOURCES.filter((source) => source.family === family);
+
+/**
+ * One physical layout drives both the Patch Bay SVG and the Hub HTML/SVG view --
+ * and every coordinate in it now comes from the profile, not from a formula.
+ *
+ * What the formula used to encode: `155 + (index % 4) * 52` assumed four knobs
+ * per row, the pads assumed a single row, and the faders carried a vertical
+ * offset keyed on the strings 'f2' and 'f4'. All three were hardware facts
+ * written as arithmetic, so a device with three knobs per row could not be drawn
+ * at all. Specification section 6.3: the MiniLab becomes the first profile to
+ * supply its coordinates instead of a special case in the code.
+ */
 export const MINILAB_SURFACE_LAYOUT = Object.freeze({
-  width: 480,
-  height: 180,
-  knobs: Object.freeze(MINILAB_CONTROL_SOURCES.filter((source) => source.family === 'knob').map((source, index) => Object.freeze({
-    ...source,
-    x: 155 + (index % 4) * 52,
-    y: 43 + Math.floor(index / 4) * 48
-  }))),
-  faders: Object.freeze(MINILAB_CONTROL_SOURCES.filter((source) => source.family === 'fader').map((source, i) => Object.freeze({ ...source, x: 355 + i * 37, y: 63 }))),
-  pads: Object.freeze(['Arp', 'Pad', 'Prog', 'Loop', 'Stop', 'Play', 'Record', 'Tap']
-    .map((functionLabel, i) => Object.freeze({ ...MINILAB_CONTROL_SOURCES.find((source) => source.key === `p${i + 1}`), functionLabel, x: 90 + i * 48, y: 126 })))
+  width: MINILAB_SURFACE_BOX.width,
+  height: MINILAB_SURFACE_BOX.height,
+  knobs: Object.freeze(ofFamily('knob').map((source) => positioned(source))),
+  faders: Object.freeze(ofFamily('fader').map((source) => positioned(source))),
+  pads: Object.freeze(ofFamily('pad').map((source, index) =>
+    positioned(source, { functionLabel: PAD_FUNCTION_LABELS[index] || source.label })))
 });
 
 const sourceByKey = (key) => MINILAB_CONTROL_SOURCES.find((source) => source.key === key);
 
+/**
+ * Where a control's port sits, given where the control sits.
+ *
+ * The profile says where the control is; `family` says what shape is drawn there,
+ * and the shape is what decides where its socket hangs. Specification section
+ * 4.4, in one line: family governs the shape, layout governs the position.
+ *
+ * The faders' vertical stagger is decoration, not hardware -- alternate caps sit
+ * lower so a row of four does not read as one flat line. It used to be written
+ * as `key === 'f2' || key === 'f4'`, which is the same decoration with two
+ * hardware names baked into it.
+ */
+const FADER_STAGGER = 24;
+const PORT_ANCHOR_BY_FAMILY = Object.freeze({
+  knob: () => ({ x: 15, y: 0 }),
+  fader: (index) => ({ x: 13, y: index % 2 === 1 ? FADER_STAGGER : 0 }),
+  pad: () => ({ x: 11, y: 10 })
+});
+
 export function miniLabPatchPortPosition(portId) {
   const source = MINILAB_CONTROL_SOURCES.find((item) => item.portId === portId);
   if (!source) return null;
-  const knob = MINILAB_SURFACE_LAYOUT.knobs.find((item) => item.id === source.id);
-  if (knob) return { x: knob.x + 15, y: knob.y };
-  const fader = MINILAB_SURFACE_LAYOUT.faders.find((item) => item.id === source.id);
-  if (fader) return { x: fader.x + 13, y: 63 + (source.key === 'f2' || source.key === 'f4' ? 24 : 0) };
-  const pad = MINILAB_SURFACE_LAYOUT.pads.find((item) => item.id === source.id);
-  if (pad) return { x: pad.x + 11, y: pad.y + 10 };
-  return ({ shift: { x: 38, y: 25 }, 'pitch-bend': { x: 22, y: 105 }, modulation: { x: 53, y: 105 },
-    'main-encoder': { x: 122, y: 68 }, 'main-click': { x: 122, y: 84 } })[source.key] || null;
+  const layout = getMiniLabControlLayout(source.key);
+  if (!layout) return null;
+  const anchor = PORT_ANCHOR_BY_FAMILY[source.family];
+  if (!anchor) return { x: layout.x, y: layout.y };
+  const offset = anchor(ofFamily(source.family).findIndex((item) => item.id === source.id));
+  return { x: layout.x + offset.x, y: layout.y + offset.y };
 }
+
+/**
+ * What the Patch Bay needs to draw this device as a surface rather than as a
+ * stack of ports: the box the coordinates live in, and where each port hangs
+ * inside it. Data only -- `core/network.js` carries it on the node, and
+ * `core/nodeGeometry.js` reads it instead of testing the node's identity.
+ */
+export const MINILAB_SURFACE = Object.freeze({
+  width: MINILAB_SURFACE_BOX.width,
+  height: MINILAB_SURFACE_BOX.height,
+  ports: Object.freeze(Object.fromEntries(MINILAB_CONTROL_SOURCES.map((source) =>
+    [source.portId, Object.freeze(miniLabPatchPortPosition(source.portId))])))
+});
 
 function stateFor(states, id) {
   const value = states?.[id];
@@ -111,9 +164,9 @@ export function appendMiniLabControlSurfaceSvg(parent, { buildPort, connectedPor
     group.appendChild(buildPort(control, position.x, position.y));
     root.appendChild(group);
   });
-  MINILAB_SURFACE_LAYOUT.faders.forEach((control) => {
+  MINILAB_SURFACE_LAYOUT.faders.forEach((control, faderIndex) => {
     root.appendChild(svgEl('rect', { class: 'ml-svg-fader', x: control.x, y: 24, width: 7, height: 65, rx: 3 }));
-    root.appendChild(svgEl('rect', { class: 'ml-svg-fader-cap', x: control.x - 8, y: control.y - 4 + (control.label === 'F2' || control.label === 'F4' ? 24 : 0), width: 23, height: 8, rx: 3 }));
+    root.appendChild(svgEl('rect', { class: 'ml-svg-fader-cap', x: control.x - 8, y: control.y - 4 + (faderIndex % 2 === 1 ? FADER_STAGGER : 0), width: 23, height: 8, rx: 3 }));
     const label = svgEl('text', { class: 'ml-svg-label', x: control.x + 3, y: 104, 'text-anchor': 'middle' });
     label.textContent = control.label; root.appendChild(label);
     addPort(control);
