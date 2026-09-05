@@ -141,12 +141,13 @@ scope; here are the technical prohibitions:
 
 ```bash
 npm install              # Electron + rcedit
-npm test                 # 631 JS tests, node:test runner, ~5 s
-npm run check            # 12 rules (Node stdlib + the profile validator, ~1 s)
+npm test                 # 775 JS tests, node:test runner, ~5 s
+npm run check            # 15 rules (Node stdlib + the profile validator, ~1 s)
 npm run build:native     # native Release build (CMake + MSBuild)
 npm run build:native:tests
 npm run sync:dist        # promotes src/ + engine into dist/MiniHub
 npm start                # native build + sync + launch the packaged version
+npm run build:installer  # Setup.exe + portable ZIP -> dist/release (needs Inno Setup 6)
 ```
 
 Native tests, after `build:native:tests`:

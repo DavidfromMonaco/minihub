@@ -10,7 +10,8 @@
     "start": "npm run package && node scripts/launch-dist.mjs",
     "test": "node --test \"test/*.test.mjs\" \"test/*.test.cjs\"",
     "check": "node scripts/check-invariants.mjs",
-    "sync:dist": "node scripts/sync-dist.mjs"
+    "sync:dist": "node scripts/sync-dist.mjs",
+    "build:installer": "node scripts/build-installer.mjs"
   },
   "author": "",
   "license": "MIT",

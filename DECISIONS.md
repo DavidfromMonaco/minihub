@@ -1450,3 +1450,56 @@ therefore truthy, therefore a panel of width `undefined`.
 (`reportPlacement`), `src/renderer/js/midi/minilabControls.js`
 (`MINILAB_SURFACE_BOX`), `src/renderer/js/ui/miniLabControlSurface.js`
 (`MINILAB_SURFACE`, `controlListHtml`), `test/miniLabSurface.test.mjs`
+
+---
+
+## D-031 — Two distribution routes, and the user's data never moves
+
+**Status**: in force · 2026-09-05 · **implemented**.
+
+**Context** — Asked on 2026-09-04, before any installer existed: *not having to
+reinstall MiniHub with every version*. Until then the only distribution was a
+folder — `dist/MiniHub`, copied over the previous one. An installer that made
+itself the only route would take that away, and an installer that put settings
+inside its own directory would take the user's work with it on the next
+uninstall.
+
+Nothing in the repository recorded this, so it was one refactor away from being
+lost. This entry is that record.
+
+**Decision** — MiniHub ships **two artefacts from one build**: an installer and a
+portable ZIP, both wrapping the same `dist/MiniHub`. Application data stays where
+it already lives — `%APPDATA%/minilab-hub`, `Documents/MiniHub/Projects`,
+`Music/MiniHub Recordings` — so a folder copy and an installed copy read the
+**same** settings, projects and imported controller profiles. Uninstalling
+removes the application and nothing the user made.
+
+**Consequence** — four things follow, and each one is a door closed on purpose:
+
+- **Inno Setup, not electron-builder.** `scripts/sync-dist.mjs` is the single
+  producer of `dist/MiniHub`: it stamps the icon through rcedit, promotes the one
+  authoritative Release engine, and writes the provenance manifest that invariant
+  11 is checked against. A packager that rebuilt the payload its own way would
+  put a second producer on that directory and make the manifest meaningless.
+  `installer/MiniHub.iss` *consumes* the tree and refuses to run without the
+  manifest. It also keeps `package.json` at Electron + rcedit: the installer is
+  an external tool, not a dependency.
+- **Per-user install, no elevation.** `PrivilegesRequired=lowest`, into
+  `%LOCALAPPDATA%\Programs\MiniHub`. An application that never writes beside its
+  own executable has nothing to gain from Program Files, and a UAC prompt on a
+  music tool is a cost with no benefit.
+- **No `.minihub` file association.** `src/main/main.js` reads no command-line
+  argument, so a double-clicked project would open an empty MiniHub. An
+  association that lies is worse than none.
+- **No auto-updater.** It would need an installed location, which is exactly the
+  constraint the portable route exists to avoid.
+
+**What would justify revisiting** — a code-signing certificate (the unsigned
+executable is why `SHA256SUMS.txt` is published beside the downloads), or
+`main.js` learning to open a file passed on the command line, which would make
+the `.minihub` association true and worth registering.
+
+**Proof in the code** — `installer/MiniHub.iss` (`PrivilegesRequired`,
+`[UninstallDelete]` bounded to `{app}\resources` and `{app}\locales`, the
+rewritten `ConfirmUninstall`), `scripts/build-installer.mjs` (refuses a tree with
+no `runtime-provenance.json`), `package.json` (`build:installer`).
