@@ -14,6 +14,7 @@ import { setupMidiRouting } from './core/midiRouting.js';
 import { setupControlRouting } from './core/controlRouting.js';
 import { setupChainSync } from './core/chainSync.js';
 import { BUILD_STAMP } from './core/buildStamp.js';
+import { bindMenuCommands } from './core/menuCommands.js';
 
 async function main() {
   const hub = createHub(window.hubAPI);
@@ -64,6 +65,8 @@ async function main() {
   buildSidebar(hub, sidebarEl, contentEl);
   buildHeader(hub, statusEl);
   buildSettingsModal(hub, modalRoot, settingsButton);
+  // File > New / Open / Save. The shell shows the project name only.
+  bindMenuCommands(hub);
   // Native audio engine client + network sync. Initialized BEFORE any module is
   // activated so event listeners are always registered before a command can
   // trigger a response (no missed events).

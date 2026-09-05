@@ -3,7 +3,7 @@
 const { installConsoleStreamGuards } = require('./consoleStreamGuard');
 installConsoleStreamGuards();
 
-const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
+const { app, BrowserWindow, Menu, ipcMain, dialog, shell } = require('electron');
 // Electron's GPU subprocess exits with STATUS_DLL_NOT_FOUND (0xc0000135) on
 // the supported Windows runtime used for MiniHub, before the renderer can
 // finish loading. MiniHub's UI does not depend on WebGL; select Chromium's
@@ -29,6 +29,7 @@ const { readProject, writeProjectAtomic } = require('./projectFiles');
 const { ALLOWED_ENGINE_COMMANDS } = require('./engineCommandPolicy');
 const { ClipEditorWindows } = require('./clipEditorWindows');
 const { installProjectCloseGuard } = require('./projectCloseGuard');
+const { installAppMenu } = require('./appMenu');
 
 let mainWindow = null;
 let engine = null;
@@ -58,6 +59,9 @@ function createWindow() {
       sandbox: false
     }
   });
+  // Before the page loads: the menu is the only place the project actions
+  // live, so it must exist even if the renderer never finishes starting.
+  installAppMenu({ Menu, window: mainWindow });
   projectCloseGuard = installProjectCloseGuard({
     window: mainWindow,
     dialog,

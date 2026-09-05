@@ -385,8 +385,7 @@ test('Sequencer and header controls share one global Play/Stop transport state',
   hub.modules.register(createSequencerModule(hub));
   const view = captureContainer();
   const ids = new Map([
-    ['project-identity', makeEl('span')], ['project-save', makeEl('button')],
-    ['project-save-as', makeEl('button')], ['transport-play', makeEl('button')],
+    ['project-identity', makeEl('span')], ['transport-play', makeEl('button')],
     ['transport-stop', makeEl('button')], ['transport-bpm', makeEl('input')]
   ]);
   const previousGetElementById = document.getElementById;

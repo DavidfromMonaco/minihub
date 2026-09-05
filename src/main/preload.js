@@ -51,6 +51,13 @@ contextBridge.exposeInMainWorld('hubAPI', {
     return () => ipcRenderer.removeListener('project:save-request', listener);
   },
   projectSaveResult: (result) => ipcRenderer.send('project:save-result', result),
+  // The application menu is in the main process; the project state it acts on
+  // is here. See src/main/appMenu.js and core/menuCommands.js.
+  onMenuCommand: (callback) => {
+    const listener = (_event, command) => callback(command);
+    ipcRenderer.on('menu:command', listener);
+    return () => ipcRenderer.removeListener('menu:command', listener);
+  },
   capturePluginStates: () => ipcRenderer.invoke('engine:capture-states'),
   focusMainWindow: () => ipcRenderer.invoke('window:focus-main'),
   clipEditorOpen: (clipId) => ipcRenderer.invoke('clip-editor:open', clipId),

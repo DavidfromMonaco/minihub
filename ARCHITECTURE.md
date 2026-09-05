@@ -625,6 +625,13 @@ différé, parce qu'il retirerait le callback qui pilote les deux contextes.
                                           #modal-root
 ```
 
+L'en-tête **affiche** le projet, il ne le pilote pas : les actions de projet
+sont dans le menu de l'application ([appMenu.js](src/main/appMenu.js)), avec
+les raccourcis habituels. Le processus principal n'envoie qu'un nom de commande
+sur `menu:command` ; c'est [menuCommands.js](src/renderer/js/core/menuCommands.js)
+qui le résout contre `hub.project`, seul détenteur de l'état — modifié, en cours
+d'enregistrement, jamais sauvegardé.
+
 `#content` est **partagé** par tous les modules. C'est la raison pour laquelle
 `unmount()` doit retirer ses écouteurs : un gestionnaire laissé sur `#content`
 réagit aux clics des autres pages. Ce bug a réellement existé — cliquer sur une
@@ -811,6 +818,7 @@ d'une capture forcée à l'extinction.
 | `recentDirectories.js` | dernier dossier retenu par sélecteur, et son report |
 | `projectFiles.js` | lecture/écriture validée des `.minihub` |
 | `projectCloseGuard.js` | fermeture : sauvegarde automatique, dialogue en dernier recours |
+| `appMenu.js` | menu de l'application ; Fichier → Nouveau / Ouvrir / Enregistrer |
 | `clipEditorWindows.js` | fenêtres Clip Editor et validation de leurs requêtes |
 | `clipEditorPreload.js` | pont du Clip Editor |
 | `diagnostics.js` | journal de démarrage, rotation à 4 Mo, empreintes |

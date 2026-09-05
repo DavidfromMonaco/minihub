@@ -9,8 +9,6 @@ export function buildHeader(hub, statusEl) {
   const renderProject = (state) => { if (projectEl) projectEl.textContent = `${state.currentProjectName}${state.dirty ? ' •' : ''}`; };
   hub.events.on('project:identity', renderProject);
   renderProject(hub.project);
-  document.getElementById('project-save')?.addEventListener('click', () => hub.project.save(false));
-  document.getElementById('project-save-as')?.addEventListener('click', () => hub.project.save(true));
   const playEl = document.getElementById('transport-play');
   const stopEl = document.getElementById('transport-stop');
   const bpmEl = document.getElementById('transport-bpm');

@@ -521,8 +521,7 @@ test('real renderer bootstrap of a staged New project does not inject a Sequence
   const elements = new Map([
     ['sidebar', makeEl('nav')], ['content', content], ['device-status', makeEl('span')],
     ['modal-root', makeEl('div')], ['settings-button', makeEl('button')],
-    ['project-identity', makeEl('span')], ['project-save', makeEl('button')],
-    ['project-save-as', makeEl('button')], ['transport-play', makeEl('button')],
+    ['project-identity', makeEl('span')], ['transport-play', makeEl('button')],
     ['transport-stop', makeEl('button')],
     ['transport-bpm', makeEl('input')]
   ]);
