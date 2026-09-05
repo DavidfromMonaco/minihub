@@ -42,7 +42,7 @@ import { NetworkLayout } from './networkLayout.js';
 import { VstChain, getVstRole, duplicateVstContent, groupPluginsByFamily } from './vstChain.js';
 import { escapeHtml } from './html.js';
 import { normalizeControlBinding, normalizeControlBindings } from './controlBindings.js';
-import { controllerName } from './controllerNode.js';
+import { controllerName, controllerModuleId } from './controllerNode.js';
 import { MINILAB_CONTROL_SOURCES } from '../midi/minilabControls.js';
 import { miniLabControlSurfaceHtml } from '../ui/miniLabControlSurface.js';
 import { defaultArpeggiatorContent, normalizeArpeggiatorContent } from './arpeggiatorState.js';
@@ -223,9 +223,15 @@ export function renderControlBindings(instance, hub, selectedControlId = null) {
   // used to point at a MiniLab whoever else's keyboard is on the desk. Escaped
   // because the name reaches innerHTML and now comes from a profile file.
   const device = controllerName(hub.network);
+  // The way out of this panel when the drawing is not the user's keyboard. It
+  // used to be a dead end: the controls shown here come from the loaded profile,
+  // and nothing on this page said where a profile is chosen. The device's own
+  // page is that place, and it is named after the device rather than after
+  // MiniHub's word for it.
   return `
     <div class="control-bindings-help muted">
       Select an observable control on ${device ? escapeHtml(device) : 'the controller'}, then Arm Learning. Native MIDI behavior remains active while MiniHub opens and foregrounds the target OmniBox.
+      <button type="button" class="btn btn-sm" id="control-open-controller">Not your keyboard?</button>
     </div>
     ${miniLabControlSurfaceHtml({ states, selectedId: selected?.id || null })}
     <div class="control-learn-toolbar" data-selected-source-control-id="${selected?.id || ''}">
@@ -379,7 +385,9 @@ export class NodeInstanceManager {
       networkNode.inputs.push({id:input.id,type:'audio',label:`AUDIO IN ${instance.content.inputs.length}`}); changed=true;
     }
     this._expandingPorts=false;
-    if(changed){this._persist();this.hub.events.emit('network:change',{type:'ports',connections:this.hub.network.serialize()});}
+    // connections(), not serialize(): this event says what is routing, and
+    // serialize() also carries the cables still waiting for an absent node.
+    if(changed){this._persist();this.hub.events.emit('network:change',{type:'ports',connections:this.hub.network.connections()});}
   }
 
   list() {
@@ -845,6 +853,14 @@ export class NodeInstanceManager {
           if (e.target.closest('#node-delete')) {
             manager.delete(instance.id);
             hub.modules.activate('home', container);
+            return;
+          }
+          // The controller's PAGE, not its node: those are two different
+          // strings, and activate() fails silently on the wrong one. Asked of
+          // the module system rather than spelled -- see controllerNode.js.
+          if (e.target.closest('#control-open-controller')) {
+            const page = controllerModuleId(hub.modules);
+            if (page) hub.modules.activate(page, container);
             return;
           }
           if (type.id === 'arpeggiator') {

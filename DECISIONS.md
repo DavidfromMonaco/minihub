@@ -1238,3 +1238,215 @@ mailbox, and the number is small: a handful a week.
 `LIMITS.stringLength` at 200, the value point 4 lowers), and
 `test/conformance/published-control-ids.json` (control ids constrained to
 `[a-z0-9-]`, which is why the free-text surface is three fields wide).
+
+---
+
+## D-027 — A profile is chosen at launch, and changing it reloads the window
+
+**Status**: in force · 2026-09-05 · **implemented**
+
+**Context** — D-024 puts a catalogue of profiles on the site and D-026 says how
+one arrives there. Neither is worth anything while MiniHub cannot read a profile
+it did not ship with: `loadedProfile.js` imported `profiles/minilab-3.json` at
+build time and `preload.js` exposed no file access at all, so the catalogue would
+have served files nothing could consume.
+
+Making the profile a runtime choice ran straight into something already load
+bearing. `MINILAB_NODE_ID` (`core/systemNodes.js`) is a **module-level constant**
+derived from `profileId`, and it is evaluated when the ES module graph loads —
+which is *before* `main()` in `app.js` reaches `await hub.settings.load()`. A
+profile fetched through an asynchronous IPC call arrives after every consumer has
+already frozen its value, and MiniHub would then decode with one profile while
+naming its routing node after another.
+
+**Decision** — the profile is resolved **once, at launch**, before the first
+module evaluates, and changing it reloads the window.
+
+- `preload.js` fetches it with `ipcRenderer.sendSync('profile:current')` and
+  exposes it as `hubProfile`. That is the only synchronous channel in the file
+  and the only thing that can run early enough: preload executes before page
+  scripts and has Node.
+- `loadedProfile.js` resolves rather than imports. It validates what arrived, and
+  falls back to the profile that ships when there is nothing, when the file is
+  gone or is not JSON, or when it does not validate — recording which, in
+  `PROFILE_ORIGIN`.
+- Imported profiles live in `userData/profiles/`, and `selectedProfileFile` holds
+  a **file name**, never a path.
+- Settings shows which controller is running, where its profile came from, and
+  says the window reloads before the user clicks.
+
+**Why not a live swap** — it would turn `MINILAB_NODE_ID` and its thirty-odd
+consumers into function calls, for a change a user makes once. The reload costs
+nothing that is not already paid: opening a project reloads the renderer already,
+and `core/chainSync.js` rebuilds the engine's chains afterwards.
+
+**Why the fallback is loud** — MiniHub never launches without a controller, so a
+chosen profile that cannot be honoured falls back to the shipped one. In silence
+that is the worst possible outcome: a user whose keyboard has quietly become a
+MiniLab 3, with every cable pointing at a node named after a device he does not
+own. `PROFILE_ORIGIN` carries the reason and Settings prints it.
+
+**Why validation moved into the renderer** — `src/main/` is CommonJS and cannot
+import `midi/controllerProfile.js`, which the `module boundary` rule keeps an ES
+module. Main reads bytes, the renderer judges them. The better consequence is
+that a file is refused **before** it reaches the profiles folder, so a bad import
+leaves nothing behind to find and delete; and every fault is shown, because the
+validator accumulates them so a hand-written profile is fixed in one pass.
+
+**What this does not do** — the plural. One profile is loaded at a time, D-022
+stands: no multi-input `MidiManager`, no N controller nodes, `selectedInputId`
+stays singular.
+
+**Consequence** — the `one profile ships` check rule was re-expressed: that static
+import is no longer *the decision*, it is the fallback. A third clause was added
+and it is the load-bearing one — the loader must call
+`validateControllerProfile()`. Nothing else stands between a hand-edited JSON and
+the routing node's id, and its absence would fail no test, because every test runs
+on the profile that ships.
+
+**Proof in the code** — `src/renderer/js/midi/loadedProfile.js` (`resolveProfile`,
+`PROFILE_ORIGIN`), `src/main/controllerProfiles.js`, `src/main/preload.js`
+(`sendSync`), `src/main/main.js` (`profile:*`),
+`src/renderer/js/core/profileImport.js`,
+`src/renderer/js/ui/controllerProfileSection.js`, `test/loadedProfile.test.mjs`,
+`test/controllerProfiles.test.cjs`, `test/profileIpc.test.cjs`,
+`test/profileImport.test.mjs`, `scripts/check-invariants.mjs`
+(`one profile ships`)
+
+---
+
+## D-028 — What is printed on the hardware is part of the format
+
+**Status**: in force · 2026-09-05 · **implemented**
+
+**Context** — `ui/miniLabControlSurface.js` drew the MiniLab by name. Five
+controls were fetched by id — `shift`, `pitch-bend`, `modulation`,
+`main-encoder`, `main-click` — and ten words were literals in the HTML: `HOLD`,
+`OCT −`, `OCT +`, the imitation display, and the eight pad legends `Arp`, `Pad`,
+`Prog`, `Loop`, `Stop`, `Play`, `Record`, `Tap`. The file admitted as much of the
+pad legends: *"hardware text with no field in the profile format yet"*.
+
+That was not a tidiness problem. A profile declaring none of those five ids
+returned `undefined`, and the next line read `control.id` off it, so drawing
+another keyboard threw a `TypeError` — measured against
+`test/conformance/vega-49.json`, not deduced — and took down both surfaces that
+draw it: the MiniLab page and the VST Learn panel.
+
+Three answers were put to the author: drop the words, declare only the two that
+are really buttons, or keep a decoration block for the shipped profile alone. He
+refused all three and gave the reason that reframes them: **a user recognises a
+control by what is written on his hardware**. That is not decoration, it is the
+label on the object under his fingers.
+
+**Decision** — two optional fields on a control, and they belong to every profile.
+
+- **`printed`** — the text the panel carries next to this control. Free text,
+  bounded and swept for dangerous shapes like every other string in the file.
+- **`silent: true`** — a real control that sends nothing. `bindings: []` alone was
+  already legal but ambiguous: it also reads as "not measured yet". It is the
+  field behind the Builder's `+ silent` button.
+
+A silent control is **drawn and never routed**: it produces no CONTROL source, so
+no Patch Bay port and no binding key. That is what keeps
+`test/conformance/control-sources.json` byte-identical at 25 sources — declaring
+the panel moved no saved project.
+
+`computeCompleteness()` gains a fifth counter, `silent`, so those controls stop
+counting as `untested`, which they are not: a finished profile reporting four
+missing measurements is the opposite of what that summary exists to say. The
+counter is **optional** in a declared `completeness` — absent means none — so every
+profile written before this change, the Builder's output included, stays valid.
+
+**Rendering rule, from the author** — `printed` is **always drawn**, subdued if it
+must be, never dropped. A label the user cannot see is worth nothing.
+
+**Consequence** — the MiniLab declares 29 controls where it declared 25: `hold`,
+`oct-down`, `oct-up` and `display` are silent, and the eight pads carry their
+legends. The renderers draw from `family`, `layout` and `printed`, and fetch
+nothing by id; a family the drawing has no box for lands in `ml-extra` rather than
+vanishing. The Builder will need to ask for both fields when Étape C comes.
+
+**Proof in the code** — `src/renderer/js/midi/controllerProfile.js`
+(`CONTROL_KEYS`, `booleanField`, `computeCompleteness`),
+`src/renderer/js/midi/profiles/minilab-3.json`,
+`src/renderer/js/midi/minilabControls.js` (`isRoutable`,
+`MINILAB_SURFACE_CONTROLS`), `src/renderer/js/ui/miniLabControlSurface.js`,
+`test/miniLabSurface.test.mjs`, `test/minilabProfile.test.mjs`,
+`test/conformance/published-control-ids.json`
+
+---
+
+## D-029 — A cable whose node is absent is kept, not dropped
+
+**Status**: in force · 2026-09-05 · **implemented**
+
+**Context** — `network.js` `restore()` skipped a connection whose endpoints it
+could not find, with a `console.warn` and nothing else; `_persist()` then wrote
+the file without it. One launch to lose a cable, one save to make it permanent.
+
+The controller node's id **is** the loaded profile's id, so this became a
+data-loss path the moment a profile could be chosen: open a project with another
+keyboard loaded and every cable from the controller points at a node that does
+not exist. It is specification §6.1 one level up — the same silent destruction
+`normalizeControlBinding` was fixed for, where bindings validate shape and resolve
+belonging at use.
+
+**Decision** — **absent is remembered, wrong is dropped**, and nothing remembered
+ever routes.
+
+- ABSENT means the node or the port cannot be found. The cable may be perfectly
+  correct and simply describe a device that is not loaded right now, so it is
+  kept, written back out, and connected the day its node arrives.
+- WRONG means every endpoint exists and the cable still cannot be made —
+  incompatible types, a duplicate, a feedback cycle. Keeping those would preserve
+  garbage for ever.
+
+**Consequence, and it is the part that was nearly missed** — `serialize()` fed both
+the settings file *and* the `network:change` event, which `engineSync`,
+`controlBindings`, the sequencer and the Patch Bay read as the live routing.
+Widening it would have handed phantom cables to the native engine. The two lists
+are therefore separated by name: **`serialize()` is what gets written,
+`connections()` is what is routing**, and the event carries the second.
+
+**Proof in the code** — `src/renderer/js/core/network.js` (`_unresolved`,
+`_absentEndpoint`, `_resolveWaiting`, `serialize`, `_emit`),
+`src/renderer/js/core/nodeInstances.js:382`, `test/network.test.mjs`
+
+---
+
+## D-030 — `layout` is optional, and placement is all or nothing
+
+**Status**: in force · 2026-09-05 · **implemented**. D-023 decided the first half
+in specification only; this is what the code does about it.
+
+**Context** — D-023 made `layout` optional because the Builder's steps capture
+what a device *sends* and never where its controls *sit*: without a photograph of
+the user's own keyboard there are no coordinates. The validator had not been told.
+`layout` was still required, so a profile written without a photograph would have
+been **refused at import** — a door turning away exactly the visitors D-023 was
+written to admit.
+
+**Decision** — `device.layout` and `control.layout` are optional, and a profile
+either places every control or places none.
+
+A half-placed profile is the dangerous one, and the failure is silent and total
+for the controls it forgets: `nodeGeometry.js` draws a surface node's ports from
+`surface.ports`, so a control with no coordinate gets **no socket at all**. It
+decodes, it appears in Learn, and nothing can be cabled to it. Refusing the file
+is the only place that can be seen.
+
+**Consequence** — with no coordinates there is no panel: `MINILAB_SURFACE` is
+`null`, the routing node carries no surface and its ports stack in the dock like
+any other node's, and the two HTML surfaces render a list grouped by family. The
+list answers the **same contract** as the panel — same `data-source-control-id`,
+same state classes, same silent rule, same `printed` — which is what lets the
+MiniLab page and the VST Learn panel keep working without learning a second mode.
+
+A bug of the same family was fixed on the way: `MINILAB_SURFACE_BOX` was
+`{ ...profile.device.layout }`, and spreading an absent box gives `{}` — an object,
+therefore truthy, therefore a panel of width `undefined`.
+
+**Proof in the code** — `src/renderer/js/midi/controllerProfile.js`
+(`reportPlacement`), `src/renderer/js/midi/minilabControls.js`
+(`MINILAB_SURFACE_BOX`), `src/renderer/js/ui/miniLabControlSurface.js`
+(`MINILAB_SURFACE`, `controlListHtml`), `test/miniLabSurface.test.mjs`

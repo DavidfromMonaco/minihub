@@ -9,6 +9,26 @@ compagnon et Controller Builder
 
 ## 0. Révisions
 
+### v2.3 — 2026-09-05
+
+*(In English, per AGENTS.md §6.)*
+
+Four corrections, all found by **writing the import** rather than by rereading the
+document. Étape B's remaining half is now built: MiniHub reads a profile it did
+not ship with. See D-027 to D-030.
+
+| # | What the document said | What was found | § |
+|---|---|---|---|
+| 17 | Nothing said when the profile is chosen | It cannot be chosen at any moment: `MINILAB_NODE_ID` is a module-level constant evaluated before `app.js` runs a line, so an asynchronous profile arrives after every consumer has frozen its value. It is resolved **at launch**, by `preload.js`, with `sendSync` — and changing it reloads the window. See D-027. | §6.2 |
+| 18 | §6.1 covered bindings; cables were not mentioned | `Network.restore()` dropped a cable whose node was absent and the next save made it permanent — the same silent destruction, one level up, and the controller node's id *is* the profile's id. Absent is remembered, wrong is dropped, and nothing remembered routes. See D-029. | §6.1 |
+| 19 | The panel's decoration "has no field in the format" (§4.3) | It is not decoration: a user recognises a control by **what is written on his hardware**. `printed` and `silent` are fields every profile is entitled to, and the MiniLab is simply the first to fill them. A silent control is drawn and never routed, which is what keeps the 25 published control sources untouched. See D-028. | §4.3, §4.5 |
+| 20 | `layout` optional (revision 12) — specification only | The validator still required it, so a profile written without a photograph would have been **refused at import**. It is optional now, and placement is all or nothing: a half-placed profile gives its unplaced controls no socket at all, silently. See D-030. | §4.4 |
+
+Two consequences for the Builder, when Étape C comes: it must be able to ask for
+`printed`, and its `+ silent` button now has a field of its own rather than an
+empty `bindings[]`. A profile written before this change stays valid — both fields
+are optional, and the fifth completeness counter is absent-means-none.
+
 ### v2.2 — 2026-09-05
 
 *(In English, per AGENTS.md §6.)*

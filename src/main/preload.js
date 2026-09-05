@@ -2,6 +2,24 @@
 
 const { contextBridge, ipcRenderer } = require('electron');
 
+/**
+ * The controller profile, on the page before the first module evaluates.
+ *
+ * This is the one synchronous call in the preload, and it cannot be anything
+ * else. `MINILAB_NODE_ID` in the renderer is a module-level constant derived from
+ * the profile, evaluated when the ES module graph loads -- which is before
+ * app.js runs a line, and long before any `await hubAPI.*` could resolve. A
+ * profile fetched asynchronously would arrive after every consumer had frozen
+ * its value, and MiniHub would decode with one profile while naming its node
+ * after another.
+ *
+ * The cost is one blocking round trip per launch, for a file the main process
+ * has already read. What it buys is that changing profile is a window reload and
+ * nothing else -- no live swap, and not one of the thirty-odd consumers turned
+ * into a function call. See src/renderer/js/midi/loadedProfile.js.
+ */
+contextBridge.exposeInMainWorld('hubProfile', ipcRenderer.sendSync('profile:current'));
+
 contextBridge.exposeInMainWorld('hubAPI', {
   loadSettings: () => ipcRenderer.invoke('settings:load'),
   saveSettings: (settings) => ipcRenderer.invoke('settings:save', settings),
@@ -63,5 +81,12 @@ contextBridge.exposeInMainWorld('hubAPI', {
     const listener = (_event, state) => cb(state);
     ipcRenderer.on('engine:state', listener);
     return () => ipcRenderer.removeListener('engine:state', listener);
-  }
+  },
+  // Controller profiles. Everything here takes effect at the NEXT launch, which
+  // is why choosing one is followed by a window reload rather than by a redraw.
+  profileList: () => ipcRenderer.invoke('profile:list'),
+  profilePick: () => ipcRenderer.invoke('profile:pick'),
+  profileImport: (text) => ipcRenderer.invoke('profile:import', text),
+  profileSelect: (fileName) => ipcRenderer.invoke('profile:select', fileName),
+  profileForget: (fileName) => ipcRenderer.invoke('profile:forget', fileName)
 });

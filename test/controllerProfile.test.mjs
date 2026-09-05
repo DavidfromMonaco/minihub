@@ -269,19 +269,62 @@ test('a profile does not get to grade itself', () => {
 });
 
 test('completeness ranks a control by its best binding', () => {
-  assert.deepEqual(computeCompleteness(profile()), { declared: 2, observed: 1, inferred: 1, untested: 0 });
+  assert.deepEqual(computeCompleteness(profile()),
+    { declared: 2, observed: 1, inferred: 1, untested: 0, silent: 0 });
 
   const untested = profile();
   untested.controls[1].bindings = [];
-  assert.deepEqual(computeCompleteness(untested), { declared: 2, observed: 1, inferred: 0, untested: 1 },
+  assert.deepEqual(computeCompleteness(untested),
+    { declared: 2, observed: 1, inferred: 0, untested: 1, silent: 0 },
     'a control nobody ever saw move is untested');
 
   const promoted = profile();
   promoted.controls[1].bindings.push({
     layer: 'default', when: { kind: 'cc', channel: 1, number: 114 }, mode: 'absolute', confidence: 'observed'
   });
-  assert.deepEqual(computeCompleteness(promoted), { declared: 2, observed: 2, inferred: 0, untested: 0 },
+  assert.deepEqual(computeCompleteness(promoted),
+    { declared: 2, observed: 2, inferred: 0, untested: 0, silent: 0 },
     'one observed binding is enough to stop calling a control a guess');
+
+  // The distinction the fifth counter exists for. Both controls below have no
+  // bindings; only one of them is missing a measurement.
+  const silent = profile();
+  silent.controls[1].bindings = [];
+  silent.controls[1].silent = true;
+  assert.deepEqual(computeCompleteness(silent),
+    { declared: 2, observed: 1, inferred: 0, untested: 0, silent: 1 },
+    'a control that sends nothing by design is not a control nobody has tested');
+});
+
+test('a control cannot both send nothing and send this', () => {
+  const contradiction = profile();
+  contradiction.controls[0].silent = true;
+  const result = validateControllerProfile(contradiction);
+  assert.equal(result.ok, false);
+  const fault = result.errors.find((error) => error.path === 'profile.controls[0].silent');
+  assert.ok(fault, 'the contradiction is reported where it can be fixed');
+  assert.match(fault.message, /sends nothing.*1 binding/,
+    'and the message names both halves, since either one could be the mistake');
+});
+
+test('silent is a boolean, not a truthy value', () => {
+  for (const value of ['true', 1, {}, null]) {
+    const spoiled = profile();
+    spoiled.controls[0].silent = value;
+    const result = validateControllerProfile(spoiled);
+    assert.equal(result.ok, false, `${JSON.stringify(value)} was accepted as a boolean`);
+  }
+});
+
+test('printed carries what the panel says, and is bound like every other string', () => {
+  const ok = profile();
+  ok.controls[0].printed = 'Arp';
+  assert.equal(validateControllerProfile(ok).ok, true, 'a legend on a control is legal');
+
+  const dangerous = profile();
+  dangerous.controls[0].printed = 'C:/Windows/system32/evil.dll';
+  assert.equal(validateControllerProfile(dangerous).ok, false,
+    'a new string field must be swept like the others, not trusted because it is new');
 });
 
 test('every fault is reported, not just the first', () => {

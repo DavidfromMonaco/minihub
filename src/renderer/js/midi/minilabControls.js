@@ -15,11 +15,11 @@
  * takes a profile and returns the profile's own control; this file is what turns
  * that answer into the four names a saved project contains.
  *
- * The built-in profile is NOT validated at startup. It ships with the
- * application and a test holds it against the format; paying for validation on
- * every launch would buy a guarantee that is already bought. A profile arriving
- * from anywhere else is a different matter, and validateControllerProfile() in
- * controllerProfile.js is what it goes through.
+ * Which profile this reads is `loadedProfile.js`'s decision, made once at launch
+ * and never here. The built-in one is still trusted without validation -- it
+ * ships with the application and a test holds it against the format -- but it is
+ * now the FALLBACK rather than the only possibility, and anything arriving from
+ * a file goes through validateControllerProfile() before it reaches this file.
  */
 import { decodeControl } from './decodeControl.js';
 import { MINILAB_NODE_ID } from '../core/systemNodes.js';
@@ -80,8 +80,43 @@ function toControlSource(control) {
   return Object.freeze(source);
 }
 
+/**
+ * A control that sends nothing is drawn and never routed.
+ *
+ * `HOLD`, `OCT −`, `OCT +` and the screen are on the panel, and a user needs to
+ * see them to recognise the object under his fingers -- but there is no message
+ * to carry, so a CONTROL port for them would be a socket that can never fire and
+ * a Learn target that can never be learned. Excluding them here is also what
+ * keeps this list at the 25 sources `test/conformance/control-sources.json`
+ * freezes: declaring the panel does not touch a single saved project.
+ */
+const isRoutable = (control) => control.silent !== true;
+
 /** Stable physical CONTROL identities; original MIDI is never consumed. */
-export const MINILAB_CONTROL_SOURCES = Object.freeze(profile.controls.map(toControlSource));
+export const MINILAB_CONTROL_SOURCES = Object.freeze(
+  profile.controls.filter(isRoutable).map(toControlSource)
+);
+
+/**
+ * Everything the panel HAS, in profile order -- including what it cannot send.
+ *
+ * This is the drawing list, and it is deliberately not the routing list above.
+ * `printed` is what the manufacturer silk-screened next to the control; a
+ * renderer must show it even when it has to show it faintly, because it is what
+ * the user matches against the words on his hardware. `id` is null for a silent
+ * element: there is no source to select, arm or bind, and a null says that
+ * louder than an id that resolves to nothing.
+ */
+export const MINILAB_SURFACE_CONTROLS = Object.freeze(profile.controls.map((control) => Object.freeze({
+  id: isRoutable(control) ? `${profile.profileId}:${control.id}` : null,
+  portId: isRoutable(control) ? `control-${control.id}` : null,
+  key: control.id,
+  label: control.label,
+  printed: control.printed ?? null,
+  family: control.family,
+  silent: !isRoutable(control),
+  layout: control.layout ? Object.freeze({ ...control.layout }) : null
+})));
 
 /**
  * Where the controls sit, kept apart from what they send.
@@ -94,9 +129,21 @@ export const MINILAB_CONTROL_SOURCES = Object.freeze(profile.controls.map(toCont
  * `box` is the coordinate space those positions are expressed in -- the Patch Bay
  * scales it into a node, and the site's blueprint will use it as a viewBox.
  */
-export const MINILAB_SURFACE_BOX = Object.freeze({ ...profile.device.layout });
+/**
+ * Null when the profile places nothing. D-023: a device described without a
+ * photograph has no coordinates, and its controls are read as a list.
+ *
+ * It used to be `{ ...profile.device.layout }`, which turns an absent box into
+ * `{}` -- an object, therefore truthy, therefore a panel of width `undefined`.
+ * Every caller downstream would have believed it had a drawing.
+ */
+export const MINILAB_SURFACE_BOX = profile.device.layout
+  ? Object.freeze({ ...profile.device.layout })
+  : null;
 
-const LAYOUT_BY_KEY = new Map(profile.controls.map((control) => [control.id, Object.freeze({ ...control.layout })]));
+const LAYOUT_BY_KEY = new Map(profile.controls
+  .filter((control) => control.layout)
+  .map((control) => [control.id, Object.freeze({ ...control.layout })]));
 
 export function getMiniLabControlLayout(key) { return LAYOUT_BY_KEY.get(key) || null; }
 

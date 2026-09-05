@@ -203,6 +203,38 @@ dédié :
 L'intention : la surface IPC exposée est une liste finie et relisible, pas
 « n'importe quel objet que le renderer sérialise ».
 
+#### Le profil du contrôleur — le seul appel synchrone
+
+`preload.js` expose aussi `window.hubProfile`, obtenu par
+`ipcRenderer.sendSync('profile:current')`. C'est **le seul appel synchrone de la
+surface**, et il ne peut pas être autre chose : `MINILAB_NODE_ID` est une
+constante de module dérivée du profil, évaluée au chargement du graphe ES —
+c'est-à-dire avant la première ligne de `app.js`. Un profil obtenu par `invoke`
+arriverait après que tous ses consommateurs ont figé leur valeur, et MiniHub
+décoderait avec un profil tout en nommant son nœud d'après un autre.
+
+Conséquence assumée : **changer de profil recharge la fenêtre**. Voir
+[DECISIONS.md](DECISIONS.md) D-027 et
+[loadedProfile.js](src/renderer/js/midi/loadedProfile.js).
+
+Les cinq canaux asynchrones qui vont avec agissent tous sur le **prochain**
+lancement :
+
+| Canal | Ce qu'il fait |
+|---|---|
+| `profile:list` | ce que contient `userData/profiles/`, et lequel est choisi |
+| `profile:pick` | ouvre le sélecteur et **lit** le fichier, sans rien stocker |
+| `profile:import` | écrit le profil dans le dossier et le sélectionne |
+| `profile:select` | choisit un profil déjà présent ; `null` = celui livré |
+| `profile:forget` | supprime un profil importé, jamais celui en usage |
+
+Le jugement se fait dans le renderer, pas dans le principal : `src/main/` est en
+CommonJS et ne peut pas importer le validateur, qui est un module ES que la règle
+`module boundary` garde tel quel. Le principal lit des octets, le renderer les
+juge — et la conséquence est meilleure que la contrainte, puisqu'un fichier
+refusé n'atteint jamais le dossier des profils.
+
+
 ### Processus principal ↔ moteur natif
 
 **JSON délimité par des sauts de ligne**, sur stdin (vers le moteur) et stdout

@@ -1,6 +1,7 @@
 import { describeMessage, noteName } from '../../midi/parseMidi.js';
 import { MINILAB_CONTROL_SOURCES } from '../../midi/minilabControls.js';
 import { MINILAB_SURFACE } from '../../ui/miniLabControlSurface.js';
+import { controllerProfileSectionHtml, bindControllerProfileSection } from '../../ui/controllerProfileSection.js';
 import { escapeHtml } from '../../core/html.js';
 import { MINILAB_NODE_ID } from '../../core/systemNodes.js';
 import { LOADED_PROFILE } from '../../midi/loadedProfile.js';
@@ -42,6 +43,10 @@ export function createMiniLabModule(hub) {
   let monitor = [];
   let lastMsg = null;
   let msgCount = 0;
+  // What main last reported about the profiles folder, plus whatever the last
+  // action had to say. Held across renders, because a message that vanishes
+  // with the redraw that follows it is a message nobody reads.
+  let profiles = { selected: null, profiles: [], faults: [], message: null };
 
   // ---------- rendering ----------
 
@@ -120,6 +125,10 @@ export function createMiniLabModule(hub) {
               <span class="muted">No events received yet</span>
             </div>
           </div>
+          <div class="panel" id="ml-profile">
+            <h2 class="panel-title">Profile</h2>
+            ${controllerProfileSectionHtml(profiles)}
+          </div>
         </div>
       </div>
 
@@ -153,6 +162,9 @@ export function createMiniLabModule(hub) {
     els.disconnect.addEventListener('click', disconnect);
     els.offsetRange.addEventListener('input', onOffsetChange);
     els.offsetReset.addEventListener('click', onOffsetReset);
+    // The controller's own page is where a keyboard is changed, so the profile
+    // section is bound here rather than in Settings. See controllerProfileSection.js.
+    bindControllerProfileSection(container, hub, { refresh: refreshProfiles });
 
     refreshPorts();
     refreshTiming();
@@ -330,11 +342,32 @@ export function createMiniLabModule(hub) {
     }
   }
 
+  /**
+   * Re-read the profiles folder and redraw the page.
+   *
+   * `outcome` carries what the action that triggered this had to say -- a
+   * refusal with its faults, or a confirmation -- and it survives the round trip
+   * to main on purpose: the redraw would otherwise wipe the only thing the user
+   * has to read. A folder that cannot be listed leaves the built-in profile
+   * showing, which is still true and still works.
+   */
+  async function refreshProfiles(outcome = {}) {
+    let listed = { selected: null, profiles: [] };
+    try {
+      listed = (await hub.api.profileList?.()) || listed;
+    } catch (_) { /* the built-in profile is still the one running */ }
+    profiles = { ...listed, faults: outcome.faults || [], message: outcome.message || null };
+    if (container) render();
+  }
+
   // ---------- lifecycle ----------
 
   function mount(el) {
     container = el;
+    // Drawn once without the folder rather than left blank while the IPC round
+    // trip completes; the list fills in a tick later.
     render();
+    refreshProfiles();
     subs.push(
       hub.events.on('midi:ports', refreshPorts),
       hub.events.on('midi:message', onMessage),

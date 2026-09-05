@@ -23,6 +23,9 @@ export class Network {
     this.settings = settings;
     this._nodes = new Map(); // nodeId -> node
     this._connections = []; // [{ from: {nodeId, portId}, to: {nodeId, portId} }]
+    // Cables the file names and the session cannot make, because something they
+    // point at is not here. They are remembered, never routed. See restore().
+    this._unresolved = [];
   }
 
   // ---------- nodes ----------
@@ -47,6 +50,10 @@ export class Network {
       onInput: typeof node.onInput === 'function' ? node.onInput : null
     });
     this._emit({ type: 'add', nodeId: node.id });
+    // The node that just arrived may be the one a remembered cable was waiting
+    // for -- a controller whose profile was loaded back, a node type registered
+    // later in the boot order.
+    this._resolveWaiting();
   }
 
   removeNode(id) {
@@ -54,6 +61,12 @@ export class Network {
     if (!node) return false;
     this._nodes.delete(id);
     this._connections = this._connections.filter(
+      (c) => c.from.nodeId !== id && c.to.nodeId !== id
+    );
+    // A node the user deleted is gone for good -- ids are never reused
+    // (ARCHITECTURE section 13, invariant 4) -- so a cable still waiting for it
+    // is waiting for something that cannot come back.
+    this._unresolved = this._unresolved.filter(
       (c) => c.from.nodeId !== id && c.to.nodeId !== id
     );
     this._persist();
@@ -255,31 +268,141 @@ export class Network {
 
   // ---------- persistence ----------
 
+  /**
+   * What gets WRITTEN: the live cables, plus the ones still waiting for what
+   * they name. `connections()` is the live list and is what routing reads --
+   * the difference is the whole point, and mixing them up would either hand a
+   * phantom cable to the engine or drop a real one from the file.
+   */
   serialize() {
-    return this._connections.map((c) => ({
+    return [...this._connections, ...this._unresolved].map((c) => ({
       from: { ...c.from },
       to: { ...c.to }
     }));
+  }
+
+  /** Cables the file holds that this session cannot make. Copy. */
+  unresolvedConnections() {
+    return this._unresolved.map((c) => ({ from: { ...c.from }, to: { ...c.to } }));
   }
 
   _persist() {
     this.settings.set('networkConnections', this.serialize());
   }
 
-  /** Restore persisted connections (after nodes have been registered). */
+  /** The shape of a persisted cable, or null. Shape only -- see _absentEndpoint
+   *  for the other half. */
+  static _endpointPair(value) {
+    const part = (side) => (typeof side?.nodeId === 'string' && side.nodeId
+      && typeof side?.portId === 'string' && side.portId
+      ? { nodeId: side.nodeId, portId: side.portId }
+      : null);
+    const from = part(value?.from);
+    const to = part(value?.to);
+    return from && to ? { from, to } : null;
+  }
+
+  /**
+   * What this cable names that is not here, or null when everything is.
+   *
+   * The distinction this draws is the one that decides whether a cable is kept
+   * or thrown away. ABSENT means the node or the port cannot be found: the cable
+   * may be perfectly correct and simply describe a device that is not loaded
+   * right now. WRONG means every endpoint exists and the cable still cannot be
+   * made -- incompatible types, a duplicate, a feedback cycle. Only the first
+   * kind is worth remembering; keeping the second would preserve garbage for
+   * ever.
+   */
+  _absentEndpoint(from, to) {
+    const fromNode = this._nodes.get(from.nodeId);
+    if (!fromNode) return `node ${from.nodeId}`;
+    const toNode = this._nodes.get(to.nodeId);
+    if (!toNode) return `node ${to.nodeId}`;
+    if (!fromNode.outputs.some((port) => port.id === from.portId)) {
+      return `output port ${from.nodeId}.${from.portId}`;
+    }
+    if (!toNode.inputs.some((port) => port.id === to.portId)) {
+      return `input port ${to.nodeId}.${to.portId}`;
+    }
+    return null;
+  }
+
+  _isWaiting(pair) {
+    return this._unresolved.some((c) => c.from.nodeId === pair.from.nodeId
+      && c.from.portId === pair.from.portId
+      && c.to.nodeId === pair.to.nodeId
+      && c.to.portId === pair.to.portId);
+  }
+
+  /**
+   * Restore persisted connections (after nodes have been registered).
+   *
+   * WHY A CABLE IS KEPT RATHER THAN SKIPPED
+   * ---------------------------------------
+   * This used to warn and move on, and `_persist()` then wrote the file without
+   * the cable: one launch to lose it, one save to make it permanent. That is the
+   * same silent destruction `normalizeControlBinding` was fixed for -- the
+   * specification calls it section 6.1 -- and the controller is where it bites,
+   * because the controller node's id IS the loaded profile's id. Load another
+   * profile and every cable from the keyboard points at a node that does not
+   * exist. The user's project must survive being opened with the wrong keyboard
+   * plugged in, and switching back must bring the cables back.
+   *
+   * So: absent means remembered, wrong means dropped, and nothing that is
+   * remembered ever routes.
+   */
   restore(connections) {
     if (!Array.isArray(connections)) return;
-    for (const c of connections) {
+    this._unresolved = [];
+    for (const value of connections) {
+      const pair = Network._endpointPair(value);
+      if (!pair) {
+        console.warn('[network] dropped a malformed connection:', value);
+        continue;
+      }
+      const absent = this._absentEndpoint(pair.from, pair.to);
+      if (absent) {
+        if (!this._isWaiting(pair)) this._unresolved.push(pair);
+        continue;
+      }
       try {
-        this.connect(c.from.nodeId, c.from.portId, c.to.nodeId, c.to.portId);
+        this.connect(pair.from.nodeId, pair.from.portId, pair.to.nodeId, pair.to.portId);
       } catch (err) {
-        // Skip invalid/stale connections (e.g. a node no longer present).
-        console.warn('[network] skipped invalid connection:', err.message);
+        // Everything it names is here and it still cannot be made: the cable is
+        // wrong, not waiting.
+        console.warn('[network] dropped an invalid connection:', err.message);
       }
     }
   }
 
+  /**
+   * Connect what is no longer waiting. Called when a node arrives.
+   *
+   * The list is narrowed BEFORE any `connect()`, because `connect()` persists,
+   * and persisting while a cable sits in both lists would write it twice.
+   */
+  _resolveWaiting() {
+    if (!this._unresolved.length) return;
+    const ready = [];
+    const waiting = [];
+    for (const pair of this._unresolved) {
+      (this._absentEndpoint(pair.from, pair.to) ? waiting : ready).push(pair);
+    }
+    if (!ready.length) return;
+    this._unresolved = waiting;
+    for (const pair of ready) {
+      try {
+        this.connect(pair.from.nodeId, pair.from.portId, pair.to.nodeId, pair.to.portId);
+      } catch (err) {
+        console.warn('[network] dropped an invalid connection:', err.message);
+      }
+    }
+  }
+
+  /** The event carries the LIVE cables. A waiting one is not routing, and every
+   *  listener of `network:change` -- engineSync, controlBindings, the sequencer,
+   *  the Patch Bay -- reads this as what is actually connected. */
   _emit(change) {
-    this.events.emit('network:change', { ...change, connections: this.serialize() });
+    this.events.emit('network:change', { ...change, connections: this.connections() });
   }
 }

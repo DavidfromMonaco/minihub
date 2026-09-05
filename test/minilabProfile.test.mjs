@@ -135,8 +135,18 @@ test('a port sits at its control, offset by what its family draws', () => {
   assert.equal(miniLabPatchPortPosition('control-nothing'), null);
 });
 
+/**
+ * 29 declared, 25 of them playable. The four that are not are the panel itself —
+ * HOLD, OCT −, OCT + and the screen — declared so that a renderer can draw what
+ * is written on the hardware instead of spelling it in HTML for one device.
+ *
+ * `untested: 0` is the assertion that matters here. A silent control counted as
+ * untested would report this finished profile as missing four measurements,
+ * which is the opposite of what this summary exists to tell the user.
+ */
 test('the profile grades itself as complete, and is right', () => {
-  assert.deepEqual(profile.completeness, { declared: 25, observed: 25, inferred: 0, untested: 0 });
+  assert.deepEqual(profile.completeness,
+    { declared: 29, observed: 25, inferred: 0, untested: 0, silent: 4 });
   assert.deepEqual(computeCompleteness(profile), profile.completeness);
 });
 
@@ -186,6 +196,14 @@ test('that rule is what the decoding does, not just what the file says', () => {
  */
 test('every control declares one observed message, and hedges the rest', () => {
   for (const control of profile.controls) {
+    // A silent control has nothing to observe. It is held to the opposite rule:
+    // it must declare no message at all, or `silent` and the bindings disagree
+    // about what the hardware does.
+    if (control.silent === true) {
+      assert.equal(control.bindings.length, 0,
+        `${control.id} says it sends nothing, then says what it sends`);
+      continue;
+    }
     const observed = control.bindings.filter((binding) => binding.confidence === 'observed');
     assert.equal(observed.length, 1, `${control.id} should stand on exactly one observed message`);
     assert.equal(control.bindings[0].confidence, 'observed', `${control.id} does not lead with what was observed`);

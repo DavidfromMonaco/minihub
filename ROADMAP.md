@@ -7,7 +7,7 @@ Counter-intuitive choices: [DECISIONS.md](DECISIONS.md). Long workstreams:
 [PLANS.md](PLANS.md).
 
 **Current state** — branch `master`.
-678 JS tests green, 15 `npm run check` rules green, 3,954 native checks green
+727 JS tests green, 15 `npm run check` rules green, 3,954 native checks green
 across the four test binaries, a Release build with **0 errors and 0 warnings**,
 `dist/` synchronised with the sources.
 
@@ -22,8 +22,9 @@ behind a cached object file in the first place.
 The goal of this whole pass is **consolidation before new modules are added**.
 Items 1 to 3 removed the structural obstacles; item 4 is what is left before
 adding a module becomes mechanical. Item 8 answered a different question — taking
-the hardware out of the core — and its Étape A finished on 2026-09-04, so
-`plans/active/` is empty and the next workstream can take the slot.
+the hardware out of the core — and its Étape A finished on 2026-09-04, so the slot
+was free for **importing a profile**, finished 2026-09-05 (item 8 below, D-027 to
+D-030). `plans/active/` is empty again.
 
 ---
 
@@ -220,6 +221,15 @@ editors (Mixer, Morpher, VST) is still possible, editor by editor, and is a
 matter of taste: the `ui/omniPearl.js` library is generic and explicitly allows
 for it.
 
+**Asked 2026-09-05, not started: the arpeggiator's colours are to be redone.**
+It is the one module wearing the faceplate, so it is the one that will be
+photographed: the author intends to take a screenshot of it for
+[minihub.site](https://minihub.site). That makes this cosmetic work with a
+deadline attached to something outside the repository, which is why it is written
+down rather than left to taste. Colours live in the `--op-*` token set at the top
+of `src/renderer/styles/omni-pearl.css`; D-012 is what says a change there stays
+inside the faceplate and cannot leak into the shell.
+
 **Four names for one product**: "MiniLab Hub" (window title, README), "MiniHub"
 (executable, `dist/MiniHub`, the `.minihub` extension, `Documents/MiniHub`),
 `minilab-hub` (npm name, log file), `mlh_` (native prefix). To be unified,
@@ -389,6 +399,48 @@ path and `preload.js` exposes no file access for profiles, so the catalogue woul
 serve files nothing can consume. It stands on its own — a friend writing a
 profile by hand needs it as much as the Builder does — and it is what D-022 froze
 deliberately.
+
+**A profile can now be imported, and MiniHub runs on it — done 2026-09-05.**
+[DECISIONS.md](DECISIONS.md) D-027 to D-030, plan
+[plans/done/profile-import.md](plans/done/profile-import.md). This is what the
+paragraph above called the next piece of work, and it turned out to be four
+pieces, three of which were found by reading the code rather than the
+specification.
+
+`loadedProfile.js` resolves instead of importing: `preload.js` fetches the chosen
+profile with `sendSync` — the one synchronous channel in the surface, because
+`MINILAB_NODE_ID` is a module-level constant evaluated before `app.js` runs a
+line — and the shipped profile is the fallback when there is nothing, when the
+file is gone, or when it does not validate. Changing profile therefore reloads the
+window, which is what keeps thirty-odd consumers from becoming function calls.
+Imported profiles live in `userData/profiles/`; `selectedProfileFile` holds a
+**name**, never a path.
+
+Three defects found on the way, each of which would have shipped a silent failure:
+
+- **Changing profile deleted cables.** `network.js` `restore()` dropped a
+  connection whose node was absent and the next save made it permanent — and the
+  controller node's id *is* the profile's id. Absent is now remembered, wrong is
+  still dropped, and nothing remembered ever routes. The trap next to it:
+  `serialize()` also fed the `network:change` event, so widening it would have
+  handed phantom cables to the native engine. `serialize()` is what gets written,
+  `connections()` is what is routing (D-029).
+- **The faceplate crashed on any other keyboard.** `miniLabControlSurface.js` is
+  drawn in three places — the MiniLab page, the VST Learn panel, the Patch Bay
+  node — and fetched five controls by id; a profile declaring none of them threw
+  a `TypeError`. It draws from `family`, `layout` and the new `printed` field
+  now, and what is written on the hardware became part of the format rather than
+  a MiniLab special case (D-028).
+- **`layout` was still required.** D-023 made it optional in specification only,
+  so a profile written without a photograph would have been refused at import.
+  It is optional in the validator now, placement is all or nothing, and a profile
+  with no coordinates is read as a list instead of drawn as a panel (D-030).
+
+Mechanically: 727 JS tests, 15 `npm run check` rules. **Not yet verified with
+hardware**: importing a second profile and playing through it needs a keyboard
+that is not the MiniLab, or a hand-written profile for one, which is the next
+thing to do with the author's own hands. What `npm test` cannot see here is the
+same thing it could not see for Étape A — the real device, the real ports.
 
 **No vision model — measured, not argued, 2026-09-05.** Five detectors run in the
 browser (OWL-ViT, OWLv2, DETR, Florence-2 base and large, plus twenty lines of

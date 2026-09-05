@@ -14,9 +14,11 @@ if (process.platform === 'win32') {
   app.disableHardwareAcceleration();
 }
 const path = require('path');
+const fs = require('fs');
 const { FORMATS: AUDIO_EXPORT_FORMATS, audioExportFormat, audioExportFilePath } = require('./audioExportPath');
 const { loadSettings, saveSettings, rememberDirectory, rememberDirectoryOfFile, persistPluginStateChunk } = require('./settings');
 const { PURPOSES: DIRECTORY_PURPOSES, isKnownPurpose, rememberedDirectory } = require('./recentDirectories');
+const controllerProfiles = require('./controllerProfiles');
 const { createEngineEventTrace } = require('./engineEventTrace');
 const { EngineProcess } = require('./engine');
 const diagnostics = require('./diagnostics');
@@ -303,6 +305,84 @@ ipcMain.handle('directories:open', async (_event, purpose) => {
   try { require('fs').mkdirSync(directory, { recursive: true }); } catch (_) {}
   return (await shell.openPath(directory)) === '';
 });
+/**
+ * The controller profiles the user has imported. Application data, not documents:
+ * they sit beside settings.json for the same reason it does, and a profile on a
+ * disconnected drive would be a MiniHub launching with no controller. See
+ * src/main/controllerProfiles.js and DECISIONS.md D-015.
+ */
+function profilesDirectory() {
+  return path.join(app.getPath('userData'), 'profiles');
+}
+
+/**
+ * The one synchronous channel in this file, and it has to be.
+ *
+ * `MINILAB_NODE_ID` is a module-level constant in the renderer, evaluated before
+ * app.js runs a single line -- so the profile has to be on the page before the
+ * first module does. preload asks for it once, here, and nothing else in the
+ * session blocks on it.
+ */
+ipcMain.on('profile:current', (event) => {
+  event.returnValue = controllerProfiles.readSelectedProfile(profilesDirectory(), loadSettings());
+});
+
+ipcMain.handle('profile:list', () => ({
+  selected: controllerProfiles.selectedFileName(loadSettings()),
+  profiles: controllerProfiles.listProfiles(profilesDirectory())
+}));
+
+// Read, not stored: the renderer validates before anything reaches the folder,
+// so an invalid file is refused with its faults shown rather than filed away and
+// discovered at the next launch.
+ipcMain.handle('profile:pick', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    defaultPath: effectiveDirectory('project'), properties: ['openFile'],
+    filters: [{ name: 'Controller profile', extensions: ['json'] }]
+  });
+  if (result.canceled) return null;
+  const file = result.filePaths[0];
+  try {
+    const stat = fs.statSync(file);
+    if (stat.size > controllerProfiles.MAX_BYTES) {
+      return { fileName: path.basename(file), text: null, error: 'that file is far too large to be a profile' };
+    }
+    return { fileName: path.basename(file), text: fs.readFileSync(file, 'utf8'), error: null };
+  } catch (err) {
+    return { fileName: path.basename(file), text: null, error: err.message };
+  }
+});
+
+ipcMain.handle('profile:import', (_event, text) => {
+  const stored = controllerProfiles.storeProfile(profilesDirectory(), text);
+  if (!stored.ok) return stored;
+  return selectProfileFile(stored.fileName);
+});
+
+ipcMain.handle('profile:select', (_event, fileName) => selectProfileFile(fileName));
+
+ipcMain.handle('profile:forget', (_event, fileName) =>
+  controllerProfiles.forgetProfile(profilesDirectory(), fileName, loadSettings()));
+
+/**
+ * Choose which profile the next launch reads. `null` means the one that ships.
+ *
+ * Written with `owner: 'main'` because this settings object was just read from
+ * disk: the renderer's copy is older and carrying its keys over would undo
+ * whatever main has recorded since.
+ */
+function selectProfileFile(fileName) {
+  if (fileName !== null && !controllerProfiles.isSafeFileName(fileName)) {
+    return { ok: false, error: 'not a profile file name' };
+  }
+  const settings = loadSettings();
+  settings[controllerProfiles.SETTINGS_KEY] = fileName;
+  if (!saveSettings(settings, { owner: 'main' })) {
+    return { ok: false, error: 'the choice could not be written to disk' };
+  }
+  return { ok: true, fileName };
+}
+
 ipcMain.handle('project:default-directory', () => projectsDirectory());
 ipcMain.handle('project:pick-open', async () => {
   const result = await dialog.showOpenDialog(mainWindow, {

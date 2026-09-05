@@ -107,12 +107,25 @@ const DEVICE_KEYS = Object.freeze(['vendor', 'model', 'layout', 'ports']);
 const PORT_KEYS = Object.freeze(['role', 'priority', 'match', 'note']);
 const MATCH_KEYS = Object.freeze(['name']);
 const LAYER_KEYS = Object.freeze(['id', 'label']);
-const CONTROL_KEYS = Object.freeze(['id', 'label', 'family', 'layout', 'bindings']);
+/**
+ * `printed` and `silent` exist because a user identifies a control by what is
+ * WRITTEN ON THE OBJECT under his fingers, not by what MiniHub decided to call
+ * it. The MiniLab prints `Arp`, `Prog`, `Hold`, `Oct −` on its panel; those words
+ * were hard-coded in the renderer, which meant they existed for exactly one
+ * device and every other keyboard was drawn without its own.
+ *
+ * - `printed` is that second text: what the panel says next to this control.
+ * - `silent` says the control is real and sends nothing. A profile can express
+ *   that today with `bindings: []`, but that is ambiguous -- it also reads as
+ *   "not measured yet". Saying it outright is what separates a finished profile
+ *   from an unfinished one, and it is the field behind the Builder's `+ silent`.
+ */
+const CONTROL_KEYS = Object.freeze(['id', 'label', 'printed', 'family', 'layout', 'bindings', 'silent']);
 const LAYOUT_KEYS = Object.freeze(['x', 'y']);
 const SURFACE_KEYS = Object.freeze(['width', 'height']);
 const BINDING_KEYS = Object.freeze(['layer', 'when', 'mode', 'encoding', 'range', 'confidence']);
 const WHEN_KEYS = Object.freeze(['kind', 'channel', 'number', 'lsbNumber']);
-const COMPLETENESS_KEYS = Object.freeze(['declared', 'observed', 'inferred', 'untested']);
+const COMPLETENESS_KEYS = Object.freeze(['declared', 'observed', 'inferred', 'untested', 'silent']);
 
 /** Kinds whose message carries a controller or note number; the others do not. */
 const KINDS_WITH_NUMBER = Object.freeze(['cc', 'cc14', 'note', 'polyaftertouch', 'programchange']);
@@ -241,6 +254,19 @@ function integerField(object, path, key, errors, { min, max, optional = false } 
   return value;
 }
 
+function booleanField(object, path, key, errors, { optional = false } = {}) {
+  const where = `${path}.${key}`;
+  const value = object[key];
+  if (value === undefined) {
+    if (!optional) fail(errors, where, 'is required');
+    return null;
+  }
+  // Not truthiness: "false", 0 and "" are what a hand-written profile puts there
+  // when it means no, and each of them would read as yes.
+  if (typeof value !== 'boolean') { fail(errors, where, 'must be true or false'); return null; }
+  return value;
+}
+
 function enumField(object, path, key, errors, allowed, { optional = false } = {}) {
   const where = `${path}.${key}`;
   const value = object[key];
@@ -287,7 +313,13 @@ function validateDevice(device, errors) {
   // The box every control's layout is expressed in. Without it, a coordinate is
   // a number with no scale: the Patch Bay cannot fit the surface into a node,
   // and the site's blueprint has no viewBox to draw into.
-  const layout = objectField(device, 'profile.device', 'layout', errors);
+  //
+  // Optional since D-023. The Builder's five steps capture what a device SENDS
+  // and never where its controls SIT, so `layout` was a required field nothing
+  // could fill unless the user supplied a photograph of his own keyboard. With
+  // no photograph there are no coordinates, and the controls are read as a list.
+  // What is refused instead is a profile with SOME of them -- see below.
+  const layout = objectField(device, 'profile.device', 'layout', errors, { optional: true });
   if (layout) {
     checkKeys(layout, 'profile.device.layout', SURFACE_KEYS, errors);
     integerField(layout, 'profile.device.layout', 'width', errors, { min: 1, max: LIMITS.coordinate });
@@ -403,15 +435,27 @@ function reportMessageCollisions(claims, errors) {
   }
 }
 
+/**
+ * Returns how many controls carry coordinates, so the caller can hold that
+ * against `device.layout`. D-023 makes placement optional but not partial: see
+ * `reportPlacement`.
+ */
 function validateControls(controls, layerIds, errors) {
   const ids = new Set();
   const claims = [];
+  const placed = [];
+  const unplaced = [];
   controls.forEach((control, index) => {
     const path = `profile.controls[${index}]`;
     if (!isPlainObject(control)) { fail(errors, path, 'must be an object'); return; }
     checkKeys(control, path, CONTROL_KEYS, errors);
     stringField(control, path, 'label', errors);
+    // Free text, deliberately: it reproduces what a manufacturer silk-screened
+    // on a panel, and that is not an identifier. It is bounded and swept for
+    // dangerous shapes like every other string in the file.
+    stringField(control, path, 'printed', errors, { optional: true });
     stringField(control, path, 'family', errors, { shape: ID_SHAPE, shapeText: ID_SHAPE_TEXT });
+    const silent = booleanField(control, path, 'silent', errors, { optional: true });
 
     const id = stringField(control, path, 'id', errors, { shape: ID_SHAPE, shapeText: ID_SHAPE_TEXT });
     if (id !== null) {
@@ -419,15 +463,25 @@ function validateControls(controls, layerIds, errors) {
       ids.add(id);
     }
 
-    const layout = objectField(control, path, 'layout', errors);
+    const layout = objectField(control, path, 'layout', errors, { optional: true });
     if (layout) {
       checkKeys(layout, `${path}.layout`, LAYOUT_KEYS, errors);
       integerField(layout, `${path}.layout`, 'x', errors, { min: 0, max: LIMITS.coordinate });
       integerField(layout, `${path}.layout`, 'y', errors, { min: 0, max: LIMITS.coordinate });
+      placed.push(id ?? `[${index}]`);
+    } else {
+      unplaced.push(id ?? `[${index}]`);
     }
 
     const bindings = arrayField(control, path, 'bindings', errors, { min: 0, max: LIMITS.bindings });
     if (!bindings) return;
+    // A control cannot both send nothing and send this. The contradiction is
+    // worth an error rather than a silent winner, because either half could be
+    // the mistake and only the author knows which.
+    if (silent === true && bindings.length > 0) {
+      fail(errors, `${path}.silent`,
+        `says this control sends nothing, but ${bindings.length} binding(s) say what it sends`);
+    }
     bindings.forEach((binding, bindingIndex) => {
       const bindingPath = `${path}.bindings[${bindingIndex}]`;
       const claim = validateBinding(binding, bindingPath, layerIds, errors);
@@ -435,6 +489,39 @@ function validateControls(controls, layerIds, errors) {
     });
   });
   reportMessageCollisions(claims, errors);
+  return { placed, unplaced };
+}
+
+/**
+ * Placement is all or nothing. D-023 allows a profile with no coordinates -- the
+ * controls are then read as a list -- and this is what refuses the half of it.
+ *
+ * The failure a partial profile causes is silent and total for the controls it
+ * forgets: `core/nodeGeometry.js` draws a surface node's ports from
+ * `node.surface.ports`, so a control with no coordinate gets NO SOCKET. It
+ * decodes, it appears in Learn, and it cannot be cabled to anything, with no
+ * error anywhere. Refusing the file is the only place that can be seen.
+ *
+ * The device's box is the other half of the same rule: a coordinate without it
+ * is a number with no scale, and a box with nothing placed in it draws an empty
+ * panel where a list was wanted.
+ */
+function reportPlacement({ placed, unplaced }, deviceLayout, errors) {
+  if (placed.length && unplaced.length) {
+    fail(errors, 'profile.controls',
+      `${placed.length} control(s) say where they sit and ${unplaced.length} do not `
+      + `(${unplaced.slice(0, 4).join(', ')}${unplaced.length > 4 ? '…' : ''}). `
+      + 'Either every control is placed or none is: an unplaced one is drawn with no port at all.');
+    return;
+  }
+  if (placed.length && !deviceLayout) {
+    fail(errors, 'profile.device.layout',
+      'is missing while the controls carry coordinates, which are then numbers with no scale');
+  }
+  if (!placed.length && deviceLayout) {
+    fail(errors, 'profile.device.layout',
+      'declares a panel no control is placed on; a profile with no coordinates declares no panel either');
+  }
 }
 
 const CONFIDENCE_RANK = Object.freeze({ observed: 3, documented: 2, inferred: 1 });
@@ -445,16 +532,22 @@ const CONFIDENCE_RANK = Object.freeze({ observed: 3, documented: 2, inferred: 1 
  * get to grade itself.
  *
  * A control is ranked by its best binding: observed beats documented beats
- * inferred, and a control with no binding at all is untested. Note that the four
- * counters the specification names do not cover "documented", so
- * observed + inferred + untested can be less than declared. That is the
- * specification's shape, kept as it is rather than quietly widened here.
+ * inferred, and a control with no binding at all is untested. Note that the
+ * counters do not cover "documented", so observed + inferred + untested + silent
+ * can be less than declared. That is the specification's shape, kept as it is
+ * rather than quietly widened here.
+ *
+ * `silent` is the fifth counter, and it exists so that a FINISHED profile can
+ * report zero untested. A control declared silent sends nothing by design;
+ * counting it as untested would tell the user his complete profile is missing
+ * four measurements, which is the opposite of the truth this summary is for.
  */
 export function computeCompleteness(profile) {
   const controls = Array.isArray(profile?.controls) ? profile.controls : [];
-  const summary = { declared: controls.length, observed: 0, inferred: 0, untested: 0 };
+  const summary = { declared: controls.length, observed: 0, inferred: 0, untested: 0, silent: 0 };
   for (const control of controls) {
     const bindings = Array.isArray(control?.bindings) ? control.bindings : [];
+    if (control?.silent === true) { summary.silent += 1; continue; }
     if (bindings.length === 0) { summary.untested += 1; continue; }
     let best = 0;
     for (const binding of bindings) best = Math.max(best, CONFIDENCE_RANK[binding?.confidence] ?? 0);
@@ -499,16 +592,23 @@ export function validateControllerProfile(value) {
   const layerIds = layers ? validateLayers(layers, errors) : new Set();
 
   const controls = arrayField(value, 'profile', 'controls', errors, { max: LIMITS.controls });
-  if (controls) validateControls(controls, layerIds, errors);
+  if (controls) {
+    reportPlacement(validateControls(controls, layerIds, errors), device?.layout, errors);
+  }
 
   const completeness = objectField(value, 'profile', 'completeness', errors);
   if (completeness) {
     checkKeys(completeness, 'profile.completeness', COMPLETENESS_KEYS, errors);
     const computed = computeCompleteness(value);
     for (const key of COMPLETENESS_KEYS) {
-      if (completeness[key] !== computed[key]) {
+      // `silent` was added after the format shipped, so a profile written
+      // without it -- every profile the Builder has produced so far -- must stay
+      // valid. Absent means none, and that claim is still checked: a file that
+      // omits the counter while declaring silent controls is caught here.
+      const claimed = key === 'silent' ? (completeness.silent ?? 0) : completeness[key];
+      if (claimed !== computed[key]) {
         fail(errors, `profile.completeness.${key}`,
-          `says ${JSON.stringify(completeness[key])} where the controls add up to ${computed[key]}`);
+          `says ${JSON.stringify(claimed)} where the controls add up to ${computed[key]}`);
       }
     }
   }

@@ -4,6 +4,7 @@ const { app } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const { withDirectory, withDirectoryOfFile, carryDirectoryMemory } = require('./recentDirectories');
+const { carrySelectedProfile } = require('./controllerProfiles');
 
 // APPLICATION-scoped settings only: preferences that belong to this machine and
 // survive across projects. Project state (nodes, cables, layout, viewport,
@@ -28,7 +29,11 @@ const DEFAULTS = {
   metronomeVolume: 0.35,
   recentProjectPath: null,
   recentProjectName: null,
-  recentDirectories: {} // purpose -> last folder chosen in a picker; see recentDirectories.js
+  recentDirectories: {}, // purpose -> last folder chosen in a picker; see recentDirectories.js
+  // The imported controller profile MiniHub launches on, by file NAME -- never a
+  // path. Written by main when a profile is imported or chosen, read by preload
+  // before the renderer's first module evaluates. See controllerProfiles.js.
+  selectedProfileFile: null
 };
 
 function settingsPath() {
@@ -54,7 +59,12 @@ function loadSettings() {
  * and are taken as-is.
  */
 function saveSettings(settings, { owner = 'renderer' } = {}) {
-  const next = owner === 'main' ? settings : carryDirectoryMemory(settings, loadSettings());
+  // Two keys main owns and the renderer does not know it has changed: the picker
+  // folders (D-015) and the chosen profile. Both are carried back from disk on a
+  // renderer write, or the next preference change erases them.
+  const next = owner === 'main'
+    ? settings
+    : (() => { const onDisk = loadSettings(); return carrySelectedProfile(carryDirectoryMemory(settings, onDisk), onDisk); })();
   // Atomic write: settings are saved on every network/layout change, so a crash
   // (or a power cut) mid-write used to leave a truncated JSON file, which
   // loadSettings then silently discarded along with every node and cable.

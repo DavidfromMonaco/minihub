@@ -6,10 +6,11 @@
   "author": "",
   "createdAt": "2026-09-04",
   "completeness": {
-    "declared": 25,
+    "declared": 29,
     "observed": 25,
     "inferred": 0,
-    "untested": 0
+    "untested": 0,
+    "silent": 4
   },
   "device": {
     "vendor": "Arturia",
@@ -601,6 +602,7 @@
     {
       "id": "p1",
       "label": "P1",
+      "printed": "Arp",
       "family": "pad",
       "layout": {
         "x": 90,
@@ -641,6 +643,7 @@
     {
       "id": "p2",
       "label": "P2",
+      "printed": "Pad",
       "family": "pad",
       "layout": {
         "x": 138,
@@ -681,6 +684,7 @@
     {
       "id": "p3",
       "label": "P3",
+      "printed": "Prog",
       "family": "pad",
       "layout": {
         "x": 186,
@@ -721,6 +725,7 @@
     {
       "id": "p4",
       "label": "P4",
+      "printed": "Loop",
       "family": "pad",
       "layout": {
         "x": 234,
@@ -761,6 +766,7 @@
     {
       "id": "p5",
       "label": "P5",
+      "printed": "Stop",
       "family": "pad",
       "layout": {
         "x": 282,
@@ -801,6 +807,7 @@
     {
       "id": "p6",
       "label": "P6",
+      "printed": "Play",
       "family": "pad",
       "layout": {
         "x": 330,
@@ -841,6 +848,7 @@
     {
       "id": "p7",
       "label": "P7",
+      "printed": "Record",
       "family": "pad",
       "layout": {
         "x": 378,
@@ -881,6 +889,7 @@
     {
       "id": "p8",
       "label": "P8",
+      "printed": "Tap",
       "family": "pad",
       "layout": {
         "x": 426,
@@ -917,6 +926,51 @@
           "confidence": "inferred"
         }
       ]
+    },
+    {
+      "id": "hold",
+      "label": "Hold",
+      "family": "utility",
+      "layout": {
+        "x": 66,
+        "y": 25
+      },
+      "bindings": [],
+      "silent": true
+    },
+    {
+      "id": "oct-down",
+      "label": "Oct −",
+      "family": "utility",
+      "layout": {
+        "x": 38,
+        "y": 45
+      },
+      "bindings": [],
+      "silent": true
+    },
+    {
+      "id": "oct-up",
+      "label": "Oct +",
+      "family": "utility",
+      "layout": {
+        "x": 66,
+        "y": 45
+      },
+      "bindings": [],
+      "silent": true
+    },
+    {
+      "id": "display",
+      "label": "Pad 1 · C1",
+      "printed": "36",
+      "family": "display",
+      "layout": {
+        "x": 108,
+        "y": 30
+      },
+      "bindings": [],
+      "silent": true
     }
   ]
 }

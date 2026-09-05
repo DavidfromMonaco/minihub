@@ -554,51 +554,85 @@ body {
   gap: 10px;
   margin-top: 20px;
 }
-.modal .kv {
+.kv {
   display: flex;
   justify-content: space-between;
   padding: 6px 0;
   border-bottom: 1px solid var(--border);
   font-size: 13px;
 }
-.modal .kv .k {
+.kv .k {
   color: var(--text-dim);
 }
-.modal .kv .v {
+.kv .v {
   font-family: var(--mono);
 }
 /* A destination folder: its name, what MiniHub does with it, and the path in
    full. The path wraps instead of being clipped -- a truncated path is exactly
    the "where did my file go" problem this panel exists to remove. */
-.modal .folder {
+/* The controller's profiles, on the controller's page. Same vocabulary as the
+   folder rows above
+   -- this is the shell, not a faceplate (D-012) -- with three additions the
+   profiles need: a heading, a way to say which one is in use, and a way to show
+   why a chosen profile is not the one running. */
+.panel-section {
+  margin: 22px 0 4px;
+  font-size: 12px;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.folder.current { border-left: 2px solid var(--accent); padding-left: 8px; }
+.profile-note { display: block; margin-top: 4px; font-size: 12px; }
+.profile-note.faint { color: var(--text-faint); }
+/* A refused profile is stated, never swallowed: MiniHub falling back to the
+   built-in keyboard in silence is a user whose cables point at a device he does
+   not own. */
+.profile-note.warn { color: var(--warn); }
+.profile-faults {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, .18);
+  font: 11px var(--mono);
+  color: var(--text-dim);
+}
+.profile-faults div + div { margin-top: 3px; }
+/* Every fault, not the first: the validator accumulates so a hand-written
+   profile is fixed in one pass, and this is where that pays off. */
+.profile-actions { display: flex; justify-content: space-between; align-items: center;
+  gap: 10px; margin-top: 12px; }
+
+.folder {
   padding: 8px 0;
   border-bottom: 1px solid var(--border);
   font-size: 13px;
 }
-.modal .folder .folder-head {
+.folder-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
 }
-.modal .folder .k {
+.folder .k {
   color: var(--text-dim);
 }
-.modal .folder .folder-buttons {
+.folder-buttons {
   display: flex;
   gap: 6px;
 }
-.modal .folder .folder-buttons .btn {
+.folder-buttons .btn {
   padding: 2px 8px;
   font-size: 12px;
 }
-.modal .folder .folder-path {
+.folder-path {
   font-family: var(--mono);
   font-size: 12px;
   margin-top: 4px;
   word-break: break-all;
 }
-.modal .folder .folder-hint {
+.folder-hint {
   color: var(--text-dim);
   font-size: 11px;
   margin-top: 2px;
@@ -1324,6 +1358,45 @@ body {
 .ml-surface-pad { opacity:1; }
 .ml-surface-fader.selected,.ml-surface-pad.selected,.ml-strip-control.selected,.ml-main-turn.selected,.ml-main-click.selected,.ml-utility-control.selected { filter:drop-shadow(0 0 6px var(--accent)); color:var(--text); }
 .ml-surface-fader.state-unavailable,.ml-surface-pad.state-unavailable,.ml-strip-control.state-unavailable,.ml-main-turn.state-unavailable,.ml-main-click.state-unavailable,.ml-utility-control.state-unavailable { opacity:.4; }
+
+/* The panel shouts, the profile does not. A control's label comes from the file
+   as "Shift" or "Oct −"; a device silk-screens it in capitals. Doing that here
+   keeps the case out of the data, where it would be one more thing for someone
+   describing his keyboard to get wrong. */
+.ml-utility-control,.ml-main-click,.ml-strip-control b,.ml-display small { text-transform:uppercase; }
+/* "MAIN CLICK" where the hard-coded version said "CLICK": the word now comes
+   from the profile's label, so the box is told to keep it on one line. */
+.ml-main-click { white-space:nowrap; font-size:6px; }
+.ml-display-readout { display:flex; flex-direction:column; align-items:center; }
+
+/* A control that is on the panel and sends nothing -- HOLD, OCT ±, the screen.
+   Dimmed so it reads as "not something you can map", never hidden: it is what
+   the user matches the drawing against the object under his fingers. Faint, not
+   absent, is the whole rule. */
+.ml-silent { cursor:default; opacity:.62; }
+
+/* D-023: a profile written without a photograph has no coordinates, so there is
+   no panel to draw and the controls are read as a list. Grouped by family, since
+   that is the one thing such a profile does say about how the device is
+   organised. `em` is the text printed on the hardware -- dimmer than the label,
+   never absent. */
+.minilab-control-list { display:flex; flex-direction:column; gap:14px; padding:16px; border:1px solid var(--border-strong); border-radius:14px; background:linear-gradient(155deg,#343941,#202329 62%); }
+.ml-list-group h4 { margin:0 0 6px; font:600 10px var(--mono); letter-spacing:.08em; text-transform:uppercase; color:var(--text-faint); }
+.ml-list-row { display:flex; flex-wrap:wrap; gap:6px; }
+.ml-list-control { appearance:none; display:flex; align-items:baseline; gap:6px; padding:6px 9px; border:1px solid #59616d; border-radius:8px; background:#17191d; color:var(--text-dim); font:600 11px var(--mono); cursor:pointer; }
+.ml-list-control em { font-style:normal; font-size:9px; color:var(--text-faint); }
+.ml-list-control:hover,.ml-list-control.selected { color:var(--text); border-color:var(--accent); }
+.ml-list-control.state-mapped { border-color:#4ade82; }
+.ml-list-control.state-learn-armed { border-color:#f5c451; box-shadow:0 0 8px #f5c451; }
+.ml-list-control.state-unavailable { opacity:.4; cursor:not-allowed; }
+
+/* Where a family this drawing has no box for ends up. A keyboard with a breath
+   controller or a pedal is not a keyboard MiniHub can draw properly, and this is
+   the difference between admitting that and losing the control. */
+.ml-extra { position:absolute; left:2%; right:2%; bottom:1%; display:flex; flex-wrap:wrap; gap:5px; justify-content:center; font:600 8px var(--mono); }
+.ml-surface-control { appearance:none; color:inherit; font:inherit; cursor:pointer; padding:4px 6px; border:1px solid #59616d; border-radius:7px; background:#17191d; }
+.ml-surface-control.selected { filter:drop-shadow(0 0 6px var(--accent)); color:var(--text); }
+.ml-surface-control.state-unavailable { opacity:.4; }
 .home-project-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

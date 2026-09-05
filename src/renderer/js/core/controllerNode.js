@@ -41,6 +41,27 @@
 export const isControllerNode = (node) => node?.type === 'midi-output'
   && Array.isArray(node.outputs) && node.outputs.some((port) => port.id === 'midi-out');
 
+/**
+ * The id of the PAGE that owns the controller, or null when there is not exactly
+ * one to open.
+ *
+ * The shell needs this to send a user to the place where a keyboard is chosen,
+ * and it must not do that by spelling a page id: a module id is a device word,
+ * and `npm run check` refuses those here for the same reason it refuses
+ * "MiniLab 3" in a sentence. So the question is asked of what is registered —
+ * which module owns the controller's routing node — exactly as `controllerName`
+ * asks the network rather than the profile.
+ *
+ * It is deliberately not `node.id`: the controller's node is named after the
+ * loaded profile and its page is not, and `ModuleSystem.activate()` answers
+ * `false` for an id it does not know WITHOUT SAYING SO. A wrong answer here is a
+ * button that does nothing.
+ */
+export function controllerModuleId(modules) {
+  const owners = (modules?.list?.() ?? []).filter((module) => isControllerNode(module.routingNode));
+  return owners.length === 1 ? (owners[0].id ?? null) : null;
+}
+
 /** The controller's name as the Patch Bay shows it, or null when there is not
  *  exactly one to name. */
 export function controllerName(network) {

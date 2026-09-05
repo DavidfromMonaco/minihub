@@ -83,7 +83,10 @@ test('the format validates a device it was not written for', () => {
   const result = validateControllerProfile(vega);
   assert.deepEqual(result.errors, [], 'a fixture that does not validate proves nothing about the format');
   assert.equal(result.ok, true);
-  assert.deepEqual(computeCompleteness(vega), vega.completeness,
+  // The fixture predates `silent` and does not declare the counter. That is the
+  // shape of every profile written before the field existed, and it has to stay
+  // valid: absent means none.
+  assert.deepEqual(computeCompleteness(vega), { ...vega.completeness, silent: 0 },
     'completeness is computed, never typed in: a profile does not get to grade itself');
 });
 

@@ -387,7 +387,7 @@ rule('shared decoder', () => {
   }
 });
 
-// --- D-022: exactly one profile ships, and it is the one that is loaded -----
+// --- D-022: exactly one profile ships, and it is the fallback --------------
 //
 // The plural is refused until a second keyboard exists on a desk: N controller
 // nodes, a multi-input MidiManager and a settings migration are a workstream,
@@ -395,14 +395,29 @@ rule('shared decoder', () => {
 // loudly -- `loadedProfile.js` names its file, so the newcomer is simply dead
 // data that looks like support for a device MiniHub cannot actually select.
 //
-// The second half of the rule is the one that catches a real mistake: the
-// profile that ships has to BE the profile that is loaded. A test fixture
-// belongs in test/, where `test/deviceAgnostic.test.mjs` reads it.
+// This rule used to call that static import "the decision". It is not, since a
+// profile can now be chosen from a file and handed over by `preload.js`; the
+// import is what the application falls back to when there is no choice, or when
+// the choice cannot be honoured. So the rule checks the two things that are
+// still mechanical, and one that has become load-bearing:
+//
+//   - exactly one profile ships, and the loader names THAT one as its fallback.
+//     A test fixture belongs in test/, where `test/deviceAgnostic.test.mjs`
+//     reads it;
+//   - the loader validates. Once a foreign file can reach the decoder, this call
+//     is the only thing between a hand-edited JSON and the routing node's id --
+//     and its absence would not fail any test, because the profile that ships is
+//     valid and every test runs on it.
 rule('one profile ships', () => {
   const loader = 'src/renderer/js/midi/loadedProfile.js';
-  const specifier = /import\s+profile\s+from\s*['"]([^'"]+)['"]/.exec(read(loader))?.[1];
+  const source = read(loader);
+  const specifier = /import\s+profile\s+from\s*['"]([^'"]+)['"]/.exec(source)?.[1];
   if (!specifier) {
-    fail('one profile ships', `${loader} no longer imports a profile by name. That import IS the decision.`);
+    fail(
+      'one profile ships',
+      `${loader} no longer imports a profile by name. That import is what MiniHub falls back to `
+      + 'when no profile is chosen; without it there is no controller at all.'
+    );
     return;
   }
   const loaded = `src/renderer/js/midi/${specifier.replace(/^\.\//, '')}`;
@@ -415,7 +430,14 @@ rule('one profile ships', () => {
     );
   }
   if (!shipped.includes(loaded)) {
-    fail('one profile ships', `${loader} loads '${loaded}', which is not among ${shipped.join(', ') || 'anything shipped'}.`);
+    fail('one profile ships', `${loader} falls back to '${loaded}', which is not among ${shipped.join(', ') || 'anything shipped'}.`);
+  }
+  if (!/validateControllerProfile\s*\(/.test(source)) {
+    fail(
+      'one profile ships',
+      `${loader} does not call validateControllerProfile(). A profile arriving from a file would reach `
+      + 'the decoder unchecked, and no test would notice: they all run on the profile that ships.'
+    );
   }
 });
 
