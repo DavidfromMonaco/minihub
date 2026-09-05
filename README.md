@@ -11,8 +11,15 @@ learning that binds physical knobs to VST3 parameters.
 
 ## Status
 
-A personal project under active development. No published release, no installer.
-It builds and runs from source.
+A personal project under active development. The first public build is
+**[MiniHub 0.1.0](https://github.com/DavidfromMonaco/minihub/releases/tag/v0.1.0)**,
+a pre-alpha, available two ways: an installer, or a portable folder you unzip
+and replace. Both carry the same build, and both read the same settings,
+projects and recordings — none of which live inside the application folder
+(see [D-031](DECISIONS.md)). It also builds and runs from source, below.
+
+The executable is not code-signed, so SmartScreen will warn; the SHA-256 sums are
+published with the release.
 
 ## Requirements
 
