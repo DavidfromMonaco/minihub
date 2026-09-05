@@ -94,7 +94,9 @@ export function createRoutingModule(hub) {
   let suppressTimer = null;
   let drag = null; // node drag, cable drag, or pan state
   let rearView = false; // front hides cable runs beneath panels; rear exposes them
-  let viewSideSwitch = null;
+  // One switch per surface node: every controller profile draws its own
+  // keyboard, so a single reference left every earlier one unlabelled.
+  let viewSideSwitches = [];
 
   // Internal Patch Bay clipboard (temporary app state, never persisted).
   let clipboard = null; // { type, content } serializable snapshot
@@ -158,7 +160,7 @@ export function createRoutingModule(hub) {
     cableHits.clear();
     cablesLayer.innerHTML = '';
     nodesLayer.innerHTML = '';
-    viewSideSwitch = null;
+    viewSideSwitches = [];
     if (clipDefs) clipDefs.innerHTML = '';
 
     const geo = new Map();
@@ -277,7 +279,8 @@ export function createRoutingModule(hub) {
           )
         });
         g.appendChild(surfaceHolder);
-        viewSideSwitch = buildViewSideSwitch(portRowY, width);
+        const viewSideSwitch = buildViewSideSwitch(portRowY, width);
+        viewSideSwitches.push(viewSideSwitch);
         g.appendChild(viewSideSwitch);
         const midi = node.outputs.find((port) => port.id === 'midi-out');
         if (midi) g.appendChild(buildPort(midi, 'output', width, portRowY, node.id));
@@ -332,12 +335,13 @@ export function createRoutingModule(hub) {
   }
 
   function updateViewSideSwitch() {
-    if (!viewSideSwitch) return;
-    viewSideSwitch.classList.toggle('active', rearView);
-    viewSideSwitch.setAttribute('aria-pressed', rearView ? 'true' : 'false');
-    viewSideSwitch.setAttribute('aria-label', rearView ? 'Return to front cable view' : 'Show rear cable view');
-    const label = Array.from(viewSideSwitch.children).find((child) => child.classList?.contains('view-side-switch-label'));
-    if (label) label.textContent = rearView ? 'Front View' : 'Rear View';
+    viewSideSwitches.forEach((group) => {
+      group.classList.toggle('active', rearView);
+      group.setAttribute('aria-pressed', rearView ? 'true' : 'false');
+      group.setAttribute('aria-label', rearView ? 'Return to front cable view' : 'Show rear cable view');
+      const label = Array.from(group.children).find((child) => child.classList?.contains('view-side-switch-label'));
+      if (label) label.textContent = rearView ? 'Front View' : 'Rear View';
+    });
   }
 
   /** Semantic type badge for a VST node based on its plugin chain. */
@@ -1565,7 +1569,7 @@ export function createRoutingModule(hub) {
     }
     drag = null;
     rearView = false;
-    viewSideSwitch = null;
+    viewSideSwitches = [];
   }
 
   return {

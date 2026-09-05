@@ -471,6 +471,31 @@ test('port elements carry the correct node id for cable drag', () => {
   mod.unmount();
 });
 
+test('every controller node labels its own Front/Rear switch', () => {
+  const hub = makeHub();
+  // Two controller profiles means two surface nodes. The switch used to be held
+  // in a single reference, so only the last one drawn ever received its text:
+  // the earlier controllers showed an empty button.
+  hub.network.addNode({ id: 'minilab-3', name: 'MiniLab 3', surface: MINILAB_SURFACE, outputs: [{ id: 'midi-out', type: 'midi' }] });
+  hub.network.addNode({ id: 'beatstep', name: 'BeatStep', surface: MINILAB_SURFACE, outputs: [{ id: 'midi-out', type: 'midi' }] });
+
+  const { container, svg } = makeContainer();
+  const mod = createRoutingModule(hub);
+  mod.mount(container);
+  const nodesLayer = findClass(svg, 'nodes');
+  const labels = ['minilab-3', 'beatstep'].map((id) => {
+    const node = nodesLayer.children.find((c) => c.dataset.nodeId === id);
+    assert.ok(node, `${id} should render`);
+    const group = findClass(node, 'view-side-switch');
+    assert.ok(group, `${id} should carry its own Front/Rear control`);
+    return group.children.find((child) => child._classSet.has('view-side-switch-label'));
+  });
+  labels.forEach((label) => assert.equal(label.textContent, 'Rear View'));
+  mod.setRearView(true);
+  labels.forEach((label) => assert.equal(label.textContent, 'Front View'));
+  mod.unmount();
+});
+
 test('cables render a visible path + wide hit path with endpoint metadata', () => {
   const hub = makeHub();
   hub.network.addNode({ id: 'a', name: 'A', outputs: [{ id: 'o', type: 'midi' }] });
