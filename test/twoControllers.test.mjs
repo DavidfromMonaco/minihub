@@ -372,3 +372,35 @@ test('with two keyboards and no cable, the panel draws neither and says why', ()
     'drawing either one is a guess, and a guess is what put the wrong faceplate here');
   assert.match(html, /CTRL IN/, 'and it says what to do about it');
 });
+
+/*
+ * A page reports its own keyboard, and lights its own lamp.
+ *
+ * `midi:message` carries every armed cable and `midiManager` stamps the profile
+ * it came from. Without the filter the MiniLab's page counted the BeatStep's
+ * notes, printed its CCs in the monitor and lit for them — one page reporting
+ * two instruments, with nothing on screen saying so.
+ *
+ * The lamp itself is not asserted here: the DOM shim does not parse innerHTML,
+ * so a mounted page cannot be inspected. What IS asserted is the gate the lamp
+ * and every counter sit behind.
+ */
+test('each controller page answers only for its own keyboard', () => {
+  const { hub } = fakeHub();
+  const [minilab, vegaPage] = LOADED_PROFILES.map((profile) => createMiniLabModule(hub, profile));
+
+  const fromMiniLab = { type: 'cc', controller: 74, value: 64, profileId: 'minilab-3' };
+  const fromVega = { type: 'cc', controller: 74, value: 64, profileId: 'vega-49' };
+
+  assert.equal(minilab.handlesMessage(fromMiniLab), true);
+  assert.equal(minilab.handlesMessage(fromVega), false, 'one page, one instrument');
+  assert.equal(vegaPage.handlesMessage(fromVega), true);
+  assert.equal(vegaPage.handlesMessage(fromMiniLab), false);
+
+  // No stamp: the port belongs to no loaded profile, so the user selected a
+  // keyboard MiniHub has no profile for. It goes to the first controller's
+  // page, which is where `core/midiRouting.js` sends it too — one rule, not two.
+  const unstamped = { type: 'cc', controller: 74, value: 64 };
+  assert.equal(minilab.handlesMessage(unstamped), true);
+  assert.equal(vegaPage.handlesMessage(unstamped), false);
+});

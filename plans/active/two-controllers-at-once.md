@@ -276,9 +276,13 @@ for.
   about announcing before verifying.
 - **Committing.** Two distinct workstreams sit uncommitted in the same tree: the
   device-independent drawing from the session before, and this one.
-- The controller page's own mini-keyboard is still 25 keys from C2, hard-coded.
-  It was already, and it is not this workstream — but with a second keyboard on
-  screen it is now visibly wrong rather than invisibly so.
+- ~~The controller page's own mini-keyboard is still 25 keys from C2~~ —
+  **settled 2026-09-05 by removing it.** The author's call: the drawing does not
+  have to be exact, the user just has to see that the signal is arriving, and a
+  lamp says that on any hardware. `.signal-led` lights on any message from THAT
+  keyboard and fades on its own. It also closed a defect beside it: the page did
+  not filter `midi:message` by profile at all, so one page counted both
+  instruments.
 - The Learn panel draws the first keyboard's surface only. `renderControlBindings`
   builds its states from every source on the desk but draws one panel; with two
   keyboards the second one's controls are selectable from the toolbar and absent

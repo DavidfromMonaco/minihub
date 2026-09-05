@@ -1,18 +1,12 @@
-import { describeMessage, noteName } from '../../midi/parseMidi.js';
+import { describeMessage } from '../../midi/parseMidi.js';
 import { controlSourcesOfNode } from '../../midi/minilabControls.js';
 import { surfaceOfNode } from '../../ui/miniLabControlSurface.js';
 import { controllerProfileSectionHtml, bindControllerProfileSection } from '../../ui/controllerProfileSection.js';
 import { escapeHtml } from '../../core/html.js';
 import { LOADED_PROFILE } from '../../midi/loadedProfile.js';
+import { CONTROLLER_NODE_IDS } from '../../core/systemNodes.js';
 
-const KEY_BASE = 36; // C2 — 25 keys up to C4, matching the MiniLab 3
-const KEY_COUNT = 25;
 const MONITOR_MAX = 120;
-const BLACK_NOTES = new Set([1, 3, 6, 8, 10]);
-
-function isBlack(note) {
-  return BLACK_NOTES.has(note % 12);
-}
 
 /**
  * One controller's panel: connection, device info, live activity and monitor.
@@ -51,11 +45,10 @@ export function createMiniLabModule(hub, profile = LOADED_PROFILE) {
   let container = null;
   let subs = [];
   let els = {};
-  let keyEls = [];
-  let activeNotes = new Map(); // note -> velocity
   let monitor = [];
   let lastMsg = null;
   let msgCount = 0;
+  let signalTimer = null;
   // What main last reported about the profiles folder, plus whatever the last
   // action had to say. Held across renders, because a message that vanishes
   // with the redraw that follows it is a message nobody reads.
@@ -69,6 +62,14 @@ export function createMiniLabModule(hub, profile = LOADED_PROFILE) {
         <div class="row">
           <h1 class="page-title">${escapeHtml(DEVICE_NAME)}</h1>
           <span class="spacer"></span>
+          <!-- Lit by anything this keyboard sends. The drawn keyboard below is
+               approximate on purpose -- it is 25 keys from C2 whatever the
+               device -- and making it exact would be a lot of work for a
+               question the user is really asking about the CABLE: is the signal
+               arriving? A lamp answers that, on any hardware, exactly. -->
+          <span id="ml-signal" class="signal-led" role="status"
+                aria-label="Signal from ${escapeHtml(DEVICE_NAME)}"
+                title="Lights up when ${escapeHtml(DEVICE_NAME)} sends"></span>
           <span id="ml-status" class="pill off">No ${escapeHtml(DEVICE_NAME)} detected</span>
         </div>
       </div>
@@ -129,10 +130,6 @@ export function createMiniLabModule(hub, profile = LOADED_PROFILE) {
 
         <div>
           <div class="panel">
-            <h2 class="panel-title">Keyboard</h2>
-            <div id="ml-keyboard" class="keyboard"></div>
-          </div>
-          <div class="panel">
             <h2 class="panel-title">Last event</h2>
             <div id="ml-last" class="last-event">
               <span class="muted">No events received yet</span>
@@ -160,7 +157,6 @@ export function createMiniLabModule(hub, profile = LOADED_PROFILE) {
       manufacturer: container.querySelector('#ml-manufacturer'),
       channel: container.querySelector('#ml-channel'),
       count: container.querySelector('#ml-count'),
-      keyboard: container.querySelector('#ml-keyboard'),
       last: container.querySelector('#ml-last'),
       monitor: container.querySelector('#ml-monitor'),
       offsetRange: container.querySelector('#ml-offset-range'),
@@ -168,7 +164,6 @@ export function createMiniLabModule(hub, profile = LOADED_PROFILE) {
       offsetReset: container.querySelector('#ml-offset-reset')
     };
 
-    buildKeyboard();
     els.input.addEventListener('change', () => onInputSelect());
     els.output.addEventListener('change', () => onOutputSelect());
     els.connect.addEventListener('click', connect);
@@ -189,20 +184,6 @@ export function createMiniLabModule(hub, profile = LOADED_PROFILE) {
 
     refreshPorts();
     refreshTiming();
-  }
-
-  function buildKeyboard() {
-    keyEls = [];
-    els.keyboard.innerHTML = '';
-    for (let i = 0; i < KEY_COUNT; i++) {
-      const note = KEY_BASE + i;
-      const key = document.createElement('div');
-      key.className = 'key' + (isBlack(note) ? ' black' : '');
-      key.title = noteName(note);
-      key.dataset.note = note;
-      els.keyboard.appendChild(key);
-      keyEls.push(key);
-    }
   }
 
   // ---------- connection ----------
@@ -320,13 +301,36 @@ export function createMiniLabModule(hub, profile = LOADED_PROFILE) {
 
   // ---------- live activity ----------
 
+  /**
+   * This keyboard's messages, not the desk's.
+   *
+   * `midi:message` carries every armed cable, and `midiManager` stamps the
+   * profile it came from. Without this filter the MiniLab's page counted the
+   * BeatStep's notes, lit its keys and printed its CCs in the monitor -- one
+   * page reporting two instruments, with nothing saying so.
+   *
+   * A message with no stamp arrived on a port no loaded profile claims: the user
+   * selected a keyboard MiniHub has no profile for. It goes to the first
+   * controller's page, which is where `core/midiRouting.js` sends it too.
+   */
+  function isMine(msg) {
+    return (msg?.profileId ?? CONTROLLER_NODE_IDS[0]) === NODE_ID;
+  }
+
+  /** A lamp, lit by any message and fading on its own. Set from the CSSOM via a
+   *  class: `style-src 'self'` drops an inline style attribute in silence. */
+  function flashSignal() {
+    if (!els.signal) return;
+    els.signal.classList.add('lit');
+    clearTimeout(signalTimer);
+    signalTimer = setTimeout(() => els.signal?.classList.remove('lit'), 180);
+  }
+
   function onMessage(msg) {
+    if (!isMine(msg)) return;
     msgCount++;
     lastMsg = msg;
-
-    if (msg.type === 'noteon') activeNotes.set(msg.note, msg.velocity);
-    else if (msg.type === 'noteoff') activeNotes.delete(msg.note);
-    updateKeyboard();
+    flashSignal();
 
     els.channel.textContent = String(msg.channel);
     els.count.textContent = String(msgCount);
@@ -334,13 +338,6 @@ export function createMiniLabModule(hub, profile = LOADED_PROFILE) {
     pushMonitor(msg);
     // Routing is NOT done here: `core/midiRouting.js` feeds the network for the
     // whole app lifetime, so MIDI keeps flowing when this page is not visible.
-  }
-
-  function updateKeyboard() {
-    keyEls.forEach((key, i) => {
-      const note = KEY_BASE + i;
-      key.classList.toggle('on', activeNotes.has(note));
-    });
   }
 
   function renderLastEvent(msg) {
@@ -406,12 +403,14 @@ export function createMiniLabModule(hub, profile = LOADED_PROFILE) {
   function unmount() {
     subs.forEach((u) => u());
     subs = [];
-    activeNotes.clear();
+    // Invariant 8: a timer that outlives the page would reach into the next
+    // module's DOM, since `#content` is shared.
+    clearTimeout(signalTimer);
+    signalTimer = null;
     monitor = [];
     lastMsg = null;
     container = null;
     els = {};
-    keyEls = [];
   }
 
   return {
@@ -440,6 +439,11 @@ export function createMiniLabModule(hub, profile = LOADED_PROFILE) {
       }
     },
     mount,
-    unmount
+    unmount,
+    // Exposed for the same reason `routingModule` exposes `isRearView()`: the
+    // DOM shim does not parse innerHTML, so a mounted page cannot be inspected,
+    // and "this page ignores the other keyboard" would be a claim rather than
+    // something that runs.
+    handlesMessage: isMine
   };
 }
