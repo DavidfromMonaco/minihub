@@ -84,23 +84,36 @@ execFileSync(
 
 const zip = path.join(output, `MiniHub-${version}-portable.zip`);
 fs.rmSync(zip, { force: true });
-console.log(`\ncompressing portable archive -> ${zip}`);
-try {
-  // Relative paths, run from `dist`: bsdtar reads a leading `C:` as a remote
-  // host and fails with "Cannot connect to C: resolve failed".
-  const relative = path.posix.join('release', path.basename(zip));
-  execFileSync('tar.exe', ['-a', '-c', '-f', relative, 'MiniHub'], {
-    stdio: 'inherit',
-    cwd: path.join(repo, 'dist')
-  });
-} catch {
-  console.log('bsdtar unavailable, falling back to Compress-Archive (slower)');
-  execFileSync(
-    'powershell.exe',
-    ['-NoProfile', '-Command', `Compress-Archive -Path '${source}' -DestinationPath '${zip}' -CompressionLevel Optimal -Force`],
-    { stdio: 'inherit' }
-  );
-}
+console.log(`
+compressing portable archive -> ${zip}`);
+
+// A zip starts with PK. Checked because the fast path fails SILENTLY:
+// bsdtar's `-a` selects a compression filter, not a container, so without
+// `--format zip` it writes a tar under a .zip name and exits 0 -- an archive
+// Windows refuses to open, produced by a build that reported success.
+const isZip = () => {
+  if (!fs.existsSync(zip)) return false;
+  const head = Buffer.alloc(4);
+  const handle = fs.openSync(zip, 'r');
+  try {
+    fs.readSync(handle, head, 0, 4, 0);
+  } finally {
+    fs.closeSync(handle);
+  }
+  return head.equals(Buffer.from([0x50, 0x4b, 0x03, 0x04]));
+};
+
+// Compress-Archive, not the bsdtar that ships with Windows: that build reads
+// the zip container as an "Invalid archive format" and can only be coaxed into
+// writing a TAR under a .zip name -- silently, exiting 0. Slower and correct
+// beats fast and unopenable.
+execFileSync(
+  'powershell.exe',
+  ['-NoProfile', '-Command', `Compress-Archive -Path '${source}' -DestinationPath '${zip}' -CompressionLevel Optimal -Force`],
+  { stdio: 'inherit' }
+);
+
+if (!isZip()) fail(`${zip} is not a zip archive. Refusing to publish it.`);
 
 // --- Checksums --------------------------------------------------------------
 //
