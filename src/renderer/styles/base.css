@@ -1449,6 +1449,14 @@ body {
   color: var(--text);
   max-width: 100%;
 }
+/* A tile that opens something unfinished says so under its own name, rather
+   than answering with an empty page. */
+.home-project-note {
+  margin-top: 6px;
+  font: 500 11px/1.2 var(--font);
+  letter-spacing: 0.04em;
+  color: var(--text-faint);
+}
 
 /* Shared pictogram stroke language. */
 .home-pictogram {

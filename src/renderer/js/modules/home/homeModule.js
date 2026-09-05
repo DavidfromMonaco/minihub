@@ -28,6 +28,7 @@ export function createHomeModule(hub) { return {
         <button class="home-project-tile" data-project-action="template" data-accent="purple">
           <span class="home-project-scene">${templatePictogram()}</span>
           <span class="home-project-label">Templates</span>
+          <span class="home-project-note">under construction</span>
         </button>
       </div>`;
     // A tile is a button wrapping a pictogram and a label, so the click always
