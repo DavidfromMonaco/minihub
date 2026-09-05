@@ -372,6 +372,24 @@ refused: it invents an ordinality that CC numbers do not carry. Nothing is built
 — while the MiniLab is the only profile the list mode is never reached, and it
 becomes necessary with Étape C. Spec §4.4 (revised) and §5.3 bis.
 
+**The site is a catalogue, and MiniHub cannot read a profile — decided
+2026-09-05** — [DECISIONS.md](DECISIONS.md) D-024 and D-025, **specification
+only, no code**. The Builder stays on the site, because a profile that works
+serves everyone owning that hardware: calibration is paid once per model, not
+once per user, and where a profile is created decides where it gets shared. The
+site recognises a device by its MIDI port name and opens its page, indexes the
+catalogue twice (hardware → authors, author → devices), and counts stars on
+GitHub as a committed snapshot — no backend, no account, no deep link. `profileId`
+names the hardware and `author` names who mapped it, so trying a competing
+profile does not cut a single cable.
+
+**What that makes the next piece of work, and it is in the application:**
+`loadedProfile.js:22` imports the profile at **build time**. There is no import
+path and `preload.js` exposes no file access for profiles, so the catalogue would
+serve files nothing can consume. It stands on its own — a friend writing a
+profile by hand needs it as much as the Builder does — and it is what D-022 froze
+deliberately.
+
 **Device cards land in C** — spec §5.4. One page per device: photo, history,
 specifications, connectors, keybed, and a blueprint generated from the profile
 rather than drawn by hand. Written by the author, after the rest.

@@ -1002,3 +1002,134 @@ against the `PORT_ROW = 30` stack), `src/renderer/js/midi/controllerProfile.js`
 `validateControls()` (where `layout` is required today, and the one line that
 changes when this is implemented), and `src/renderer/js/ui/miniLabControlSurface.js`
 (the only consumer of the coordinates).
+
+---
+
+## D-024 — The Builder and the catalogue live on the site, because a profile is shared
+
+**Status**: in force · 2026-09-05 · **not implemented** — specification only
+(§5.5 added, §7.2 revised). Nothing is built.
+
+**Context** — A demonstration on 2026-09-05 settled that the Builder needs no
+image analysis: the MIDI message says *which* control answered, a click on the
+user's own photograph says *where* it is (D-023). That made the mechanism cheap
+enough to run anywhere, and the real question surfaced — where should it run?
+
+The case for moving it into MiniHub was serious. The application already has the
+MIDI, the Learn mode and the screen; the browser costs Web MIDI, a relaxed CSP,
+a second repository and a file transfer to do the same thing further from the
+keyboard. §1.3 of the specification even says repair happens in MiniHub, in
+front of the hardware.
+
+**It was refused by the author on 2026-09-05, and the reason is what decides this
+entry: a profile that works serves everyone who owns the same hardware.**
+
+Two consequences follow that the "move it into the app" case had missed. **Where
+a profile is created decides where it is shared** — created in the app it needs
+an export, a trip to GitHub and a pull request, three frictions that kill
+sharing; created on the site, publishing is the next step of the same journey.
+And **the calibration is then paid once per hardware model, not once per user** —
+which answers the objection that the journey is tedious. It is tedious for the
+first owner of a device, and free for every one after.
+
+**Decision** — the Builder stays on the site, and the site becomes a catalogue
+around it. Four parts.
+
+1. **One entry point, which sorts itself.** The site asks for MIDI access, reads
+   the input's `name`, matches it against an index of published profiles, and
+   opens the hardware's page. No match means "nobody has mapped this yet" and
+   starts the Builder with the device already named. Web MIDI with
+   `sysex: false` gives `name`, `manufacturer` and `id` — exactly the
+   fingerprint of §4.2 — and `portRoles.js` already matches it, decoration
+   included, from the copyable set of §3.5. The site and the application
+   therefore recognise a keyboard by the same code.
+2. **The catalogue is indexed twice, over the same files**: hardware → its
+   authors, and author → everything they mapped. The second exists because
+   trusting a mapper is a real reason to pick a profile.
+3. **Stars, counted where the vote already lives.** Each profile has its GitHub
+   discussion; people react and, more usefully, write *why* — a firmware, a
+   variant, a channel that differs. A script counts and commits the result, the
+   site serves that snapshot. Same mechanism as the blueprint (§5.4 rule 2):
+   generated at write time, committed, served static.
+4. **What stays out**: no backend, no account, no telemetry, no deep link. §7.4
+   already refuses deep links, and this entry does not reopen them — a profile
+   reaches MiniHub as a file the user chooses, never as a site opening the
+   application.
+
+**Consequence** — the common journey stops being calibration. It becomes: plug
+in, open the site, be recognised, download. Calibration is the first owner's
+path, not everyone's. That is a thing a catalogue can do and a menu inside an
+application cannot, which is the answer to "why a site at all".
+
+The moderation cost that §7.2 refused does not come back: the author blesses
+nothing. Users report, and counts are counted.
+
+**What this obliges elsewhere** — **MiniHub cannot read a profile file today.**
+`loadedProfile.js:22` imports `profiles/minilab-3.json` at build time; there is
+no import path, and `preload.js` exposes no file access for profiles. Until that
+exists the site produces files nothing consumes, so it is the first piece of
+work — and it is worth building alone, since a friend writing a profile by hand
+needs it just as much as the Builder does.
+
+**What would justify revisiting it** — Nobody publishing a second profile for a
+year. The catalogue's whole value is other people's mappings; without them the
+site is a download page, and the Builder would have been better inside the app.
+
+**Proof in the code** — `src/renderer/js/midi/portRoles.js` (the matcher the site
+copies), `src/renderer/js/midi/loadedProfile.js:22` (the build-time import that
+blocks everything), `src/main/preload.js` (`projectPickOpen` / `projectRead`, the
+brick to decline for profiles), and `scripts/check-invariants.mjs`
+(`shared decoder`, which keeps the copyable set copyable).
+
+---
+
+## D-025 — `profileId` names the hardware, `author` names who mapped it
+
+**Status**: in force · 2026-09-05 · **not implemented** — specification only
+(§4.5 revised). The shipped profile already satisfies it.
+
+**Context** — D-024 admits several profiles for one device: two people may map
+the same keyboard, and the author wants them ranked hardware first, then by
+author. That is new, and it collides with something already persisted.
+
+A saved binding is `<profileId>:<controlId>` (§3.3), written inside every
+project. If Alice publishes `donner-dmk25-alice` and Bob `donner-dmk25-bob`,
+then switching from one to the other **cuts every cable, in silence** — the
+exact failure §3.2 exists to prevent, guarded *inside* a profile by the
+`immutable control ids` rule and by nothing *between* profiles.
+
+**Decision** — the identity of a profile is **the hardware**, not the person.
+
+- `profileId` names the device: `donner-dmk25`. It is what enters a binding key.
+- `author` names who mapped it. It is what the catalogue's second index and the
+  author page read, and it never enters an identity.
+- Two mappings of one device are two profiles sharing a `profileId`, told apart
+  by `author` and `revision`.
+
+**Consequence** — trying a competing profile costs nothing: the cables say
+`donner-dmk25:k1` under either one, so a user can switch, compare and go back.
+That is what makes competition useful rather than dangerous — and without it,
+trying a second profile means rewiring everything, so nobody would.
+
+The id register gains its real meaning at the same time: the contract is per
+**model**, so whoever maps a device second respects the control ids the first one
+published. Two profiles for one keyboard become interchangeable instead of
+incompatible.
+
+**What this obliges elsewhere** — `author` is declared in `ROOT_KEYS` and
+**validated nowhere**; the shipped profile carries `""`. It is the third field of
+that kind found in two days, after `range` (now read) and `mode` (still not). An
+index on a free-text field would make "Alice", "alice" and "Alice D." three
+people, so the author identity has to be stable: the **GitHub handle** is the
+candidate, already proven by the pull request that brought the profile, with no
+account to create anywhere.
+
+**What would justify revisiting it** — A device whose variants genuinely need
+different control ids, firmware revisions that move the messages far enough that
+one id set cannot cover both. Then the hardware is arguably two devices, and gets
+two `profileId`s.
+
+**Proof in the code** — `src/renderer/js/midi/controllerProfile.js` (`ROOT_KEYS`
+holds `author`; no `stringField` validates it), `test/conformance/published-control-ids.json`
+(the register, keyed by `profileId`), and `src/renderer/js/core/controlBindings.js:25`
+(`<profileId>:<controlId>`, the key this entry protects).

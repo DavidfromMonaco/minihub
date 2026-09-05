@@ -9,6 +9,18 @@ compagnon et Controller Builder
 
 ## 0. Révisions
 
+### v2.2 — 2026-09-05
+
+*(In English, per AGENTS.md §6.)*
+
+Three corrections, all from one question: what happens after the calibration.
+
+| # | What the document said | What was found | § |
+|---|---|---|---|
+| 14 | The Builder is a step of Étape C, justified by itself | It is justified by **sharing**, which nothing said. A profile serves everyone owning that hardware, so calibration is paid once per model and not once per user — and where a profile is created decides where it is shared. See D-024. | §5.5 |
+| 15 | "Zéro backend, zéro vote" (revision 8) | The refusal was about **tiers the author blesses**, and is upheld. Stars are the opposite: users report, the author guarantees nothing. They are counted on GitHub and served as a committed snapshot, so the site stays static. See D-024. | §7.2 |
+| 16 | Nothing said whether a `profileId` names a device or a person | Several profiles for one device is now expected, and a binding is `<profileId>:<controlId>`. Naming the person cuts every cable when a user tries a competing profile. `profileId` names the hardware, `author` names who mapped it. See D-025. | §4.5 |
+
 ### v2.1 — 2026-09-05
 
 *(In English, per AGENTS.md §6, like §5.3 bis and §5.4 below.)*
@@ -379,6 +391,19 @@ gets filled with a guess. See §5.3 bis.
 et qui donne à l'utilisateur une raison de ne pas faire confiance à un profil
 importé les yeux fermés.
 
+**Revised 2026-09-05 — who these two names identify.** *(In English, per
+AGENTS.md §6.)* `profileId` names the **hardware**, never the person:
+`donner-dmk25`. `author` names **who mapped it**. Two people mapping one keyboard
+therefore publish two profiles sharing a `profileId`, told apart by `author` and
+`revision` — which is what lets a user try a competing profile and go back,
+since a binding says `donner-dmk25:k1` under either one. Naming the person in the
+id would cut every cable on the way (D-025).
+
+`author` is declared but validated nowhere, and the shipped profile carries `""`.
+Indexing the catalogue by author needs a stable identity, so it holds a **GitHub
+handle** — already proven by the pull request that brought the profile, with no
+account to create.
+
 ---
 
 ## 5. Le Controller Builder
@@ -578,6 +603,56 @@ reads, which is one more reason they are required in v1 rather than in a phase 3
 
 ---
 
+### 5.5 The catalogue around it
+
+*(In English, per AGENTS.md §6, like §5.3 bis and §5.4.)*
+
+The Builder makes one profile. This section is what makes it worth making: a
+profile that works serves **everyone who owns that hardware**, so the calibration
+is paid once per model rather than once per user. That is the whole argument for
+the site (D-024), and it is why the journey stays in the browser rather than
+moving into the application, where the mapping would be born far from the place
+it is shared.
+
+**One entry point, which sorts itself.** The site asks for MIDI access, reads the
+input's `name`, and matches it against an index of published profiles:
+
+```text
+plug in  →  open the site  →  "Donner DMK-25"  →  the hardware's page
+                                     ↓ no match
+                            "nobody has mapped this yet" → the Builder, device already named
+```
+
+Web MIDI with `sysex: false` gives `name`, `manufacturer` and `id` — exactly the
+fingerprint of §4.2 — and `portRoles.js` already matches it, operating-system
+decoration included, from the copyable set of §3.5. The site and the application
+therefore recognise a keyboard by **the same code**, which is what stops them
+disagreeing about what a device is.
+
+Limits, none of them fatal: Chromium only (§5.2), one permission prompt, and this
+page carries JavaScript — the same exception as the Builder, on the same pages.
+The device cards stay at `script-src 'none'`.
+
+**Two indexes over the same files.** Hardware → its authors, and author →
+everything they mapped. The second exists because trusting a mapper is a real
+reason to pick a profile, and because someone precise on one device is usually
+precise on the next.
+
+**Stars** are counted on GitHub and served as a committed snapshot — §7.2,
+revised.
+
+**What the catalogue changes about the common journey**: it stops being
+calibration. Plug in, be recognised, download. Calibration becomes the first
+owner's path, and the Builder becomes what serves everyone after them.
+
+**What it obliges of MiniHub, and it does not exist today**: reading a profile
+file. `loadedProfile.js` imports the profile at **build time**, and nothing
+anywhere imports one at runtime. Until that is built, the catalogue serves files
+nothing can consume — which makes it the first piece of work, and one that stands
+on its own, since a friend writing a profile by hand needs it just as much.
+
+---
+
 ## 6. Intégration MiniHub — ce qui casse, précisément
 
 Chaque point ci-dessous a été vérifié dans le code. Ce ne sont pas des risques :
@@ -709,6 +784,20 @@ matériel vivent dans le dépôt. Les autres arrivent par pull request. Zéro
 backend, zéro vote, zéro modération. Les niveaux pourront revenir le jour où
 quelqu'un les réclame.
 
+**Revised 2026-09-05 — that day came, and it is not the same thing.** *(In
+English, per AGENTS.md §6.)* The refusal above is upheld exactly as written: it
+is about **tiers the author blesses**, where "OFFICIAL" means answering
+personally for hardware he does not own. Stars are the opposite direction —
+**users report, the author guarantees nothing** — and they answer a need that
+did not exist when this was written: several profiles for one device (D-025) have
+to be told apart by something.
+
+Still zero backend. The vote lives where it already is: each profile has its
+GitHub discussion, people react and, more usefully, say *why* — a firmware, a
+variant, a channel that differs. A script counts and commits the result; the site
+serves that snapshot. Same mechanism as the blueprint of §5.4: generated at write
+time, committed, served static. See D-024.
+
 ### 7.3 Le système de mise à jour (§12) — reporté
 
 Contredit `INTENT.md` §7 mot pour mot, et ne sert ni l'un ni l'autre des deux
@@ -821,6 +910,17 @@ découvertes soient lisibles plutôt que silencieuses.
    qu'`INTENT.md` §2 nomme précisément. L'Étape A, elle, reste justifiée seule.
 2. **Le pluriel entre-t-il dans D-018 maintenant** (§6.8), ou D-018 s'écrit-elle
    au singulier puis se reprend ?
+0. **Un modèle de vision embarqué peut-il pré-placer les formes ?** *(In English,
+   per AGENTS.md §6.)* Asked 2026-09-05, untested. A small multimodal model
+   (Florence-2, SmolVLM) runs in the browser over WebGPU with weights fetched
+   from a public CDN — no backend, no key, and the photograph never leaves the
+   machine. What it **cannot** do is say which of eight identical knobs sends
+   CC 74, so it does not remove the click of §5.3 bis. What it could give is what
+   neither MIDI nor the format supplies: each control's **family** and its
+   **size** — the two things the blueprint test of 2026-09-05 found missing. Cost
+   to weigh: a few hundred megabytes on first visit, WebGPU-capable browsers
+   only, and a third-party origin in the CSP. To be prototyped before it is
+   promised.
 3. **Le Builder vit-il dans ce dépôt ou dans un second ?** Un second dépôt
    protège l'interdit « aucune étape de build JS » ; un seul dépôt garde le
    décodeur et son corpus sous un même `npm test`.
