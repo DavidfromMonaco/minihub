@@ -192,6 +192,24 @@ export class ProjectManager {
     const project = { format: 'minihub-project', version: 1, projectId: newId(), name: 'Basic', createdAt: now, modifiedAt: now, network: { connections: [], layout: {}, viewport: null }, nodeInstances: { instances: [], idSeq: {} }, transport: { bpm: 120 }, master: { ...DEFAULT_MASTER_OUTPUT } };
     return this._replace(project, null, true, { discardApproved: true });
   }
+  /**
+   * Reload the renderer and come back with the same project open.
+   *
+   * Changing controller profile has to reload the window -- `midi/loadedProfile.js`
+   * explains why: the controller node's id is derived from the profile and frozen
+   * when the module graph evaluates, so a live swap would leave half the
+   * application on the old id. Nothing about that requires LOSING the project,
+   * and until now the reload dropped it: the user came back to Home, on an empty
+   * canvas, having asked only for another keyboard.
+   *
+   * The handoff `_replace()` already performs is exactly what is needed, with
+   * the current project as its payload -- `unsaved` included, so edits that were
+   * never written to disk survive the trip too.
+   */
+  async reloadKeepingProject() {
+    return this._replace(this.snapshot(), this.currentProjectPath, this.dirty, { discardApproved: true });
+  }
+
   async _replace(project, filePath, unsaved = false, { discardApproved = false } = {}) {
     if (this._blockWhileRecording()) return false;
     if (!discardApproved && !this._confirmDiscardChanges('replace the current project')) return false;

@@ -1,26 +1,9 @@
 import { describeMessage, noteName } from '../../midi/parseMidi.js';
-import { MINILAB_CONTROL_SOURCES } from '../../midi/minilabControls.js';
-import { MINILAB_SURFACE } from '../../ui/miniLabControlSurface.js';
+import { controlSourcesOfNode } from '../../midi/minilabControls.js';
+import { surfaceOfNode } from '../../ui/miniLabControlSurface.js';
 import { controllerProfileSectionHtml, bindControllerProfileSection } from '../../ui/controllerProfileSection.js';
 import { escapeHtml } from '../../core/html.js';
-import { MINILAB_NODE_ID } from '../../core/systemNodes.js';
 import { LOADED_PROFILE } from '../../midi/loadedProfile.js';
-
-/**
- * What the user calls the thing on his desk, and the only place in `src/` that
- * reads it. The header, the sequencer's blocking messages and the Learn panel
- * all name the device from the routing node below (`core/controllerNode.js`),
- * so this constant is the single point where a profile becomes a name on
- * screen -- and the whole application follows a profile that says something
- * else with nothing else edited.
- *
- * `device.model` rather than the profile's `name`: the profile is titled
- * "Arturia MiniLab 3", which is the file's name for itself and may carry a
- * variant or a vendor, while a Patch Bay card and a status pill have room for
- * the device. Both fields are required by the format, so neither can be
- * absent.
- */
-const DEVICE_NAME = LOADED_PROFILE.device.model;
 
 const KEY_BASE = 36; // C2 — 25 keys up to C4, matching the MiniLab 3
 const KEY_COUNT = 25;
@@ -32,9 +15,39 @@ function isBlack(note) {
 }
 
 /**
- * MiniLab 3 panel: connection, device info, live activity and monitor.
+ * One controller's panel: connection, device info, live activity and monitor.
+ *
+ * ONE PER LOADED PROFILE, and that is the whole of step 5 of
+ * `plans/active/two-controllers-at-once.md`. `app.js` calls this once per entry
+ * in `LOADED_PROFILES`, so two keyboards are two pages, two sidebar entries and
+ * two routing nodes -- not one page with a switch on it, which would be the
+ * "primary controller" the plan puts out of scope.
+ *
+ * The module's own id is `controller-<profileId>`. It used to be the literal
+ * `'minilab'`, which cannot be two things at once and was a device word inside a
+ * page id besides.
+ *
+ * `profile` is a parameter and not a module-level read, for the reason
+ * `resolveProfiles` is exported: a constant fixed at module load is a constant
+ * no test can swap, and "this draws any keyboard" would be a claim rather than
+ * something that runs.
+ *
+ * `DEVICE_NAME` is `device.model` rather than the profile's `name`: the profile
+ * is titled "Arturia MiniLab 3", which is the file's name for itself and may
+ * carry a variant or a vendor, while a Patch Bay card and a status pill have
+ * room for the device. Both fields are required by the format, so neither can
+ * be absent. It is the single point where a profile becomes a name on screen --
+ * everything else asks the routing node (`core/controllerNode.js`).
  */
-export function createMiniLabModule(hub) {
+export function createMiniLabModule(hub, profile = LOADED_PROFILE) {
+  const DEVICE_NAME = profile.device.model;
+  const NODE_ID = profile.profileId;
+  // The PAGE id, deliberately not the node id. `test/profileImport.test.mjs`
+  // pins that they differ, and the reason is a bug: the shell used to spell a
+  // page id, `ModuleSystem.activate()` answers false for an unknown one WITHOUT
+  // saying so, and the button was dead. Keeping the two strings apart is what
+  // stops `activate(node.id)` from being written somewhere and appearing to work.
+  const PAGE_ID = `controller-${profile.profileId}`;
   let container = null;
   let subs = [];
   let els = {};
@@ -164,7 +177,15 @@ export function createMiniLabModule(hub) {
     els.offsetReset.addEventListener('click', onOffsetReset);
     // The controller's own page is where a keyboard is changed, so the profile
     // section is bound here rather than in Settings. See controllerProfileSection.js.
-    bindControllerProfileSection(container, hub, { refresh: refreshProfiles });
+    // The window has to reload for a profile change; the project does not have
+    // to be lost with it. `reloadKeepingProject` stages the open project through
+    // the same handoff a project switch uses, so the reload comes back to it.
+    bindControllerProfileSection(container, hub, {
+      refresh: refreshProfiles,
+      reload: () => (hub.project?.reloadKeepingProject
+        ? hub.project.reloadKeepingProject()
+        : globalThis.location?.reload())
+    });
 
     refreshPorts();
     refreshTiming();
@@ -205,7 +226,14 @@ export function createMiniLabModule(hub) {
     els.name.textContent = input ? input.name : '—';
     els.manufacturer.textContent = input && input.manufacturer ? input.manufacturer : '—';
 
-    const anyMiniLab = hub.midi.isMiniLabConnected();
+    // THIS keyboard, not any keyboard: `midiManager` arms one cable per loaded
+    // profile, so an armed port is this device answering. `isMiniLabConnected()`
+    // asks whether anything on the desk looks like a MiniLab, which on a page
+    // named after a second controller is a sentence about the wrong hardware.
+    // It stays as the fallback for a manager that predates the arming.
+    const anyMiniLab = hub.midi.armedInputFor
+      ? hub.midi.armedInputFor(NODE_ID) !== null
+      : hub.midi.isMiniLabConnected();
     const preferredUnavailable = preference.preference && !preference.available;
     els.status.textContent = preferredUnavailable
       ? 'Preferred MIDI input unavailable'
@@ -387,20 +415,20 @@ export function createMiniLabModule(hub) {
   }
 
   return {
-    id: 'minilab',
+    id: PAGE_ID,
     name: DEVICE_NAME,
     navEntry: { label: DEVICE_NAME, icon: 'keyboard', group: 'system', fixed: true },
     routingNode: {
-      id: MINILAB_NODE_ID,
+      id: NODE_ID,
       name: DEVICE_NAME,
       type: 'midi-output',
-      surface: MINILAB_SURFACE,
+      surface: surfaceOfNode(NODE_ID),
       inputs: [
         { id: 'midi-in', type: 'midi', label: 'Hardware MIDI In' }
       ],
       outputs: [
         { id: 'midi-out', type: 'midi', label: 'MIDI Out' },
-        ...MINILAB_CONTROL_SOURCES.map((source) => ({
+        ...controlSourcesOfNode(NODE_ID).map((source) => ({
           id: source.portId,
           type: 'control',
           label: source.label

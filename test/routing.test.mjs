@@ -494,3 +494,66 @@ test('cables render a visible path + wide hit path with endpoint metadata', () =
   assert.equal(visible.dataset.toPortId, 'i');
   mod.unmount();
 });
+
+/*
+ * A cable has to leave from the socket it was grabbed by.
+ *
+ * Reported from the running application 2026-09-05, with a screenshot: dragging
+ * from a knob on a controller card drew a dotted cable starting somewhere under
+ * the card. `startCableDrag` and `startUnplugDrag` rebuilt a node literal --
+ * `{ id, inputs, outputs }` -- to hand to `nodeGeometry`, and a rebuilt node has
+ * no `surface`. `nodeGeometry` then took its dock branch and answered for every
+ * control port at the card's right edge, stacked. Nothing errored: the drawn
+ * socket and the drag were simply reading two different geometries.
+ */
+const { nodeGeometry: geometryOf, NODE_WIDTH: DOCK_WIDTH } =
+  await import('../src/renderer/js/core/nodeGeometry.js');
+
+function controllerCard(hub) {
+  const port = Object.keys(MINILAB_SURFACE.ports)[0];
+  hub.network.addNode({
+    id: 'minilab-3', name: 'MiniLab 3', type: 'midi-output', surface: MINILAB_SURFACE,
+    inputs: [{ id: 'midi-in', type: 'midi', label: 'Hardware MIDI In' }],
+    outputs: [
+      { id: 'midi-out', type: 'midi', label: 'MIDI Out' },
+      { id: port, type: 'control', label: 'A control' }
+    ]
+  });
+  return port;
+}
+
+test('a cable dragged from a faceplate socket starts at that socket', () => {
+  const hub = makeHub();
+  const portId = controllerCard(hub);
+  const { container, svg } = makeContainer();
+  const mod = createRoutingModule(hub);
+  mod.mount(container);
+
+  const nodesLayer = findClass(svg, 'nodes');
+  const card = nodesLayer.children.find((c) => c.dataset.nodeId === 'minilab-3');
+  // The socket is drawn inside the scaled faceplate group, not at the card's
+  // top level -- which is the whole reason its position is not the dock's.
+  const descendants = [];
+  const walk = (el) => { for (const child of el.children || []) { descendants.push(child); walk(child); } };
+  walk(card);
+  const socket = descendants.find((el) => el?.dataset?.portId === portId && el?.dataset?.side === 'output');
+  assert.ok(socket, 'the faceplate socket should be in the drawing');
+
+  fire(svg, 'pointerdown', { target: socket, button: 0, clientX: 5, clientY: 5, pointerId: 1 });
+  const temp = findClass(svg, 'temp');
+  assert.ok(temp, 'a dotted cable should follow the pointer');
+
+  // Where the card actually sits, read from the drawing rather than assumed.
+  const at = /translate\(([-\d.]+)[ ,]([-\d.]+)\)/.exec(card.getAttribute('transform'));
+  const pos = { x: Number(at[1]), y: Number(at[2]) };
+  const expected = geometryOf(hub.network.getNode('minilab-3'), pos)
+    .outputs.find((entry) => entry.port.id === portId);
+
+  const move = /^M\s*([-\d.]+)[ ,]([-\d.]+)/.exec(temp.getAttribute('d'));
+  assert.ok(move, `the path should start with a move, got: ${temp.getAttribute('d')}`);
+  assert.equal(Number(move[1]), expected.x, 'the cable leaves from the socket, not from the dock');
+  assert.equal(Number(move[2]), expected.y);
+  assert.ok(Number(move[1]) < pos.x + DOCK_WIDTH,
+    'a dock-branch answer would sit at the card edge; this one is on the panel');
+  mod.unmount();
+});

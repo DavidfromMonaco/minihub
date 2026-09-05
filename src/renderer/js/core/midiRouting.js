@@ -12,7 +12,19 @@
  * event; it just no longer owns the routing.
  */
 
-import { MINILAB_NODE_ID } from './systemNodes.js';
+import { CONTROLLER_NODE_IDS, isControllerNodeId } from './systemNodes.js';
+
+/**
+ * The node a raw MIDI message leaves by.
+ *
+ * `midiManager` stamps `profileId` on anything arriving on a port a loaded
+ * profile claims. When nothing claims it -- the user selected a keyboard MiniHub
+ * has no profile for -- it goes out of the first controller's node, which is
+ * what the single-controller version did and what every saved project's cables
+ * are drawn from.
+ */
+const nodeForMessage = (msg) =>
+  (isControllerNodeId(msg?.profileId) ? msg.profileId : CONTROLLER_NODE_IDS[0]);
 
 /** CC 123 (All Notes Off) then CC 120 (All Sound Off), for one channel. */
 function panicMessages(channel) {
@@ -27,17 +39,21 @@ export function setupMidiRouting(hub) {
   const offMessage = hub.events.on('midi:message', (msg) => {
     // CONTROL is additive: never remove a physical event from its native MIDI
     // path merely because MiniHub can also expose it as CONTROL.
-    hub.network.emitData(MINILAB_NODE_ID, 'midi-out', msg);
+    hub.network.emitData(nodeForMessage(msg), 'midi-out', msg);
   });
 
   // The controller vanished (or the user switched inputs) while notes were
   // held: the matching Note Offs are never coming. Push an explicit panic
   // through the same route the notes took, so only actually-connected chains
   // are affected. Channel is not tracked, so all 16 are silenced.
+  //
+  // Through EVERY controller's node, because the panic does not say which cable
+  // went away and a note held on the other keyboard is just as stuck. Silencing
+  // one node and leaving the other droning would be the worse half of a fix.
   const offPanic = hub.events.on('midi:panic', () => {
     for (let channel = 1; channel <= 16; channel += 1) {
       for (const msg of panicMessages(channel)) {
-        hub.network.emitData(MINILAB_NODE_ID, 'midi-out', msg);
+        for (const nodeId of CONTROLLER_NODE_IDS) hub.network.emitData(nodeId, 'midi-out', msg);
       }
     }
   });

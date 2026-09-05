@@ -79,7 +79,7 @@ rule('system node ids', () => {
       if (!/['"`]minilab-3['"`]/.test(line)) return;
       fail(
         'system node ids',
-        `${rel(file)}:${index + 1} hard-codes 'minilab-3'. Import MINILAB_NODE_ID from core/systemNodes.js.`
+        `${rel(file)}:${index + 1} hard-codes 'minilab-3'. Import CONTROLLER_NODE_IDS from core/systemNodes.js.`
       );
     });
   }

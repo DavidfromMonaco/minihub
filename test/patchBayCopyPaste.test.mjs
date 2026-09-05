@@ -31,8 +31,8 @@ const {
   dockHeight,
   NODE_WIDTH,
   IDENTITY_H,
-  SURFACE_NODE_HEIGHT,
-  SURFACE_PORT_ROW_Y
+  surfaceNodeHeight,
+  surfacePortRowY
 } = await import('../src/renderer/js/core/nodeGeometry.js');
 const { fitViewport } = await import('../src/renderer/js/core/viewportMath.js');
 
@@ -441,7 +441,8 @@ test('geometry follows the declared surface, not the node name', () => {
   };
   const dock = nodeGeometry(named, { x: 0, y: 0 });
   assert.equal(dock.height, IDENTITY_H + dockHeight(named), 'the famous id alone buys nothing');
-  assert.ok(dock.outputs[0].y < SURFACE_PORT_ROW_Y, 'a node with no surface stacks its ports in the dock');
+  assert.ok(dock.outputs[0].y < surfacePortRowY(MINILAB_SURFACE),
+    'a node with no surface stacks its ports in the dock');
 
   const stranger = {
     id: 'launchkey-49',
@@ -450,10 +451,10 @@ test('geometry follows the declared surface, not the node name', () => {
     outputs: [{ id: 'midi-out', type: 'midi' }]
   };
   const surface = nodeGeometry(stranger, { x: 0, y: 0 });
-  assert.equal(surface.height, SURFACE_NODE_HEIGHT, 'any node that declares a surface gets one');
+  assert.equal(surface.height, surfaceNodeHeight(MINILAB_SURFACE), 'any node that declares a surface gets one');
   assert.deepEqual(
     { x: surface.outputs.at(-1).x, y: surface.outputs.at(-1).y },
-    { x: NODE_WIDTH, y: SURFACE_PORT_ROW_Y },
+    { x: NODE_WIDTH, y: surfacePortRowY(MINILAB_SURFACE) },
     'and its remaining ports keep their single row below the faceplate'
   );
   assert.equal(surface.outputs.length, 1, 'control ports it does not declare are not invented');

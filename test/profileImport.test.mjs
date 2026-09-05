@@ -72,20 +72,83 @@ test('a wall of faults is cut short rather than shown whole', () => {
 
 const listed = [{ fileName: 'vega-49.json', profileId: 'vega-49', name: 'Vega 49', controls: 10, error: null }];
 
-test('the built-in profile is an entry, not a special case', () => {
-  const html = controllerProfileSectionHtml({ selected: 'vega-49.json', profiles: listed });
-  assert.match(html, /Built in/);
-  assert.match(html, /data-profile-use=""/, 'going back to the shipped profile is one click, like any other');
-  assert.match(html, /reloads the window/, 'said before the click, or a reload reads as a crash');
+test('the built-in profile is an entry, and is what runs when nothing is loaded', () => {
+  const empty = controllerProfileSectionHtml({ selected: [], profiles: listed });
+  assert.match(empty, /MiniLab 3/, 'named after the hardware, like every other row');
+  assert.match(empty, /Loaded/, 'with nothing loaded, the shipped profile is what is running');
+  assert.match(empty, /reloads the window/, 'said before the click, or a reload reads as a crash');
+  assert.doesNotMatch(empty, /data-profile-unload="minilab-3\.json"/,
+    'unloading the only thing running would be a button that does nothing');
 });
 
-test('the profile in use is marked rather than offered again, and cannot be removed from here', () => {
-  const html = controllerProfileSectionHtml({ selected: 'vega-49.json', profiles: listed });
-  assert.match(html, /In use/);
-  assert.doesNotMatch(html, /data-profile-use="vega-49\.json"/);
+/*
+ * THE ROW THIS WHOLE PANEL WAS MISSING
+ *
+ * The shipped profile was `fileName: null` — an entry meaning "none of the
+ * above". So there was no name to put in the list beside a BeatStep's, and
+ * loading the BeatStep REPLACED the MiniLab instead of joining it: the one
+ * arrangement this workstream exists for was the one it could not express.
+ * Reproduced on the author's own machine 2026-09-05, with a real BeatStep
+ * profile in `%APPDATA%/minilab-hub/profiles/`.
+ */
+test('the shipped keyboard can be loaded beside an imported one', () => {
+  // The author's exact situation: a BeatStep loaded, and the MiniLab gone. Its
+  // row has to offer a way back that does not unload the BeatStep.
+  const html = controllerProfileSectionHtml({ selected: ['vega-49.json'], profiles: listed });
+  assert.match(html, /data-profile-load="minilab-3\.json"/,
+    'it needs a name of its own, or it can never be one keyboard of two');
+  assert.match(html, /data-profile-unload="vega-49\.json"/, 'and the one already loaded stays');
+  assert.doesNotMatch(html, /data-profile-forget="minilab-3\.json"/,
+    'and no Remove: there is no file to delete, so offering it would be offering a refusal');
+
+  const both = controllerProfileSectionHtml({
+    selected: ['minilab-3.json', 'vega-49.json'], profiles: listed
+  });
+  assert.match(both, /data-profile-unload="minilab-3\.json"/);
+  assert.match(both, /data-profile-unload="vega-49\.json"/);
+  assert.doesNotMatch(both, /data-profile-load=/, 'both are loaded, so neither is offered again');
+});
+
+test('an imported file under the shipped name takes its row over', () => {
+  // D-025: a profile IS the hardware it describes. A newer `minilab-3.json` is
+  // the MiniLab 3, and listing it twice would offer one node id under two rows.
+  const updated = [{ fileName: 'minilab-3.json', profileId: 'minilab-3', name: 'MiniLab 3', controls: 27, error: null }];
+  const html = controllerProfileSectionHtml({ selected: [], profiles: updated });
+  assert.equal(html.match(/data-profile-load="minilab-3\.json"/g)?.length, 1);
+  assert.match(html, /27 controls/, 'the file is what is described, not the compiled-in copy');
+});
+
+test('a loaded profile is marked rather than offered again, and cannot be removed from here', () => {
+  const html = controllerProfileSectionHtml({ selected: ['vega-49.json'], profiles: listed });
+  assert.match(html, /Loaded/);
+  assert.doesNotMatch(html, /data-profile-load="vega-49\.json"/);
+  assert.match(html, /data-profile-unload="vega-49\.json"/, 'a keyboard is unloaded from where it is listed');
   // Removing it is refused by main; not offering it here is the same answer,
   // one step earlier.
   assert.doesNotMatch(html, /data-profile-forget="vega-49\.json"/);
+});
+
+/*
+ * The panel stopped being a choice and became a set. `plans/active/two-controllers-at-once.md`.
+ */
+test('several keyboards are loaded at once, each marked on its own row', () => {
+  const both = [
+    { fileName: 'vega-49.json', profileId: 'vega-49', name: 'Vega 49', controls: 10, error: null },
+    { fileName: 'beatstep.json', profileId: 'beatstep', name: 'BeatStep', controls: 32, error: null }
+  ];
+  const html = controllerProfileSectionHtml({ selected: ['vega-49.json', 'beatstep.json'], profiles: both });
+
+  assert.match(html, /data-profile-unload="vega-49\.json"/);
+  assert.match(html, /data-profile-unload="beatstep\.json"/,
+    'loading one keyboard no longer unloads the other');
+  assert.match(html, /data-profile-load="minilab-3\.json"/,
+    'and the shipped keyboard is offered as a third, not hidden because two are loaded');
+});
+
+test('a bare string from an older main process still reads as one keyboard', () => {
+  const html = controllerProfileSectionHtml({ selected: 'vega-49.json', profiles: listed });
+  assert.match(html, /Loaded/);
+  assert.match(html, /data-profile-unload="vega-49\.json"/);
 });
 
 test('a profile file that will not parse is listed so it can be removed', () => {
@@ -124,12 +187,18 @@ function button(dataset = {}) {
 }
 
 /** The three queries `bindControllerProfileSection` makes, and nothing else. */
-function fakeRoot({ importButton = null, use = [], forget = [] }) {
+function fakeRoot({ importButton = null, load = [], unload = [], forget = [], loaded = null }) {
+  // `loaded` defaults to the rows the Unload buttons imply, which is what the
+  // real markup carries for every row EXCEPT the shipped one when nothing else
+  // is loaded: it is running, and has no Unload.
+  const rows = loaded ?? unload.map((button) => ({ dataset: { profileLoaded: button.dataset.profileUnload } }));
   return {
     querySelector: (selector) => (selector === '#profile-import' ? importButton : null),
     querySelectorAll: (selector) => {
-      if (selector === '[data-profile-use]') return use;
+      if (selector === '[data-profile-load]') return load;
+      if (selector === '[data-profile-unload]') return unload;
       if (selector === '[data-profile-forget]') return forget;
+      if (selector === '[data-profile-loaded]') return rows;
       return [];
     }
   };
@@ -207,16 +276,78 @@ test('a file main could not even read is reported without being judged', async (
   assert.deepEqual(outcomes[0].faults, ['EACCES']);
 });
 
-test('an empty value means the built-in profile, not a file called ""', async () => {
-  const builtIn = button({ profileUse: '' });
+test('loading a keyboard adds it to what is already loaded', async () => {
+  const already = button({ profileUnload: 'vega-49.json' });
+  const adding = button({ profileLoad: 'beatstep.json' });
   const { hub, calls } = fakeHub({});
   let reloaded = false;
-  bindControllerProfileSection(fakeRoot({ use: [builtIn] }), hub, {
+  bindControllerProfileSection(fakeRoot({ load: [adding], unload: [already] }), hub, {
     refresh: () => {}, reload: () => { reloaded = true; }
   });
-  await builtIn.press();
-  assert.deepEqual(calls, [['select', null]]);
+
+  await adding.press();
+  assert.deepEqual(calls, [['select', ['vega-49.json', 'beatstep.json']]],
+    'the set the panel is showing, plus the one just asked for');
   assert.equal(reloaded, true);
+});
+
+/*
+ * The second half of the same bug. With nothing loaded, the shipped keyboard IS
+ * running but has no Unload button — there is nothing to unload to — so reading
+ * the loaded set off those buttons reported an empty desk. Adding a BeatStep
+ * then wrote a list without the MiniLab in it, and it vanished exactly as
+ * before, one layer up from where the first fix landed.
+ */
+test('adding a second keyboard keeps the shipped one that was already running', async () => {
+  const adding = button({ profileLoad: 'arturia-beatstep.json' });
+  const { hub, calls } = fakeHub({});
+  const root = fakeRoot({
+    load: [adding],
+    unload: [],                                                    // nothing to unload to
+    loaded: [{ dataset: { profileLoaded: 'minilab-3.json' } }]     // but it is running
+  });
+  bindControllerProfileSection(root, hub, { refresh: () => {}, reload: () => {} });
+
+  await adding.press();
+  assert.deepEqual(calls, [['select', ['minilab-3.json', 'arturia-beatstep.json']]],
+    'both keyboards, which is the whole point');
+});
+
+test('a running row is marked in the markup, whether or not it can be unloaded', () => {
+  const running = controllerProfileSectionHtml({ selected: [], profiles: listed });
+  assert.match(running, /data-profile-loaded="minilab-3\.json"/,
+    'the shipped row is running with an empty list, and has to say so where the binder reads it');
+  assert.doesNotMatch(running, /data-profile-unload="minilab-3\.json"/);
+
+  const two = controllerProfileSectionHtml({ selected: ['minilab-3.json', 'vega-49.json'], profiles: listed });
+  assert.match(two, /data-profile-loaded="minilab-3\.json"/);
+  assert.match(two, /data-profile-loaded="vega-49\.json"/);
+});
+
+test('unloading the last keyboard falls back to the built-in profile', async () => {
+  const only = button({ profileUnload: 'vega-49.json' });
+  const { hub, calls } = fakeHub({});
+  let reloaded = false;
+  bindControllerProfileSection(fakeRoot({ unload: [only] }), hub, {
+    refresh: () => {}, reload: () => { reloaded = true; }
+  });
+
+  await only.press();
+  assert.deepEqual(calls, [['select', []]],
+    'an empty set is the built-in profile: MiniHub never launches without a controller');
+  assert.equal(reloaded, true);
+});
+
+test('unloading one of two leaves the other loaded', async () => {
+  const vega = button({ profileUnload: 'vega-49.json' });
+  const beatstep = button({ profileUnload: 'beatstep.json' });
+  const { hub, calls } = fakeHub({});
+  bindControllerProfileSection(fakeRoot({ unload: [vega, beatstep] }), hub, {
+    refresh: () => {}, reload: () => {}
+  });
+
+  await vega.press();
+  assert.deepEqual(calls, [['select', ['beatstep.json']]]);
 });
 
 test('a refusal from main is reported rather than assumed away', async () => {

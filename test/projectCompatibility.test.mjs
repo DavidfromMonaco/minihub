@@ -24,7 +24,7 @@ import { ProjectManager } from '../src/renderer/js/core/projectManager.js';
 import { createMiniLabModule } from '../src/renderer/js/modules/minilab/minilabModule.js';
 import { createAudioOutputModule } from '../src/renderer/js/modules/audioOutput/audioOutputModule.js';
 import { getMiniLabControlSource } from '../src/renderer/js/midi/minilabControls.js';
-import { MINILAB_NODE_ID, AUDIO_OUTPUT_NODE_ID } from '../src/renderer/js/core/systemNodes.js';
+import { CONTROLLER_NODE_IDS, AUDIO_OUTPUT_NODE_ID } from '../src/renderer/js/core/systemNodes.js';
 import { CONTROL_BINDING_VERSION } from '../src/renderer/js/core/controlBindings.js';
 
 const binding = (sourceControlId, parameterId) => ({
@@ -116,7 +116,7 @@ test('every cable of a project saved before the profile is still connected', asy
 
 test('the control ports a project cabled are the ones the profile now declares', async () => {
   const hub = await openProject(savedProject());
-  const minilab = hub.network.getNode(MINILAB_NODE_ID);
+  const minilab = hub.network.getNode(CONTROLLER_NODE_IDS[0]);
   assert.ok(minilab, 'the node id is the profileId, and it has not moved');
   assert.ok(hub.network.getNode(AUDIO_OUTPUT_NODE_ID));
 

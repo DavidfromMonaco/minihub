@@ -52,8 +52,15 @@ export function buildHeader(hub, statusEl) {
   // generic wording is what a shell says when it has no name to say. Written
   // with `textContent`, which is what keeps a name that now comes from a
   // profile file out of the parser (invariant 9).
+  // "Is any keyboard MiniHub knows about listening?" -- `isMiniLabConnected()`
+  // asks whether a port LOOKS LIKE a MiniLab, which answers no for every other
+  // device ever profiled. `midiManager` arms one cable per loaded profile, so an
+  // armed cable is a keyboard answering, whatever it is called. The old call
+  // stays as the fallback for a manager that predates the arming.
   const update = () => {
-    const connected = hub.midi.isMiniLabConnected();
+    const connected = hub.midi.armedByProfile
+      ? hub.midi.armedByProfile.size > 0
+      : hub.midi.isMiniLabConnected();
     const device = controllerName(hub.network);
     if (hub.midi.state === 'unavailable') {
       statusEl.textContent = 'MIDI unavailable';

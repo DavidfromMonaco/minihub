@@ -596,3 +596,37 @@ test('the close-time save request is always answered, even when saving throws', 
   assert.deepEqual(results[1], { requestId: 'close-save-2', ok: true, reason: '' },
     'a clean project answers immediately instead of rewriting the file');
 });
+
+/*
+ * Changing controller profile reloads the renderer -- `midi/loadedProfile.js`
+ * says why: the controller node's id is frozen when the module graph evaluates.
+ * What it must NOT do is drop the project. It used to: the window came back on
+ * Home with an empty canvas, and a user who asked for another keyboard lost the
+ * session he was working in.
+ */
+test('a profile change hands the open project to the reload, unsaved edits included', async () => {
+  const hub = {
+    settings: { get: () => null, data: {}, projectMode: false },
+    network: { serialize: () => [{ from: 'a', to: 'b' }] },
+    events: { emit() {} },
+    sequencer: null
+  };
+  const manager = new ProjectManager(hub, {});
+  manager.currentProjectPath = 'C:/songs/live-set.minihub';
+  manager.currentProjectName = 'Live set';
+  manager.dirty = true;
+
+  let handed = null;
+  manager._replace = async (project, filePath, unsaved, options) => {
+    handed = { project, filePath, unsaved, options };
+    return true;
+  };
+  await manager.reloadKeepingProject();
+
+  assert.equal(handed.filePath, 'C:/songs/live-set.minihub', 'the same file comes back');
+  assert.equal(handed.unsaved, true, 'and edits that were never written survive the trip');
+  assert.equal(handed.project.name, 'Live set');
+  assert.deepEqual(handed.project.network.connections, [{ from: 'a', to: 'b' }], 'cables and all');
+  assert.equal(handed.options.discardApproved, true,
+    'nothing is discarded, so nothing is asked: the project is handed over, not replaced');
+});

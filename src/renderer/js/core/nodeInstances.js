@@ -43,8 +43,9 @@ import { VstChain, getVstRole, duplicateVstContent, groupPluginsByFamily } from 
 import { escapeHtml } from './html.js';
 import { normalizeControlBinding, normalizeControlBindings } from './controlBindings.js';
 import { controllerName, controllerModuleId } from './controllerNode.js';
-import { MINILAB_CONTROL_SOURCES } from '../midi/minilabControls.js';
-import { miniLabControlSurfaceHtml } from '../ui/miniLabControlSurface.js';
+import { controlSourcesOfNode, surfaceControlsOfNode, surfaceBoxOfNode } from '../midi/minilabControls.js';
+import { CONTROLLER_NODE_IDS } from './systemNodes.js';
+import { miniLabControlSurfaceHtml, applyMiniLabSurfaceLayout } from '../ui/miniLabControlSurface.js';
 import { defaultArpeggiatorContent, normalizeArpeggiatorContent } from './arpeggiatorState.js';
 import { currentArpeggiatorStep, moveCustomNote, removeCustomNote, renderArpControlStrip, renderCustomPatternEditor, setCustomGateDuration, setCustomNote, syncArpControlStrip, velocityFromPointer } from './arpeggiatorEditor.js';
 import { icon } from '../ui/icons.js';
@@ -200,17 +201,48 @@ function renderAddVst(hub, scan = {}) {
     ${scanNote ? `<div class="row mt-6">${scanNote}</div>` : ''}`;
 }
 
+/**
+ * Every keyboard wired into this node's CONTROL input, in cable order.
+ *
+ * The Learn panel used to draw the first LOADED profile, full stop. With two
+ * keyboards that is a coin toss, and it came up wrong: a BeatStep faceplate on a
+ * node the MiniLab was cabled to, with every control reading `unavailable` and
+ * nothing on screen explaining why. The panel follows the CABLES now.
+ *
+ * Plural, because a CONTROL input takes as many as the user wants: playing on a
+ * 49-key controller while a pad box drives the parameters is a real desk, and
+ * both belong on this panel. Deduplicated, since one keyboard usually arrives on
+ * several cables -- one per knob mapped.
+ */
+function cabledControllers(instance, hub) {
+  const seen = [];
+  for (const connection of hub.network?.connectionsTo?.(instance.id, 'ctrl-in') ?? []) {
+    const nodeId = connection.from.nodeId;
+    if (CONTROLLER_NODE_IDS.includes(nodeId) && !seen.includes(nodeId)) seen.push(nodeId);
+  }
+  return seen;
+}
+
 export function renderControlBindings(instance, hub, selectedControlId = null) {
   const pending = hub.control?.pendingLearn;
+  // With nothing cabled and ONE keyboard on the desk there is no ambiguity, so
+  // the panel still draws it greyed out — that is how a user learns what to
+  // cable. With two, drawing either one is a guess, and a guess is what put the
+  // wrong faceplate on this panel in the first place: draw neither, say so.
+  const cabled = cabledControllers(instance, hub);
+  const drawnNodes = cabled.length
+    ? cabled
+    : (CONTROLLER_NODE_IDS.length === 1 ? [CONTROLLER_NODE_IDS[0]] : []);
+  const sources = drawnNodes.flatMap((nodeId) => controlSourcesOfNode(nodeId));
   const states = {};
-  MINILAB_CONTROL_SOURCES.forEach((source) => {
+  sources.forEach((source) => {
     const status = hub.control?.bindingStatus(instance.id, source.id)
       || { state: 'unbound', binding: null };
     const connected = hub.control?.isConnected(instance.id, source.id) || false;
     const isPending = pending?.nodeId === instance.id && pending.sourceControlId === source.id;
     states[source.id] = !connected ? 'unavailable' : (isPending ? 'learn-armed' : (status.binding ? 'mapped' : 'unmapped'));
   });
-  const selected = MINILAB_CONTROL_SOURCES.find((source) => source.id === selectedControlId) || null;
+  const selected = sources.find((source) => source.id === selectedControlId) || null;
   const selectedStatus = selected ? hub.control?.bindingStatus(instance.id, selected.id) : null;
   const selectedConnected = selected ? hub.control?.isConnected(instance.id, selected.id) : false;
   const isPending = selected && pending?.nodeId === instance.id && pending.sourceControlId === selected.id;
@@ -222,7 +254,13 @@ export function renderControlBindings(instance, hub, selectedControlId = null) {
   // messages: this sentence points at hardware the user has to touch, and it
   // used to point at a MiniLab whoever else's keyboard is on the desk. Escaped
   // because the name reaches innerHTML and now comes from a profile file.
-  const device = controllerName(hub.network);
+  //
+  // The node that is DRAWN, not "the controller": with two keyboards on the desk
+  // `controllerName` answers null by design (D-022), and the sentence would send
+  // the user to look at "the controller" while a named faceplate sat under it.
+  // With several drawn, none of them is "the" one and the generic word is right.
+  const nodeName = (nodeId) => hub.network?.getNode?.(nodeId)?.name || nodeId;
+  const device = drawnNodes.length === 1 ? nodeName(drawnNodes[0]) : controllerName(hub.network);
   // The way out of this panel when the drawing is not the user's keyboard. It
   // used to be a dead end: the controls shown here come from the loaded profile,
   // and nothing on this page said where a profile is chosen. The device's own
@@ -233,7 +271,22 @@ export function renderControlBindings(instance, hub, selectedControlId = null) {
       Select an observable control on ${device ? escapeHtml(device) : 'the controller'}, then Arm Learning. Native MIDI behavior remains active while MiniHub opens and foregrounds the target OmniBox.
       <button type="button" class="btn btn-sm" id="control-open-controller">Not your keyboard?</button>
     </div>
-    ${miniLabControlSurfaceHtml({ states, selectedId: selected?.id || null })}
+    ${drawnNodes.length
+      // One faceplate per cabled keyboard, each named when there is more than
+      // one — an unlabelled second panel is a drawing the user has to identify
+      // by counting its knobs.
+      ? drawnNodes.map((nodeId) =>
+        (drawnNodes.length > 1
+          ? `<div class="control-bindings-help muted">${escapeHtml(nodeName(nodeId))}</div>`
+          : '')
+        + miniLabControlSurfaceHtml({
+          states,
+          selectedId: selected?.id || null,
+          controls: surfaceControlsOfNode(nodeId),
+          box: surfaceBoxOfNode(nodeId)
+        })).join('')
+      : '<div class="control-bindings-help muted">No controller is cabled to this node. '
+        + 'Connect one to CTRL IN in the Patch Bay, and its panel appears here.</div>'}
     <div class="control-learn-toolbar" data-selected-source-control-id="${selected?.id || ''}">
       <strong>${selected?.label || 'Select a control'}</strong>
       <span class="control-binding-target">${escapeHtml(selected ? target : 'Choose an observable physical control above')}</span>
@@ -768,6 +821,10 @@ export class NodeInstanceManager {
         // A type with no registered editor is not an error: `video`, `image`
         // and `audio-input` deliberately have none and show the generic shell.
         container.innerHTML = editor ? editor.render(editorContext) : renderGenericShell(instance, type);
+        // The control surface carries its coordinates on `data-*` because the
+        // CSP drops an inline style attribute in silence; this is what turns
+        // them into a position, and it has to run after every innerHTML.
+        applyMiniLabSurfaceLayout(container);
         afterArpRender(true);
 
         if (type.id === 'vst') {
@@ -841,7 +898,9 @@ export class NodeInstanceManager {
 
         function rerenderControlBindings() {
           const bindingsEl = container.querySelector('#vst-control-bindings');
-          if (bindingsEl) bindingsEl.innerHTML = renderControlBindings(instance, hub, selectedControlId);
+          if (!bindingsEl) return;
+          bindingsEl.innerHTML = renderControlBindings(instance, hub, selectedControlId);
+          applyMiniLabSurfaceLayout(bindingsEl);
         }
 
         // One handler per mount, removed on unmount. It used to be attached to

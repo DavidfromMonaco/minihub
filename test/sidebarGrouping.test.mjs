@@ -60,7 +60,7 @@ test('sidebar renders Home in its own group', () => {
 
 test('MiniLab / Audio Output render in the system group', () => {
   const { sidebarEl } = setup();
-  assert.deepEqual(idsInGroup(sidebarEl, 'SYSTEM'), ['minilab', 'audio-output']);
+  assert.deepEqual(idsInGroup(sidebarEl, 'SYSTEM'), ['controller-minilab-3', 'audio-output']);
 });
 
 test('Routing is the first entry in the node group', () => {
@@ -103,7 +103,7 @@ test('fixed navigation items carry the nav-fixed class; dynamic nodes do not', (
   const fixedIds = sidebarEl.children
     .filter((c) => c._classSet.has('nav-item') && c._classSet.has('nav-fixed'))
     .map((c) => c.getAttribute('data-module-id'));
-  assert.deepEqual(fixedIds, ['home', 'minilab', 'audio-output', 'routing']);
+  assert.deepEqual(fixedIds, ['home', 'controller-minilab-3', 'audio-output', 'routing']);
   const dynamicIds = sidebarEl.children
     .filter((c) => c._classSet.has('nav-item') && !c._classSet.has('nav-fixed'))
     .map((c) => c.getAttribute('data-module-id'));

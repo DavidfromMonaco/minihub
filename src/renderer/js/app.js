@@ -4,6 +4,7 @@ import { buildHeader } from './ui/header.js';
 import { buildSettingsModal } from './ui/settingsModal.js';
 import { createHomeModule } from './modules/home/homeModule.js';
 import { createMiniLabModule } from './modules/minilab/minilabModule.js';
+import { LOADED_PROFILES } from './midi/loadedProfile.js';
 import { createRoutingModule } from './modules/routing/routingModule.js';
 import { createAudioOutputModule } from './modules/audioOutput/audioOutputModule.js';
 import { createSequencerModule } from './modules/sequencer/sequencerModule.js';
@@ -32,7 +33,9 @@ async function main() {
 
   // Register modules — the sidebar auto-populates from these.
   hub.modules.register(createHomeModule(hub));
-  hub.modules.register(createMiniLabModule(hub));
+  // One page, one sidebar entry and one routing node per keyboard on the desk.
+  // `LOADED_PROFILES` is never empty, so this always registers at least one.
+  for (const profile of LOADED_PROFILES) hub.modules.register(createMiniLabModule(hub, profile));
   hub.modules.register(createRoutingModule(hub));
   // Native/system Audio Output node + editor (non-deletable, non-copyable).
   hub.modules.register(createAudioOutputModule(hub));

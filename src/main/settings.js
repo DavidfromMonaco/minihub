@@ -4,7 +4,7 @@ const { app } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const { withDirectory, withDirectoryOfFile, carryDirectoryMemory } = require('./recentDirectories');
-const { carrySelectedProfile } = require('./controllerProfiles');
+const { carrySelectedProfiles } = require('./controllerProfiles');
 
 // APPLICATION-scoped settings only: preferences that belong to this machine and
 // survive across projects. Project state (nodes, cables, layout, viewport,
@@ -60,11 +60,11 @@ function loadSettings() {
  */
 function saveSettings(settings, { owner = 'renderer' } = {}) {
   // Two keys main owns and the renderer does not know it has changed: the picker
-  // folders (D-015) and the chosen profile. Both are carried back from disk on a
+  // folders (D-015) and the chosen profiles. Both are carried back from disk on a
   // renderer write, or the next preference change erases them.
   const next = owner === 'main'
     ? settings
-    : (() => { const onDisk = loadSettings(); return carrySelectedProfile(carryDirectoryMemory(settings, onDisk), onDisk); })();
+    : (() => { const onDisk = loadSettings(); return carrySelectedProfiles(carryDirectoryMemory(settings, onDisk), onDisk); })();
   // Atomic write: settings are saved on every network/layout change, so a crash
   // (or a power cut) mid-write used to leave a truncated JSON file, which
   // loadSettings then silently discarded along with every node and cable.

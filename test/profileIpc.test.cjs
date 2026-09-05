@@ -54,23 +54,27 @@ function loadPreload({ syncAnswer = { source: 'none' } } = {}) {
   return { exposed, order, invoked };
 }
 
-test('the profile is fetched synchronously, and before anything else is exposed', () => {
-  const handover = { source: 'file', fileName: 'vega-49.json', profile: { profileId: 'vega-49' }, error: null };
+test('the profiles are fetched synchronously, and before anything else is exposed', () => {
+  const handover = [{ source: 'file', fileName: 'vega-49.json', profile: { profileId: 'vega-49' }, error: null }];
   const { exposed, order } = loadPreload({ syncAnswer: handover });
 
   assert.deepEqual(order[0], ['sendSync', 'profile:current'],
     'anything asynchronous here arrives after the module graph has already frozen the node id');
-  assert.deepEqual(exposed.hubProfile, handover);
+  assert.deepEqual(exposed.hubProfiles, handover);
   assert.ok(exposed.hubAPI, 'and the rest of the bridge is still there');
 });
 
 test('the handover reaches the renderer verbatim, including the ways it can fail', () => {
   for (const handover of [
-    { source: 'none', fileName: null, profile: null, error: null },
-    { source: 'unreadable', fileName: 'gone.json', profile: null, error: 'ENOENT' }
+    [],                                                                            // nothing chosen
+    [{ source: 'unreadable', fileName: 'gone.json', profile: null, error: 'ENOENT' }],
+    // Two keyboards asked for, one of them missing: preload carries the pair as
+    // it is, so the renderer can run one and name the other as absent.
+    [{ source: 'file', fileName: 'minilab-3.json', profile: { profileId: 'minilab-3' }, error: null },
+      { source: 'unreadable', fileName: 'beatstep.json', profile: null, error: 'ENOENT' }]
   ]) {
     const { exposed } = loadPreload({ syncAnswer: handover });
-    assert.deepEqual(exposed.hubProfile, handover,
+    assert.deepEqual(exposed.hubProfiles, handover,
       'the renderer decides what to do about a failure; preload does not get to soften it');
   }
 });

@@ -21,7 +21,10 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { MINILAB_CONTROL_SOURCES, decodeMiniLabControl } from '../src/renderer/js/midi/minilabControls.js';
-import { MINILAB_NODE_ID } from '../src/renderer/js/core/systemNodes.js';
+import { CONTROLLER_NODE_IDS, isControllerNodeId } from '../src/renderer/js/core/systemNodes.js';
+
+/** The shipped profile's node, which is the only one loaded in this file. */
+const NODE_ID = CONTROLLER_NODE_IDS[0];
 import { MINILAB_SURFACE_LAYOUT, miniLabPatchPortPosition } from '../src/renderer/js/ui/miniLabControlSurface.js';
 import { computeCompleteness, validateControllerProfile } from '../src/renderer/js/midi/controllerProfile.js';
 
@@ -48,22 +51,33 @@ test('the profile produces the 25 control sources, field for field', () => {
  * cut those projects silently.
  */
 test('no identity a project has already written to disk moves', () => {
-  // MINILAB_NODE_ID is the loaded profile's id now, so asserting the two equal
+  // The node id is the loaded profile's id, so asserting the two equal
   // proves nothing at all -- it is the same expression twice. What has to hold
   // is that the DERIVED value is still the word saved projects contain, so it is
   // pinned against the literal and against the register where control ids were
   // published. A profile edit that renamed the device would fail here rather
   // than open every old project with cables matching nothing.
-  assert.equal(MINILAB_NODE_ID, 'minilab-3',
+  assert.equal(NODE_ID, 'minilab-3',
     'the network node id sits in every saved project; it cannot move');
-  assert.ok(published.profiles[MINILAB_NODE_ID],
+  assert.ok(published.profiles[NODE_ID],
     'the node id is a published profile id, not whatever the profile says today');
   // And it is still DERIVED: `profile` here is a fresh read of the file from
   // disk, so this fails the day someone writes the literal back into
   // systemNodes.js and the profile is renamed afterwards. `npm run check` cannot
   // catch that one -- systemNodes.js is the rule's owner and is skipped.
-  assert.equal(MINILAB_NODE_ID, profile.profileId,
+  assert.equal(NODE_ID, profile.profileId,
     'the node id reads the profile; a second copy of the word would drift from it');
+
+  // And the set the code now asks about holds it. `isControllerNode` replaced
+  // `id === MINILAB_NODE_ID` at every site that was testing membership in a set
+  // (that constant is gone now; this is the set it became)
+  // of one; with a single profile loaded the two answers are identical, which is
+  // exactly what has to stay true for every project already on disk.
+  assert.deepEqual([...CONTROLLER_NODE_IDS], ['minilab-3']);
+  assert.equal(isControllerNodeId('minilab-3'), true);
+  assert.equal(isControllerNodeId('vst-001'), false, 'a VST node is not a keyboard');
+  assert.equal(isControllerNodeId(undefined), false,
+    'a change event with no `from` must not be read as coming from a controller');
 
   const byKey = (key) => profile.controls.find((control) => control.id === key);
   for (const key of ['k1', 'f2', 'p3', 'pitch-bend', 'main-encoder', 'main-click', 'shift', 'modulation']) {
@@ -118,20 +132,27 @@ test('the surface is drawn where the profile says, and nowhere else', () => {
 });
 
 /**
- * A port hangs off the shape its family draws, and the shape sits where the
- * profile puts the control. Specification section 4.4 in one line — and the
- * faders' stagger is decoration, which used to be written as the two names
- * 'f2' and 'f4'.
+ * A port sits ON its control, at the profile's own coordinate.
+ *
+ * It used to hang beside it, by an offset per family: `+15` for a knob, `+11,+10`
+ * from a pad's corner, and every second fader pushed down by 24. Those numbers
+ * were the MiniLab 3's spacing, and they were computed twice -- here for the
+ * cables and again in the drawing -- so the two could disagree, and did.
+ *
+ * They also could not survive a dense device: a socket is 11 units across and
+ * the BeatStep leaves 13 between two buttons, so there is no "beside" to put one
+ * in. The node is drawn wider for such a profile; the socket stays on its
+ * control, where nothing can collide with it that the crowding rule has not
+ * already separated.
  */
-test('a port sits at its control, offset by what its family draws', () => {
-  assert.deepEqual(miniLabPatchPortPosition('control-k1'), { x: 155 + 15, y: 43 });
-  assert.deepEqual(miniLabPatchPortPosition('control-p1'), { x: 90 + 11, y: 126 + 10 });
-  assert.deepEqual(miniLabPatchPortPosition('control-f1'), { x: 355 + 13, y: 63 });
-  assert.deepEqual(miniLabPatchPortPosition('control-f2'), { x: 392 + 13, y: 63 + 24 },
-    'every second fader cap sits lower, and the port with it');
-  assert.deepEqual(miniLabPatchPortPosition('control-f4'), { x: 466 + 13, y: 63 + 24 });
-  assert.deepEqual(miniLabPatchPortPosition('control-pitch-bend'), { x: 22, y: 105 },
-    'a family with no shape offset sits exactly where the profile says');
+test('a port sits on its control, at the profile coordinate', () => {
+  assert.deepEqual(miniLabPatchPortPosition('control-k1'), { x: 155, y: 43 });
+  assert.deepEqual(miniLabPatchPortPosition('control-p1'), { x: 90, y: 126 });
+  assert.deepEqual(miniLabPatchPortPosition('control-f1'), { x: 355, y: 63 });
+  assert.deepEqual(miniLabPatchPortPosition('control-f2'), { x: 392, y: 63 },
+    'no stagger: a coordinate is what the profile says, not what a row looked like');
+  assert.deepEqual(miniLabPatchPortPosition('control-f4'), { x: 466, y: 63 });
+  assert.deepEqual(miniLabPatchPortPosition('control-pitch-bend'), { x: 22, y: 105 });
   assert.equal(miniLabPatchPortPosition('control-nothing'), null);
 });
 

@@ -1,5 +1,7 @@
 import { parseMidiMessage } from './parseMidi.js';
 import { isMiniLabName, isPerformanceInputName, bestMiniLabInput } from './minilab.js';
+import { isPerformancePort, bestPerformancePort } from './portRoles.js';
+import { LOADED_PROFILES } from './loadedProfile.js';
 
 const MIDI_INPUT_PREFERENCE_KEY = 'midiInputPreference';
 
@@ -64,6 +66,67 @@ export class MidiManager {
     this.selectedInputId = null;
     this.selectedOutputId = null;
     this._messageHandlers = new Map(); // inputId -> { port, handler }
+    this.armedByProfile = new Map();   // profileId -> inputId
+  }
+
+  /**
+   * Which keyboard is listening on which cable.
+   *
+   * There is one selected input and there are now several keyboards, so the
+   * selection alone cannot say which profile a message should be decoded with.
+   * Each loaded profile declares the ports it speaks on (`midi/portRoles.js`),
+   * so the profiles answer it themselves.
+   *
+   * WHY IT IS EMPTY UNLESS THE SELECTED PORT IS CLAIMED
+   * ---------------------------------------------------
+   * "Only the explicitly selected port may enter live routing" is a property
+   * this file holds on purpose: with nothing selected, every physical port is
+   * isolated rather than mislabelled as the controller. Arming a port a profile
+   * merely recognises would break it -- a user who deliberately selected some
+   * other keyboard would find his MiniLab routing again, from a port he did not
+   * choose, with nothing on screen saying so.
+   *
+   * So the selected port decides. The profile that claims it is armed on it, and
+   * the OTHER loaded profiles then arm their own best performance port among
+   * what is left. If no profile claims the selection, the user is driving by
+   * hand and nothing else is armed at all. With one profile loaded this map
+   * therefore holds at most the selected port, and the filter below is exactly
+   * what it always was.
+   *
+   * A port is claimed once: two profiles on one cable would emit every message
+   * twice, on two nodes, which is a chord nobody played.
+   */
+  _rearmProfilePorts() {
+    this.armedByProfile = new Map();
+    const selected = this.selectedInputId ? this.inputs.get(this.selectedInputId) : null;
+    if (!selected) return;
+
+    const owner = LOADED_PROFILES.find((profile) => isPerformancePort(profile, selected.name));
+    if (!owner) return; // the user chose a keyboard no loaded profile describes
+    this.armedByProfile.set(owner.profileId, selected.id);
+
+    const taken = new Set([selected.id]);
+    for (const profile of LOADED_PROFILES) {
+      if (profile === owner) continue;
+      const free = [...this.inputs.values()].filter((port) => !taken.has(port.id));
+      const port = bestPerformancePort(profile, free);
+      if (!port) continue; // this keyboard is not plugged in; its node stays cableless
+      this.armedByProfile.set(profile.profileId, port.id);
+      taken.add(port.id);
+    }
+  }
+
+  /** The keyboard a cable belongs to, or null when no profile claims it. */
+  profileIdForInput(inputId) {
+    for (const [profileId, armed] of this.armedByProfile) {
+      if (armed === inputId) return profileId;
+    }
+    return null;
+  }
+
+  /** Which cable a keyboard is listening on, or null when it is not plugged in. */
+  armedInputFor(profileId) {
+    return this.armedByProfile.get(profileId) ?? null;
   }
 
   /** Initialise Web MIDI. Safe to call once. */
@@ -152,6 +215,7 @@ export class MidiManager {
         }
       }
     }
+    this._rearmProfilePorts();
     if (this.selectedOutputId && !this.outputs.has(this.selectedOutputId)) {
       this.selectedOutputId = null;
       this.events.emit('midi:output', { id: null, name: '', reason: 'output-disconnected' });
@@ -227,9 +291,17 @@ export class MidiManager {
     // With no selected input, every physical port is isolated rather than
     // being mislabeled as MiniLab 3 MIDI OUT.
     this.events.emit('midi:inputMessage', msg);
-    if (!this.selectedInputId || inputId !== this.selectedInputId) return;
+    // The selected port, plus any OTHER keyboard armed on its own cable. With
+    // one profile loaded the second half is empty and this is the same filter it
+    // has always been; see `_rearmProfilePorts`.
+    const profileId = this.profileIdForInput(inputId);
+    if (inputId !== this.selectedInputId && profileId === null) return;
+    if (!this.selectedInputId && profileId === null) return;
 
-    this.events.emit('midi:message', msg);
+    // WHICH keyboard sent it, carried with the message rather than guessed
+    // downstream: `core/controlRouting.js` decodes with that profile, and two
+    // keyboards both send CC 74 from their first knob.
+    this.events.emit('midi:message', profileId === null ? msg : { ...msg, profileId });
     this.events.emit(`midi:${msg.type}`, msg);
   }
 
@@ -261,6 +333,7 @@ export class MidiManager {
       this.events.emit('midi:panic', { reason: 'input-changed' });
     }
     if (remember) this._persistInputPreference(id ? this.inputs.get(id) : null);
+    this._rearmProfilePorts();
     this.events.emit('midi:preference', this.inputPreferenceStatus());
     return true;
   }

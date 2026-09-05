@@ -14,7 +14,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { LOADED_PROFILE, PROFILE_ORIGIN, resolveProfile } from '../src/renderer/js/midi/loadedProfile.js';
+import {
+  LOADED_PROFILE, LOADED_PROFILES, PROFILE_ORIGIN, PROFILE_ORIGINS, resolveProfile, resolveProfiles
+} from '../src/renderer/js/midi/loadedProfile.js';
 
 const shipped = JSON.parse(fs.readFileSync(
   new URL('../src/renderer/js/midi/profiles/minilab-3.json', import.meta.url), 'utf8'
@@ -93,4 +95,109 @@ test('with no profile injected, the module loads the one that ships', () => {
   assert.equal(PROFILE_ORIGIN.reason, null);
   assert.deepEqual(LOADED_PROFILE.controls.map((control) => control.id),
     shipped.controls.map((control) => control.id));
+  assert.deepEqual(LOADED_PROFILES, [LOADED_PROFILE], 'and it is a list of exactly that one');
+  assert.deepEqual(PROFILE_ORIGINS, [PROFILE_ORIGIN]);
+});
+
+/*
+ * TWO KEYBOARDS AT ONCE
+ *
+ * `plans/active/two-controllers-at-once.md`: a MiniLab and a BeatStep on one
+ * desk run together, and choosing between them stops being a thing the user
+ * does. What must hold as that arrives: the shipped profile stands in ONCE, and
+ * never for a keyboard that simply failed to load while others did -- standing
+ * it in twice would register one node id twice (invariants 4 and 5).
+ */
+const asFile = (fileName, loaded) => ({ source: 'file', fileName, profile: loaded, error: null });
+
+test('two profiles chosen are two profiles running', () => {
+  const vega = foreign();
+  const entries = resolveProfiles([asFile('minilab-3.json', shipped), asFile('vega-49.json', vega)], shipped);
+
+  assert.deepEqual(entries.map((entry) => entry.origin), ['file', 'file']);
+  assert.deepEqual(entries.map((entry) => entry.profile.profileId), ['minilab-3', 'vega-49'],
+    'in the order they were chosen, because that is the order the nodes appear in');
+  assert.equal(entries[1].fileName, 'vega-49.json');
+});
+
+test('a keyboard that fails while another loads is named, not replaced', () => {
+  const vega = foreign();
+  const entries = resolveProfiles([
+    asFile('vega-49.json', vega),
+    { source: 'unreadable', fileName: 'beatstep.json', profile: null, error: 'ENOENT' }
+  ], shipped);
+
+  assert.equal(entries.length, 2);
+  assert.equal(entries[0].profile, vega, 'the one that loaded is untouched');
+  assert.equal(entries[1].profile, null,
+    'the shipped profile does not stand in here: minilab-3 is already a node id, and a second one is invariant 4');
+  assert.equal(entries[1].origin, 'missing');
+  assert.equal(entries[1].fileName, 'beatstep.json', 'named, so the page can say which keyboard is absent');
+  assert.equal(entries[1].reason, 'unreadable');
+});
+
+test('when nothing loads at all, the shipped profile stands in once and says whose place it took', () => {
+  const broken = foreign();
+  broken.controls[0].id = 'Dial One';
+
+  const entries = resolveProfiles([
+    asFile('broken.json', broken),
+    { source: 'unreadable', fileName: 'gone.json', profile: null, error: 'ENOENT' }
+  ], shipped);
+
+  assert.equal(entries[0].profile, shipped, 'MiniHub never launches without a controller');
+  assert.equal(entries[0].origin, 'shipped');
+  assert.equal(entries[0].fileName, 'broken.json', 'it takes the place of the first failure, and reports it');
+  assert.equal(entries[0].reason, 'invalid');
+  assert.equal(entries[1].origin, 'missing', 'one shipped profile cannot stand in for two keyboards');
+  assert.equal(entries.filter((entry) => entry.profile !== null).length, 1);
+});
+
+/*
+ * The shipped profile is compiled in, so `main` can only ever report it as
+ * unreadable -- there is no file for it to read. Until it answered to a name it
+ * could not be asked for AT ALL alongside another keyboard: selecting a BeatStep
+ * replaced the MiniLab rather than joining it, which is the one arrangement this
+ * workstream exists for.
+ */
+test('the shipped profile loads beside an imported one, though it has no file', () => {
+  const vega = foreign();
+  const entries = resolveProfiles([
+    { source: 'unreadable', fileName: 'minilab-3.json', profile: null, error: 'ENOENT' },
+    asFile('vega-49.json', vega)
+  ], shipped);
+
+  assert.equal(entries.length, 2);
+  assert.equal(entries[0].profile, shipped, 'the name resolves to the compiled-in profile');
+  assert.equal(entries[0].origin, 'shipped');
+  assert.equal(entries[0].reason, null, 'it is not a failure: nothing went wrong');
+  assert.equal(entries[1].profile, vega);
+  assert.deepEqual(entries.map((entry) => entry.profile.profileId), ['minilab-3', 'vega-49']);
+});
+
+test('a file under the shipped name wins, so an updated profile can replace it', () => {
+  // D-025: a profile is identified by the hardware it describes, so a newer
+  // `minilab-3.json` IS the MiniLab 3 and the substitution must not fight it.
+  const newer = foreign();
+  const entries = resolveProfiles([asFile('minilab-3.json', newer)], shipped);
+  assert.equal(entries[0].profile, newer);
+  assert.equal(entries[0].origin, 'file');
+});
+
+test('a name that is not the shipped one is still a missing keyboard', () => {
+  const vega = foreign();
+  const entries = resolveProfiles([
+    asFile('vega-49.json', vega),
+    { source: 'unreadable', fileName: 'gone.json', profile: null, error: 'ENOENT' }
+  ], shipped);
+  assert.equal(entries[1].profile, null, 'the substitution is for one name, not for every failure');
+  assert.equal(entries[1].origin, 'missing');
+});
+
+test('a list is never resolved to nothing', () => {
+  for (const handover of [null, undefined, [], [{ source: 'none' }], {}]) {
+    const entries = resolveProfiles(handover, shipped);
+    assert.ok(entries.some((entry) => entry.profile === shipped),
+      `${JSON.stringify(handover)} left the session with no controller`);
+  }
 });

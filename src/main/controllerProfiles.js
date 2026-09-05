@@ -21,14 +21,26 @@ const path = require('node:path');
  * controller. Importing COPIES the file, so moving or deleting the original
  * changes nothing.
  *
- * WHY THE SETTING HOLDS A NAME AND NEVER A PATH
- * ---------------------------------------------
- * `selectedProfileFile` is a bare file name, and `isSafeFileName` is what makes
+ * WHY THE SETTING HOLDS NAMES AND NEVER PATHS
+ * -------------------------------------------
+ * `selectedProfileFile` holds bare file names, and `isSafeFileName` is what makes
  * that a boundary rather than a convention: a stored value of `../../settings`
  * would otherwise be joined onto the profiles folder and read whatever it liked.
- * The name is checked on the way in and again on the way out, because the file
+ * Every name is checked on the way in and again on the way out, because the file
  * that produced it and the file that reads it are separated by a settings file a
  * user can edit.
+ *
+ * WHY IT IS A LIST, AND WHY THE KEY IS STILL SINGULAR
+ * ---------------------------------------------------
+ * Two keyboards on one desk are two profiles loaded at once, not a choice between
+ * them -- `plans/active/two-controllers-at-once.md`. The value is therefore a list
+ * of names, and `selectedFileNames` is the single place that reads it.
+ *
+ * The KEY did not follow. It is on the disk of everyone who has ever chosen a
+ * profile, and renaming it would silently unselect their keyboard: the same
+ * reason AGENTS.md section 2 keeps `%APPDATA%/minilab-hub/` under a name nobody
+ * would pick today. A bare string left there by an older version reads as a list
+ * of one, for ever, and is rewritten as a list the next time anything is saved.
  *
  * This module is deliberately free of Electron, like `recentDirectories.js`, so
  * every rule here can be tested with node:test alone. The caller supplies the
@@ -45,6 +57,17 @@ const SETTINGS_KEY = 'selectedProfileFile';
  * memory rather than after.
  */
 const MAX_BYTES = 1024 * 1024;
+
+/**
+ * How many profiles may be loaded at once.
+ *
+ * Not a matter of taste: every selected profile is read SYNCHRONOUSLY on the
+ * `profile:current` channel, before the renderer's first module evaluates, so
+ * this list sits on the critical path of every launch. A settings file
+ * hand-edited to hold two hundred names would be a MiniHub that takes a minute
+ * to show a window. Eight is more controllers than there are hands.
+ */
+const MAX_SELECTED = 8;
 
 /**
  * Names this module will touch: what a profile id can be, plus `.json`.
@@ -70,11 +93,31 @@ function fileNameForProfileId(profileId) {
   return isSafeFileName(candidate) ? candidate : null;
 }
 
-/** The chosen file's name, or null. Re-checked here: settings.json is a file a
- *  user can edit, and what comes back is not necessarily what was written. */
-function selectedFileName(settings) {
+/**
+ * The chosen file names, in the order they were chosen. Always an array.
+ *
+ * Re-checked here: settings.json is a file a user can edit, and what comes back
+ * is not necessarily what was written. Duplicates are dropped rather than
+ * tolerated -- a profile IS its node id (D-025), so the same file twice would
+ * register one id twice, which invariant 4 forbids and `unregister` could not
+ * undo symmetrically.
+ */
+function selectedFileNames(settings) {
   const value = settings && settings[SETTINGS_KEY];
-  return isSafeFileName(value) ? value : null;
+  const raw = typeof value === 'string' ? [value] : (Array.isArray(value) ? value : []);
+  const names = [];
+  for (const name of raw) {
+    if (!isSafeFileName(name) || names.includes(name)) continue;
+    names.push(name);
+    if (names.length === MAX_SELECTED) break;
+  }
+  return names;
+}
+
+/** The first chosen name, or null: what the callers that still know of one
+ *  controller read. They go away as the rest of the workstream lands. */
+function selectedFileName(settings) {
+  return selectedFileNames(settings)[0] ?? null;
 }
 
 function ensureDirectory(profilesDir) {
@@ -115,21 +158,17 @@ function listProfiles(profilesDir) {
 }
 
 /**
- * Read the chosen profile for handover to the renderer.
+ * Read one profile for handover to the renderer.
  *
- * The three answers are the three the renderer's `resolveProfile` knows, and the
- * distinction is what lets Settings say why the keyboard is not the one asked
- * for: `none` (nothing chosen), `file` (here it is), `unreadable` (chosen, and
- * gone or not JSON).
+ * `source` is what the renderer's `resolveProfile` knows, and the distinction is
+ * what lets the controller page say why a keyboard is not the one asked for:
+ * `file` (here it is) or `unreadable` (chosen, and gone or not JSON).
  *
  * Nothing is validated here. `src/main/` is CommonJS and cannot import the
  * validator, which is an ES module the `module boundary` rule keeps that way --
  * so main reads bytes and the renderer judges them.
  */
-function readSelectedProfile(profilesDir, settings) {
-  const fileName = selectedFileName(settings);
-  if (!fileName) return { source: 'none', fileName: null, profile: null, error: null };
-
+function readProfileFile(profilesDir, fileName) {
   const file = path.join(profilesDir, fileName);
   try {
     const stat = fs.statSync(file);
@@ -142,6 +181,20 @@ function readSelectedProfile(profilesDir, settings) {
     return { source: 'unreadable', fileName, profile: null, error: error.message };
   }
 }
+
+/**
+ * Every chosen profile, one entry each, in the order they were chosen.
+ *
+ * `none` is not an entry: an entry exists BECAUSE a name was chosen, so "nothing
+ * chosen" is the empty list, which the renderer answers with the profile that
+ * ships. One unreadable file among several does not take the others down with
+ * it -- it comes back as its own `unreadable` entry, named, so the page can say
+ * which keyboard is missing rather than showing one node fewer and no reason.
+ */
+function readSelectedProfiles(profilesDir, settings) {
+  return selectedFileNames(settings).map((fileName) => readProfileFile(profilesDir, fileName));
+}
+
 
 /**
  * Write an imported profile into the folder, under its own identity.
@@ -186,15 +239,15 @@ function storeProfile(profilesDir, text) {
 /**
  * Delete an imported profile.
  *
- * Refuses the one currently selected: removing the file the next launch is going
- * to read means launching on the shipped profile with no explanation, and the
- * user who asked for a deletion did not ask for that. Settings selects something
- * else first.
+ * Refuses any profile currently selected: removing a file the next launch is
+ * going to read means coming back without that keyboard and with no explanation,
+ * and the user who asked for a deletion did not ask for that. It is unselected
+ * first -- which, with a list, no longer means choosing a replacement for it.
  */
 function forgetProfile(profilesDir, fileName, settings) {
   if (!isSafeFileName(fileName)) return { ok: false, error: 'not a profile file name' };
-  if (selectedFileName(settings) === fileName) {
-    return { ok: false, error: 'this profile is the one in use; choose another first' };
+  if (selectedFileNames(settings).includes(fileName)) {
+    return { ok: false, error: 'this profile is in use; unselect it first' };
   }
   try {
     fs.rmSync(path.join(profilesDir, fileName), { force: true });
@@ -205,7 +258,7 @@ function forgetProfile(profilesDir, fileName, settings) {
 }
 
 /**
- * Carry the chosen profile across a settings write that came from the renderer.
+ * Carry the chosen profiles across a settings write that came from the renderer.
  *
  * The same trap D-015 documents for the picker folders, and for the same reason:
  * the renderer writes the whole preferences object from the copy it loaded at
@@ -213,11 +266,15 @@ function forgetProfile(profilesDir, fileName, settings) {
  * followed by any preference change would silently unselect the profile that was
  * just imported -- and the user would find his keyboard back to a MiniLab 3 with
  * nothing to explain it.
+ *
+ * What goes back is the NORMALISED list and not the raw stored value, which is
+ * what quietly retires the bare string: the first preference a user changes
+ * rewrites it as a list, and nothing reads it as a string again.
  */
-function carrySelectedProfile(incoming, onDisk) {
+function carrySelectedProfiles(incoming, onDisk) {
   const settings = { ...(incoming && typeof incoming === 'object' ? incoming : {}) };
-  const chosen = selectedFileName(onDisk);
-  if (chosen === null) delete settings[SETTINGS_KEY];
+  const chosen = selectedFileNames(onDisk);
+  if (chosen.length === 0) delete settings[SETTINGS_KEY];
   else settings[SETTINGS_KEY] = chosen;
   return settings;
 }
@@ -225,13 +282,15 @@ function carrySelectedProfile(incoming, onDisk) {
 module.exports = {
   SETTINGS_KEY,
   MAX_BYTES,
+  MAX_SELECTED,
   isSafeFileName,
   fileNameForProfileId,
   selectedFileName,
+  selectedFileNames,
   ensureDirectory,
   listProfiles,
-  readSelectedProfile,
+  readSelectedProfiles,
   storeProfile,
   forgetProfile,
-  carrySelectedProfile
+  carrySelectedProfiles
 };

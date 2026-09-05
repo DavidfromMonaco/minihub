@@ -19,15 +19,17 @@
  * Rendering uses native SVG (no framework): nodes are `<g>` groups positioned
  * with `transform`, ports are jack glyphs, cables are cubic bezier paths.
  */
-import { NetworkLayout } from '../../core/networkLayout.js';
+import { NetworkLayout, separateOverlaps, NODE_GAP } from '../../core/networkLayout.js';
 import { NetworkViewport } from '../../core/networkViewport.js';
 import { GRID_SIZE, dragPosition } from '../../core/grid.js';
 import { getNodeType, listNodeTypes, listOmniBoxCategories } from '../../core/nodeTypes.js';
 import {
   NODE_WIDTH,
+  nodeWidth,
   IDENTITY_H,
   identityHeight,
-  SURFACE_SCALE,
+  surfaceScale,
+  surfacePortRowY,
   SURFACE_Y,
   SURFACE_X,
   portY,
@@ -48,6 +50,7 @@ import {
   portTypeInfo
 } from './routingCore.js';
 import { appendMiniLabControlSurfaceSvg } from '../../ui/miniLabControlSurface.js';
+import { surfaceControlsOfNode } from '../../midi/minilabControls.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
@@ -80,6 +83,7 @@ export function createRoutingModule(hub) {
   let cableHits = new Map(); // cableId -> <path> (invisible wide hit area)
   let gridRects = []; // background rects that follow the viewBox
   let viewport = { x: 0, y: 0, zoom: 1 }; // world top-left + scale
+  let placedSignature = '';               // which nodes, at which sizes, were separated
 
   let selectedCableId = null;
   let selectedNodeId = null; // Patch Bay UI selection (never persisted)
@@ -105,12 +109,37 @@ export function createRoutingModule(hub) {
     const nodes = buildVisualNodes(hub.network);
     const cables = buildVisualConnections(hub.network);
 
-    // Ensure positions exist for every node (deterministic defaults).
+    // Ensure positions exist for every node (deterministic defaults). The grid
+    // is built from the nodes' real boxes: a controller node is as wide as its
+    // device, so a cell of a fixed 300 x 220 would put its neighbour inside it.
+    const sizes = nodes.map((node) => {
+      const geo = nodeGeometry(node, { x: 0, y: 0 });
+      return { width: geo.width, height: geo.height };
+    });
     nodes.forEach((node, i) => {
       if (!positions.has(node.id)) {
-        positions.set(node.id, layout.get(node.id, i));
+        positions.set(node.id, layout.get(node.id, i, sizes));
       }
     });
+
+    // Positions are persisted, so a canvas laid out when every node was 200 wide
+    // still holds those coordinates: the node that grew now sits on its
+    // neighbour. Separate them, write the result back, and do it again whenever
+    // the set of nodes or their sizes changes -- which is what loading a project
+    // or switching to a bigger controller profile does. Keyed on that signature
+    // rather than on a "once" flag, so dragging a node never fights the nudge
+    // and a new project is not left piled up.
+    const signature = nodes.map((node, i) => `${node.id}@${sizes[i].width}x${sizes[i].height}`).join('|');
+    if (signature !== placedSignature) {
+      placedSignature = signature;
+      const moves = separateOverlaps(nodes.map((node, i) => ({
+        id: node.id, ...positions.get(node.id), ...sizes[i]
+      })), NODE_GAP);
+      if (moves.size) {
+        for (const [id, pos] of moves) positions.set(id, pos);
+        layout.setMany(moves);
+      }
+    }
 
     // Prune positions for nodes that no longer exist.
     const ids = new Set(nodes.map((n) => n.id));
@@ -171,22 +200,27 @@ export function createRoutingModule(hub) {
       if (type) g.classList.add(`node-type-${node.type}`);
       else g.classList.add('node-native'); // native/system node (e.g. MiniLab)
 
+      // A controller node is as wide as its device needs; everything else keeps
+      // NODE_WIDTH. Read once here so the panel, the dock, the divider and the
+      // output ports cannot disagree about where the right edge is.
+      const width = nodeWidth(node);
+
       // Clip the identity/dock surfaces to the rounded panel outline.
       const clipId = `node-clip-${node.id}`;
       const clip = svgEl('clipPath', { id: clipId });
-      clip.appendChild(svgEl('rect', { x: 0, y: 0, width: NODE_WIDTH, height, rx: 8 }));
+      clip.appendChild(svgEl('rect', { x: 0, y: 0, width, height, rx: 8 }));
       clipDefs.appendChild(clip);
 
       // Base panel (fill + border + selection outline).
-      g.appendChild(svgEl('rect', { class: 'node-panel', x: 0, y: 0, width: NODE_WIDTH, height, rx: 8 }));
+      g.appendChild(svgEl('rect', { class: 'node-panel', x: 0, y: 0, width, height, rx: 8 }));
 
       const clipped = svgEl('g', { 'clip-path': `url(#${clipId})` });
       // Upper identity/content surface (family-tinted) + lower I/O dock.
       const identityH=identityHeight(node);
-      clipped.appendChild(svgEl('rect', { class: 'node-identity', x: 0, y: 0, width: NODE_WIDTH, height: identityH }));
-      clipped.appendChild(svgEl('rect', { class: 'node-dock', x: 0, y: identityH, width: NODE_WIDTH, height: height - identityH }));
-      clipped.appendChild(svgEl('rect', { class: 'node-dock-divider', x: 0, y: identityH, width: NODE_WIDTH, height: 1 }));
-      clipped.appendChild(svgEl('rect', { class: 'node-accent', x: 0, y: 0, width: NODE_WIDTH, height: 4 }));
+      clipped.appendChild(svgEl('rect', { class: 'node-identity', x: 0, y: 0, width, height: identityH }));
+      clipped.appendChild(svgEl('rect', { class: 'node-dock', x: 0, y: identityH, width, height: height - identityH }));
+      clipped.appendChild(svgEl('rect', { class: 'node-dock-divider', x: 0, y: identityH, width, height: 1 }));
+      clipped.appendChild(svgEl('rect', { class: 'node-accent', x: 0, y: 0, width, height: 4 }));
 
       const title = svgEl('text', { class: 'node-title', x: 12, y: 24 });
       title.textContent = node.name;
@@ -195,7 +229,7 @@ export function createRoutingModule(hub) {
       // Direct route to the node's own page. Double-click still works, but a
       // visible control is the discoverable one - and it does not depend on
       // the synthesized click that pointer capture retargets during a drag.
-      if (type && hub.modules?.get(node.id)) clipped.appendChild(buildOpenControl(node));
+      if (type && hub.modules?.get(node.id)) clipped.appendChild(buildOpenControl(node, width));
 
       // Family + type badges and content info (dynamic nodes only).
       if (type) {
@@ -225,27 +259,41 @@ export function createRoutingModule(hub) {
         const connectedPortIds = new Set(cables
           .filter((cable) => cable.from.nodeId === node.id)
           .map((cable) => cable.from.portId));
-        const surfaceHolder = svgEl('g', { transform: `translate(${SURFACE_X} ${SURFACE_Y}) scale(${SURFACE_SCALE})` });
+        // Both the scale and everything hung under the panel come from the
+        // device's own box: a node framed for a MiniLab left a narrower keyboard
+        // small in a corner, with the labels below sitting in the empty band.
+        const scale = surfaceScale(node.surface);
+        const portRowY = surfacePortRowY(node.surface);
+        const surfaceHolder = svgEl('g', { transform: `translate(${SURFACE_X} ${SURFACE_Y}) scale(${scale})` });
         appendMiniLabControlSurfaceSvg(surfaceHolder, {
           connectedPortIds,
+          box: node.surface,
+          // This node's own controls. Left to its default, the drawing would be
+          // the first keyboard's, painted inside the second one's box.
+          controls: surfaceControlsOfNode(node.id),
           buildPort: (control, x, y) => buildPort(
             { id: control.portId, type: 'control', label: control.label },
             'output', x, y, node.id, false
           )
         });
         g.appendChild(surfaceHolder);
-        viewSideSwitch = buildViewSideSwitch();
+        viewSideSwitch = buildViewSideSwitch(portRowY, width);
         g.appendChild(viewSideSwitch);
         const midi = node.outputs.find((port) => port.id === 'midi-out');
-        if (midi) g.appendChild(buildPort(midi, 'output', NODE_WIDTH, 146, node.id));
+        if (midi) g.appendChild(buildPort(midi, 'output', width, portRowY, node.id));
       }
-      // Inputs on the left (I/O dock).
+      // Inputs on the left (I/O dock). A surface node keeps them in one row
+      // BELOW the panel -- which is where `nodeGeometry` has always attached
+      // their cables, while this line drew them at the dock's first row, in the
+      // middle of the drawing. One socket, two positions: the label sat across
+      // the pads and the cable met nothing.
       node.inputs.forEach((port, i) => {
-        g.appendChild(buildPort(port, 'input', 0, portY(node, i), node.id));
+        const y = node.surface ? surfacePortRowY(node.surface) : portY(node, i);
+        g.appendChild(buildPort(port, 'input', 0, y, node.id));
       });
       // Outputs on the right (I/O dock).
       if (!node.surface) node.outputs.forEach((port, i) => {
-          g.appendChild(buildPort(port, 'output', NODE_WIDTH, portY(node, i), node.id));
+          g.appendChild(buildPort(port, 'output', width, portY(node, i), node.id));
         });
 
       nodesLayer.appendChild(g);
@@ -254,9 +302,11 @@ export function createRoutingModule(hub) {
     updateViewSideSwitch();
   }
 
-  function buildViewSideSwitch() {
+  function buildViewSideSwitch(portRowY, nodeW) {
     const group = svgEl('g', {
-      class: 'view-side-switch', transform: 'translate(72 135)',
+      // Below the port row, centred: it used to sit ON it, where the input
+      // port's own label ("Hardware MIDI In") is written.
+      class: 'view-side-switch', transform: `translate(${Math.round(nodeW / 2 - 33)} ${portRowY + 14})`,
       role: 'button', tabindex: '0', 'aria-label': 'Show rear cable view'
     });
     group.appendChild(svgEl('rect', { class: 'view-side-switch-bg', width: 66, height: 22, rx: 5 }));
@@ -264,10 +314,10 @@ export function createRoutingModule(hub) {
     return group;
   }
 
-  function buildOpenControl(node) {
+  function buildOpenControl(node, nodeW) {
     const width = 46;
     const group = svgEl('g', {
-      class: 'node-open-control', transform: `translate(${NODE_WIDTH - 12 - width} 11)`,
+      class: 'node-open-control', transform: `translate(${nodeW - 12 - width} 11)`,
       role: 'button', tabindex: '0', 'aria-label': `Open ${node.name}`
     });
     group.dataset.nodeAction = 'open';
@@ -927,11 +977,15 @@ export function createRoutingModule(hub) {
     if (!port) return;
 
     const pos = positions.get(nodeId);
-    const geo = nodeGeometry(
-      { id: node.id, inputs: node.inputs, outputs: node.outputs },
-      pos
-    );
+    // The NODE, not a literal rebuilt from three of its fields. A rebuilt node
+    // has no `surface`, so `nodeGeometry` took its dock branch and answered for
+    // every control port at the card's right edge, stacked -- a cable dragged
+    // from a knob left from somewhere under the card, pointing at nothing, with
+    // no error anywhere. The drawn socket and the drag have to read the same
+    // geometry or they are two routes that must agree and will not.
+    const geo = nodeGeometry(node, pos);
     const out = geo.outputs.find((p) => p.port.id === portId);
+    if (!out) return;
 
     const fromPoint = { x: out.x, y: out.y };
     const temp = svgEl('path', {
@@ -1013,10 +1067,10 @@ export function createRoutingModule(hub) {
     const fromNode = hub.network.getNode(connection.from.nodeId);
     if (!fromNode) return;
     const fromPos = positions.get(connection.from.nodeId);
-    const fromGeo = nodeGeometry(
-      { inputs: fromNode.inputs, outputs: fromNode.outputs },
-      fromPos
-    );
+    // Same trap as `startCableDrag`: the surface has to come with the node, or
+    // unplugging a cable snaps its live end to the dock instead of leaving it on
+    // the knob it actually leaves from.
+    const fromGeo = nodeGeometry(fromNode, fromPos);
     const fromOut = fromGeo.outputs.find((p) => p.port.id === connection.from.portId);
     if (!fromOut) return;
 
@@ -1169,6 +1223,25 @@ export function createRoutingModule(hub) {
     );
   }
 
+  /**
+   * Does the biggest node fit on screen at the current zoom?
+   *
+   * The zoom is remembered across sessions, and it was chosen for the nodes of
+   * that session. A node that grows afterwards -- a controller profile with more
+   * controls than the last one -- would open half outside the viewport with no
+   * hint that panning is what is missing.
+   */
+  function largestNodeFits() {
+    const nodes = buildVisualNodes(hub.network);
+    if (!nodes.length) return true;
+    const r = svgRect();
+    if (!r.width || !r.height) return true;
+    return nodes.every((node) => {
+      const geo = nodeGeometry(node, { x: 0, y: 0 });
+      return geo.width * viewport.zoom <= r.width && geo.height * viewport.zoom <= r.height;
+    });
+  }
+
   function fitToNodes() {
     const nodes = buildVisualNodes(hub.network);
     const rects = nodes.map((node) => {
@@ -1289,8 +1362,10 @@ export function createRoutingModule(hub) {
     applyViewBox();
     updateZoomDisplay();
     // First open with no persisted viewport: fit the existing nodes so the
-    // Patch Bay is never empty. A valid persisted viewport is left untouched.
-    if (!hasPersisted) {
+    // Patch Bay is never empty. A persisted viewport is kept -- unless it cannot
+    // show the largest node whole, which is what a saved 250% zoom does the day a
+    // controller node is drawn at the width its device needs.
+    if (!hasPersisted || !largestNodeFits()) {
       fitToNodes();
     }
     window.addEventListener('resize', applyViewBox);
@@ -1432,7 +1507,17 @@ export function createRoutingModule(hub) {
   function onNetworkChange() {
     // Network is the source of truth; re-derive the visual model.
     render();
+    // Loading a project can bring in a node bigger than anything the remembered
+    // zoom was chosen for -- another controller profile, with more controls.
+    // Zoom out to what now exists rather than leaving half of it off-screen.
+    // Only when it does NOT fit: a fit on every change would undo the user's own
+    // zoom each time a cable is drawn.
+    if (!largestNodeFits()) {
+      fitToNodes();
+      viewportStore.save(viewport.x, viewport.y, viewport.zoom);
+    }
   }
+
 
   function unmount() {
     subs.forEach((u) => u());

@@ -6,7 +6,7 @@ const { contextBridge, ipcRenderer } = require('electron');
  * The controller profile, on the page before the first module evaluates.
  *
  * This is the one synchronous call in the preload, and it cannot be anything
- * else. `MINILAB_NODE_ID` in the renderer is a module-level constant derived from
+ * else. `CONTROLLER_NODE_IDS` in the renderer is a module-level constant derived from
  * the profile, evaluated when the ES module graph loads -- which is before
  * app.js runs a line, and long before any `await hubAPI.*` could resolve. A
  * profile fetched asynchronously would arrive after every consumer had frozen
@@ -18,7 +18,7 @@ const { contextBridge, ipcRenderer } = require('electron');
  * nothing else -- no live swap, and not one of the thirty-odd consumers turned
  * into a function call. See src/renderer/js/midi/loadedProfile.js.
  */
-contextBridge.exposeInMainWorld('hubProfile', ipcRenderer.sendSync('profile:current'));
+contextBridge.exposeInMainWorld('hubProfiles', ipcRenderer.sendSync('profile:current'));
 
 contextBridge.exposeInMainWorld('hubAPI', {
   loadSettings: () => ipcRenderer.invoke('settings:load'),

@@ -318,17 +318,17 @@ function profilesDirectory() {
 /**
  * The one synchronous channel in this file, and it has to be.
  *
- * `MINILAB_NODE_ID` is a module-level constant in the renderer, evaluated before
+ * `CONTROLLER_NODE_IDS` is a module-level constant in the renderer, evaluated before
  * app.js runs a single line -- so the profile has to be on the page before the
  * first module does. preload asks for it once, here, and nothing else in the
  * session blocks on it.
  */
 ipcMain.on('profile:current', (event) => {
-  event.returnValue = controllerProfiles.readSelectedProfile(profilesDirectory(), loadSettings());
+  event.returnValue = controllerProfiles.readSelectedProfiles(profilesDirectory(), loadSettings());
 });
 
 ipcMain.handle('profile:list', () => ({
-  selected: controllerProfiles.selectedFileName(loadSettings()),
+  selected: controllerProfiles.selectedFileNames(loadSettings()),
   profiles: controllerProfiles.listProfiles(profilesDirectory())
 }));
 
@@ -353,34 +353,48 @@ ipcMain.handle('profile:pick', async () => {
   }
 });
 
+// Importing ADDS the keyboard rather than replacing what is loaded. Two
+// controllers run at once now, so an import that unselected the MiniLab would
+// be an import that unplugs a keyboard the user never mentioned.
 ipcMain.handle('profile:import', (_event, text) => {
   const stored = controllerProfiles.storeProfile(profilesDirectory(), text);
   if (!stored.ok) return stored;
-  return selectProfileFile(stored.fileName);
+  const current = controllerProfiles.selectedFileNames(loadSettings());
+  return selectProfileFiles([...current, stored.fileName]);
 });
 
-ipcMain.handle('profile:select', (_event, fileName) => selectProfileFile(fileName));
+ipcMain.handle('profile:select', (_event, fileNames) => selectProfileFiles(fileNames));
 
 ipcMain.handle('profile:forget', (_event, fileName) =>
   controllerProfiles.forgetProfile(profilesDirectory(), fileName, loadSettings()));
 
 /**
- * Choose which profile the next launch reads. `null` means the one that ships.
+ * Choose which profiles the next launch reads. An empty list means the one that
+ * ships, and `null` or a bare name are accepted as the list of none and of one.
  *
  * Written with `owner: 'main'` because this settings object was just read from
  * disk: the renderer's copy is older and carrying its keys over would undo
  * whatever main has recorded since.
+ *
+ * Every name is checked here AND again on the way out of `selectedFileNames`:
+ * what is written passes through a settings file a user can edit, so the two
+ * checks are not the same check twice.
  */
-function selectProfileFile(fileName) {
-  if (fileName !== null && !controllerProfiles.isSafeFileName(fileName)) {
+function selectProfileFiles(fileNames) {
+  const list = Array.isArray(fileNames) ? fileNames : (fileNames === null || fileNames === undefined ? [] : [fileNames]);
+  if (list.some((name) => !controllerProfiles.isSafeFileName(name))) {
     return { ok: false, error: 'not a profile file name' };
   }
+  if (list.length > controllerProfiles.MAX_SELECTED) {
+    return { ok: false, error: `MiniHub runs at most ${controllerProfiles.MAX_SELECTED} controllers at once` };
+  }
   const settings = loadSettings();
-  settings[controllerProfiles.SETTINGS_KEY] = fileName;
+  if (list.length === 0) delete settings[controllerProfiles.SETTINGS_KEY];
+  else settings[controllerProfiles.SETTINGS_KEY] = list;
   if (!saveSettings(settings, { owner: 'main' })) {
     return { ok: false, error: 'the choice could not be written to disk' };
   }
-  return { ok: true, fileName };
+  return { ok: true, fileNames: controllerProfiles.selectedFileNames(settings) };
 }
 
 ipcMain.handle('project:default-directory', () => projectsDirectory());

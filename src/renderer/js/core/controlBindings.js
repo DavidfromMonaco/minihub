@@ -1,10 +1,11 @@
 import {
   MINILAB_CONTROL_SOURCES,
   getMiniLabControlSource,
-  getMiniLabControlSourceByPort
+  getMiniLabControlSourceByPort,
+  controllerNodeOfSource
 } from '../midi/minilabControls.js';
 import { isProfileIdentifier } from '../midi/controllerProfile.js';
-import { MINILAB_NODE_ID } from './systemNodes.js';
+import { isControllerNodeId } from './systemNodes.js';
 
 export const CONTROL_BINDING_VERSION = 1;
 const MAX_PLUGIN_ID_LENGTH = 2048;
@@ -122,8 +123,12 @@ export class ControlBindingManager {
   connectedSources(nodeId) {
     const byId = new Map();
     for (const connection of this.hub.network.connectionsTo(nodeId, 'ctrl-in')) {
-      if (connection.from.nodeId !== MINILAB_NODE_ID) continue;
-      const source = getMiniLabControlSourceByPort(connection.from.portId);
+      // Membership, not equality: a cable can now come from any of the
+      // keyboards on the desk, and `!== MINILAB_NODE_ID` would drop every one
+      // of them but the first -- silently, since a cable nobody reads is not an
+      // error, only CONTROL that never arrives.
+      if (!isControllerNodeId(connection.from.nodeId)) continue;
+      const source = getMiniLabControlSourceByPort(connection.from.nodeId, connection.from.portId);
       if (source) byId.set(source.id, source);
     }
     return MINILAB_CONTROL_SOURCES.filter((source) => byId.has(source.id));
@@ -132,8 +137,13 @@ export class ControlBindingManager {
   isConnected(nodeId, sourceControlId) {
     const source = getMiniLabControlSource(sourceControlId);
     if (!source) return false;
+    // The source's OWN keyboard, not any keyboard. `control-k1` is a socket on
+    // every device that has a first knob, so "from a controller, on that port"
+    // would report `minilab-3:k1` as connected because the BeatStep beside it
+    // is -- and Learn would arm a knob nothing had cabled.
+    const owner = controllerNodeOfSource(sourceControlId);
     return this.hub.network.connectionsTo(nodeId, 'ctrl-in').some((connection) => (
-      connection.from.nodeId === MINILAB_NODE_ID && connection.from.portId === source.portId
+      connection.from.nodeId === owner && connection.from.portId === source.portId
     ));
   }
 
@@ -403,7 +413,8 @@ export class ControlBindingManager {
     } else if (pending && change?.type === 'disconnect'
         && change.to?.nodeId === pending.nodeId && change.to?.portId === 'ctrl-in') {
       const source = getMiniLabControlSource(pending.sourceControlId);
-      if (source && change.from?.nodeId === MINILAB_NODE_ID && change.from?.portId === source.portId) {
+      const owner = controllerNodeOfSource(pending.sourceControlId);
+      if (source && change.from?.nodeId === owner && change.from?.portId === source.portId) {
         this.cancelLearn(pending.nodeId, pending.sourceControlId, 'source-disconnected');
       }
     }

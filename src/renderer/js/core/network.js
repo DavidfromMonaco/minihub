@@ -108,6 +108,12 @@ export class Network {
         && this._wouldCreateCycle(fromNodeId, toNodeId, fromPort.type)) {
       throw new Error(`${fromPort.type.toUpperCase()} connection would create a feedback cycle`);
     }
+    // A CONTROL input deliberately takes cables from as many keyboards as the
+    // user wants. Playing on one and turning knobs on another is a real desk:
+    // a 49-key controller for the notes, a pad-and-encoder box for the
+    // parameters, both into the same plugin. A guard limiting this to one source
+    // was briefly here on 2026-09-05 and was wrong -- the panel that could only
+    // draw one faceplate was the defect, not the cabling.
 
     const conn = {
       from: { nodeId: fromNodeId, portId: fromPortId },
