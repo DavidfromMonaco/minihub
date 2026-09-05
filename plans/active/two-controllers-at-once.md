@@ -277,12 +277,15 @@ for.
 - **Committing.** Two distinct workstreams sit uncommitted in the same tree: the
   device-independent drawing from the session before, and this one.
 - ~~The controller page's own mini-keyboard is still 25 keys from C2~~ —
-  **settled 2026-09-05 by removing it.** The author's call: the drawing does not
-  have to be exact, the user just has to see that the signal is arriving, and a
-  lamp says that on any hardware. `.signal-led` lights on any message from THAT
-  keyboard and fades on its own. It also closed a defect beside it: the page did
-  not filter `midi:message` by profile at all, so one page counted both
-  instruments.
+  **settled 2026-09-05 by removing it, and nothing replaced it.** The author's
+  call, in two steps: the drawing does not have to be exact, the user just has to
+  see the signal arrive — and the event monitor on that same panel already shows
+  it live, with the control's NAME, which is more than a lamp can say and is how
+  you identify a control you are unsure of. A lamp was built, did not work (its
+  element was never cached, so every flash was swallowed by a guard) and was
+  removed rather than repaired: the monitor was the better answer either way.
+  It did close a defect beside it, which stays: the page did not filter
+  `midi:message` by profile at all, so one page counted both instruments.
 - The Learn panel draws the first keyboard's surface only. `renderControlBindings`
   builds its states from every source on the desk but draws one panel; with two
   keyboards the second one's controls are selectable from the toolbar and absent

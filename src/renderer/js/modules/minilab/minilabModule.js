@@ -48,7 +48,6 @@ export function createMiniLabModule(hub, profile = LOADED_PROFILE) {
   let monitor = [];
   let lastMsg = null;
   let msgCount = 0;
-  let signalTimer = null;
   // What main last reported about the profiles folder, plus whatever the last
   // action had to say. Held across renders, because a message that vanishes
   // with the redraw that follows it is a message nobody reads.
@@ -62,14 +61,6 @@ export function createMiniLabModule(hub, profile = LOADED_PROFILE) {
         <div class="row">
           <h1 class="page-title">${escapeHtml(DEVICE_NAME)}</h1>
           <span class="spacer"></span>
-          <!-- Lit by anything this keyboard sends. The drawn keyboard below is
-               approximate on purpose -- it is 25 keys from C2 whatever the
-               device -- and making it exact would be a lot of work for a
-               question the user is really asking about the CABLE: is the signal
-               arriving? A lamp answers that, on any hardware, exactly. -->
-          <span id="ml-signal" class="signal-led" role="status"
-                aria-label="Signal from ${escapeHtml(DEVICE_NAME)}"
-                title="Lights up when ${escapeHtml(DEVICE_NAME)} sends"></span>
           <span id="ml-status" class="pill off">No ${escapeHtml(DEVICE_NAME)} detected</span>
         </div>
       </div>
@@ -317,20 +308,10 @@ export function createMiniLabModule(hub, profile = LOADED_PROFILE) {
     return (msg?.profileId ?? CONTROLLER_NODE_IDS[0]) === NODE_ID;
   }
 
-  /** A lamp, lit by any message and fading on its own. Set from the CSSOM via a
-   *  class: `style-src 'self'` drops an inline style attribute in silence. */
-  function flashSignal() {
-    if (!els.signal) return;
-    els.signal.classList.add('lit');
-    clearTimeout(signalTimer);
-    signalTimer = setTimeout(() => els.signal?.classList.remove('lit'), 180);
-  }
-
   function onMessage(msg) {
     if (!isMine(msg)) return;
     msgCount++;
     lastMsg = msg;
-    flashSignal();
 
     els.channel.textContent = String(msg.channel);
     els.count.textContent = String(msgCount);
@@ -403,10 +384,6 @@ export function createMiniLabModule(hub, profile = LOADED_PROFILE) {
   function unmount() {
     subs.forEach((u) => u());
     subs = [];
-    // Invariant 8: a timer that outlives the page would reach into the next
-    // module's DOM, since `#content` is shared.
-    clearTimeout(signalTimer);
-    signalTimer = null;
     monitor = [];
     lastMsg = null;
     container = null;

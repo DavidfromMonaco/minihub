@@ -374,16 +374,13 @@ test('with two keyboards and no cable, the panel draws neither and says why', ()
 });
 
 /*
- * A page reports its own keyboard, and lights its own lamp.
+ * A page reports its own keyboard, and no other.
  *
  * `midi:message` carries every armed cable and `midiManager` stamps the profile
- * it came from. Without the filter the MiniLab's page counted the BeatStep's
- * notes, printed its CCs in the monitor and lit for them — one page reporting
- * two instruments, with nothing on screen saying so.
- *
- * The lamp itself is not asserted here: the DOM shim does not parse innerHTML,
- * so a mounted page cannot be inspected. What IS asserted is the gate the lamp
- * and every counter sit behind.
+ * it came from. Without this filter the MiniLab's page counted the BeatStep's
+ * notes and printed its CCs in the monitor — one page reporting two instruments,
+ * with nothing on screen saying so. The monitor is where the user reads the
+ * signal, control name included, so it has to be showing HIS keyboard.
  */
 test('each controller page answers only for its own keyboard', () => {
   const { hub } = fakeHub();

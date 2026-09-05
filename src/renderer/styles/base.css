@@ -428,30 +428,6 @@ body {
   color: var(--text-faint);
 }
 
-/* ---------- Signal lamp ----------
-   This was a 25-key keyboard drawn from C2, whatever device was plugged in --
-   right for a MiniLab 3 and wrong for everything else, and increasingly visible
-   as such once a second controller could be loaded. Making it exact per profile
-   is a lot of work for a question the user is really asking about the CABLE: is
-   the signal arriving? A lamp answers that on any hardware, exactly. */
-.signal-led {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: var(--bg-raised);
-  border: 1px solid var(--border-strong);
-  /* Lighting is instant, going out is not: one note is a single frame, and a
-     lamp that faded in as fast as it fades out would never be seen at all. */
-  transition: background-color 260ms ease-out, border-color 260ms ease-out, box-shadow 260ms ease-out;
-}
-
-.signal-led.lit {
-  background: var(--ok);
-  border-color: var(--ok);
-  box-shadow: 0 0 8px rgba(62, 207, 126, 0.65);
-  transition: none;
-}
-
 /* ---------- MIDI monitor ---------- */
 .monitor {
   height: 220px;
