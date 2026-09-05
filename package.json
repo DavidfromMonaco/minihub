@@ -8,7 +8,7 @@
     "build:native:tests": "cmake --build native/audio-engine/build --config Release --target mlh_native_tests -- /m:1",
     "package": "npm run build:native && npm run sync:dist",
     "start": "npm run package && node scripts/launch-dist.mjs",
-    "test": "node --test \"test/*.test.mjs\" \"test/*.test.cjs\"",
+    "test": "node scripts/run-tests.mjs",
     "check": "node scripts/check-invariants.mjs",
     "sync:dist": "node scripts/sync-dist.mjs",
     "build:installer": "node scripts/build-installer.mjs"
