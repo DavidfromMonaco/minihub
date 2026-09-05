@@ -991,6 +991,23 @@ Nothing is built now, on purpose: while the MiniLab is the only profile, the lis
 mode is never reached, and building a path nothing walks is what `INTENT.md` §2
 refuses. It becomes necessary with the Builder (Étape C).
 
+**Measured 2026-09-05, after this entry was written** — five in-browser detectors
+were run against a photograph of the author's own MiniLab 3, each given the
+control counts the MIDI already knows, so the question asked was the easy one.
+The best result was OWLv2 (~600 MB), which found the eight backlit pads and
+labelled piano keys as faders; Florence-2 large answered "computer monitor", the
+same as its base. The click is therefore not a fallback waiting for automation to
+mature — it is what works. And the criterion the author set is what closes it:
+**the reference photograph is the poor one**, since people send what their phone
+takes at night. A detector needing studio light moves the problem onto the user.
+A person, by contrast, recognises their own keyboard on a bad photograph.
+Specification §10, question 0.
+
+**One click per control** — the journey is a loop, not a sequence of armings.
+Nothing is re-armed between two controls, and the family is asked only where the
+message does not already answer it. Over forty controls, a confirmation button is
+forty wasted clicks, and tedium is what leaves a profile unfinished.
+
 **What would justify revisiting it** — A way for the Builder to obtain ordinality
 without a photograph that does not amount to guessing. Nothing on the table does:
 Web MIDI with `sysex: false` (§5.2) exposes `name`, `manufacturer` and `id`, and
@@ -1046,11 +1063,12 @@ around it. Four parts.
 2. **The catalogue is indexed twice, over the same files**: hardware → its
    authors, and author → everything they mapped. The second exists because
    trusting a mapper is a real reason to pick a profile.
-3. **Stars, counted where the vote already lives.** Each profile has its GitHub
-   discussion; people react and, more usefully, write *why* — a firmware, a
-   variant, a channel that differs. A script counts and commits the result, the
-   site serves that snapshot. Same mechanism as the blueprint (§5.4 rule 2):
-   generated at write time, committed, served static.
+3. **Stars, counted where the vote already lives.** ~~Each profile has its
+   GitHub discussion; people react and write *why*, and a script commits the
+   counts.~~ **Revised 2026-09-05 by D-026**: voting on GitHub requires an
+   account of everyone wanting to say "this one works on my desk", which is the
+   same barrier the author refused for the nickname. The vote, the report and the
+   setup itself all arrive through one Cloudflare Worker instead.
 4. **What stays out**: no backend, no account, no telemetry, no deep link. §7.4
    already refuses deep links, and this entry does not reopen them — a profile
    reaches MiniHub as a file the user chooses, never as a site opening the
@@ -1118,11 +1136,17 @@ incompatible.
 
 **What this obliges elsewhere** — `author` is declared in `ROOT_KEYS` and
 **validated nowhere**; the shipped profile carries `""`. It is the third field of
-that kind found in two days, after `range` (now read) and `mode` (still not). An
-index on a free-text field would make "Alice", "alice" and "Alice D." three
-people, so the author identity has to be stable: the **GitHub handle** is the
-candidate, already proven by the pull request that brought the profile, with no
-account to create anywhere.
+that kind found in two days, after `range` (now read) and `mode` (still not).
+
+**Revised 2026-09-05 — a free nickname, not a handle from somewhere else.** This
+entry first proposed the GitHub handle, on the grounds that a pull request proved
+it. The author refused it on sight: *"tu demandes le nom git de l'utilisateur en
+pensant que tout le monde a un compte git"*. He is right, and the refusal is
+larger than the field — requiring an account anywhere to name yourself excludes
+people for the convenience of an index. `author` is therefore whatever the person
+types. Two mappers can collide on a nickname; that is a smaller price than a
+barrier at the door, and the catalogue can show the setup count beside a name to
+tell them apart. See D-026.
 
 **What would justify revisiting it** — A device whose variants genuinely need
 different control ids, firmware revisions that move the messages far enough that
@@ -1133,3 +1157,84 @@ two `profileId`s.
 holds `author`; no `stringField` validates it), `test/conformance/published-control-ids.json`
 (the register, keyed by `profileId`), and `src/renderer/js/core/controlBindings.js:25`
 (`<profileId>:<controlId>`, the key this entry protects).
+
+---
+
+## D-026 — A setup is published on arrival, and reported by hand if it offends
+
+**Status**: in force · 2026-09-05 · **not implemented** — specification only.
+
+**Context** — D-024 made the site a catalogue but left the way in undecided, and
+three answers were put to the author on 2026-09-05. Pull requests: refused, they
+require a GitHub account. Email to `contact@minihub.site`: refused, *"il faut que
+ce soit automatique"*. A review queue before publication: refused, *"je souhaite
+que les setups soient directement publiés, oublie moi"*.
+
+**Decision** — six points, and the first one governs the rest.
+
+1. **A setup is published the moment it arrives.** No queue, no approval, nothing
+   waiting on one person's attention. §7.2 already refused blessing profiles
+   because a single maintainer answering personally for hardware he does not own
+   is where the project dies of maintenance; a review queue is that refusal
+   arriving through the back door.
+2. **Transport is a small Cloudflare Worker**, on the account that already holds
+   the DNS and the mail routing. The page posts the file, the Worker commits it.
+   The site stays static — the Worker is a letterbox on its own origin, not a web
+   server — and the credential lives there, never in the page. Free tier is
+   100,000 requests a day, which is several orders of magnitude past what this
+   project will see.
+3. **Reporting replaces filtering.** A button on the card sends a short message
+   to the author's mailbox through the same Worker. A word list was considered
+   and refused for three reasons: the surface is tiny (control ids are
+   constrained to `[a-z0-9-]`, so only the nickname, maker and model are free
+   text); a list covering every language cannot be maintained and is defeated by
+   `n4zi`; and above all **the harmful setup is not the rude one, it is the wrong
+   one** — bad CC numbers, positions at random — which no filter can see and only
+   a user can report.
+4. **Free strings get shorter.** The validator allows 200 characters, enough to
+   write a sentence in a nickname. Around 40 is enough for a name and removes the
+   surface without a list to maintain — the one part of the filter idea worth
+   keeping.
+5. **No account anywhere.** A nickname is typed, not proven. This revises D-025,
+   and it also moves the stars: counting them on GitHub discussions required the
+   very account this refuses, so votes go through the same Worker.
+6. **`setup` is the word the user reads; `profile` stays the word of the format
+   and the code.** "Profile" collides with "user profile" in a reader's head, and
+   the file is a description of a desk, not of a person. Renaming it in the
+   format would touch 417 occurrences across 32 files, 306 more in the documents,
+   and `profileId` is a persisted field — so the rename would invalidate every
+   setup written so far and force `formatVersion` 2, for a word only the code
+   reads. The project already runs four names for one product on purpose
+   (AGENTS.md §2); this is the fifth, at the layer where it matters.
+
+7. **One vote per address and per setup**, stored as a fingerprint and never as
+   an address.
+   Asked on 2026-09-05: can a repeated vote from one IP be refused? Yes — the
+   Worker sees `CF-Connecting-IP` — and it is worth doing, but what it buys has
+   to be stated plainly. It stops the bored click, not a determined person: an
+   address changes with a phone, a VPN or a router reboot. It also costs
+   something in the other direction, because a household or an office shares one
+   address and a second, legitimate vote from it is refused. And an IP is
+   personal data, so what is kept is `hash(address + setupId + secret)` — the
+   setup id is part of the key, so one address votes on as many setups as it
+   likes and once on each. Enough to recognise a repeat, useless for anything
+   else, and nothing to erase later.
+   Approximate deduplication is the right target here: a star is an opinion, not
+   a ballot.
+
+**Consequence** — nothing stands between writing a setup and other people having
+it, which is what makes the catalogue worth the calibration. What protects the
+reader is not a gate at the entrance but the things that already exist: the
+validator refuses dangerous strings on every field, the completeness figure says
+how much of the device was actually observed, and the stars and reports say what
+the machine cannot judge.
+
+**What would justify revisiting it** — Reports arriving faster than one person
+can read them. That is the point where a queue starts costing less than the
+mailbox, and the number is small: a handful a week.
+
+**Proof in the code** — `src/renderer/js/midi/controllerProfile.js`
+(`DANGEROUS_STRINGS`, tested against every string in the file, and
+`LIMITS.stringLength` at 200, the value point 4 lowers), and
+`test/conformance/published-control-ids.json` (control ids constrained to
+`[a-z0-9-]`, which is why the free-text surface is three fields wide).

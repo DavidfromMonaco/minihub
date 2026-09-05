@@ -390,6 +390,30 @@ serve files nothing can consume. It stands on its own — a friend writing a
 profile by hand needs it as much as the Builder does — and it is what D-022 froze
 deliberately.
 
+**No vision model — measured, not argued, 2026-09-05.** Five detectors run in the
+browser (OWL-ViT, OWLv2, DETR, Florence-2 base and large, plus twenty lines of
+JavaScript), each handed the control counts the MIDI calibration already knows.
+Best result: OWLv2 at ~600 MB found the eight backlit pads and called piano keys
+faders. Size did not help — Florence-2 large matched its base at one shape,
+"computer monitor". The criterion that closes it is the author's: **the reference
+photograph is the poor one**, because that is what people will send. What
+survives is the click, which is robust precisely where detectors collapse, and
+which costs no download. Spec §10 question 0, D-023.
+
+**How a setup arrives, decided 2026-09-05** — [DECISIONS.md](DECISIONS.md)
+D-026, **specification only**. It is published the moment it arrives: no queue,
+no approval, nothing waiting on one person. A Cloudflare Worker on the account
+that already holds the DNS takes the file, the vote and the report; the site
+stays static and the credential never reaches the page. A report button replaces
+a word filter — the harmful setup is the **wrong** one, not the rude one, and no
+list sees that. Repeat votes are deduplicated by a hash of the address, which
+stops the bored click and not a determined person, and keeps no address. No
+account anywhere, so the nickname is typed rather than proven, which revises
+D-025 and moves the stars off GitHub. And `setup` becomes the word the user reads
+while `profile` stays the word of the format: renaming it for real would touch
+417 occurrences, invalidate every file written so far and force `formatVersion`
+2, for a word only the code reads.
+
 **Device cards land in C** — spec §5.4. One page per device: photo, history,
 specifications, connectors, keybed, and a blueprint generated from the profile
 rather than drawn by hand. Written by the author, after the rest.

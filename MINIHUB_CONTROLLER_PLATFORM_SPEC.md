@@ -519,6 +519,15 @@ list claims nothing about geometry, so it cannot be wrong about it. The
 photograph is the only mechanism in the whole journey that **measures**
 ordinality instead of assuming it.
 
+**One click per control, and not one more.** The journey is a **loop**, never a
+sequence of armings: the Builder listens continuously, a click places the control
+that just spoke, and listening resumes on its own. Nothing is re-armed between
+two controls — over forty controls, a confirmation button is forty wasted clicks,
+and the tedium is what makes a profile stay unfinished. The family is not asked
+either where the message already answers it: a note comes from a pad, a pitch
+bend from a wheel. Only a continuous CC leaves the choice open between a knob and
+a fader, and even there a proposal is made, so the loop continues if it fits.
+
 **Consequence on the format** — `layout` becomes optional (§4.4, revised).
 Absence is the marker, and deliberately not a `confidence` on the layout: a field
 flagged "unsure" is read as sure within six months, whereas a field that is not
@@ -638,8 +647,13 @@ everything they mapped. The second exists because trusting a mapper is a real
 reason to pick a profile, and because someone precise on one device is usually
 precise on the next.
 
-**Stars** are counted on GitHub and served as a committed snapshot — §7.2,
-revised.
+**Stars** are counted through the same Worker that receives the setups, not on
+GitHub: counting them there would have required an account, which D-026 refuses
+for the same reason it refuses one for the nickname. §7.2 revised, D-026.
+
+**A setup is published on arrival**, with no review queue, and a report button
+sends a short message to the author. Why reporting rather than a word filter, and
+why that is not a return of the tiers §7.2 refused: D-026.
 
 **What the catalogue changes about the common journey**: it stops being
 calibration. Plug in, be recognised, download. Calibration becomes the first
@@ -910,17 +924,37 @@ découvertes soient lisibles plutôt que silencieuses.
    qu'`INTENT.md` §2 nomme précisément. L'Étape A, elle, reste justifiée seule.
 2. **Le pluriel entre-t-il dans D-018 maintenant** (§6.8), ou D-018 s'écrit-elle
    au singulier puis se reprend ?
-0. **Un modèle de vision embarqué peut-il pré-placer les formes ?** *(In English,
-   per AGENTS.md §6.)* Asked 2026-09-05, untested. A small multimodal model
-   (Florence-2, SmolVLM) runs in the browser over WebGPU with weights fetched
-   from a public CDN — no backend, no key, and the photograph never leaves the
-   machine. What it **cannot** do is say which of eight identical knobs sends
-   CC 74, so it does not remove the click of §5.3 bis. What it could give is what
-   neither MIDI nor the format supplies: each control's **family** and its
-   **size** — the two things the blueprint test of 2026-09-05 found missing. Cost
-   to weigh: a few hundred megabytes on first visit, WebGPU-capable browsers
-   only, and a third-party origin in the CSP. To be prototyped before it is
-   promised.
+0. ~~**Un modèle de vision embarqué peut-il pré-placer les formes ?**~~
+   **Answered no, 2026-09-05, by measurement.** *(In English, per AGENTS.md §6.)*
+   Five detectors were run in the browser over WebGPU against a photograph of the
+   author's own MiniLab 3, each with the control counts the MIDI calibration
+   already knows — eight knobs, sixteen pads, four faders, two wheels — so that
+   the question asked was the easiest one: not *what is this*, but *find this many
+   of these*.
+
+   | detector | weights | result |
+   |---|---|---|
+   | twenty lines of JavaScript | 0 MB | finds what is light, misses what is dark |
+   | OWL-ViT base | ~160 MB | 3 shapes |
+   | **OWLv2 base** | ~600 MB | **the 8 pads, correctly** — everything else wrong |
+   | DETR ResNet-50 | ~160 MB | 1 shape, "remote" |
+   | Florence-2 base **and** large | ~250 MB / ~1.5 GB | 1 shape, "computer monitor" |
+
+   Size does not help: Florence-2 large, three times the base, answered the same
+   thing. Only OWLv2 found anything real — the pads, which are backlit and the
+   one high-contrast object on the panel — and it labelled piano keys as faders.
+
+   **The criterion that settles it, and it came from the author:** the reference
+   photograph is the **poor** one. People will send what their phone takes at
+   night, slightly askew. A detector that needs studio lighting does not solve the
+   problem, it moves it onto the user, who owns neither a tripod nor a light.
+   Testing on a good photograph would have been self-deception.
+
+   What survives every one of those failures is the click, and it is robust
+   exactly where the detectors collapse: **a person recognises their own keyboard
+   on a bad photograph**, because they have it under their fingers and just moved
+   the control. No model has that advantage. §5.3 bis stands unchanged, and it
+   costs no download, no third-party origin and no WebGPU.
 3. **Le Builder vit-il dans ce dépôt ou dans un second ?** Un second dépôt
    protège l'interdit « aucune étape de build JS » ; un seul dépôt garde le
    décodeur et son corpus sous un même `npm test`.
