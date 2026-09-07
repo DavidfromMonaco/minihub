@@ -406,11 +406,11 @@ void SequencerEngine::captureSource(const std::string& source,const juce::AudioB
     if(!recording_.load(std::memory_order_relaxed))return;auto* plan=acquirePlan(false);if(!plan)return;for(auto& track:plan->tracks)if(track.type=="audio"&&track.armed&&track.inputId==source&&track.takeWriter)track.takeWriter->process(audio,count);releasePlan();
 }
 
-void SequencerEngine::beginRecording(Transport& transport)
+void SequencerEngine::beginRecording(Transport& transport,bool startTransport)
 {
     if(recording_.exchange(true))return;midiTakes_.clear();audioTakes_.clear();auto* plan=activePlan_.load();if(!plan){recording_=false;return;}
     for(auto& track:plan->tracks)if(track.armed){if(track.type=="midi"){MidiTake take;take.trackId=track.id;take.sourceId=track.inputId;take.startPpq=take.lastPpq=transport.ppqPosition();midiTakes_.push_back(std::move(take));}else if(track.takeWriter&&!track.inputId.empty()&&track.takeWriter->begin()){audioTakes_.push_back({track.id,track.takeWriter,transport.ppqPosition(),transport.bpm()});}}
-    transport.setRecording(true);if(!transport.playing())transport.setPlaying(true);
+    transport.setRecording(true);if(startTransport&&!transport.playing())transport.setPlaying(true);
 }
 
 double SequencerEngine::recordedPpq(MidiTake& take,Transport& transport) const noexcept

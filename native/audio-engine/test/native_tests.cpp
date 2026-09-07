@@ -685,6 +685,41 @@ void testSequencerMidiSchedulingAndRecording()
     sequencer.panic();destination.pullMidi(midi,512); // panic is delivered by Chain on its next process block in the full engine
 }
 
+void testSequencerPreCountKeepsTheDownbeat()
+{
+    // Record with the metronome on opens a count-in. The takes are opened as it
+    // starts, not after the fourth click, because a player attacks the downbeat
+    // WITH the key: those notes arrive during the count-in, and with no take yet
+    // recordMidiInput dropped them outright -- velocity, attack and all. The
+    // transport stays parked meanwhile, so everything played pins to the start
+    // the user chose instead of drifting.
+    mlh::SequencerEngine sequencer;sequencer.prepare(48000,12000);mlh::Chain destination("vst-001");destination.setMidiEnabled(true);
+    juce::Array<juce::var> tracks;tracks.add(midiTrack("track-midi","vst-001",true));juce::Array<juce::var> info;std::string error;
+    expect(sequencer.sync(makeSequencerProject(tracks),[&](const std::string&id){return id=="vst-001"?&destination:nullptr;},48000,12000,info,error),"pre-count arrangement compiles");
+
+    mlh::Transport transport;transport.setSampleRate(48000);transport.seekPpq(8);
+    sequencer.beginRecording(transport,false);
+    expect(sequencer.recording(),"the take is open before the count-in ends");
+    expect(!transport.playing(),"opening the take for a count-in leaves the transport parked");
+
+    sequencer.recordMidiInput("in-1",juce::MidiMessage::noteOn(1,60,(juce::uint8)118),0,transport);
+    transport.setPlaying(true);transport.seekPpq(8.75);
+    sequencer.recordMidiInput("in-1",juce::MidiMessage::noteOff(1,60),0,transport);
+    const auto recorded=sequencer.finishRecording(transport);
+
+    expect(recorded.size()==1,"a note played during the count-in still produces a take");
+    if(recorded.size()){
+        expect((double)recorded[0]["startPpq"]==8,"the take starts where the playhead was left");
+        const auto* events=recorded[0]["events"].getArray();
+        expect(events&&events->size()==1,"the count-in note is recorded rather than discarded");
+        if(events&&events->size()){
+            expect((double)(*events)[0]["startPpq"]==8,"and is pinned to the chosen start");
+            expect((int)(*events)[0]["velocity"]==118,"keeping the velocity it was played with");
+            expect((double)(*events)[0]["durationPpq"]>.7,"and a length measured to the real release");
+        }
+    }
+}
+
 void testSequencerMidiStressLoopSeekAndStop()
 {
     mlh::SequencerEngine sequencer;sequencer.prepare(48000,24001);mlh::Chain destination("vst-stress");destination.setMidiEnabled(true);
@@ -1390,6 +1425,8 @@ int main(int argc, char** argv)
     testAudioTakeWriter();
     std::cerr << "[core] sequencer-midi\n";
     testSequencerMidiSchedulingAndRecording();
+    std::cerr << "[core] sequencer-precount\n";
+    testSequencerPreCountKeepsTheDownbeat();
     std::cerr << "[core] sequencer-midi-stress\n";
     testSequencerMidiStressLoopSeekAndStop();
     std::cerr << "[core] physical-midi-arp\n";

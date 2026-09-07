@@ -51,7 +51,10 @@ public:
     void captureSource(const std::string& sourceId, const juce::AudioBuffer<float>&,
                        int numSamples, Transport&) noexcept;
 
-    void beginRecording(Transport&);
+    // startTransport=false opens the takes on the stationary playhead, for the
+    // metronome pre-count: what is played during the count-in has to land in a
+    // take that already exists, or it is discarded with no trace.
+    void beginRecording(Transport&, bool startTransport = true);
     juce::Array<juce::var> finishRecording(Transport&);
     void recordMidiInput(const std::string& sourceId, const juce::MidiMessage&,
                          double offsetMs, Transport&);

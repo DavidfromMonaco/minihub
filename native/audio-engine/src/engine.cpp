@@ -217,11 +217,15 @@ void Engine::timerCallback()
     }
     if (preCountComplete_.exchange(false, std::memory_order_acq_rel))
     {
-        // The audio callback owns count-in timing; allocation-heavy take setup
-        // stays on the JUCE message thread and starts on the unchanged live
-        // playhead immediately after the fourth real click.
-        if (!shutdownRequested_ && !sequencer_.exporting() && !sequencer_.recording())
-            sequencer_.beginRecording(transport_);
+        // The audio callback owns count-in timing. The takes were opened when
+        // Record was pressed, so the fourth click only has to start the clock
+        // they are already recording against; beginRecording here is the path
+        // where there was no pre-count to open them.
+        if (!shutdownRequested_ && !sequencer_.exporting())
+        {
+            if (!sequencer_.recording()) sequencer_.beginRecording(transport_);
+            else if (!transport_.playing()) transport_.setPlaying(true);
+        }
         cmdGetTransport(juce::var());
     }
     if (++uiTelemetryDivider_ < 6) return;
@@ -1862,6 +1866,12 @@ void Engine::cmdSequencerRecord(const juce::var& msg)
                 transport_.bpm()/(60.0*std::max(1.0,currentSampleRate_)),
                 std::memory_order_relaxed);
             preCountComplete_.store(false,std::memory_order_relaxed);
+            // The takes open now, not after the fourth click. A player attacks
+            // the downbeat with the key, so the opening notes arrive during the
+            // count-in; with no take yet, recordMidiInput dropped them and the
+            // velocity and attack they carry were gone. The transport stays put,
+            // so recordedPpq pins every one of them to the chosen start.
+            sequencer_.beginRecording(transport_,false);
             preCountActive_.store(true,std::memory_order_release);
         }else if(!preCountActive_.load(std::memory_order_acquire)){
             sequencer_.beginRecording(transport_);
@@ -1870,8 +1880,10 @@ void Engine::cmdSequencerRecord(const juce::var& msg)
         preCountGeneration_.fetch_add(1,std::memory_order_acq_rel);
         const bool cancelledPreCount=preCountActive_.exchange(false,std::memory_order_acq_rel);
         preCountComplete_.store(false,std::memory_order_release);
-        if(!cancelledPreCount)
-            for(const auto& event:sequencer_.finishRecording(transport_))ipc_.send(event);
+        // Closing is unconditional now: a cancelled pre-count can already hold a
+        // take, and finishRecording emits nothing for one that caught no note.
+        (void)cancelledPreCount;
+        for(const auto& event:sequencer_.finishRecording(transport_))ipc_.send(event);
         transport_.setPlaying(false);panicAllMidi();
     }
     cmdGetTransport(msg);
