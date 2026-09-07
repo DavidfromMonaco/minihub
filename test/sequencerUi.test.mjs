@@ -479,3 +479,25 @@ test('the explicit Patch Bay Sequencer node opens the fixed Sequencer page', asy
     'double-clicking the network node opens the existing fixed page');
   routing.unmount();
 });
+
+test('the timeline carries the view with the playhead instead of pinning the opening bars', async () => {
+  const { followScrollPpq } = await import('../src/renderer/js/modules/sequencer/sequencerModule.js');
+  const viewport = 40;
+
+  assert.equal(followScrollPpq(20, 0, viewport), null, 'a cursor mid-screen moves nothing');
+  assert.equal(followScrollPpq(5, 0, viewport), null, 'nor does one still inside the left margin');
+
+  // Recording past the right edge: the view follows and leaves the bars ahead
+  // of the cursor visible, which is the half that is about to be played.
+  const ahead = followScrollPpq(60, 0, viewport);
+  assert.ok(ahead > 0, 'a cursor past the right edge pulls the view');
+  assert.ok(60 >= ahead && 60 <= ahead + viewport, 'and lands the playhead on screen');
+  assert.ok(ahead + viewport - 60 > 60 - ahead, 'with more room ahead of it than behind');
+
+  // A seek backwards out of view is the same rule, not a second behaviour.
+  assert.ok(followScrollPpq(4, 100, viewport) < 4, 'a backward jump also brings the cursor back');
+  assert.equal(followScrollPpq(0, 100, viewport), 0, 'and the start of the timeline never scrolls negative');
+
+  assert.equal(followScrollPpq(10, 0, 0), null, 'an unmeasured viewport is left alone');
+  assert.equal(followScrollPpq(Number.NaN, 0, viewport), null);
+});

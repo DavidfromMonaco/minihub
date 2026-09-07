@@ -8,6 +8,21 @@ const LEGACY_DEVICE_INPUT_ID = 'device-input';
 const EXPORT_STALL_TIMEOUT_MS = 60000;
 
 /**
+ * How many transport frames the renderer holds its own Record intent before
+ * believing the engine's "not recording".
+ *
+ * `sequencerRecord(true)` and the transport telemetry are two different
+ * directions of the same 60 Hz conversation, so between the click and the
+ * engine's first confirmation there is always at least one frame that still
+ * reports `recording: false`. Taking that frame at face value flipped
+ * `this.recording` back off, and `receiveMidiInput` forwards nothing while it
+ * is off -- which is exactly how the opening notes of a take disappeared with
+ * no error anywhere. Twenty frames is a third of a second: long enough to cover
+ * the round trip, short enough that a genuine refusal still surfaces.
+ */
+const RECORD_CONFIRM_GRACE_FRAMES = 20;
+
+/**
  * A cable carrying what is PLAYED into the sequencer.
  *
  * It used to be `from.nodeId === MINILAB_NODE_ID`, which is the sequencer
@@ -51,6 +66,8 @@ export class SequencerController {
     this._unsubs = [];
     this._syncQueued = false;
     this._activeInputNotes = new Map();
+    this._recordConfirmPending = false;
+    this._recordConfirmFrames = 0;
     this._clipClipboard = null;
     this._projectTransitionState = 'idle';
     this._projectTransitionEpoch = 0;
@@ -102,9 +119,12 @@ export class SequencerController {
           this.hub.events.emit('sequencer:transport', { playing: this.playing });
         }
         const logicalRecording = preCounting || state?.recording === true;
-        if (typeof state?.recording === 'boolean' && this.recording !== logicalRecording) {
-          this.recording = logicalRecording;
-          this.hub.events.emit('sequencer:recording', this.recording);
+        if (typeof state?.recording === 'boolean') {
+          const accepted = this._acceptEngineRecording(logicalRecording);
+          if (this.recording !== accepted) {
+            this.recording = accepted;
+            this.hub.events.emit('sequencer:recording', this.recording);
+          }
         }
         this.hub.events.emit('sequencer:playhead', this.playheadPpq);
         this._queueEditorTransport();
@@ -557,6 +577,48 @@ export class SequencerController {
     this._activeInputNotes.clear();
   }
 
+  /** Reconcile the engine's recording flag with the intent this renderer has
+   *  already acted on. See RECORD_CONFIRM_GRACE_FRAMES. */
+  _acceptEngineRecording(engineRecording) {
+    if (!this._recordConfirmPending) return engineRecording;
+    if (engineRecording) {
+      this._recordConfirmPending = false;
+      this._recordConfirmFrames = 0;
+      return true;
+    }
+    this._recordConfirmFrames += 1;
+    if (this._recordConfirmFrames > RECORD_CONFIRM_GRACE_FRAMES) {
+      // The engine refused the take -- an armed track the native plan did not
+      // have yet, for one. Stop claiming to record.
+      this._recordConfirmPending = false;
+      this._recordConfirmFrames = 0;
+      return false;
+    }
+    return true;
+  }
+
+  /** Re-send the notes already under the fingers when Record was pressed.
+   *
+   *  A player hits the downbeat with the key, not after it, so the Note On that
+   *  belongs at the top of the take is typically already down when the take
+   *  opens. Its Note Off will arrive normally and close a note of the right
+   *  length; without this, the same Note Off closes nothing and the note is
+   *  lost outright.
+   *
+   *  Ordering carries this: `sequencerRecord` and `sequencerMidiInput` share one
+   *  channel, so these reach the engine after `beginRecording` has opened the
+   *  takes, and land on `std::max(take.startPpq, q)` -- pinned to the start the
+   *  user chose. Nothing is announced, and nothing is offered to configure.
+   */
+  _captureHeldNotes() {
+    for (const held of this._activeInputNotes.values()) {
+      for (const press of held) {
+        if (!Array.isArray(press?.raw) || !press.raw.length) continue;
+        this.hub.engine.sequencerMidiInput(press.sourceId || '', press.raw, press.offsetMs || 0);
+      }
+    }
+  }
+
   /** Accept one message that has actually crossed Sequencer MIDI IN, then
    * route live performance only to armed/monitored track destinations. */
   receiveMidiInput(message) {
@@ -575,7 +637,12 @@ export class SequencerController {
       const destinations = this._liveDestinationIds();
       for (const destination of destinations) this._sendLiveMidi(destination, message, raw);
       const held = this._activeInputNotes.get(key) || [];
-      held.push({ destinations });
+      held.push({
+        destinations,
+        sourceId: message.sourceId || '',
+        raw: [...raw],
+        offsetMs: Number(message.offsetMs) || 0
+      });
       this._activeInputNotes.set(key, held);
     } else if (isNoteOff) {
       const held = this._activeInputNotes.get(key) || [];
@@ -813,7 +880,10 @@ export class SequencerController {
     this.preCounting = this.metronomeEnabled && !this.playing;
     this.recording = true;
     this.playing = true;
+    this._recordConfirmPending = true;
+    this._recordConfirmFrames = 0;
     this.hub.engine.sequencerRecord(true);
+    this._captureHeldNotes();
     this.hub.events.emit('sequencer:recording', true);
     this.hub.events.emit('sequencer:transport', { playing: true });
     if (this.preCounting) this.hub.events.emit('sequencer:count-in', { active: true, beat: 0, beats: 4 });
@@ -828,6 +898,8 @@ export class SequencerController {
       this.hub.events.emit('sequencer:count-in', { active: false, beat: 0, beats: 4 });
     }
     this.recording = false;
+    this._recordConfirmPending = false;
+    this._recordConfirmFrames = 0;
     const command = this.hub.engine.sequencerRecord(false);
     this.hub.events.emit('sequencer:recording', false);
     // UI callers keep the historical synchronous boolean contract. Project

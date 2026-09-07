@@ -8,6 +8,31 @@ const TRACK_HEIGHT = 140;
 const RULER_HEIGHT = 30;
 const TIMELINE_BEATS = 256;
 
+/**
+ * Where the timeline must scroll so the playhead stays on screen.
+ *
+ * Returns `null` when the playhead is already comfortably inside the viewport,
+ * so a running transport does not rewrite `scrollLeft` sixty times a second.
+ *
+ * The playhead is parked at `LEAD` of the viewport rather than centred: during
+ * a take what matters is the bars you are about to play, so the empty side of
+ * the screen belongs ahead of the cursor, not behind it. A jump backwards (a
+ * seek, a loop wrap) lands on the same rule, which is what keeps the two cases
+ * from needing two behaviours.
+ */
+const FOLLOW_MARGIN = 0.12;
+const FOLLOW_LEAD = 0.18;
+
+export function followScrollPpq(playheadPpq, scrollPpq, viewportPpq) {
+  const head = Number(playheadPpq);
+  const left = Math.max(0, Number(scrollPpq) || 0);
+  const width = Number(viewportPpq);
+  if (!Number.isFinite(head) || !Number.isFinite(width) || width <= 0) return null;
+  const margin = width * FOLLOW_MARGIN;
+  if (head >= left + margin && head <= left + width - margin) return null;
+  return Math.max(0, head - width * FOLLOW_LEAD);
+}
+
 const gainToDb = (gain) => gain > 0
   ? Math.max(-60, Math.min(6, 20 * Math.log10(gain))) : -60;
 const dbToGain = (db) => db <= -60 ? 0 : 10 ** (db / 20);
@@ -168,6 +193,26 @@ export function createSequencerModule(hub) {
   let metronomePulseTimer = null;
   let exportOptions = { format: 'wav', bits: 24, bitrateKbps: 320, qualityIndex: -1, tailSeconds: 2 };
   let exportStatus = null;
+
+  /** Move the cursor, and carry the view with it when it would leave the
+   *  screen. Recording used to pin the viewport to the opening bars while the
+   *  take ran on somewhere off-screen, so the timeline stopped answering the
+   *  one question it exists to answer: where am I. */
+  function movePlayhead(ppq) {
+    if (!container) return;
+    const zoom = controller.model.state.zoom;
+    const head = container.querySelector('[data-playhead]');
+    if (head) head.style.left = `${TRACK_HEADER + ppq * zoom}px`;
+    const scroller = container.querySelector('[data-timeline-scroll]');
+    if (!scroller) return;
+    const viewportPpq = Math.max(16, (container.clientWidth - TRACK_HEADER) / zoom);
+    const next = followScrollPpq(ppq, controller.model.state.scrollPpq, viewportPpq);
+    if (next === null) return;
+    // Assigning scrollLeft raises the scroller's own listener, which republishes
+    // scrollPpq and repaints the clips that just entered the window.
+    controller.model.state.scrollPpq = next;
+    scroller.scrollLeft = next * zoom;
+  }
 
   function resizeRender() {
     if (resizeRenderQueued || !container) return;
@@ -629,7 +674,7 @@ export function createSequencerModule(hub) {
       hub.events.on('midi:ports', render),
       hub.events.on('midi:preference', render),
       hub.events.on('network:change', render),
-      hub.events.on('sequencer:playhead', (ppq) => { const el = container?.querySelector('[data-playhead]'); if (el) el.style.left = `${TRACK_HEADER + ppq * controller.model.state.zoom}px`; }),
+      hub.events.on('sequencer:playhead', movePlayhead),
       hub.events.on('sequencer:export', (status) => { exportStatus = status; render(); }),
       hub.events.on('sequencer:export-capabilities', render)
     );

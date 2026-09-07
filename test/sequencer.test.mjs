@@ -599,3 +599,80 @@ test('manual project state round-trips tracks, clips, notes, audio references, l
   assert.deepEqual(restored.tracks, controller.model.snapshot().tracks); assert.deepEqual(restored.loop, { enabled: true, startPpq: 4, endPpq: 12 });
   assert.equal(restored.tracks[1].clips[0].filePath, 'D:\\audio\\take.wav'); assert.equal(restored.tracks[1].volume, .42); assert.equal(restored.tracks[1].muted, true);
 });
+
+function recordReady() {
+  const rigged = rig();
+  const track = rigged.controller.model.addTrack('midi');
+  rigged.hub.midi.selectedInputId = 'selected-midi';
+  rigged.controller.setTrack(track.id, { armed: true, inputId: 'selected-midi', outputId: 'vst-001' });
+  rigged.hub.network.connect('minilab-3', 'midi-out', 'sequencer', 'midi-in');
+  assert.equal(rigged.controller.recordBlockReason(), '');
+  return { ...rigged, track };
+}
+
+const recordedNotes = (commands) => commands.filter((command) => command.type === 'midiInput');
+
+test('a transport frame that predates the engine confirmation cannot swallow the first notes', () => {
+  const { controller, hub, commands } = recordReady();
+  assert.equal(controller.startRecording(), true);
+
+  // The 60 Hz telemetry in flight when Record was pressed still says "not
+  // recording". Believing it used to switch this.recording back off, and
+  // receiveMidiInput forwards nothing while it is off.
+  hub.events.emit('engine:transport', { playing: true, recording: false, ppqPosition: 0 });
+  assert.equal(controller.recording, true, 'the local intent outlives one stale frame');
+
+  commands.length = 0;
+  controller.receiveMidiInput({ sourceId: 'selected-midi', raw: [0x90, 60, 100] });
+  assert.equal(recordedNotes(commands).length, 1, 'the downbeat reaches the engine');
+
+  hub.events.emit('engine:transport', { playing: true, recording: true, ppqPosition: 0.1 });
+  assert.equal(controller.recording, true);
+  commands.length = 0;
+  controller.receiveMidiInput({ sourceId: 'selected-midi', raw: [0x80, 60, 0] });
+  assert.equal(recordedNotes(commands).length, 1, 'and so does its Note Off');
+});
+
+test('a take the engine never confirms stops claiming to record', () => {
+  const { controller, hub } = recordReady();
+  controller.startRecording();
+  const states = [];
+  hub.events.on('sequencer:recording', (value) => states.push(value));
+  for (let frame = 0; frame < 25; frame += 1) {
+    hub.events.emit('engine:transport', { playing: true, recording: false, ppqPosition: 0 });
+  }
+  assert.equal(controller.recording, false, 'a refusal still surfaces once the grace is spent');
+  assert.deepEqual(states, [false], 'and it is announced exactly once');
+});
+
+test('notes already under the fingers are re-sent when the take opens', () => {
+  const { controller, hub, commands } = recordReady();
+  // Played a hair before Record: the Note On is down, its Note Off is not.
+  controller.receiveMidiInput({ sourceId: 'selected-midi', raw: [0x90, 64, 111] });
+  assert.equal(recordedNotes(commands).length, 0, 'nothing is recorded before the take exists');
+
+  commands.length = 0;
+  assert.equal(controller.startRecording(), true);
+  const order = commands.map((command) => command.type);
+  assert.ok(order.indexOf('record') < order.indexOf('midiInput'),
+    'the take must be open before the held note is replayed into it');
+  const replayed = recordedNotes(commands);
+  assert.equal(replayed.length, 1);
+  assert.deepEqual(replayed[0].args[1], [0x90, 64, 111], 'velocity and pitch survive the replay');
+
+  // The real Note Off closes the replayed note, giving it a true length.
+  hub.events.emit('engine:transport', { playing: true, recording: true, ppqPosition: 0.5 });
+  commands.length = 0;
+  controller.receiveMidiInput({ sourceId: 'selected-midi', raw: [0x80, 64, 0] });
+  assert.equal(recordedNotes(commands).length, 1);
+});
+
+test('a released note is not replayed into the take', () => {
+  const { controller, commands } = recordReady();
+  controller.receiveMidiInput({ sourceId: 'selected-midi', raw: [0x90, 64, 100] });
+  controller.receiveMidiInput({ sourceId: 'selected-midi', raw: [0x80, 64, 0] });
+  commands.length = 0;
+  controller.startRecording();
+  assert.equal(recordedNotes(commands).length, 0,
+    'a note finished before Record would collapse to zero length against startPpq');
+});
