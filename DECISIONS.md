@@ -1503,3 +1503,48 @@ the `.minihub` association true and worth registering.
 `[UninstallDelete]` bounded to `{app}\resources` and `{app}\locales`, the
 rewritten `ConfirmUninstall`), `scripts/build-installer.mjs` (refuses a tree with
 no `runtime-provenance.json`), `package.json` (`build:installer`).
+
+## D-032 — An edit history that undoes authorship, not performance
+
+**Status**: in force · 2026-09-07 · **decided, not implemented**
+
+**Context** — Asked on 2026-09-07: an event history with a control in the shell,
+entries in the application menu, and `Ctrl+Z` / `Ctrl+Shift+Z`. `undo/redo` was
+listed out of scope in INTENT §6, so this entry is the lifting and its bounds.
+
+The argument was already in the repository. D-014 made closing MiniHub save, and
+wrote down the cost — no edit history, so a bad deletion followed by an exit is
+final — then named "historique d'annulation persistant" as what would justify
+revisiting. The refusal in §6 and the remedy in D-014 had been contradicting each
+other since both were written.
+
+**Decision** — MiniHub keeps **one linear, in-session history of project edits**.
+The lifting is written in INTENT §8 quinquies and bounded there. What matters
+architecturally is the line it draws: the history owns **authored state** — the
+network, tracks, clips, notes — and never **performed state**.
+
+**Consequence** — four things follow, and each is a door closed on purpose:
+
+- **The engine is not a participant.** Invariant 2 says the network is the
+  routing authority; the history therefore restores *the network*, and the engine
+  is resynchronised from it by the existing `buildRoutingSync` path. Undo does
+  not send the engine a reverse command, because a reverse command for a live
+  audio callback does not exist.
+- **A note recorded into a take is not an edit.** The take is a performance; the
+  clip it produces is authorship. The boundary is `_acceptMidiRecording`, where a
+  native take becomes a clip — the first thing on the history's side of the line.
+- **Undo restores state, it does not replay inverse operations.** Two-thirds of
+  the model is already snapshot-shaped (`model.snapshot()`, `normalizeSequencerState`),
+  and an inverse-operation history would need a correct inverse for every
+  operation on `nodeInstances.js` and `routingModule.js` — the two files
+  ROADMAP item 4 exists because they are already too entangled to change safely.
+- **No persistence.** The history dies with the window; D-014's other remedy,
+  successive saved versions of the `.minihub`, is the answer to the durable need
+  and stays a separate question.
+
+**What would justify revisiting** — a project format that carries versions, which
+would make a persistent history a read of the file rather than a second store.
+
+**Where it lands** — [ROADMAP.md](ROADMAP.md) item 13. It should follow item 4:
+splitting `nodeInstances.js` is what makes "capture and restore the authored
+state" a small amount of code rather than a second traversal of the same tangle.

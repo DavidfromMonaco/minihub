@@ -98,6 +98,12 @@ Four duplications that made adding a module a trap.
 
 ## To do
 
+**The order below is a numbering, not a queue.** Items are listed in the order
+they were opened, and any of them can be picked up on its own. Where taking one
+before another actually costs something, the item says what that costs — as a
+description of what happens, so the choice can be made knowingly, never as a
+prerequisite. Nothing here is waiting on permission.
+
 ### 4. Split `nodeInstances.js` — the real workstream
 
 **This is no longer what blocks adding a module — measured 2026-09-03.**
@@ -493,6 +499,153 @@ engine has to report the frame's position on move and on resize.
 refactors `ControlBindingManager`, which is what this window drives. Out of
 order, the refactor is paid twice.
 
+### 10. The sequencer's silent gate — no track by default, and no track armed
+
+Found in real use on 2026-09-07, not by a test: the sequencer was active, the
+keyboard played nothing, and nothing on screen said why.
+
+Two faults behind one symptom. `sequencerModel.js:50` starts a project with
+`tracks: []`, so nothing can play through the sequencer until a track has been
+created by hand — a step the common case never wants to make. Then
+`_liveDestinationIds()` (`sequencerController.js:512`) returns an empty list
+unless a track is `armed || monitored`, so `receiveMidiInput()` completes
+having sent nothing at all, in silence.
+
+The gate itself is **not** the bug and is not to be removed: it is what stops a
+performance from reaching every track at once, and `--cross-track-isolation`
+covers it. What is missing is the default, and the sentence on screen.
+
+- **A new project already holds one MIDI track.** An empty track list is the
+  rare case, not the opening one.
+- **Say why nothing is playing.** The controller already computes the sentence
+  — `'Arm at least one track with its R button.'` (`sequencerController.js:707`)
+  and `'Add at least one MIDI or audio track before recording.'` (line 705) —
+  but both are reachable only through `recordBlockReason`, so they surface when
+  recording is blocked and never when a note is simply played into nothing. The
+  same reason belongs on the transport, armed or not.
+
+This is the sequencer's own instance of a pattern worth watching elsewhere: the
+renderer knows the route is dead and keeps it to itself. `setChainMidiEnabled`
+does the same for a VST chain with no MIDI cable.
+
+**Order**: independent of items 4 to 9, and small.
+
+### 11. Sequencer editing — reading the whole take, and acting on a clip
+
+Asked 2026-09-07, not started. Two complaints about the same screen: you cannot
+choose what the timeline shows you, and a clip answers to nothing but the mouse.
+
+**Zoom that frames something.** The control exists — a raw pixels-per-quarter
+slider, `min="24" max="240"` (`sequencerModule.js:295`) — and it is the wrong
+handle. What is asked for is two named framings: **fit** (the whole arrangement
+at once) and **focus** (the selection, or the loop range, filling the width).
+Both are one line of arithmetic against `compositionEndPpq()` and the viewport
+already computed for `followScrollPpq`; the work is elsewhere.
+
+Two real constraints, and they are why this is not fifteen minutes:
+
+- **The floor of 24 blocks fit.** At 24 px per quarter a 1200 px window shows
+  twelve bars. Fit has to lower the floor, and everything positioned in
+  `zoom`-multiplied pixels has to stay legible when it does — clips already
+  carry a `Math.max(12, …)` width, so past a certain point they stop meaning
+  their own length.
+- **The ruler stops being readable before the clips do.** `rulerMarkup` draws a
+  mark per bar; fit on a long arrangement wants a coarser stride.
+
+**A context menu on a clip.** Right-click already exists in the Patch Bay
+(`routingModule.js:1346`), for cancelling a cable rather than opening a menu, so
+this is the first real menu in the application and it sets the pattern for the
+next one. Most entries are wiring to operations the model already has:
+`removeClips`, `duplicateClips`, `copyClips`, `pasteClips`, `quantizeMidiClip`,
+and Edit via `openClipEditor`.
+
+**The scissor is the exception — it does not exist.** Splitting is a new model
+operation, and it is not symmetric between the two clip types: a MIDI clip has
+to distribute its notes and decide what happens to a note straddling the cut
+(shortened, or moved whole to one side), while an audio clip is a `trimStart` /
+`trimEnd` pair with no sample to move. It belongs to this item, but it is the
+part with a design question in it, not just a menu row.
+
+**Order**: independent of items 4 to 10. The menu is worth doing first — it is
+the one that stops the mouse from being the only vocabulary.
+
+### 12. Patch Bay — an `Align` button that does what it says
+
+Asked 2026-09-07, not started. A canvas you rewire all day drifts, and the only
+way back to a readable graph is dragging every node by hand.
+
+**This is not the `automatic network layout` that INTENT §6 refuses**, and the
+distinction is the whole design: the refusal is aimed at a canvas that
+reorganises itself — a graph that moves while you are reading it, and moves your
+node out from under the cursor. `Align` is a **command**. It runs when it is
+asked to, once, and never again until it is asked again. Anything that starts
+running it on its own reopens §6.
+
+Most of it exists. `core/networkLayout.js` already holds both halves:
+`NetworkLayout.get(id, index, sizes)` places a node on a deterministic grid built
+from real node boxes, and `separateOverlaps(rects, gap)` pushes overlapping boxes
+apart — already called on every render, but only to repair collisions after a
+profile or project change (`routingModule.js:137`). `Align` is those two applied
+to the whole set on demand, then `layout.setMany(...)` to persist.
+
+What has to be decided rather than assembled:
+
+- **What "aligned" means.** Grid order is insertion order today, which has
+  nothing to do with signal flow. Ordering the columns by cable direction —
+  controller, then processing, then Audio Output — is what would make the button
+  worth pressing rather than merely tidy.
+- **Whether it can be taken back.** Rearranging every node is exactly the
+  gesture item 13 exists for.
+
+**If you take this one first** — before the history exists, `Align` moves every
+node with no way back to the arrangement you had. The button works; you just
+cannot change your mind about it. Doing item 13 first is what removes that, and
+it is the only thing linking the two.
+
+---
+
+### 13. An edit history — undo and redo across the application
+
+Asked 2026-09-07. `undo/redo` was out of scope; the refusal is **lifted**, with
+its bounds, in [INTENT.md](INTENT.md) §8 quinquies and
+[DECISIONS.md](DECISIONS.md) D-032. Read those two before writing code: what this
+item must *not* undo is the part that carries the risk.
+
+**The surface**, as asked: a control in the shell header, Back and Forward in the
+application menu, and `Ctrl+Z` / `Ctrl+Shift+Z`.
+
+**The line the history draws** — it owns **authored** state (network, tracks,
+clips, notes) and never **performed** state (transport, a knob moved during a
+take, a plugin's internal state, the audio device). Undo restores the network and
+lets the existing `buildRoutingSync` resynchronise the engine from it; it never
+sends the engine a reverse command, because a live audio callback has no inverse.
+
+**Snapshots, not inverse operations.** D-032 settles this. `model.snapshot()` and
+`normalizeSequencerState` already make the sequencer snapshot-shaped, and the
+project layer already captures and restores whole state on save and load. An
+inverse-operation history would instead need a correct inverse for every mutation
+in `core/nodeInstances.js` (1,145 lines) and `modules/routing/routingModule.js`
+(1,496 lines) — which is the reason for the ordering below.
+
+Three things that will not be obvious later:
+
+- **Coalescing.** A slider emits one `input` per pixel of a drag; `engineSync.js`
+  already separates a topology change from a value change for exactly this
+  reason. The history needs the same distinction, or one drag becomes two hundred
+  undo steps.
+- **The keyboard is contested.** `sequencerModule.js` binds `document` keydown
+  while mounted, and the clip editor is a separate window with its own document.
+  Whether `Ctrl+Z` in the clip editor undoes a note edit or the last Patch Bay
+  change is a product decision, not an implementation detail.
+- **A project switch ends the history.** `beginProjectTransition` /
+  `finishProjectTransition` already bracket that moment; the history is cleared
+  there, and never spans two projects.
+
+**If you take this one before item 4** — it still works, and it is worth doing.
+`core/nodeInstances.js` and `modules/routing/routingModule.js` are simply the two
+files where capturing the authored state is most tangled today, so the same work
+costs more before the split than after it. That is a price, not a barrier.
+
 ---
 
 ## Ideas beyond consolidation
@@ -503,9 +656,14 @@ No commitment, no priority — written down so they are not forgotten.
   nothing implements them.
 - The README used to list "sends, sidechains, automation, preset management,
   minimap, undo/redo, automatic network layout, node groups" as out of scope.
-  **They all remain so.** Preset management was the exception from 2026-09-02 to
-  2026-09-03: the workstream reached step 8 of 9 and was then withdrawn, and the
-  refusal is upheld ([DECISIONS.md](DECISIONS.md) D-013).
+  **Sends, sidechains, minimap, automatic network layout and node groups remain
+  so**, and INTENT §6 is the authority on that list, not this line. Three have
+  moved since: **automation** was lifted 2026-09-03 as the Matrix node
+  ([INTENT.md](INTENT.md) §8 bis, D-016, item 7 above), **undo/redo** was lifted
+  2026-09-07 as a bounded edit history (§8 quinquies, D-032, item 13 above), and
+  **preset management** was the exception from 2026-09-02 to 2026-09-03 — the
+  workstream reached step 8 of 9, was withdrawn, and the refusal is upheld
+  ([DECISIONS.md](DECISIONS.md) D-013).
 - The ten `runtime-*-gauntlet.mjs` scripts are one-off harnesses tied to closed
   investigations. To be grouped under `scripts/gauntlets/` or removed once their
   use is confirmed obsolete.

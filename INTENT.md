@@ -95,8 +95,8 @@ proposed "just in case" is to be refused.
 - **Not a DAW clone.** A feature is never justified by "other DAWs have it". It
   is justified by one of the two uses in §3.
 
-**Out of scope by default**: sends, sidechains, minimap, undo/redo, automatic
-network layout, node groups. The `video` and `image` node types exist in the
+**Out of scope by default**: sends, sidechains, minimap, automatic network
+layout, node groups. The `video` and `image` node types exist in the
 registry with empty ports; **nothing must implement them** until this line
 changes.
 
@@ -259,6 +259,51 @@ that makes that possible. The refusal of the plural lifts the day a second
 keyboard is on a desk, by the same mechanism that lifted this.
 
 Decision: [DECISIONS.md](DECISIONS.md) D-022.
+
+## 8 quinquies. Refusal lifted: an edit history, bounded to the project
+
+**Status: settled 2026-09-07. In scope.**
+
+`undo/redo` sat in the §6 list from the start. The refusal is lifted, and the
+argument is not "other DAWs have it" — §6 forbids exactly that reasoning. It is
+that this document's own decisions already asked for it. D-014 settled that
+closing MiniHub **saves**, and recorded the price in the same breath: *"Fermer
+n'est plus un moyen d'annuler. MiniHub n'a pas d'historique d'édition : une
+suppression malheureuse suivie d'une sortie est définitive."* It then named what
+would justify revisiting — *"historique d'annulation persistant"*. The refusal
+and the remedy were both already written down, pointing at each other.
+
+The second reason is §3. Both defining uses are performed live, in front of a
+keyboard, and the guard D-014 leaves in place is `Save As` **before** the risky
+move. That asks the player to predict which gesture will be the mistake. An edit
+history is what makes an experiment cheap enough to be worth making, and cheap
+experiments are the whole point of a Patch Bay you can rewire.
+
+What is lifted is **precisely bounded**:
+
+- an in-session history of **project edits** — the network, the tracks, the
+  clips, the notes — reached by a control in the shell, by the application menu,
+  and by `Ctrl+Z` / `Ctrl+Shift+Z`;
+- one linear history, one project. Switching projects starts a new one.
+
+What **stays** out of scope, and what the history must never become:
+
+- **nothing that is not a project edit.** Not the transport, not a knob turned
+  during a take, not a plugin's own internal state, not a device change. The
+  engine is a live instrument, and rewinding an instrument is not undoing an
+  edit;
+- **no persistence across sessions.** The history dies with the window. A
+  history written to disk is a second file format beside `.minihub`, and D-014's
+  other remedy — successive saved versions — is the honest answer to that need,
+  not this one;
+- **no branching**, no visible tree, no "history panel" listing the session. One
+  line, backwards and forwards.
+
+The difference fits in one sentence: the history undoes **what you authored**,
+never **what you performed**.
+
+Decision: [DECISIONS.md](DECISIONS.md) D-032. Workstream: [ROADMAP.md](ROADMAP.md)
+item 13.
 
 ## 9. Trade-offs
 
