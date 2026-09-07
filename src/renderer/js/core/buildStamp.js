@@ -4,10 +4,10 @@
  * the startup diagnostic log.
  */
 export const BUILD_STAMP = {
-  version: '0.1.0',
-  build: 'full-application-gauntlet-20260824',
-  timestamp: '2026-08-24T02:10:52Z',
-  stamp: 'mlh-full-application-gauntlet-20260824-01'
+  version: '0.2.0',
+  build: 'release-0.2.0',
+  timestamp: '2026-09-07T10:11:05Z',
+  stamp: 'mlh-release-0.2.0-20260907'
 };
 
 export function buildStampLabel() {
