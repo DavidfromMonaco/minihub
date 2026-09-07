@@ -646,6 +646,49 @@ Three things that will not be obvious later:
 files where capturing the authored state is most tangled today, so the same work
 costs more before the split than after it. That is a price, not a barrier.
 
+### 14. A track's MIDI input must survive the session, like the controller does
+
+Reported 2026-09-07: the MIDI controller has to be picked again at every
+launch. The application already solves this once, correctly, and the sequencer
+does not reuse the answer.
+
+**Two levels, one robust and one not.** `midi/midiManager.js` stores the global
+selection as a *fingerprint*, not an id: `preferenceForPort` (line 24) records
+name, manufacturer and type, `samePhysicalPort` (line 33) matches on it, and
+`_resolveInputPreference` falls back to that match when the stored id no longer
+resolves. That is why `midiInputPreference` survives a relaunch.
+
+A sequencer track stores `inputId` as a bare string —
+`sequencerModel.js:111`, `typeof track?.inputId === 'string' ? track.inputId : ''`.
+No fingerprint, no migration.
+
+**Web MIDI ids are not stable, and this machine proves it.** On 2026-09-07 the
+same MiniLab 3 was `input-2`, then `input-0`, then `input-2` again across three
+sessions. When the id moves, the saved `track.inputId` points at nothing:
+`_liveDestinationIds` (`sequencerController.js:512`) requires
+`track.inputId === selectedInputId`, the track stops matching, and
+`recordBlockReason` produces *"The armed MIDI track Input must match the MIDI
+port selected for …"*. Re-picking the port in the track's Input field writes the
+new id and it works again — until the next launch.
+
+**The fix is to reuse what exists**, not to invent a second scheme: a track's
+input carries the same descriptor `midiInputPreference` does, resolved through
+`samePhysicalPort`. Three things that will bite:
+
+- **`preferenceForPort` and `samePhysicalPort` are module-private.** They have to
+  be exported before the sequencer can share them, and there must stay exactly
+  one answer to "is this the same physical port" — two implementations disagree
+  the day a port is renamed.
+- **Existing projects hold bare ids.** They must keep working: resolve the id
+  first, and on the first successful match write the descriptor back, the way
+  `_inputPreference` already migrates a legacy id-only setting.
+- **A project is a file that can move to another machine.** A descriptor that
+  resolves to nothing there has to leave the track visibly unrouted rather than
+  silently armed on the wrong port — the same rule as D-029 for an absent node.
+
+**If you take this one first** — nothing depends on it and it depends on
+nothing. It is small, and it removes a chore from every single launch.
+
 ---
 
 ## Ideas beyond consolidation
