@@ -4,7 +4,9 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { ClipEditorWindows, validPayload, validTransportState } = require('../src/main/clipEditorWindows');
+const {
+  ClipEditorWindows, OPERATIONS, AUDITION_MAX_MS, validAudition, validPayload, validTransportState
+} = require('../src/main/clipEditorWindows');
 
 let nextWebContentsId = 10;
 class FakeWebContents {
@@ -112,6 +114,42 @@ test('a window cannot address another clip and IPC arguments are bounded', async
   assert.equal(validPayload('update-audio', { gain: false }), false);
   assert.equal(validPayload('update-audio', { gain: 0 }), true);
   assert.equal(validPayload('delete-notes', { noteIds: [false] }), false);
+  assert.equal(validPayload('move-notes', { noteIds: ['note-1'], deltaPpq: 0.25 }), true);
+  assert.equal(validPayload('move-notes', { noteIds: ['note-1'], deltaPitch: -12, deltaDurationPpq: 0 }), true);
+  assert.equal(validPayload('move-notes', { noteIds: [] }), false, 'a move of nothing is not a move');
+  assert.equal(validPayload('move-notes', { noteIds: ['note-1'] }), false, 'a move with no delta is not a move');
+  assert.equal(validPayload('move-notes', { noteIds: ['note-1'], deltaPpq: 'far' }), false);
+  assert.equal(validPayload('move-notes', { noteIds: ['note-1'], deltaPpq: 1, pitch: 60 }), false,
+    'the payload carries deltas only, never absolute note fields');
+});
+
+test('the IPC grid allow-list is exactly the grid table the model declares', async () => {
+  // Two lists for one vocabulary, because the process boundary forbids one:
+  // main is CommonJS, the model is an ES module. This is what makes a drift
+  // between them a failing test rather than a quantize refused as invalid.
+  const { QUANTIZE_GRIDS: declared } = await import('../src/renderer/js/core/sequencerModel.js');
+  for (const grid of Object.keys(declared)) {
+    assert.equal(validPayload('quantize', { grid }), true, `${grid} is accepted over IPC`);
+  }
+  assert.deepEqual([...OPERATIONS].sort(), [
+    'add-note', 'delete-notes', 'duplicate-notes', 'move-notes', 'quantize',
+    'set-notes', 'set-snap', 'update-audio', 'update-note'
+  ], 'the operation allow-list is enumerated, never inferred');
+  assert.equal(validPayload('quantize', { grid: '1/6' }), false);
+
+  assert.equal(validPayload('set-notes', { noteIds: ['note-1'], velocity: 100 }), true);
+  assert.equal(validPayload('set-notes', { noteIds: ['note-1'], startPpq: 4 }), false,
+    'timing belongs to move-notes: absolute and relative never share a payload');
+  assert.equal(validPayload('set-notes', { noteIds: ['note-1'] }), false);
+  assert.equal(validPayload('duplicate-notes', { noteIds: ['note-1'] }), true);
+  assert.equal(validPayload('duplicate-notes', { noteIds: [] }), false);
+
+  const { SNAP_STEPS } = await import('../src/renderer/js/core/sequencerModel.js');
+  for (const snap of Object.keys(SNAP_STEPS)) {
+    assert.equal(validPayload('set-snap', { snap }), true, `${snap} is a Snap the editor can set`);
+  }
+  assert.equal(validPayload('set-snap', { snap: '1/6' }), false);
+  assert.equal(validPayload('set-snap', { snap: '1/8', velocity: 1 }), false);
 });
 
 test('invalidation reaches live editors and project replacement closes orphan windows', async () => {
@@ -181,7 +219,15 @@ test('Clip Editor transport actions proxy to the canonical renderer and native s
 test('sequential open/close cycles replace WebContents IDs and cannot consume stale responses', async () => {
   const { manager, handlers, mainWindow, mainEvent } = rig();
   manager.bind();
-  assert.equal(handlers.size, 9, 'bind remains idempotent and does not accumulate IPC handlers');
+  // Named rather than counted: a bare number says nothing about which channel
+  // was forgotten, and `bind()` being called twice must still leave one
+  // handler per channel.
+  assert.deepEqual([...handlers.keys()].sort(), [
+    'clip-editor:audition', 'clip-editor:close-all', 'clip-editor:get',
+    'clip-editor:invalidate', 'clip-editor:open', 'clip-editor:ready',
+    'clip-editor:respond', 'clip-editor:transport', 'clip-editor:transport-publish',
+    'clip-editor:update'
+  ], 'bind remains idempotent and does not accumulate IPC handlers');
 
   await handlers.get('clip-editor:open')(mainEvent, 'clip-midi-1');
   const firstWindow = FakeWindow.instances[0];
@@ -219,4 +265,44 @@ test('Clip Editor preload is narrowly scoped and no browser security setting is 
   assert.match(windows, /nodeIntegration:\s*false/);
   assert.doesNotMatch(windows, /webSecurity\s*:\s*false/);
   assert.doesNotMatch(windows, /loadURL|https?:\/\//);
+});
+
+test('sounding a note is its own channel, bounded, and refused for a stale project', async () => {
+  const { handlers, mainWindow, mainEvent } = rig();
+  await handlers.get('clip-editor:open')(mainEvent, 'clip-midi-1');
+  const editorEvent = { sender: FakeWindow.instances[0].webContents };
+
+  const promise = handlers.get('clip-editor:audition')(
+    editorEvent, 'clip-midi-1', 'project-1', { pitch: 60, velocity: 90, durationMs: 300 }
+  );
+  const request = mainWindow.webContents.sent.at(-1);
+  assert.equal(request.payload.kind, 'audition',
+    'not an update: it changes no model state and must not queue behind edits');
+  assert.equal(request.payload.expectedProjectId, 'project-1');
+  handlers.get('clip-editor:respond')(mainEvent, { requestId: request.payload.requestId, ok: true, sounded: true });
+  assert.equal((await promise).sounded, true);
+
+  assert.deepEqual(
+    await handlers.get('clip-editor:audition')(editorEvent, 'clip-midi-2', 'project-1', { pitch: 60 }),
+    { ok: false, reason: 'invalid-request' },
+    'a window cannot sound a note for another clip'
+  );
+
+  assert.equal(validAudition({ pitch: 60 }), true);
+  assert.equal(validAudition({ pitch: 0 }), true);
+  assert.equal(validAudition({ pitch: 127, velocity: 1, durationMs: AUDITION_MAX_MS }), true);
+  assert.equal(validAudition({ pitch: 128 }), false);
+  assert.equal(validAudition({ pitch: -1 }), false);
+  assert.equal(validAudition({ velocity: 90 }), false, 'a pitch is the one field that is required');
+  assert.equal(validAudition({ pitch: 60, velocity: 0 }), false);
+  assert.equal(validAudition({ pitch: 60, velocity: 128 }), false);
+  // The ceiling is not politeness: the renderer schedules the note-off on this
+  // number, so an unbounded one is a note held in a VST for the window's life.
+  assert.equal(validAudition({ pitch: 60, durationMs: AUDITION_MAX_MS + 1 }), false);
+  assert.equal(validAudition({ pitch: 60, durationMs: 0 }), false);
+  assert.equal(validAudition({ pitch: 60, sustain: true }), false, 'and no field beyond the three');
+  assert.equal(validAudition(null), false);
+
+  const preload = fs.readFileSync(path.join(__dirname, '..', 'src', 'main', 'clipEditorPreload.js'), 'utf8');
+  assert.match(preload, /'clip-editor:audition'/, 'the bridge exposes it, or the editor cannot reach it');
 });

@@ -7,7 +7,7 @@ Counter-intuitive choices: [DECISIONS.md](DECISIONS.md). Long workstreams:
 [PLANS.md](PLANS.md).
 
 **Current state** — branch `master`.
-727 JS tests green, 15 `npm run check` rules green, 3,954 native checks green
+814 JS tests green, 15 `npm run check` rules green, 3,954 native checks green
 across the four test binaries, a Release build with **0 errors and 0 warnings**,
 `dist/` synchronised with the sources.
 
@@ -76,6 +76,116 @@ Four duplications that made adding a module a trap.
 - **`ModuleSystem.unregister`** now undoes exactly what `register` does, routing
   node included. Two tests lock the symmetry, and their ability to catch the
   regression was verified by disabling the fix.
+
+### 10 & 11. The sequencer: a diet, a menu, a scissor, and a note that follows the cursor — `master`
+
+Both items were opened by the author on 2026-09-07 and closed together on
+2026-09-10, because they turned out to be one screen. Decisions:
+[DECISIONS.md](DECISIONS.md) D-033 (the diet and the inspector), D-034 (the
+split), D-035 (one Snap). **809 JS tests**, 15 `npm run check` rules.
+
+**The silent gate (item 10)** — a project with no authored sequencer state now
+opens on one focused MIDI track (`initialSequencerState`, seeded in
+`SequencerController.load()` on the **absence of the key**, so a project
+emptied on purpose reopens empty). And the transport says why a played note is
+heard by nothing: `liveBlockReason()` answers the question `recordBlockReason()`
+stopped one condition short of — a track armed and routed on its input side
+alone passes the record check and still plays into silence, which is precisely
+what was found in use. The two share `_inputRouteBlockReason` so one missing
+cable cannot produce two different explanations.
+
+**The diet** — `TRACK_HEADER` 360 → 260, `TRACK_HEIGHT` 140 → 64; thirteen
+tracks on screen where six fitted. Routing lives in a toolbar inspector for the
+focused track, with two route dots left on the track itself so the failure
+D-033 describes stays visible where it happens. Details and the three
+consequences that were not obvious: D-033.
+
+**Zoom that frames something** — `Fit` and `Focus` buttons, `Ctrl`+wheel
+anchored under the cursor, `+` / `-`, and a logarithmic slider (linear over a
+240-fold range puts everything useful in two pixels of travel). The zoom floor
+went to 1 px per quarter, which is what made Fit true rather than approximate;
+`gridPx` and `rulerStride` are what keep the grid and the ruler readable down
+there.
+
+**A context menu on a clip** — and **this item's claim that it would be the
+first menu in the application was false**. The Patch Bay has had two since
+before it: one on a node, one on the canvas, hand-built inside
+`routingModule.js`. The code settled it, not the document.
+[ui/contextMenu.js](src/renderer/js/ui/contextMenu.js) therefore exists to stop
+the sequencer's from becoming a *third*, and it borrows the Patch Bay's existing
+`.ctx-item` / `.ctx-separator` vocabulary rather than inventing a second look —
+after a first attempt that declared `.ctx-item` again and silently restyled the
+Patch Bay's own menus, a test now keeps that from coming back.
+**Still to do**: adopt the module inside `routingModule.js` and delete the copy
+there. It is not a move — the canvas menu carries a New Node submenu the shared
+module has no concept of.
+
+**The scissor** — `splitClip`, non-destructive, at the playhead: D-034.
+
+**The note that popped** — the Clip Editor's `pointerMove` computed a target and
+touched no DOM, so nothing moved until the pointer came up and an IPC round trip
+plus a full re-render made the note reappear elsewhere. It has a
+`renderNoteDragPreview` now, and the clamp it draws with is the model's own
+(`clampNoteGroupDelta`, exported and shared across the two windows) so the drawn
+position **is** the committed position. Verified by driving the real editor in a
+browser: three selected notes, one `move-notes` message, and identical pixel
+positions before and after release.
+
+Its twin defect went with it: a drag carried one note id, so selecting a
+five-note chord and dragging it moved one note. A selection now moves as a group
+under one common delta — `moveClips`' rule, because clamping note by note
+silently flattens a chord against the clip boundary.
+
+**And the rest of the piano roll**, which was frozen at 120 px per quarter and 18
+px per row — a four-bar clip was 1920 px wide and the keyboard 2304 px tall, so
+the whole clip was never on screen: an H/V zoom fitted to the clip and its pitch
+range on open, `Ctrl`+wheel (`Shift` for the rows), a lasso, resize by either
+edge, velocity as colour and as a slider over the selection, duplicate, and the
+arrows. Plus, on the arrangement: a lasso over the lanes, `Ctrl+A`, `Ctrl+X`,
+and arrow-key nudging by one snap step or one track.
+
+One defect found only by looking at the real thing in a browser: `render()`
+captured the live scroll position before rendering, which overwrote the position
+Fit and the zoom had just computed **in the old scale** — so both appeared to do
+nothing. `scrollIntent` is what separates "keep where you are" from "go here".
+
+**Three more, reported from use on 2026-09-10 and fixed the same day.**
+
+- **Resizing a clip stretched its notes.** Purely visual and therefore worse
+  than a real error: the marks were placed in percentages of the clip's width,
+  `renderDragPreview` rewrites that width during the drag, and every percentage
+  re-resolved against the new one. They are placed in pixels now, and a resize
+  rebuilds them — the end edge moves `lengthPpq`, the start edge moves
+  `sourceOffsetPpq`, and only a rebuild follows which part of the source is
+  shown. Verified in a browser: the width goes 576 → 882 px while the marks do
+  not move a pixel, before or after the commit.
+- **The piano roll played nothing.** [DECISIONS.md](DECISIONS.md) D-036. A key
+  press, a note press and each row a transposing drag crosses now sound
+  through the clip's own track.
+- **The white scrollbar under the arrangement is gone**, replaced by
+  `.seq-rail`: four dark pixels that grow to eight under the pointer, hidden
+  entirely when the arrangement already fits, and draggable. `railThumb` draws
+  it and reads it back through one mapping, because two would let the thumb
+  jump out from under the pointer that grabbed it. Middle-button drag pans both
+  axes; the shell's remaining scrollbars are slim and dark instead of white.
+  The vertical one is deliberately kept — with 64 tracks, "there is more below"
+  has to be visible somewhere.
+
+Two defects the browser found in that work, both of the same family — reading a
+measurement that the code had just invalidated:
+
+- the rail decided whether to show itself from its own width **while hidden**,
+  which is zero: hidden, therefore unmeasurable, therefore hidden for ever;
+- it drew the thumb from `scroller.scrollLeft` immediately after `render()`
+  assigned that property, and an assignment on freshly inserted DOM can read
+  back clamped to zero. The rail follows `scrollPpq` — the value the render is
+  applying — and only the two dimensions stay measurements.
+
+And one latent fragility fixed on the way: `element.setPointerCapture?.(id)`
+guards a *missing* method, not a *throwing* one. It throws for a pointer id that
+is no longer active, and the throw aborted the handler **after** the drag was
+armed and **before** the move listeners were attached — a drag that could never
+end. Both call sites catch it now; capture is a nicety, not the gesture.
 
 ### Outside the numbering
 
@@ -498,76 +608,6 @@ engine has to report the frame's position on move and on resize.
 **Order**: after item 8's Étape A, and after or with D-018 — that decision
 refactors `ControlBindingManager`, which is what this window drives. Out of
 order, the refactor is paid twice.
-
-### 10. The sequencer's silent gate — no track by default, and no track armed
-
-Found in real use on 2026-09-07, not by a test: the sequencer was active, the
-keyboard played nothing, and nothing on screen said why.
-
-Two faults behind one symptom. `sequencerModel.js:50` starts a project with
-`tracks: []`, so nothing can play through the sequencer until a track has been
-created by hand — a step the common case never wants to make. Then
-`_liveDestinationIds()` (`sequencerController.js:512`) returns an empty list
-unless a track is `armed || monitored`, so `receiveMidiInput()` completes
-having sent nothing at all, in silence.
-
-The gate itself is **not** the bug and is not to be removed: it is what stops a
-performance from reaching every track at once, and `--cross-track-isolation`
-covers it. What is missing is the default, and the sentence on screen.
-
-- **A new project already holds one MIDI track.** An empty track list is the
-  rare case, not the opening one.
-- **Say why nothing is playing.** The controller already computes the sentence
-  — `'Arm at least one track with its R button.'` (`sequencerController.js:707`)
-  and `'Add at least one MIDI or audio track before recording.'` (line 705) —
-  but both are reachable only through `recordBlockReason`, so they surface when
-  recording is blocked and never when a note is simply played into nothing. The
-  same reason belongs on the transport, armed or not.
-
-This is the sequencer's own instance of a pattern worth watching elsewhere: the
-renderer knows the route is dead and keeps it to itself. `setChainMidiEnabled`
-does the same for a VST chain with no MIDI cable.
-
-**Order**: independent of items 4 to 9, and small.
-
-### 11. Sequencer editing — reading the whole take, and acting on a clip
-
-Asked 2026-09-07, not started. Two complaints about the same screen: you cannot
-choose what the timeline shows you, and a clip answers to nothing but the mouse.
-
-**Zoom that frames something.** The control exists — a raw pixels-per-quarter
-slider, `min="24" max="240"` (`sequencerModule.js:295`) — and it is the wrong
-handle. What is asked for is two named framings: **fit** (the whole arrangement
-at once) and **focus** (the selection, or the loop range, filling the width).
-Both are one line of arithmetic against `compositionEndPpq()` and the viewport
-already computed for `followScrollPpq`; the work is elsewhere.
-
-Two real constraints, and they are why this is not fifteen minutes:
-
-- **The floor of 24 blocks fit.** At 24 px per quarter a 1200 px window shows
-  twelve bars. Fit has to lower the floor, and everything positioned in
-  `zoom`-multiplied pixels has to stay legible when it does — clips already
-  carry a `Math.max(12, …)` width, so past a certain point they stop meaning
-  their own length.
-- **The ruler stops being readable before the clips do.** `rulerMarkup` draws a
-  mark per bar; fit on a long arrangement wants a coarser stride.
-
-**A context menu on a clip.** Right-click already exists in the Patch Bay
-(`routingModule.js:1346`), for cancelling a cable rather than opening a menu, so
-this is the first real menu in the application and it sets the pattern for the
-next one. Most entries are wiring to operations the model already has:
-`removeClips`, `duplicateClips`, `copyClips`, `pasteClips`, `quantizeMidiClip`,
-and Edit via `openClipEditor`.
-
-**The scissor is the exception — it does not exist.** Splitting is a new model
-operation, and it is not symmetric between the two clip types: a MIDI clip has
-to distribute its notes and decide what happens to a note straddling the cut
-(shortened, or moved whole to one side), while an audio clip is a `trimStart` /
-`trimEnd` pair with no sample to move. It belongs to this item, but it is the
-part with a design question in it, not just a menu row.
-
-**Order**: independent of items 4 to 10. The menu is worth doing first — it is
-the one that stops the mouse from being the only vocabulary.
 
 ### 12. Patch Bay — an `Align` button that does what it says
 

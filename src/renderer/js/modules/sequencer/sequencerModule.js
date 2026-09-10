@@ -1,10 +1,29 @@
 import { escapeHtml } from '../../core/html.js';
-import { SEQUENCER_LIMITS, SNAP_STEPS } from '../../core/sequencerModel.js';
+import { SEQUENCER_LIMITS, SNAP_STEPS, ZOOM_MAX, ZOOM_MIN, snapStep } from '../../core/sequencerModel.js';
 import { bindTempoInput } from '../../core/tempoControl.js';
 import { isCanonicalMidiIngress } from '../../core/sequencerController.js';
+import { closeContextMenu, openContextMenu } from '../../ui/contextMenu.js';
 
-const TRACK_HEADER = 360;
-const TRACK_HEIGHT = 140;
+/**
+ * The two numbers that decide how much arrangement fits on a screen.
+ *
+ * They were 360 and 140, and the height was not the clip's fault: the track
+ * header held five rows -- buttons, name, Input, Destination, Level, route
+ * summary -- and the lane was sized by whatever the header needed. A 62 px
+ * clip sat in a 140 px lane, so 71 px of every track was empty, always. Six
+ * tracks filled a screen; other workstations show twice that.
+ *
+ * 64 and 260 are what is left once routing moves off the track and into the
+ * toolbar inspector: two rows, the performance controls only. Thirteen tracks
+ * fit where six did.
+ *
+ * They are read by the clip geometry, the loop range, the playhead and the
+ * drag preview, and `base.css` reads the header width back through
+ * `--seq-head` -- `.seq-corner` used to spell 360 and `.seq-empty` 250, which
+ * is three sources for one measurement and one of them already wrong.
+ */
+const TRACK_HEADER = 260;
+const TRACK_HEIGHT = 64;
 const RULER_HEIGHT = 30;
 const TIMELINE_BEATS = 256;
 
@@ -31,6 +50,95 @@ export function followScrollPpq(playheadPpq, scrollPpq, viewportPpq) {
   const margin = width * FOLLOW_MARGIN;
   if (head >= left + margin && head <= left + width - margin) return null;
   return Math.max(0, head - width * FOLLOW_LEAD);
+}
+
+/**
+ * The zoom that makes a span of music fill the width available to it.
+ *
+ * The control that existed was a raw pixels-per-quarter slider, and that is
+ * the wrong handle: nobody knows what 96 px per quarter frames. What is asked
+ * of a timeline is two things -- show me all of it, show me this bit -- and
+ * both are this one line of arithmetic. `null` when the request is
+ * meaningless, so a caller never divides by a viewport it does not have yet.
+ *
+ * `padding` keeps a sliver of air on each side: a clip flush against the edge
+ * of the screen reads as a clip that continues off it.
+ */
+export function frameSpan({ startPpq = 0, endPpq = 0 } = {}, viewportPx, { padding = 0.02 } = {}) {
+  const start = Math.max(0, Number(startPpq) || 0);
+  const span = (Number(endPpq) || 0) - start;
+  const width = Number(viewportPx);
+  if (!Number.isFinite(span) || span <= 0 || !Number.isFinite(width) || width <= 0) return null;
+  const zoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, Math.round(width * (1 - padding * 2) / span * 100) / 100));
+  const air = width * padding / zoom;
+  return { zoom, scrollPpq: Math.max(0, start - air) };
+}
+
+/**
+ * The zoom slider, on a logarithmic scale.
+ *
+ * The range is now 1 to 240 px per quarter, because "fit the whole
+ * arrangement" needs the low end. Linear over a 240-fold range puts everything
+ * useful in the first two pixels of travel and makes the rest
+ * indistinguishable; a constant ratio per pixel is what a zoom control wants.
+ */
+const ZOOM_SLIDER_STEPS = 100;
+export const zoomToSlider = (zoom) => {
+  const value = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, Number(zoom) || ZOOM_MIN));
+  return Math.round(ZOOM_SLIDER_STEPS * Math.log(value / ZOOM_MIN) / Math.log(ZOOM_MAX / ZOOM_MIN));
+};
+export const sliderToZoom = (value) => {
+  const step = Math.max(0, Math.min(ZOOM_SLIDER_STEPS, Number(value) || 0));
+  return Math.round(ZOOM_MIN * (ZOOM_MAX / ZOOM_MIN) ** (step / ZOOM_SLIDER_STEPS) * 100) / 100;
+};
+
+/**
+ * The rail thumb, and the scroll position a point on the rail asks for.
+ *
+ * One function for both directions, because they are inverses: drawing the
+ * thumb and reading a drag on it have to use the same mapping, or the thumb
+ * jumps out from under the pointer that grabbed it. `null` means the whole
+ * arrangement already fits, and a full-width thumb that cannot move is
+ * furniture -- the rail hides itself instead.
+ */
+export function railThumb({
+  scrollLeft = 0, scrollWidth = 0, clientWidth = 0, railWidth = 0, inset = 3, minSize = 22
+} = {}) {
+  const travel = (Number(scrollWidth) || 0) - (Number(clientWidth) || 0);
+  if (!(travel > 1) || !(clientWidth > 0) || !(railWidth > 0)) return null;
+  const width = Math.max(minSize, railWidth - inset * 2);
+  const size = Math.max(minSize, Math.min(width, width * clientWidth / scrollWidth));
+  const room = Math.max(1, width - size);
+  const ratio = Math.max(0, Math.min(1, scrollLeft / travel));
+  return {
+    size,
+    left: inset + room * ratio,
+    scrollFor: (x) => travel * Math.max(0, Math.min(1, (x - inset - size / 2) / room))
+  };
+}
+
+/**
+ * Which clips a rubber band covers.
+ *
+ * Expressed in musical coordinates rather than pixels, so it is the same
+ * question whatever the zoom -- and so it can be tested without a DOM. Any
+ * overlap counts, in either direction, and a band of zero width still covers
+ * whatever it passes through: what protects a plain click on empty lane space
+ * is the three-pixel threshold in `marqueeMove`, not this geometry.
+ */
+export function clipsInSpan(tracks, { startPpq = 0, endPpq = 0, fromTrack = 0, toTrack = 0 } = {}) {
+  const left = Math.min(startPpq, endPpq);
+  const right = Math.max(startPpq, endPpq);
+  const first = Math.min(fromTrack, toTrack);
+  const last = Math.max(fromTrack, toTrack);
+  const ids = [];
+  (Array.isArray(tracks) ? tracks : []).forEach((track, index) => {
+    if (index < first || index > last) return;
+    for (const clip of track.clips) {
+      if (clip.startPpq + clip.lengthPpq > left && clip.startPpq < right) ids.push(clip.id);
+    }
+  });
+  return ids;
 }
 
 const gainToDb = (gain) => gain > 0
@@ -61,6 +169,10 @@ function applyDynamicStyles(root) {
   root.querySelectorAll('[data-seq-height-pct]').forEach((element) => { element.style.height = `${Number(element.dataset.seqHeightPct) || 0}%`; });
   root.querySelectorAll('[data-seq-bottom-pct]').forEach((element) => { element.style.bottom = `${Number(element.dataset.seqBottomPct) || 0}%`; });
   root.querySelectorAll('[data-seq-beat]').forEach((element) => { element.style.setProperty('--seq-beat', `${Number(element.dataset.seqBeat) || 0}px`); });
+  // `.seq-corner` and `.seq-empty` both need the header width and used to
+  // spell it themselves, in two different values. One declaration, published
+  // to the stylesheet.
+  root.querySelectorAll('[data-seq-head]').forEach((element) => { element.style.setProperty('--seq-head', `${Number(element.dataset.seqHead) || 0}px`); });
 }
 
 const options = (items, selected, empty = '— Select —') => {
@@ -80,18 +192,48 @@ function waveform(peaks) {
   }).join('');
 }
 
-function clipMarkup(track, clip, zoom, selected) {
-  const left = clip.startPpq * zoom;
-  const width = Math.max(12, clip.lengthPpq * zoom);
+/**
+ * The narrowest a clip may be drawn.
+ *
+ * It was 12 px, which is a lie at the bottom of the zoom range: on a 16 px
+ * bar a 1/16 clip would draw three beats wide. Three pixels is hard to grab
+ * and that is accepted -- at a zoom where a clip is three pixels you are
+ * reading the arrangement, not editing it, and the context menu and the
+ * keyboard are what act on it there.
+ */
+const CLIP_MIN_PX = 3;
+
+/**
+ * What is drawn inside a clip: its notes, or its waveform.
+ *
+ * The note marks are placed in **pixels from the clip's left edge**, and they
+ * used to be placed in percentages of its width. That was the bug: resizing a
+ * clip changes `element.style.width` during the drag, every percentage
+ * re-resolves against the new width, and the notes stretched like rubber while
+ * the pointer moved — a purely visual lie, since nothing had moved in the
+ * model. Pixels do not re-resolve.
+ *
+ * Exported through `renderDragPreview` as well, which rebuilds this during a
+ * resize: the pitch of a note does not move, but which part of the source the
+ * clip shows does, and only a rebuild can follow that.
+ */
+function clipContent(track, clip, zoom) {
+  if (track.type !== 'midi') return `<span class="seq-waveform">${waveform(clip.peaks)}</span>`;
   const sourceOffset = Number(clip.sourceOffsetPpq) || 0;
   const sourceEnd = sourceOffset + clip.lengthPpq;
-  const content = track.type === 'midi'
-    ? `<span class="seq-midi-preview">${clip.notes.filter((note) => note.startPpq + note.durationPpq > sourceOffset && note.startPpq < sourceEnd).map((note) => {
+  return `<span class="seq-midi-preview">${clip.notes
+    .filter((note) => note.startPpq + note.durationPpq > sourceOffset && note.startPpq < sourceEnd)
+    .map((note) => {
       const visibleStart = Math.max(sourceOffset, note.startPpq);
       const visibleEnd = Math.min(sourceEnd, note.startPpq + note.durationPpq);
-      return `<i data-seq-left-pct="${(visibleStart - sourceOffset) / clip.lengthPpq * 100}" data-seq-width-pct="${Math.max(1, (visibleEnd - visibleStart) / clip.lengthPpq * 100)}" data-seq-bottom-pct="${Math.max(2, (note.pitch - 24) / 104 * 70)}"></i>`;
-    }).join('')}</span>`
-    : `<span class="seq-waveform">${waveform(clip.peaks)}</span>`;
+      return `<i data-seq-left="${(visibleStart - sourceOffset) * zoom}" data-seq-width="${Math.max(1, (visibleEnd - visibleStart) * zoom)}" data-seq-bottom-pct="${Math.max(2, (note.pitch - 24) / 104 * 70)}"></i>`;
+    }).join('')}</span>`;
+}
+
+function clipMarkup(track, clip, zoom, selected) {
+  const left = clip.startPpq * zoom;
+  const width = Math.max(CLIP_MIN_PX, clip.lengthPpq * zoom);
+  const content = clipContent(track, clip, zoom);
   const unavailable = track.type === 'audio' && clip.mediaAvailable === false;
   const title = unavailable ? `${clip.name} — ${clip.mediaError || 'Audio media is unavailable'}` : clip.name;
   return `<button class="seq-clip ${track.type} ${selected ? 'selected' : ''} ${unavailable ? 'unavailable' : ''}" data-clip-id="${clip.id}" data-track-id="${track.id}" data-seq-left="${left}" data-seq-width="${width}" title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}">
@@ -146,7 +288,7 @@ function explicitSequencerNode(hub) {
   return instance ? hub.network.getNode(instance.id) : null;
 }
 
-function routeSummary(hub, track, sequencerId) {
+function routeStates(hub, track, sequencerId) {
   const inputCables = hub.network.connectionsTo(sequencerId, track.type === 'midi' ? 'midi-in' : 'audio-in');
   const outputCables = hub.network.connectionsFrom(sequencerId, track.type === 'midi' ? 'midi-out' : 'audio-out');
   const inputMatches = track.type === 'midi'
@@ -170,12 +312,88 @@ function routeSummary(hub, track, sequencerId) {
       ? { state: 'warning', text: 'Output cable present, destination not selected' }
       : { state: 'idle', text: 'No output route' });
 
-  return `<span class="seq-route-summary" aria-live="polite"><span class="seq-route-${input.state}">${input.state === 'ok' ? '✓' : (input.state === 'warning' ? '!' : '·')} ${input.text}</span><span class="seq-route-${output.state}">${output.state === 'ok' ? '✓' : (output.state === 'warning' ? '!' : '·')} ${output.text}</span></span>`;
+  return { input, output };
+}
+
+const routeGlyph = (state) => state === 'ok' ? '✓' : (state === 'warning' ? '!' : '·');
+
+/**
+ * The route, as two dots that fit in a 64 px track.
+ *
+ * The full sentences moved to the inspector with the selects they describe,
+ * but they cannot leave the track entirely: what they report -- a Destination
+ * chosen with no cable behind it -- is exactly the failure the user cannot see
+ * anywhere else. A dot per direction survives the diet, and carries the
+ * sentence in its tooltip.
+ */
+function routeDots({ input, output }) {
+  return `<span class="seq-route-dots" aria-hidden="true"><i class="seq-route-${input.state}" title="IN — ${escapeHtml(input.text)}">${routeGlyph(input.state)}</i><i class="seq-route-${output.state}" title="OUT — ${escapeHtml(output.text)}">${routeGlyph(output.state)}</i></span>`;
+}
+
+function routeSummary({ input, output }) {
+  return `<span class="seq-route-summary" aria-live="polite"><span class="seq-route-${input.state}">${routeGlyph(input.state)} ${escapeHtml(input.text)}</span><span class="seq-route-${output.state}">${routeGlyph(output.state)} ${escapeHtml(output.text)}</span></span>`;
+}
+
+/**
+ * The routing of the focused track, in the toolbar rather than on the track.
+ *
+ * Input and Destination are two full-width selects and a pair of sentences,
+ * and they are what made a track 140 px tall. They are also what you set once
+ * and read rarely -- so they belong to the selected track, in one place, the
+ * way Logic and Bitwig put them in an inspector. The Patch Bay stays the
+ * routing authority; this is the same pair of fields, moved.
+ */
+function inspectorMarkup(hub, track, sequencerId) {
+  if (!track) {
+    return `<div class="seq-inspector empty" data-track-inspector><span class="seq-inspector-label">Track</span><span class="seq-inspector-hint">Click a track to route its input and destination.</span></div>`;
+  }
+  const states = routeStates(hub, track, sequencerId);
+  return `<div class="seq-inspector" data-track-inspector>
+    <span class="seq-inspector-label">Track</span><strong class="seq-inspector-name">${escapeHtml(track.name)}</strong>
+    <label class="seq-inspector-field"><span>Input</span><select data-inspector-control="input" aria-label="${escapeHtml(track.name)} input">${options(trackSources(hub, track), track.inputId, inputPlaceholder(hub, track))}</select></label>
+    <label class="seq-inspector-field"><span>Destination</span><select data-inspector-control="output" aria-label="${escapeHtml(track.name)} destination">${options(trackDestinations(hub, track), track.outputId, destinationPlaceholder(hub, track))}</select></label>
+    ${routeSummary(states)}
+  </div>`;
+}
+
+/**
+ * How many bars one ruler mark covers.
+ *
+ * A mark per bar stops being readable long before the clips do: at 4 px per
+ * quarter a bar is 16 px, so the numbers overlap into a grey smear. The stride
+ * is driven by pixels, not by bar count, and it is snapped up to a power of
+ * two -- a mark every 3 bars is arithmetically fine and musically unreadable.
+ * `bars / 512` is the second floor, so an hour-long arrangement never emits
+ * ten thousand buttons.
+ */
+const RULER_MIN_MARK_PX = 54;
+
+/**
+ * The spacing of the lane and ruler grid lines, in pixels.
+ *
+ * The grid was drawn one line per quarter, which is right at 72 px and a solid
+ * tint at 4: `calc(var(--seq-beat) - 1px)` leaves nothing transparent between
+ * two 1 px rules. The answer is not to hide the grid but to draw a coarser
+ * musical division -- the narrowest multiple of the quarter still worth
+ * looking at.
+ */
+export function gridPx(zoom) {
+  const step = Math.max(0.01, Number(zoom) || 0);
+  for (const quarters of [1, 2, 4, 8, 16, 32, 64]) {
+    if (quarters * step >= 12) return quarters * step;
+  }
+  return 64 * step;
+}
+
+export function rulerStride(bars, zoom) {
+  const barPx = Math.max(0.01, 4 * (Number(zoom) || 0));
+  const wanted = Math.max(RULER_MIN_MARK_PX / barPx, Math.max(1, Number(bars) || 1) / 512, 1);
+  return 2 ** Math.ceil(Math.log2(wanted));
 }
 
 function rulerMarkup(endPpq, zoom) {
   const bars = Math.ceil(endPpq / 4);
-  const stride = Math.max(1, Math.ceil(bars / 512));
+  const stride = rulerStride(bars, zoom);
   return Array.from({ length: Math.ceil(bars / stride) }, (_, index) => index * stride)
     .map((bar) => `<button class="seq-ruler-mark" data-seek="${bar * 4}" data-seq-left="${bar * 4 * zoom}" data-seq-width="${4 * stride * zoom}"><strong>${bar + 1}</strong></button>`).join('');
 }
@@ -189,10 +407,197 @@ export function createSequencerModule(hub) {
   let resizeObserver = null;
   let resizeRenderQueued = false;
   let suppressSelectionClickId = null;
+  let marquee = null;
+  let suppressLaneClick = false;
   let tempoBindingCleanup = null;
   let metronomePulseTimer = null;
   let exportOptions = { format: 'wav', bits: 24, bitrateKbps: 320, qualityIndex: -1, tailSeconds: 2 };
   let exportStatus = null;
+
+  /**
+   * The one sentence the transport shows, and the tone it wears.
+   *
+   * Order matters and is the point of this function: **why nothing is heard**
+   * comes before **why a take cannot start**, because the first is what you
+   * are asking while your hands are on the keys. Both used to be computed
+   * twice -- once in `render()`, once in `renderCountInState()` -- which is
+   * how the two could disagree.
+   */
+  function transportStatus(preCounting = controller.preCounting) {
+    if (preCounting) return { tone: 'active', text: 'Pre-count — recording starts after this measure. Press Stop to cancel.' };
+    if (controller.recording) return { tone: 'active', text: 'Recording now — press Stop to finish and keep the take.' };
+    const blocked = (controller.liveBlockReason?.() || '') || controller.recordBlockReason();
+    return blocked
+      ? { tone: 'blocked', text: blocked }
+      : { tone: 'ready', text: 'Ready to record the armed and routed tracks.' };
+  }
+
+  /**
+   * The horizontal scroll rail.
+   *
+   * Chromium's own horizontal scrollbar is a wide light slab under the
+   * arrangement, and it was the first thing the author pointed at. This draws
+   * the same information as four dark pixels: where you are, how much of the
+   * arrangement you can see, and it is draggable. It lives OUTSIDE
+   * `.seq-scroll` on purpose -- inside it, it would scroll away with the
+   * content it describes.
+   *
+   * It hides itself when everything already fits, because a full-width thumb
+   * that cannot move is furniture.
+   */
+  function railGeometry() {
+    const rail = container?.querySelector('[data-seq-rail]');
+    const scroller = container?.querySelector('[data-timeline-scroll]');
+    if (!rail || !scroller) return null;
+    // The position comes from the model, not from `scroller.scrollLeft`.
+    // `render()` assigns that property and then draws the rail, and an
+    // assignment made on freshly inserted DOM can still be clamped to zero
+    // when it is read back -- which drew the thumb at the far left while the
+    // view sat in the middle of the arrangement. `scrollPpq` is the value the
+    // render is applying, so it is the value the rail must agree with. The two
+    // measurements stay measurements.
+    const thumb = railThumb({
+      scrollLeft: controller.model.state.scrollPpq * controller.model.state.zoom,
+      scrollWidth: scroller.scrollWidth,
+      clientWidth: scroller.clientWidth,
+      railWidth: rail.clientWidth
+    });
+    return { rail, scroller, thumb };
+  }
+
+  function renderRail() {
+    const rail = container?.querySelector('[data-seq-rail]');
+    const element = container?.querySelector('[data-seq-rail-thumb]');
+    if (!rail || !element) return;
+    // Laid out BEFORE it is measured. `hidden` collapses the rail to zero
+    // width, and deciding whether to show it from that width is a deadlock:
+    // hidden, therefore unmeasurable, therefore hidden.
+    rail.hidden = false;
+    const geometry = railGeometry();
+    if (!geometry?.thumb) { rail.hidden = true; return; }
+    element.style.width = `${geometry.thumb.size}px`;
+    element.style.left = `${geometry.thumb.left}px`;
+  }
+
+  /** Drag the rail, or click a point on it. Both land on the same arithmetic:
+   *  the thumb's travel maps onto the scroller's. */
+  function bindRail() {
+    const rail = container?.querySelector('[data-seq-rail]');
+    const scroller = container?.querySelector('[data-timeline-scroll]');
+    if (!rail || !scroller) return;
+    const seekTo = (clientX) => {
+      const rect = rail.getBoundingClientRect?.();
+      const geometry = railGeometry();
+      if (!rect || !geometry?.thumb) return;
+      scroller.scrollLeft = geometry.thumb.scrollFor(clientX - rect.left);
+    };
+    rail.addEventListener('pointerdown', (event) => {
+      if (event.button !== 0) return;
+      event.preventDefault();
+      rail.classList.add('dragging');
+      seekTo(event.clientX);
+      const move = (moveEvent) => seekTo(moveEvent.clientX);
+      const up = () => {
+        rail.classList.remove('dragging');
+        document.removeEventListener('pointermove', move);
+        document.removeEventListener('pointerup', up);
+        document.removeEventListener('pointercancel', up);
+      };
+      document.addEventListener('pointermove', move);
+      document.addEventListener('pointerup', up, { once: true });
+      document.addEventListener('pointercancel', up, { once: true });
+    });
+  }
+
+  /**
+   * Middle-button drag pans the timeline, both axes at once.
+   *
+   * The gesture nothing else claims: left is selection and clips, right is the
+   * context menu, and the Patch Bay already spends right-drag on its own pan.
+   */
+  function bindPan() {
+    const scroller = container?.querySelector('[data-timeline-scroll]');
+    if (!scroller) return;
+    scroller.addEventListener('pointerdown', (event) => {
+      if (event.button !== 1) return;
+      event.preventDefault();
+      const from = { x: event.clientX, y: event.clientY, left: scroller.scrollLeft, top: scroller.scrollTop };
+      scroller.classList.add('panning');
+      const move = (moveEvent) => {
+        scroller.scrollLeft = from.left - (moveEvent.clientX - from.x);
+        scroller.scrollTop = from.top - (moveEvent.clientY - from.y);
+      };
+      const up = () => {
+        scroller.classList.remove('panning');
+        document.removeEventListener('pointermove', move);
+        document.removeEventListener('pointerup', up);
+        document.removeEventListener('pointercancel', up);
+      };
+      document.addEventListener('pointermove', move);
+      document.addEventListener('pointerup', up, { once: true });
+      document.addEventListener('pointercancel', up, { once: true });
+    });
+  }
+
+  /** The timeline's own width in pixels: what a framing has to fill. */
+  function viewportPx() {
+    return Math.max(120, (container?.clientWidth || 0) - TRACK_HEADER);
+  }
+
+  /** Zoom and scroll are view state, never musical data: the native plan does
+   *  not change because you looked closer. */
+  function commitView() {
+    controller.changed({ syncNative: false, invalidateEditors: false });
+  }
+
+  function applyFraming(span) {
+    const framed = frameSpan(span, viewportPx());
+    if (!framed) return false;
+    controller.model.state.zoom = framed.zoom;
+    controller.model.state.scrollPpq = framed.scrollPpq;
+    commitView();
+    return true;
+  }
+
+  /** Fit — bar one to the last thing in the arrangement. */
+  function zoomFit() {
+    return applyFraming({ startPpq: 0, endPpq: controller.model.compositionEndPpq() });
+  }
+
+  /** Focus — what you selected. Failing that the loop range, which is the
+   *  other thing on screen that means "this bit". Failing both, Fit. */
+  function zoomFocus() {
+    const placements = controller.model.clipPlacements(controller.model.selectedClipIds());
+    if (placements.length) {
+      return applyFraming({
+        startPpq: Math.min(...placements.map((item) => item.startPpq)),
+        endPpq: Math.max(...placements.map((item) => item.startPpq + item.clip.lengthPpq))
+      });
+    }
+    const { loop } = controller.model.state;
+    if (loop.endPpq > loop.startPpq) return applyFraming({ startPpq: loop.startPpq, endPpq: loop.endPpq });
+    return zoomFit();
+  }
+
+  /**
+   * Zoom while keeping one point of the music where it is on screen.
+   *
+   * `localX` is measured from the left edge of the scroller, so the first
+   * `TRACK_HEADER` pixels are the sticky headers and the timeline starts
+   * after them. Zooming around the left edge instead means hunting for your
+   * place again after every notch.
+   */
+  function zoomAt(nextZoom, localX) {
+    const state = controller.model.state;
+    const zoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, Math.round((Number(nextZoom) || 0) * 100) / 100));
+    if (zoom === state.zoom) return false;
+    const offset = localX - TRACK_HEADER;
+    const anchorPpq = state.scrollPpq + offset / state.zoom;
+    state.zoom = zoom;
+    state.scrollPpq = Math.max(0, anchorPpq - offset / zoom);
+    commitView();
+    return true;
+  }
 
   /** Move the cursor, and carry the view with it when it would leave the
    *  screen. Recording used to pin the viewport to the opening bars while the
@@ -212,6 +617,7 @@ export function createSequencerModule(hub) {
     // scrollPpq and repaints the clips that just entered the window.
     controller.model.state.scrollPpq = next;
     scroller.scrollLeft = next * zoom;
+    renderRail();
   }
 
   function resizeRender() {
@@ -243,16 +649,14 @@ export function createSequencerModule(hub) {
     const zoom = state.zoom;
     const endPpq = Math.max(TIMELINE_BEATS, controller.model.compositionEndPpq() + 16);
     const timelineWidth = endPpq * zoom;
+    const gridLinePx = gridPx(zoom);
     const viewportPpq = Math.max(16, (container.clientWidth - TRACK_HEADER) / zoom);
     const visibleStart = Math.max(0, state.scrollPpq - viewportPpq);
     const visibleEnd = state.scrollPpq + viewportPpq * 2;
     const atTrackLimit = state.tracks.length >= SEQUENCER_LIMITS.tracks;
     const recordBlockReason = controller.recordBlockReason();
-    const recordStatus = controller.preCounting
-      ? 'Pre-count — recording starts after this measure. Press Stop to cancel.'
-      : controller.recording
-        ? 'Recording now — press Stop to finish and keep the take.'
-      : (recordBlockReason || 'Ready to record the armed and routed tracks.');
+    const status = transportStatus();
+    const focusedTrack = state.tracks.find((track) => track.id === state.focusedTrackId) || null;
     const exportFormat = ['wav', 'mp3', 'ogg'].includes(exportOptions.format) ? exportOptions.format : 'wav';
     const capabilities = controller.exportCapabilities || {};
     const oggQualities = Array.isArray(capabilities.oggQualityOptions) ? capabilities.oggQualityOptions : [];
@@ -272,6 +676,9 @@ export function createSequencerModule(hub) {
             : exportStatus?.state === 'finalizing' ? 'Finalizing and closing file…'
               : controller.exporting ? `Rendering offline…${exportPercent ? ` ${exportPercent}` : ''}${exportSpeed ? ` · ${exportSpeed}` : ''}` : '';
     scrollRenderQueued = false;
+    // The menu points at DOM that is about to be replaced, and at a clip that
+    // may no longer exist.
+    closeContextMenu();
     container.innerHTML = `<div class="sequencer-page">
       <section class="panel seq-toolbar">
         <div class="row"><h1 class="page-title">Sequencer</h1><span class="pill">${state.tracks.length} tracks</span><span class="spacer"></span>
@@ -289,10 +696,10 @@ export function createSequencerModule(hub) {
           </div>
           <button class="btn primary" data-action="export" ${controller.exporting ? 'disabled' : ''}>Export ${exportFormat.toUpperCase()}</button>
         </div>
-        <div class="seq-record-status ${controller.recording ? 'active' : (recordBlockReason ? 'blocked' : 'ready')}" role="status">${escapeHtml(recordStatus)}</div>
-        <p class="seq-routing-help">Each track has its own <strong>Input</strong> and <strong>Destination</strong>. Choose VST 1, VST 2, or another destination on the track; MiniHub creates the matching Patch Bay cable automatically.</p>
+        <div class="seq-record-status ${status.tone}" role="status">${escapeHtml(status.text)}</div>
+        ${inspectorMarkup(hub, focusedTrack, sequencerNode.id)}
         <div class="row mt-12 seq-tools"><label>Snap <select data-control="snap">${Object.keys(SNAP_STEPS).map((value) => `<option ${value === state.snap ? 'selected' : ''}>${value}</option>`).join('')}</select></label>
-          <label>Zoom <input data-control="zoom" type="range" min="24" max="240" value="${zoom}"></label>
+          <label class="seq-zoom-control">Zoom <input data-control="zoom" type="range" min="0" max="100" value="${zoomToSlider(zoom)}" aria-label="Timeline zoom"><button class="btn seq-zoom-btn" data-action="zoom-fit" title="Frame the whole arrangement (Ctrl+wheel zooms under the cursor)">Fit</button><button class="btn seq-zoom-btn" data-action="zoom-focus" title="Frame the selected clips, or the loop range">Focus</button></label>
           <label><input data-control="loop-enabled" type="checkbox" ${state.loop.enabled ? 'checked' : ''}> Loop</label>
           <label>From <input data-control="loop-start" type="number" min="0" step="0.125" value="${state.loop.startPpq}"></label>
           <label>To <input data-control="loop-end" type="number" min="0.125" step="0.125" value="${state.loop.endPpq}"></label>
@@ -310,8 +717,8 @@ export function createSequencerModule(hub) {
       </section>
       <section class="panel seq-arrangement">
         <div class="seq-scroll" data-timeline-scroll>
-          <div class="seq-canvas" data-seq-width="${TRACK_HEADER + timelineWidth}" data-seq-height="${RULER_HEIGHT + Math.max(1, state.tracks.length) * TRACK_HEIGHT}">
-            <div class="seq-corner">TRACKS</div><div class="seq-ruler" data-seq-left="${TRACK_HEADER}" data-seq-width="${timelineWidth}" data-seq-beat="${zoom}">${rulerMarkup(endPpq, zoom)}</div>
+          <div class="seq-canvas" data-seq-canvas data-seq-head="${TRACK_HEADER}" data-seq-width="${TRACK_HEADER + timelineWidth}" data-seq-height="${RULER_HEIGHT + Math.max(1, state.tracks.length) * TRACK_HEIGHT}">
+            <div class="seq-corner">TRACKS</div><div class="seq-ruler" data-seq-left="${TRACK_HEADER}" data-seq-width="${timelineWidth}" data-seq-beat="${gridLinePx}">${rulerMarkup(endPpq, zoom)}</div>
             <div class="seq-loop-range ${state.loop.enabled ? 'enabled' : ''}" data-seq-left="${TRACK_HEADER + state.loop.startPpq * zoom}" data-seq-width="${(state.loop.endPpq - state.loop.startPpq) * zoom}" data-seq-height="${RULER_HEIGHT + Math.max(1, state.tracks.length) * TRACK_HEIGHT}"></div>
             ${state.tracks.length ? state.tracks.map((track, index) => `<div class="seq-track ${state.focusedTrackId === track.id ? 'focused' : ''}" data-track-id="${track.id}" data-seq-top="${RULER_HEIGHT + index * TRACK_HEIGHT}" data-seq-height="${TRACK_HEIGHT}">
               <div class="seq-track-head" data-seq-width="${TRACK_HEADER}">
@@ -320,22 +727,22 @@ export function createSequencerModule(hub) {
                 <input class="seq-track-name" data-track-control="name" value="${escapeHtml(track.name)}">
                 <button class="seq-mute ${track.muted ? 'active' : ''}" data-track-action="mute" title="Mute">M</button>
                 <button class="seq-track-delete" data-track-action="delete" title="Delete track">×</button>
-                <label class="seq-track-route-control seq-track-input"><span>Input</span><select data-track-control="input" aria-label="${escapeHtml(track.name)} input">${options(trackSources(hub, track), track.inputId, inputPlaceholder(hub, track))}</select></label>
-                <label class="seq-track-route-control seq-track-output"><span>Destination</span><select data-track-control="output" aria-label="${escapeHtml(track.name)} destination">${options(trackDestinations(hub, track), track.outputId, destinationPlaceholder(hub, track))}</select></label>
-                <label class="seq-track-level"><span>Level <output data-track-level-value>${formatDb(track.volume)}</output></span><input data-track-control="volume" type="range" min="-60" max="6" step="0.1" value="${gainToDb(track.volume)}" aria-label="${escapeHtml(track.name)} level in dB"></label>
-                ${routeSummary(hub, track, sequencerNode.id)}
+                <label class="seq-track-level"><input data-track-control="volume" type="range" min="-60" max="6" step="0.1" value="${gainToDb(track.volume)}" aria-label="${escapeHtml(track.name)} level in dB"><output data-track-level-value>${formatDb(track.volume)}</output></label>
+                ${routeDots(routeStates(hub, track, sequencerNode.id))}
               </div>
-              <div class="seq-track-lane" data-seq-left="${TRACK_HEADER}" data-seq-width="${timelineWidth}" data-seq-beat="${zoom}">${track.clips.filter((clip) => clip.startPpq + clip.lengthPpq >= visibleStart && clip.startPpq <= visibleEnd).map((clip) => clipMarkup(track, clip, zoom, selectedClipIds.has(clip.id))).join('')}</div>
+              <div class="seq-track-lane" data-seq-left="${TRACK_HEADER}" data-seq-width="${timelineWidth}" data-seq-beat="${gridLinePx}">${track.clips.filter((clip) => clip.startPpq + clip.lengthPpq >= visibleStart && clip.startPpq <= visibleEnd).map((clip) => clipMarkup(track, clip, zoom, selectedClipIds.has(clip.id))).join('')}</div>
             </div>`).join('') : `<div class="seq-empty" data-seq-top="${RULER_HEIGHT}">Create a MIDI or audio track to begin.</div>`}
             <div class="seq-playhead" data-playhead data-seq-left="${TRACK_HEADER + controller.playheadPpq * zoom}" data-seq-height="${RULER_HEIGHT + Math.max(1, state.tracks.length) * TRACK_HEIGHT}"></div>
           </div>
         </div>
+        <div class="seq-rail" data-seq-rail hidden><div class="seq-rail-thumb" data-seq-rail-thumb></div></div>
       </section>
     </div>`;
     applyDynamicStyles(container);
     bind();
     const scroller = container.querySelector('[data-timeline-scroll]');
     if (scroller) scroller.scrollLeft = state.scrollPpq * zoom;
+    renderRail();
   }
 
   function bind() {
@@ -371,21 +778,46 @@ export function createSequencerModule(hub) {
     container.querySelector('[data-control="tail"]')?.addEventListener('change', (event) => { exportOptions.tailSeconds = Number(event.target.value); });
     container.querySelector('[data-action="duplicate-clip"]')?.addEventListener('click', () => controller.duplicateSelectedClips());
     container.querySelector('[data-control="snap"]')?.addEventListener('change', (event) => { controller.model.state.snap = event.target.value; controller.changed(); });
-    container.querySelector('[data-control="zoom"]')?.addEventListener('change', (event) => { controller.model.state.zoom = Number(event.target.value); controller.changed(); });
+    // On `change`, not `input`: a render rebuilds the whole page, which would
+    // destroy the very slider the pointer is holding. Ctrl+wheel is the live
+    // gesture -- it holds no element, so re-rendering under it is harmless.
+    container.querySelector('[data-control="zoom"]')?.addEventListener('change', (event) => {
+      zoomAt(sliderToZoom(event.target.value), TRACK_HEADER + viewportPx() / 2);
+    });
+    container.querySelector('[data-action="zoom-fit"]')?.addEventListener('click', zoomFit);
+    container.querySelector('[data-action="zoom-focus"]')?.addEventListener('click', zoomFocus);
+    container.querySelector('[data-timeline-scroll]')?.addEventListener('wheel', (event) => {
+      if (!(event.ctrlKey || event.metaKey)) return;
+      event.preventDefault();
+      const rect = event.currentTarget.getBoundingClientRect?.() || { left: 0 };
+      zoomAt(
+        controller.model.state.zoom * (event.deltaY < 0 ? 1.2 : 1 / 1.2),
+        event.clientX - rect.left
+      );
+    }, { passive: false });
     for (const key of ['loop-enabled', 'loop-start', 'loop-end']) container.querySelector(`[data-control="${key}"]`)?.addEventListener('change', () => {
       controller.model.setLoop({ enabled: container.querySelector('[data-control="loop-enabled"]').checked, startPpq: Number(container.querySelector('[data-control="loop-start"]').value), endPpq: Number(container.querySelector('[data-control="loop-end"]').value) }); controller.changed();
     });
     container.querySelector('[data-timeline-scroll]')?.addEventListener('scroll', (event) => {
       const next = event.currentTarget.scrollLeft / controller.model.state.zoom;
       controller.model.state.scrollPpq = next;
+      renderRail();
       if (!scrollRenderQueued && (next < visibleStart + viewportPpq * 0.25 || next + viewportPpq > visibleEnd - viewportPpq * 0.25)) {
         scrollRenderQueued = true;
         requestAnimationFrame(render); // layout virtualization only; native transport remains the musical clock
       }
     });
+    for (const field of ['input', 'output']) {
+      container.querySelector(`[data-inspector-control="${field}"]`)?.addEventListener('change', (event) => {
+        const trackId = controller.model.state.focusedTrackId;
+        if (trackId) controller.setTrack(trackId, { [field === 'input' ? 'inputId' : 'outputId']: event.target.value });
+      });
+    }
     container.querySelectorAll('[data-seek]').forEach((element) => element.addEventListener('click', () => controller.seek(Number(element.dataset.seek))));
     container.querySelectorAll('.seq-track').forEach(bindTrack);
     container.querySelectorAll('.seq-clip').forEach(bindClip);
+    bindRail();
+    bindPan();
   }
 
   function renderTempoValue(tempo) {
@@ -400,17 +832,11 @@ export function createSequencerModule(hub) {
   }
 
   function renderCountInState(event) {
-    const status = container?.querySelector('.seq-record-status');
-    if (!status) return;
-    const blockReason = controller.recordBlockReason();
-    status.classList.toggle('active', controller.recording);
-    status.classList.toggle('blocked', !controller.recording && Boolean(blockReason));
-    status.classList.toggle('ready', !controller.recording && !blockReason);
-    status.textContent = event?.active === true
-      ? 'Pre-count — recording starts after this measure. Press Stop to cancel.'
-      : controller.recording
-        ? 'Recording now — press Stop to finish and keep the take.'
-        : (blockReason || 'Ready to record the armed and routed tracks.');
+    const element = container?.querySelector('.seq-record-status');
+    if (!element) return;
+    const status = transportStatus(event?.active === true);
+    for (const tone of ['active', 'blocked', 'ready']) element.classList.toggle(tone, status.tone === tone);
+    element.textContent = status.text;
   }
 
   function renderTransportState() {
@@ -462,8 +888,6 @@ export function createSequencerModule(hub) {
     element.querySelector('[data-track-action="mute"]')?.addEventListener('click', () => controller.setTrack(trackId, { muted: !track.muted }));
     element.querySelector('[data-track-action="delete"]')?.addEventListener('click', () => controller.removeTrack(trackId));
     element.querySelector('[data-track-control="name"]')?.addEventListener('change', (event) => controller.setTrack(trackId, { name: event.target.value }));
-    element.querySelector('[data-track-control="input"]')?.addEventListener('change', (event) => controller.setTrack(trackId, { inputId: event.target.value }));
-    element.querySelector('[data-track-control="output"]')?.addEventListener('change', (event) => controller.setTrack(trackId, { outputId: event.target.value }));
     const volume = element.querySelector('[data-track-control="volume"]');
     volume?.addEventListener('input', (event) => {
       const gain = dbToGain(Number(event.target.value));
@@ -479,9 +903,22 @@ export function createSequencerModule(hub) {
       if (event.target.closest?.('.seq-clip,input,select,button,textarea,[contenteditable="true"]')) return;
       controller.focusTrack(trackId);
     });
+    lane?.addEventListener('pointerdown', (event) => {
+      if (event.button !== 0 || event.target.closest?.('.seq-clip')) return;
+      // Any fresh press ends the previous band's claim on the next click, so
+      // the flag can never go stale across gestures.
+      suppressLaneClick = false;
+      startMarquee(event);
+    });
     lane?.addEventListener('click', (event) => {
       if (event.target.closest?.('.seq-clip')) return;
+      if (suppressLaneClick) { suppressLaneClick = false; return; }
       controller.selectClip(null);
+    });
+    lane?.addEventListener('contextmenu', (event) => {
+      if (event.target.closest?.('.seq-clip')) return;
+      event.preventDefault(); event.stopPropagation();
+      openLaneMenu(event, track, lane);
     });
     lane?.addEventListener('dblclick', async (event) => {
       if (event.target.closest('.seq-clip')) return;
@@ -509,6 +946,10 @@ export function createSequencerModule(hub) {
     });
     element.addEventListener('dblclick', (event) => {
       event.preventDefault(); event.stopPropagation(); controller.openClipEditor(element.dataset.clipId);
+    });
+    element.addEventListener('contextmenu', (event) => {
+      event.preventDefault(); event.stopPropagation();
+      openClipMenu(event, element.dataset.clipId);
     });
     element.addEventListener('pointerdown', (event) => {
       event.preventDefault(); event.stopPropagation();
@@ -538,7 +979,11 @@ export function createSequencerModule(hub) {
         clip.classList.toggle('selected', controller.model.isClipSelected(clip.dataset.clipId));
         if (selectedIds.includes(clip.dataset.clipId)) clip.classList.add('dragging');
       }
-      element.setPointerCapture?.(event.pointerId);
+      // `?.` guards a missing method, not a throwing one: setPointerCapture
+      // rejects a pointer id that is no longer active, and the throw used to
+      // abort this handler AFTER `drag` was armed and BEFORE the move
+      // listeners were attached -- a drag that can never end.
+      try { element.setPointerCapture?.(event.pointerId); } catch (_) { /* capture is a nicety */ }
       document.addEventListener('pointermove', pointerMove);
       document.addEventListener('pointerup', pointerUp, { once: true });
       document.addEventListener('pointercancel', pointerCancel, { once: true });
@@ -587,11 +1032,21 @@ export function createSequencerModule(hub) {
       const found = controller.model._clip(element.dataset.clipId);
       const origin = origins.get(element.dataset.clipId);
       if (!found || !origin) continue;
-      element.style.left = `${found.clip.startPpq * controller.model.state.zoom}px`;
-      element.style.width = `${Math.max(12, found.clip.lengthPpq * controller.model.state.zoom)}px`;
+      const zoom = controller.model.state.zoom;
+      element.style.left = `${found.clip.startPpq * zoom}px`;
+      element.style.width = `${Math.max(CLIP_MIN_PX, found.clip.lengthPpq * zoom)}px`;
       const currentTrackIndex = controller.model.state.tracks.indexOf(found.track);
       const trackDelta = currentTrackIndex - origin.trackIndex;
       element.style.transform = trackDelta ? `translateY(${trackDelta * TRACK_HEIGHT}px)` : '';
+      // A resize changes which part of the source the clip shows -- the start
+      // edge moves `sourceOffsetPpq`, the end edge moves `lengthPpq` -- so the
+      // marks have to be rebuilt to stay where the music is. A move changes
+      // neither, and rebuilding it every frame would be work for nothing.
+      if (drag.kind !== 'resize-clip') continue;
+      const preview = element.querySelector('.seq-midi-preview,.seq-waveform');
+      if (!preview) continue;
+      preview.outerHTML = clipContent(found.track, found.clip, zoom);
+      applyDynamicStyles(element);
     }
   }
 
@@ -627,29 +1082,237 @@ export function createSequencerModule(hub) {
     drag = null;
   }
 
+  /**
+   * The rubber band over the lanes.
+   *
+   * It begins on empty lane space and stays inert until the pointer has moved
+   * three pixels, so a plain click still clears the selection and a
+   * double-click still creates a clip -- the two gestures that already lived
+   * on this element.
+   */
+  function startMarquee(event) {
+    const canvas = container?.querySelector('[data-seq-canvas]');
+    const rect = canvas?.getBoundingClientRect?.();
+    if (!rect) return;
+    marquee = {
+      canvas, rect, x0: event.clientX, y0: event.clientY, element: null, active: false,
+      additive: event.ctrlKey || event.metaKey || event.shiftKey,
+      baseIds: controller.model.selectedClipIds(), ids: []
+    };
+    document.addEventListener('pointermove', marqueeMove);
+    document.addEventListener('pointerup', marqueeUp, { once: true });
+    document.addEventListener('pointercancel', marqueeCancel, { once: true });
+  }
+
+  function marqueeMove(event) {
+    if (!marquee) return;
+    if (!marquee.active) {
+      if (Math.abs(event.clientX - marquee.x0) < 3 && Math.abs(event.clientY - marquee.y0) < 3) return;
+      marquee.active = true;
+      marquee.element = document.createElement('div');
+      marquee.element.setAttribute('class', 'seq-marquee');
+      marquee.canvas.appendChild(marquee.element);
+    }
+    const zoom = controller.model.state.zoom;
+    const left = Math.min(marquee.x0, event.clientX) - marquee.rect.left;
+    const top = Math.min(marquee.y0, event.clientY) - marquee.rect.top;
+    const width = Math.abs(event.clientX - marquee.x0);
+    const height = Math.abs(event.clientY - marquee.y0);
+    marquee.element.style.left = `${left}px`;
+    marquee.element.style.top = `${top}px`;
+    marquee.element.style.width = `${width}px`;
+    marquee.element.style.height = `${height}px`;
+    const covered = clipsInSpan(controller.model.state.tracks, {
+      startPpq: (left - TRACK_HEADER) / zoom,
+      endPpq: (left + width - TRACK_HEADER) / zoom,
+      fromTrack: Math.floor((top - RULER_HEIGHT) / TRACK_HEIGHT),
+      toTrack: Math.floor((top + height - RULER_HEIGHT) / TRACK_HEIGHT)
+    });
+    marquee.ids = [...new Set([...(marquee.additive ? marquee.baseIds : []), ...covered])];
+    // Highlighted live, committed once: a re-render per pixel of the band
+    // would rebuild the page under the pointer that is drawing it.
+    const selected = new Set(marquee.ids);
+    for (const element of container.querySelectorAll('.seq-clip')) {
+      element.classList.toggle('selected', selected.has(element.dataset.clipId));
+    }
+  }
+
+  function endMarquee(commit) {
+    document.removeEventListener('pointermove', marqueeMove);
+    document.removeEventListener('pointerup', marqueeUp);
+    document.removeEventListener('pointercancel', marqueeCancel);
+    const done = marquee; marquee = null;
+    done?.element?.remove();
+    if (!done?.active) return;
+    if (!commit) {
+      const selected = new Set(done.baseIds);
+      for (const element of container?.querySelectorAll?.('.seq-clip') || []) {
+        element.classList.toggle('selected', selected.has(element.dataset.clipId));
+      }
+      return;
+    }
+    // The lane's own click handler clears the selection; after a band it must
+    // not undo the one thing the band just did.
+    suppressLaneClick = true;
+    controller.model.state.selectedClipIds = done.ids;
+    controller.model.state.selectedClipId = done.ids.at(-1) || null;
+    controller.model.state.selectionAnchorClipId = done.ids[0] || null;
+    controller.changed({ syncNative: false, invalidateEditors: false });
+  }
+
+  function marqueeUp() { endMarquee(true); }
+  function marqueeCancel() { endMarquee(false); }
+
+  /** The point on the timeline a pointer event landed on, in quarters. */
+  function ppqAtPointer(event, lane) {
+    const rect = lane?.getBoundingClientRect?.();
+    if (!rect) return controller.playheadPpq;
+    return Math.max(0, (event.clientX - rect.left) / controller.model.state.zoom);
+  }
+
+  /**
+   * The menu on a clip.
+   *
+   * Almost every entry is wiring to an operation the model already had and
+   * only the mouse could reach. Split is the exception -- it is new -- and
+   * Quantize takes the toolbar's Snap as its grid rather than opening a dialog
+   * to ask for one: the value is already on screen, and an option offered is
+   * a decision not taken.
+   */
+  function openClipMenu(event, clipId) {
+    const model = controller.model;
+    if (!model.isClipSelected(clipId)) controller.selectClip(clipId);
+    const ids = model.selectedClipIds();
+    const found = model._clip(clipId);
+    if (!found) return;
+    const many = ids.length > 1;
+    const midi = ids.every((id) => model._clip(id)?.track.type === 'midi');
+    const snap = model.state.snap;
+    const splittable = ids.some((id) => {
+      const target = model._clip(id);
+      return target && controller.playheadPpq > target.clip.startPpq
+        && controller.playheadPpq < target.clip.startPpq + target.clip.lengthPpq;
+    });
+    openContextMenu({
+      x: event.clientX, y: event.clientY,
+      items: [
+        { label: many ? `${ids.length} clips selected` : found.clip.name },
+        { separator: true },
+        { label: 'Open in Clip Editor', hint: 'Double-click', disabled: many, action: () => controller.openClipEditor(clipId) },
+        { label: 'Split at playhead', hint: 'S', disabled: !splittable, action: () => controller.splitClips(ids) },
+        { separator: true },
+        { label: 'Cut', hint: 'Ctrl+X', action: () => controller.cutSelectedClips() },
+        { label: 'Copy', hint: 'Ctrl+C', action: () => controller.copySelectedClips() },
+        { label: 'Duplicate', hint: 'Ctrl+D', action: () => controller.duplicateSelectedClips() },
+        { separator: true },
+        { label: `Quantize to ${snap}`, disabled: !midi, action: () => controller.quantizeClips(ids, { grid: snap, strength: 100 }) },
+        { separator: true },
+        { label: many ? `Delete ${ids.length} clips` : 'Delete', hint: 'Del', danger: true, action: () => controller.deleteSelectedClips() }
+      ]
+    });
+  }
+
+  /** The menu on empty lane space: what a double-click does, plus paste. */
+  function openLaneMenu(event, track, lane) {
+    const ppq = ppqAtPointer(event, lane);
+    openContextMenu({
+      x: event.clientX, y: event.clientY,
+      items: [
+        { label: track.name },
+        { separator: true },
+        track.type === 'midi'
+          ? { label: 'New MIDI clip here', hint: 'Double-click', action: () => { controller.model.addMidiClip(track.id, ppq, 4); controller.changed(); } }
+          : { label: 'Import audio here…', hint: 'Double-click', action: () => { controller.importAudio(track.id, ppq); } },
+        { label: 'Paste here', hint: 'Ctrl+V', disabled: !controller.hasClipboard(), action: () => controller.pasteClips(ppq) },
+        { separator: true },
+        { label: 'Select all clips', hint: 'Ctrl+A', action: () => controller.selectAllClips() }
+      ]
+    });
+  }
+
+  /**
+   * Move the selection by one snap step, or across one track.
+   *
+   * The mouse was the only vocabulary the arrangement had, and a clip cannot
+   * be placed accurately with it at any zoom. `moveClips` already knows how to
+   * carry a group with one common delta; this only names the delta.
+   */
+  function nudgeSelection(deltaPpq, trackDelta = 0) {
+    const ids = controller.model.selectedClipIds();
+    if (!ids.length) return false;
+    const anchorClipId = controller.model.state.selectedClipId || ids[0];
+    const found = controller.model._clip(anchorClipId);
+    if (!found) return false;
+    let targetTrackId = null;
+    if (trackDelta) {
+      const target = controller.model.state.tracks[controller.model.state.tracks.indexOf(found.track) + trackDelta];
+      if (!target) return false;
+      targetTrackId = target.id;
+    }
+    return controller.moveClips(ids, deltaPpq, targetTrackId, { anchorClipId });
+  }
+
   function keyDown(event) {
     if (!container) return;
     if (event.target?.closest?.('input,select,textarea,[contenteditable="true"]')) return;
-    if (event.key === 'Escape' && drag) {
-      event.preventDefault(); pointerCancel(); return;
+    if (event.key === 'Escape' && (drag || marquee)) {
+      event.preventDefault();
+      if (drag) pointerCancel();
+      if (marquee) marqueeCancel();
+      return;
     }
     const command = event.ctrlKey || event.metaKey;
-    if (command && String(event.key).toLowerCase() === 'c') {
+    const key = String(event.key).toLowerCase();
+    if (command && key === 'c') {
       if (controller.copySelectedClips()) event.preventDefault();
       return;
     }
-    if (command && String(event.key).toLowerCase() === 'v') {
+    if (command && key === 'x') {
+      if (controller.cutSelectedClips()) event.preventDefault();
+      return;
+    }
+    if (command && key === 'v') {
       if (controller.pasteClips().length) event.preventDefault();
       return;
     }
-    if (command && String(event.key).toLowerCase() === 'd') {
+    if (command && key === 'd') {
       if (controller.duplicateSelectedClips().length) event.preventDefault();
+      return;
+    }
+    if (command && key === 'a') {
+      if (controller.selectAllClips()) event.preventDefault();
+      return;
+    }
+    // Bare +/- rather than Ctrl+ +/-: those belong to Chromium's own page zoom
+    // and taking them would fight the shell.
+    if (!command && (event.key === '+' || event.key === '=')) {
+      event.preventDefault();
+      zoomAt(controller.model.state.zoom * 1.25, TRACK_HEADER + viewportPx() / 2);
+      return;
+    }
+    if (!command && event.key === '-') {
+      event.preventDefault();
+      zoomAt(controller.model.state.zoom / 1.25, TRACK_HEADER + viewportPx() / 2);
       return;
     }
     if (!controller.model.state.selectedClipIds.length) return;
     if (event.key === 'Delete' || event.key === 'Backspace') {
       event.preventDefault();
       controller.deleteSelectedClips();
+      return;
+    }
+    const step = snapStep(controller.model.state.snap);
+    const nudges = {
+      ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -1], ArrowDown: [0, 1]
+    };
+    if (!command && key === 's') {
+      event.preventDefault();
+      controller.splitClips();
+      return;
+    }
+    if (nudges[event.key]) {
+      event.preventDefault();
+      nudgeSelection(...nudges[event.key]);
     }
   }
 
@@ -682,6 +1345,8 @@ export function createSequencerModule(hub) {
   }
 
   function unmount() {
+    closeContextMenu();
+    marqueeCancel();
     unsubs.forEach((off) => off()); unsubs = [];
     document.removeEventListener('keydown', keyDown);
     pointerCancel();
@@ -691,7 +1356,7 @@ export function createSequencerModule(hub) {
     globalThis.window?.removeEventListener?.('resize', resizeRender);
     resizeRenderQueued = false;
     container?.classList.remove('sequencer-workspace');
-    container = null; drag = null;
+    container = null; drag = null; marquee = null; suppressLaneClick = false;
   }
 
   return {

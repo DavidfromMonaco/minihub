@@ -21,13 +21,29 @@
 .clip-piano-scroll { width:100%; height:100%; overflow:auto; overscroll-behavior:contain; }
 .clip-piano-canvas { position:relative; min-width:100%; background:#131518; }
 .clip-piano-keys { position:sticky; left:0; top:0; z-index:5; background:#202328; border-right:1px solid #4a4f57; }
-.clip-key { position:absolute; left:0; width:80px; padding:1px 5px; border-bottom:1px solid #343941; color:#9aa1a9; background:#e2e5e8; font:9px var(--mono); text-align:right; }
-.clip-key.black { width:53px; color:#d5d8dc; background:#282c32; border-color:#111; }
-.clip-piano-grid { position:absolute; top:0; background-image:repeating-linear-gradient(to right,transparent 0,transparent calc(var(--ce-beat) - 1px),rgba(255,255,255,.09) var(--ce-beat)),repeating-linear-gradient(to bottom,transparent 0,transparent 17px,rgba(255,255,255,.055) 18px); }
+/* The gutter width and the row height come from --ce-keys / --ce-row, set on
+   .clip-piano-canvas from the one place that owns the zoom. They used to be
+   80px and 18px spelled here as well as in JavaScript. */
+.clip-key { position:absolute; left:0; width:var(--ce-keys,80px); padding:1px 5px; box-sizing:border-box; overflow:hidden; border:0; border-bottom:1px solid #343941; border-radius:0; color:#9aa1a9; background:#e2e5e8; font:400 min(9px,calc(var(--ce-row,18px) * .6)) var(--mono); line-height:1; text-align:right; cursor:pointer; }
+.clip-key:active { background:#8f7ddb; color:#fff; }
+.clip-key.black:active { background:#6b57b8; color:#fff; }
+.clip-key:focus-visible { outline:1px solid var(--accent); outline-offset:-1px; }
+.clip-key.black { width:calc(var(--ce-keys,80px) * .66); color:#d5d8dc; background:#282c32; border-color:#111; }
+.clip-piano-grid { position:absolute; top:0; background-image:repeating-linear-gradient(to right,transparent 0,transparent calc(var(--ce-beat) - 1px),rgba(255,255,255,.09) var(--ce-beat)),repeating-linear-gradient(to bottom,transparent 0,transparent calc(var(--ce-row,18px) - 1px),rgba(255,255,255,.055) var(--ce-row,18px)); }
+/* A rubber band over the grid. Ignores the pointer that is drawing it. */
+.clip-marquee { position:absolute; z-index:3; border:1px solid rgba(115,89,199,.95); border-radius:2px; background:rgba(115,89,199,.18); pointer-events:none; }
 .clip-editor-playhead { position:absolute; top:0; bottom:0; width:2px; z-index:4; pointer-events:none; background:#ff6b67; box-shadow:0 0 0 1px #0008,0 0 7px #ff6b6788; transform:translateX(-1px); }
-.clip-note { position:absolute; padding:0; border:1px solid rgba(255,255,255,.35); border-radius:3px; background:#7359c7; box-shadow:0 1px 2px #0008; cursor:grab; }
+/* Coloured by velocity, the way every piano roll is: a soft note is dark, a
+   hard one bright. --ce-vel is the note's velocity as a 0..1 ratio. */
+.clip-note { position:absolute; padding:0; border:1px solid rgba(255,255,255,.35); border-radius:3px; background:color-mix(in srgb, #c3b0ff calc(var(--ce-vel,.75) * 100%), #3d2f70); box-shadow:0 1px 2px #0008; cursor:grab; }
 .clip-note.selected { outline:2px solid #fff; z-index:2; }
-.clip-note > span { position:absolute; right:0; top:0; bottom:0; width:7px; background:rgba(255,255,255,.18); cursor:ew-resize; }
+.clip-note:active { cursor:grabbing; }
+/* A note being dragged is drawn where the cursor is, above its neighbours and
+   with no transition -- the position is rewritten every pointermove. */
+.clip-note.dragging { z-index:3; opacity:.82; box-shadow:0 5px 14px rgba(0,0,0,.5); transition:none; }
+.clip-note > span { position:absolute; top:0; bottom:0; width:7px; background:rgba(255,255,255,.18); cursor:ew-resize; }
+.clip-note > span[data-note-resize="start"] { left:0; border-right:1px solid rgba(255,255,255,.22); }
+.clip-note > span[data-note-resize="end"] { right:0; border-left:1px solid rgba(255,255,255,.22); }
 .clip-audio-controls { grid-row:2; }
 .clip-audio-path { min-width:180px; max-width:38vw; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text-faint); }
 .clip-editor-error { margin:0; color:#ffd4cf; }
@@ -38,3 +54,14 @@
   .clip-editor-status { display:none; }
   .clip-transport-position { display:none; }
 }
+
+.clip-tools { align-items:flex-start; gap:0!important; padding:0!important; }
+/* min-width:0 and max-width:100% are what let a group wrap INSIDE itself: as
+   a flex item its natural width is max-content, so at the 720px minimum
+   window size the Quantize row would otherwise run off the right edge. */
+.clip-tool-group { display:flex; align-items:center; flex-wrap:wrap; gap:10px; min-width:0; max-width:100%; padding:9px 14px; }
+.clip-tool-group + .clip-tool-group { border-left:1px solid var(--border); }
+.clip-tool-group h2 { min-width:56px; margin:0; color:var(--text-faint); font-size:10px; text-transform:uppercase; letter-spacing:.08em; }
+.clip-tool-group input[type="range"] { width:88px; }
+.clip-tool-group .btn { height:26px; padding:0 9px; font-size:11px; }
+.clip-tool-group output { min-width:26px; color:var(--text-faint); font:10px var(--mono); text-align:right; }

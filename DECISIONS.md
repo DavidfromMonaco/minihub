@@ -1548,3 +1548,190 @@ would make a persistent history a read of the file rather than a second store.
 **Where it lands** — [ROADMAP.md](ROADMAP.md) item 13. It should follow item 4:
 splitting `nodeInstances.js` is what makes "capture and restore the authored
 state" a small amount of code rather than a second traversal of the same tangle.
+
+---
+
+## D-033 — The track carries what you perform; the toolbar carries what you route
+
+**Status**: in force · 2026-09-10 · **implemented**
+
+**Context** — Reported in real use on 2026-09-10: the arrangement's tracks are
+far too big. Measured, they were `TRACK_HEADER = 360` by `TRACK_HEIGHT = 140`,
+against 30–70 px of height and 150–200 px of width in Ableton, Logic, Reaper and
+Bitwig. Six tracks filled a screen.
+
+The height was **not the clip's fault**. `.seq-track-head` was a five-row grid —
+arm/monitor/name/mute/delete, then Input, then Destination, then Level, then a
+two-sentence route summary — and the lane was sized by whatever the header
+needed. The clip itself was a fixed 62 px sitting at `top: 7px`, so **71 px of
+every lane was empty, always**.
+
+INTENT §6 refuses a feature justified by "other workstations have it". That
+refusal is not what carries this: §3 is — *finish a complete track*. An
+arrangement you cannot see is one you cannot arrange. The other workstations are
+the measure of the gap, not the reason to close it.
+
+**Decision** — Three parts, and the third is the one that looks absurd.
+
+1. **64 by 260.** A track head is two rows: arm, monitor, name, mute, delete on
+   the first; a level fader with its dB readout on the second. Thirteen tracks
+   fit where six did.
+2. **Routing moves to a toolbar inspector.** Input, Destination and the two
+   route sentences belong to the **focused** track and are drawn once, in the
+   toolbar, the way Logic and Bitwig put them in an inspector. The Patch Bay
+   remains the routing authority (invariant 2); this is the same pair of fields,
+   moved. Adding a track focuses it, so the inspector opens on what you just
+   made — without arming it, because adding a track must not disarm the one a
+   take is running on.
+3. **The zoom floor drops from 24 px per quarter to 1.** ROADMAP item 11 said 24
+   blocked a "fit the whole arrangement" framing, and it did. 4 was tried first
+   and a four-minute arrangement — 480 quarters at 120 BPM — still overflowed a
+   1240 px timeline, which makes a button named Fit a lie. At 1 px per quarter
+   that timeline holds 310 bars and a four-bar clip is still a 16 px block.
+
+**Consequence** — the geometry stops being spelled in three places, and two
+things that were readable at 72 px per quarter had to stop being constants:
+
+- `.seq-corner` declared `width: 360px` and `.seq-empty` declared `left: 250px`
+  — three sources for one measurement, one of them already wrong. The header
+  width is published once as `--seq-head` and the stylesheet reads it.
+- **The clip has no height.** `top: 3px; bottom: 3px` insets it into whatever
+  the lane is. A fixed height cannot follow a track that changes.
+- **The grid draws a coarser division when the beat gets narrow** (`gridPx`). At
+  4 px per quarter, `calc(var(--seq-beat) - 1px)` leaves nothing transparent
+  between two 1 px rules: the grid became a solid tint.
+- **The ruler stride is driven by pixels, snapped up to a power of two**
+  (`rulerStride`). A mark every 3 bars is arithmetically fine and musically
+  unreadable.
+- **A clip may be drawn 3 px wide**, down from 12. Twelve pixels on a 16 px bar
+  would draw a 1/16 clip three beats long — the width has to mean the length.
+
+**What would justify revisiting** — a per-track height the user sets by dragging
+the lane's bottom edge, which is what Reaper and Cubase offer. It needs the
+geometry to become a table of offsets rather than one constant, and
+`renderDragPreview` multiplies by that constant to move a clip across tracks.
+
+**Where it lands** — [ROADMAP.md](ROADMAP.md) items 10 and 11, both closed by
+the same pass.
+
+---
+
+## D-034 — A split is a second window onto the same source, not a redistribution
+
+**Status**: in force · 2026-09-10 · **implemented**
+
+**Context** — The scissor is the one part of ROADMAP item 11 that did not exist
+anywhere in the model, and the item named the design question in it: **what
+happens to a MIDI note straddling the cut** — shortened, or moved whole to one
+side. Every answer to that question as asked loses something, and the item also
+noted the two clip types are not symmetric: a MIDI clip would distribute notes
+while an audio clip is only a `trimStart` / `trimEnd` pair.
+
+**Decision** — The question is not answered; it is **dissolved**. Both halves
+keep the **whole source** and take a different **window** onto it. A MIDI clip
+already carries `sourceOffsetPpq` / `sourceLengthPpq`, an audio clip
+`trimStartSeconds` / `trimEndSeconds`, and those are exactly the numbers a split
+has to move. The two types stop being asymmetric: it is the same operation on a
+different pair of fields.
+
+A note crossing the cut is therefore stored entire in both halves, and each half
+draws the part inside its own window — which is what the renderer already did
+for a trimmed clip.
+
+**Consequence** — **a split followed by a rejoin is lossless.** Drag either
+half's edge back out and the note is whole again. No implementation that
+shortens the note or hands it to one side can say that. It also means the two
+halves are *bigger* on disk than the original — each carries the full note list
+— and that is the price: a clip is at most 65 536 notes, and correctness of the
+edit is worth more than the bytes.
+
+Refused with it: splitting at the mouse position. The cut is the **playhead**,
+because it is the one point on the timeline that is already exact, and because
+Split is what you reach for after listening to where the cut should be.
+
+**What would justify revisiting** — a clip that has to be exported or handed to
+another program on its own, where "the notes it does not play" would be a
+surprise. Nothing in MiniHub does that today: export renders the transport.
+
+---
+
+## D-035 — One Snap for the project, reachable from both screens
+
+**Status**: in force · 2026-09-10 · **implemented**
+
+**Context** — The Clip Editor read `state.snap` and could not change it: the
+grid you were working against was set in another window. Most workstations give
+the piano roll its own grid setting, independent of the arrangement's.
+
+**Decision** — MiniHub keeps **one** Snap, owned by the project, and the Clip
+Editor writes it through a `set-snap` IPC operation like any other edit. Editing
+it from the piano roll moves the arrangement's grid too.
+
+**Consequence** — the Clip Editor is no longer read-only with respect to project
+state that is not a clip, and that is a real widening of what its IPC surface
+may touch. It stays bounded the same way everything else there is: an
+enumerated operation, validated against the Snap divisions in
+`clipEditorWindows.js`, resolved by the one renderer that owns the model.
+
+Two independent grids were refused for the reason a second setting always is:
+the value is a single idea, and offering it twice means the two can disagree
+while both look right. See also the same reasoning applied to
+`QUANTIZE_GRIDS` — `1 bar` and `1/2` were added to it so that the quantize
+vocabulary contains the Snap vocabulary, which is what lets a clip's context
+menu offer "Quantize to <the current Snap>" without a hole in it.
+
+**What would justify revisiting** — a workflow where the arrangement is edited
+in bars while notes are edited in 1/32, often enough that changing one value
+twice per gesture becomes the friction.
+
+---
+
+## D-036 — The Clip Editor may sound a note, and the note-off is not its business
+
+**Status**: in force · 2026-09-10 · **implemented**
+
+**Context** — Reported on 2026-09-10: the piano roll plays nothing when you
+click it. The keyboard down its left edge was 128 inert `<div>`s and a note was
+a button that only selected. A piano roll you cannot hear is a spreadsheet with
+a keyboard drawn next to it.
+
+**Decision** — Sounding a note is a **performance, not an edit**, and it
+travels as such: its own IPC channel (`clip-editor:audition`), its own request
+`kind`, no entry in `OPERATIONS`. Three consequences fall out of that one
+sentence:
+
+- It **writes no model state and rebuilds no native plan.** No `changed()`, no
+  `syncSequencer`, nothing on disk.
+- It is **not queued behind edits.** `editQueue` exists so two mutations cannot
+  interleave; a sound placed in that queue arrives after the gesture that asked
+  for it.
+- A **stale project still refuses it**, exactly as an edit is refused. The
+  reason is the same: the clip may no longer exist.
+
+It leaves through `emitDataTo`, like live input, so **invariant 2 holds**: no
+Patch Bay cable to the track's Destination, no sound — and the renderer does not
+invent a route to produce one. A click that cannot sound says why, once, in the
+editor's status line rather than doing nothing.
+
+**Consequence — the note-off is scheduled by the controller, and this is the
+part that matters.** The editor sends one message carrying a duration; it never
+sends a note-off. A note-off that rides on a `pointerup` is one that a lost
+pointer capture, a closed window or a project change can swallow, and a note
+left on inside a VST outlives all three. So:
+
+- the duration is bounded on **both** sides of the IPC (`AUDITION_MAX_MS`, 4 s):
+  the validator refuses more, and the renderer clamps to the same number,
+  because a payload arriving from anywhere else must land on the same ceiling;
+- a second tap on the same key **retriggers** rather than stacking — the first
+  note's pending off would otherwise land in the middle of the second;
+- `beginProjectTransition()` and `dispose()` silence everything still held.
+
+**What it costs**, named rather than discovered: **holding a key does not
+sustain.** A press is a blip of a fixed length — 420 ms for a key, the note's
+own length for a note, 260 ms for each row a transposing drag crosses. Sustain
+means a note-off that depends on a `pointerup`, which is the failure mode above.
+
+**What would justify revisiting** — a keyboard used to *enter* notes rather than
+to check a pitch, where the length of the press is the length of the note. That
+needs a held-note registry that survives a lost pointer, and it is a bigger
+piece of work than this one.

@@ -8,7 +8,19 @@ const SNAP_STEPS = Object.freeze({
 });
 
 export const TICKS_PER_QUARTER = 960;
+
+/**
+ * The grids a take can be quantized to.
+ *
+ * `1 bar` and `1/2` are here so that this vocabulary contains `SNAP_STEPS`'.
+ * They were missing, and the hole was invisible until the clip's context menu
+ * offered "Quantize to <the current Snap>": with Snap on `1 bar` there was no
+ * grid to quantize to, and the entry could only have been greyed out for a
+ * reason nobody could guess. Two lists that nearly agree are worse than one.
+ */
 export const QUANTIZE_GRIDS = Object.freeze({
+  '1 bar': TICKS_PER_QUARTER * 4,
+  '1/2': TICKS_PER_QUARTER * 2,
   '1/4': TICKS_PER_QUARTER,
   '1/8': TICKS_PER_QUARTER / 2,
   '1/16': TICKS_PER_QUARTER / 4,
@@ -17,11 +29,28 @@ export const QUANTIZE_GRIDS = Object.freeze({
   '1/16 triplet': TICKS_PER_QUARTER / 6
 });
 
-const MIN_NOTE_PPQ = 0.03125;
+export const MIN_NOTE_PPQ = 0.03125;
 const MIN_NOTE_TICKS = Math.round(MIN_NOTE_PPQ * TICKS_PER_QUARTER);
 const MIN_CLIP_PPQ = 0.125;
 
 export const SEQUENCER_LIMITS = Object.freeze({ tracks: 64, clipsPerTrack: 2048, notesPerClip: 65536 });
+
+/**
+ * The zoom floor, in pixels per quarter.
+ *
+ * It was 24, and that is what made a "fit the whole arrangement" framing
+ * impossible: at 24 px a 1200 px window shows twelve bars, so a four-minute
+ * arrangement could not be seen at once whatever the button did.
+ *
+ * One, and the number is measured rather than chosen: 4 was tried first and a
+ * four-minute arrangement -- 480 quarters at 120 BPM -- still overflowed a
+ * 1240 px timeline, which makes a button named Fit a lie. At 1 px per quarter
+ * that timeline holds 310 bars, about ten minutes, and a four-bar clip is
+ * still a 16 px block at a legible position. What does NOT survive down here
+ * is a grid line per beat, which is why `gridPx` exists in the module.
+ */
+export const ZOOM_MIN = 1;
+export const ZOOM_MAX = 240;
 
 const finite = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
 const clamp = (value, min, max) => Math.max(min, Math.min(max, finite(value, min)));
@@ -29,6 +58,36 @@ const uid = (prefix) => globalThis.crypto?.randomUUID?.() || `${prefix}-${Date.n
 
 export function snapStep(value) {
   return SNAP_STEPS[value] || SNAP_STEPS['1/16'];
+}
+
+/**
+ * The delta a group of notes can actually take, reduced until the whole group
+ * fits inside its clip window.
+ *
+ * Pure and exported because **two processes need the identical answer**: the
+ * model applies it in `moveMidiNotes`, and the Clip Editor -- another window,
+ * before any IPC has happened -- has to draw it a frame earlier so the notes
+ * follow the cursor. A second implementation over there would drift, and the
+ * symptom is precise and maddening: a note that slides one way under the hand
+ * and lands another when released.
+ *
+ * The rule is `moveClips`': one common delta, reduced for the group. Clamping
+ * note by note is the tempting version and it is wrong -- the notes that meet
+ * the boundary stop while the rest keep going, so a chord loses its shape
+ * with no way to get it back.
+ */
+export function clampNoteGroupDelta(notes, { lowerPpq = 0, upperPpq = 0 } = {}, { deltaPpq = 0, deltaPitch = 0 } = {}) {
+  const list = (Array.isArray(notes) ? notes : []).filter((note) => note && typeof note === 'object');
+  if (!list.length) return { deltaPpq: 0, deltaPitch: 0 };
+  const lower = Math.max(0, finite(lowerPpq));
+  const lastStart = Math.max(lower, finite(upperPpq) - MIN_NOTE_PPQ);
+  const starts = list.map((note) => finite(note.startPpq));
+  const pitches = list.map((note) => Math.round(finite(note.pitch)));
+  let start = finite(deltaPpq);
+  if (start) start = Math.max(lower - Math.min(...starts), Math.min(lastStart - Math.max(...starts), start));
+  let pitch = Math.round(finite(deltaPitch));
+  if (pitch) pitch = Math.max(-Math.min(...pitches), Math.min(127 - Math.max(...pitches), pitch));
+  return { deltaPpq: start, deltaPitch: pitch };
 }
 
 export function snapPpq(value, division = '1/16') {
@@ -133,7 +192,7 @@ export function normalizeSequencerState(value) {
     tracks,
     loop: { enabled: value?.loop?.enabled === true, startPpq: loopStart, endPpq: loopEnd },
     snap: Object.hasOwn(SNAP_STEPS, value?.snap) ? value.snap : base.snap,
-    zoom: clamp(value?.zoom, 24, 240),
+    zoom: clamp(value?.zoom, ZOOM_MIN, ZOOM_MAX),
     scrollPpq: Math.max(0, finite(value?.scrollPpq)),
     selectedClipId,
     selectedClipIds,
@@ -200,6 +259,15 @@ export class SequencerModel {
     return true;
   }
 
+  /** Every clip in the arrangement, in timeline order. Returns how many. */
+  selectAllClips() {
+    const ids = this._orderedClipIds();
+    this.state.selectedClipIds = ids;
+    this.state.selectedClipId = ids.at(-1) || null;
+    this.state.selectionAnchorClipId = ids[0] || null;
+    return ids.length;
+  }
+
   focusTrack(trackId, { preserveArmed = false } = {}) {
     const track = this._track(trackId);
     if (!track) return null;
@@ -228,6 +296,11 @@ export class SequencerModel {
     const family = this.state.tracks.filter((track) => track.type === normalizedType).length + 1;
     const track = normalizeTrack({ id: uid('track'), type: normalizedType, name: `${normalizedType === 'midi' ? 'MIDI' : 'Audio'} ${family}`, volume: 1 }, this.state.tracks.length);
     this.state.tracks.push(track);
+    // A track is created to be worked on, so it takes the focus and the
+    // toolbar inspector opens on its routing. Arming is deliberately left
+    // alone: adding a track must not disarm the one a take is running on,
+    // which is what `focusTrack` would do for a MIDI track.
+    this.state.focusedTrackId = track.id;
     return track;
   }
 
@@ -425,6 +498,104 @@ export class SequencerModel {
     return note;
   }
 
+  /**
+   * Move, transpose or lengthen a whole note selection at once.
+   *
+   * `updateMidiNote` takes one note id, and that was the whole of note
+   * editing: selecting a five-note chord and dragging it moved one note and
+   * left the other four behind. This is the note-level twin of `moveClips`,
+   * and it borrows its rule -- **one common delta for the group, reduced
+   * until the group fits**. Clamping note by note is the tempting version and
+   * it is wrong: the notes that reach the clip boundary stop while the others
+   * keep going, so a chord silently loses its shape.
+   *
+   * Returns how many notes moved, so a caller can tell "nothing selected"
+   * from "moved by zero".
+   */
+  moveMidiNotes(clipId, noteIds = [], { deltaPpq = 0, deltaPitch = 0, deltaDurationPpq = 0 } = {}) {
+    const found = this._clip(clipId);
+    if (!found || found.track.type !== 'midi') return 0;
+    const wanted = new Set((Array.isArray(noteIds) ? noteIds : []).filter((id) => typeof id === 'string'));
+    const notes = found.clip.notes.filter((note) => wanted.has(note.id));
+    if (!notes.length) return 0;
+    const lower = found.clip.sourceOffsetPpq;
+    const upper = lower + found.clip.lengthPpq;
+    const lastStart = Math.max(lower, upper - MIN_NOTE_PPQ);
+    const { deltaPpq: startDelta, deltaPitch: pitchDelta } = clampNoteGroupDelta(
+      notes, { lowerPpq: lower, upperPpq: upper }, { deltaPpq, deltaPitch }
+    );
+    const durationDelta = finite(deltaDurationPpq);
+
+    for (const note of notes) {
+      note.startPpq = clamp(note.startPpq + startDelta, lower, lastStart);
+      note.pitch = Math.round(clamp(note.pitch + pitchDelta, 0, 127));
+      const room = Math.max(MIN_NOTE_PPQ, upper - note.startPpq);
+      note.durationPpq = clamp(note.durationPpq + durationDelta, MIN_NOTE_PPQ, room);
+    }
+    found.clip.notes.sort((a, b) => a.startPpq - b.startPpq || a.pitch - b.pitch);
+    return notes.length;
+  }
+
+  /**
+   * Set absolute note fields over a selection.
+   *
+   * Separate from `moveMidiNotes` because the two are different kinds of
+   * edit: a drag is a delta, and "make these notes velocity 100" is a value.
+   * Folding them together means a payload where some fields are relative and
+   * others are not, which is exactly the sort of thing that is misread once
+   * and then wrong forever.
+   */
+  setMidiNotes(clipId, noteIds = [], changes = {}) {
+    const found = this._clip(clipId);
+    if (!found || found.track.type !== 'midi' || !changes || typeof changes !== 'object') return 0;
+    const wanted = new Set((Array.isArray(noteIds) ? noteIds : []).filter((id) => typeof id === 'string'));
+    const notes = found.clip.notes.filter((note) => wanted.has(note.id));
+    for (const note of notes) {
+      if ('velocity' in changes) note.velocity = Math.round(clamp(changes.velocity, 1, 127));
+      if ('channel' in changes) note.channel = Math.round(clamp(changes.channel, 1, 16));
+    }
+    return notes.length;
+  }
+
+  /**
+   * Copy a note selection one selection-span later.
+   *
+   * The offset is the selection's own extent rather than a fixed bar, so
+   * duplicating a two-beat figure lands it immediately after itself -- which
+   * is what the gesture is for. Copies that would fall outside the clip's
+   * visible window are not created: a note the editor cannot draw is a note
+   * the user cannot take back.
+   */
+  duplicateMidiNotes(clipId, noteIds = []) {
+    const found = this._clip(clipId);
+    if (!found || found.track.type !== 'midi') return [];
+    const wanted = new Set((Array.isArray(noteIds) ? noteIds : []).filter((id) => typeof id === 'string'));
+    const notes = found.clip.notes.filter((note) => wanted.has(note.id));
+    if (!notes.length) return [];
+    const lower = found.clip.sourceOffsetPpq;
+    const upper = lower + found.clip.lengthPpq;
+    const earliest = Math.min(...notes.map((note) => note.startPpq));
+    const latest = Math.max(...notes.map((note) => note.startPpq + note.durationPpq));
+    const offset = Math.max(snapStep(this.state.snap), latest - earliest);
+    const room = SEQUENCER_LIMITS.notesPerClip - found.clip.notes.length;
+    const copies = [];
+    for (const note of notes) {
+      if (copies.length >= room) break;
+      const startPpq = note.startPpq + offset;
+      if (startPpq >= upper - MIN_NOTE_PPQ) continue;
+      copies.push({
+        ...note,
+        id: uid('note'),
+        startPpq,
+        durationPpq: clamp(note.durationPpq, MIN_NOTE_PPQ, Math.max(MIN_NOTE_PPQ, upper - startPpq))
+      });
+    }
+    if (!copies.length) return [];
+    found.clip.notes.push(...copies);
+    found.clip.notes.sort((a, b) => a.startPpq - b.startPpq || a.pitch - b.pitch);
+    return copies;
+  }
+
   removeMidiNotes(clipId, noteIds = []) {
     const found = this._clip(clipId);
     if (!found || found.track.type !== 'midi' || !Array.isArray(noteIds)) return 0;
@@ -506,6 +677,50 @@ export class SequencerModel {
     }
     found.clip.notes.sort((a, b) => a.startPpq - b.startPpq || a.pitch - b.pitch);
     return notes.length;
+  }
+
+  /**
+   * Cut a clip in two on the timeline.
+   *
+   * Nothing is destroyed and nothing is redistributed: both halves keep the
+   * whole source and take a different **window** onto it. A MIDI clip already
+   * carries `sourceOffsetPpq` / `sourceLengthPpq`, an audio clip
+   * `trimStartSeconds` / `trimEndSeconds`, and those are precisely the numbers
+   * a split has to move.
+   *
+   * That is what answers the scissor's one design question -- what happens to
+   * a note straddling the cut -- by not having to decide it. The note is
+   * stored whole on both sides and each side draws the part inside its own
+   * window. Pull either edge back out and the note is still there, entire: a
+   * split followed by a rejoin is lossless, which is not true of any version
+   * that shortens the note or hands it to one side.
+   *
+   * Returns `[head, tail]`, or `null` when the cut falls outside the clip or
+   * would leave a stub shorter than a clip is allowed to be.
+   */
+  splitClip(clipId, atPpq, { bpm = 120 } = {}) {
+    const found = this._clip(clipId);
+    if (!found) return null;
+    const { clip, track } = found;
+    if (track.clips.length >= SEQUENCER_LIMITS.clipsPerTrack) return null;
+    const cut = snapPpq(atPpq, this.state.snap);
+    const headLength = cut - clip.startPpq;
+    const tailLength = clip.startPpq + clip.lengthPpq - cut;
+    if (headLength < MIN_CLIP_PPQ || tailLength < MIN_CLIP_PPQ) return null;
+    const tempo = clamp(bpm, 20, 300);
+
+    const raw = { ...structuredClone(clip), id: uid('clip'), startPpq: cut, lengthPpq: tailLength };
+    if (track.type === 'midi') {
+      raw.sourceOffsetPpq = clip.sourceOffsetPpq + headLength;
+      raw.notes = clip.notes.map((note) => ({ ...note, id: uid('note') }));
+    } else {
+      raw.trimStartSeconds = clip.trimStartSeconds + headLength * 60 / tempo;
+    }
+    const tail = normalizeClip(raw, track.type);
+    clip.lengthPpq = headLength;
+    if (track.type === 'audio') clip.trimEndSeconds = tail.trimStartSeconds;
+    track.clips.push(tail);
+    return [clip, tail];
   }
 
   duplicateClip(clipId) {
@@ -605,6 +820,26 @@ export class SequencerModel {
   }
 
   snapshot() { return normalizeSequencerState(structuredClone(this.state)); }
+}
+
+/**
+ * What a project holds the moment it opens: one MIDI track.
+ *
+ * `defaultSequencerState()` starts with `tracks: []`, and that empty list was a
+ * silent gate -- the sequencer was active, the keyboard played nothing, and
+ * `_liveDestinationIds()` returned an empty list because no track could be
+ * armed. The gate itself is right and stays; what was missing is the default.
+ *
+ * This is deliberately NOT folded into `defaultSequencerState()` or into
+ * normalisation: a project whose track list is genuinely empty must reopen
+ * empty, and normalisation runs on every load. Seeding belongs to the one
+ * moment where "no state was ever authored" is distinguishable from "the
+ * authored state is empty".
+ */
+export function initialSequencerState() {
+  const model = new SequencerModel(defaultSequencerState());
+  model.addTrack('midi');
+  return model.snapshot();
 }
 
 export { SNAP_STEPS };

@@ -3,10 +3,10 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
 import {
-  QUANTIZE_GRIDS, SequencerModel, TICKS_PER_QUARTER, ppqToTicks, ticksToPpq
+  QUANTIZE_GRIDS, SNAP_STEPS, SequencerModel, TICKS_PER_QUARTER, ppqToTicks, ticksToPpq
 } from '../src/renderer/js/core/sequencerModel.js';
 import { SequencerController } from '../src/renderer/js/core/sequencerController.js';
-import { selectNoteIds } from '../src/renderer/js/core/clipEditorSelection.js';
+import { notesInBox, selectNoteIds } from '../src/renderer/js/core/clipEditorSelection.js';
 
 function controllerRig() {
   const commands = [];
@@ -129,8 +129,13 @@ test('manipulated clip bounds survive canonical snapshot save/load', () => {
 
 test('every quantization grid lands on exact canonical ticks at 100 percent', () => {
   assert.deepEqual(QUANTIZE_GRIDS, {
-    '1/4': 960, '1/8': 480, '1/16': 240, '1/32': 120, '1/8 triplet': 320, '1/16 triplet': 160
+    '1 bar': 3840, '1/2': 1920, '1/4': 960, '1/8': 480, '1/16': 240, '1/32': 120,
+    '1/8 triplet': 320, '1/16 triplet': 160
   });
+  for (const division of Object.keys(SNAP_STEPS)) {
+    assert.ok(Object.hasOwn(QUANTIZE_GRIDS, division),
+      `Snap offers ${division}, so "Quantize to ${division}" has to mean something`);
+  }
   for (const [grid, step] of Object.entries(QUANTIZE_GRIDS)) {
     const model = new SequencerModel();
     const track = model.addTrack('midi');
@@ -408,3 +413,268 @@ test('dedicated editor assets separate MIDI Piano Roll from audio controls and m
 function audioMarkupSource(source) {
   return source.slice(source.indexOf('function audioMarkup'), source.indexOf('function render'));
 }
+
+test('a note selection moves as one group, and the clip window reduces the delta for all of it', () => {
+  const { controller } = controllerRig();
+  const track = controller.model.addTrack('midi');
+  const clip = controller.model.addMidiClip(track.id, 0, 4, [
+    { pitch: 60, startPpq: 0, durationPpq: 1, velocity: 100, channel: 1 },
+    { pitch: 64, startPpq: 1, durationPpq: 1, velocity: 100, channel: 1 },
+    { pitch: 67, startPpq: 2, durationPpq: 1, velocity: 100, channel: 1 }
+  ]);
+  const ids = clip.notes.map((note) => note.id);
+
+  assert.equal(controller.model.moveMidiNotes(clip.id, ids, { deltaPpq: 0.5, deltaPitch: 12 }), 3);
+  assert.deepEqual(clip.notes.map((note) => [note.startPpq, note.pitch]),
+    [[0.5, 72], [1.5, 76], [2.5, 79]], 'one common delta keeps the chord shape');
+
+  // Pushed against the end of the clip: the group stops together. Clamping
+  // note by note would let the first two keep going and flatten the chord.
+  controller.model.moveMidiNotes(clip.id, ids, { deltaPpq: 40 });
+  const starts = clip.notes.map((note) => note.startPpq);
+  assert.equal(Math.max(...starts) < clip.sourceOffsetPpq + clip.lengthPpq, true);
+  assert.deepEqual(starts.map((start) => Number((start - starts[0]).toFixed(5))), [0, 1, 2],
+    'the intervals between the notes survive the wall');
+
+  controller.model.moveMidiNotes(clip.id, ids, { deltaPitch: 400 });
+  assert.deepEqual(clip.notes.map((note) => note.pitch), [120, 124, 127],
+    'the highest note reaches 127 and the group stops there');
+
+  assert.equal(controller.model.moveMidiNotes(clip.id, ['no-such-note'], { deltaPpq: 1 }), 0,
+    'an unknown id moves nothing rather than moving everything');
+});
+
+test('the note drag preview and the model agree, because they share one clamp', async () => {
+  const { clampNoteGroupDelta } = await import('../src/renderer/js/core/sequencerModel.js');
+  const { controller } = controllerRig();
+  const track = controller.model.addTrack('midi');
+  const clip = controller.model.addMidiClip(track.id, 0, 4, [
+    { pitch: 60, startPpq: 1, durationPpq: 1, velocity: 100, channel: 1 },
+    { pitch: 72, startPpq: 2, durationPpq: 1, velocity: 100, channel: 1 }
+  ]);
+  const ids = clip.notes.map((note) => note.id);
+  const origins = clip.notes.map((note) => ({ startPpq: note.startPpq, pitch: note.pitch, durationPpq: note.durationPpq }));
+  const window = { lowerPpq: clip.sourceOffsetPpq, upperPpq: clip.sourceOffsetPpq + clip.lengthPpq };
+  const request = { deltaPpq: 9, deltaPitch: 90 };
+
+  // What the Clip Editor draws under the cursor, in its own window.
+  const preview = clampNoteGroupDelta(origins, window, request);
+  // What the model does when the gesture ends, in the main window.
+  controller.model.moveMidiNotes(clip.id, ids, request);
+
+  assert.deepEqual(clip.notes.map((note) => [note.startPpq, note.pitch]),
+    origins.map((origin) => [origin.startPpq + preview.deltaPpq, origin.pitch + preview.deltaPitch]),
+    'the drawn position is the committed position -- this is the jump that used to happen on release');
+});
+
+test('a note is resized by either edge, and the group keeps a legal length', () => {
+  const { controller } = controllerRig();
+  const track = controller.model.addTrack('midi');
+  const clip = controller.model.addMidiClip(track.id, 0, 4, [
+    { pitch: 60, startPpq: 1, durationPpq: 1, velocity: 100, channel: 1 }
+  ]);
+  const [note] = clip.notes;
+
+  controller.model.moveMidiNotes(clip.id, [note.id], { deltaDurationPpq: 0.5 });
+  assert.equal(note.durationPpq, 1.5, 'the end edge lengthens the note');
+
+  controller.model.moveMidiNotes(clip.id, [note.id], { deltaPpq: 0.5, deltaDurationPpq: -0.5 });
+  assert.deepEqual([note.startPpq, note.durationPpq], [1.5, 1],
+    'the start edge moves the start and pays for it in duration');
+
+  controller.model.moveMidiNotes(clip.id, [note.id], { deltaDurationPpq: -99 });
+  assert.equal(note.durationPpq > 0, true, 'a note never collapses to nothing');
+
+  controller.model.moveMidiNotes(clip.id, [note.id], { deltaDurationPpq: 99 });
+  assert.equal(note.startPpq + note.durationPpq, clip.sourceOffsetPpq + clip.lengthPpq,
+    'and never grows past the visible clip');
+});
+
+test('splitting a MIDI clip is lossless: both halves keep the source, and take a window onto it', () => {
+  const { controller } = controllerRig();
+  const track = controller.model.addTrack('midi');
+  const clip = controller.model.addMidiClip(track.id, 4, 8, [
+    { pitch: 60, startPpq: 0, durationPpq: 1, velocity: 100, channel: 1 },
+    { pitch: 64, startPpq: 3.5, durationPpq: 2, velocity: 100, channel: 1 },
+    { pitch: 67, startPpq: 6, durationPpq: 1, velocity: 100, channel: 1 }
+  ]);
+  controller.playheadPpq = 8;
+
+  const parts = controller.splitClips([clip.id]);
+  assert.equal(parts.length, 2);
+  const [head, tail] = parts;
+  assert.deepEqual([head.startPpq, head.lengthPpq], [4, 4]);
+  assert.deepEqual([tail.startPpq, tail.lengthPpq], [8, 4]);
+  assert.equal(head.startPpq + head.lengthPpq, tail.startPpq, 'no gap, no overlap');
+  assert.deepEqual(controller.model.state.selectedClipIds.sort(), [head.id, tail.id].sort(),
+    'both halves are selected');
+
+  // The note at 3.5 straddles the cut at local 4. It is stored WHOLE in both
+  // halves; each half shows the part inside its own window. That is what
+  // answers the scissor's design question without deciding it.
+  assert.equal(head.notes.length, 3, 'the head keeps every note of the source');
+  assert.equal(tail.notes.length, 3, 'and so does the tail');
+  assert.equal(head.sourceOffsetPpq, 0);
+  assert.equal(tail.sourceOffsetPpq, 4, 'the tail reads the source four quarters in');
+  assert.equal(tail.sourceLengthPpq >= tail.sourceOffsetPpq + tail.lengthPpq, true);
+  assert.equal(new Set([...head.notes, ...tail.notes].map((note) => note.id)).size, 6,
+    'the two halves never share a note id');
+
+  // Pull the tail's left edge back out: the straddling note is still entire.
+  controller.resizeClip(tail.id, 4, 'start');
+  const restored = controller.model._clip(tail.id).clip;
+  assert.equal(restored.sourceOffsetPpq, 0, 'a split followed by a rejoin loses nothing');
+  assert.equal(restored.notes.length, 3);
+});
+
+test('splitting an audio clip moves the trim pair, and a cut outside the clip is refused', () => {
+  const { controller } = controllerRig();
+  const track = controller.model.addTrack('audio');
+  const clip = controller.model.addAudioClip(track.id, {
+    filePath: 'D:\audio\take.wav', startPpq: 0, lengthPpq: 8,
+    durationSeconds: 4, trimStartSeconds: 0, trimEndSeconds: 4
+  });
+
+  // 8 quarters at 120 BPM is 4 seconds; the cut at quarter 4 is 2 seconds in.
+  const parts = controller.splitClips([clip.id], 4);
+  assert.equal(parts.length, 2);
+  const [head, tail] = parts;
+  assert.deepEqual([head.trimStartSeconds, head.trimEndSeconds], [0, 2]);
+  assert.deepEqual([tail.trimStartSeconds, tail.trimEndSeconds], [2, 4]);
+  assert.equal(head.trimEndSeconds, tail.trimStartSeconds, 'the two windows meet exactly');
+  assert.equal(tail.filePath, clip.filePath, 'and both point at the same media');
+  assert.equal(head.durationSeconds, tail.durationSeconds, 'no sample was moved or copied');
+
+  assert.deepEqual(controller.splitClips([head.id], 0), [], 'a cut on the clip start is refused');
+  assert.deepEqual(controller.splitClips([head.id], 99), [], 'and so is one past its end');
+  assert.deepEqual(controller.splitClips(['no-such-clip'], 2), [], 'and an unknown id splits nothing');
+  assert.equal(controller.model.state.tracks[0].clips.length, 2, 'a refused split adds no clip');
+});
+
+test('a clip menu quantizes to the toolbar Snap, and the clipboard reports whether Paste means anything', () => {
+  const { controller } = controllerRig();
+  const track = controller.model.addTrack('midi');
+  controller.model.state.snap = '1/4';
+  const clip = controller.model.addMidiClip(track.id, 0, 8, [
+    { pitch: 60, startPpq: ticksToPpq(1100), durationPpq: 0.5, velocity: 100, channel: 1 }
+  ]);
+
+  assert.equal(controller.hasClipboard(), false, 'nothing copied yet, so Paste is greyed');
+  assert.equal(controller.quantizeClips([clip.id], { grid: '1/4', strength: 100 }), 1);
+  assert.equal(ppqToTicks(clip.notes[0].startPpq), TICKS_PER_QUARTER,
+    'the grid is the Snap value already on screen, not one asked for in a dialog');
+
+  controller.selectClip(clip.id);
+  assert.equal(controller.copySelectedClips(), true);
+  assert.equal(controller.hasClipboard(), true);
+});
+
+test('a rubber band over the piano roll selects by pitch row and by time', () => {
+  const notes = [
+    { id: 'low', pitch: 48, startPpq: 0, durationPpq: 1 },
+    { id: 'mid', pitch: 60, startPpq: 1, durationPpq: 1 },
+    { id: 'high', pitch: 72, startPpq: 2, durationPpq: 1 },
+    { id: 'long', pitch: 60, startPpq: 0, durationPpq: 8 }
+  ];
+
+  assert.deepEqual(notesInBox(notes, { startPpq: 0.5, endPpq: 1.5, fromPitch: 55, toPitch: 65 }),
+    ['mid', 'long'], 'inside the band in both dimensions');
+  assert.deepEqual(notesInBox(notes, { startPpq: 0.5, endPpq: 1.5, fromPitch: 60, toPitch: 60 }),
+    ['mid', 'long'], 'a single row is a legal band: a pitch is a row, not a coordinate');
+  assert.deepEqual(notesInBox(notes, { startPpq: 3, endPpq: 9, fromPitch: 40, toPitch: 90 }),
+    ['long'], 'a note is caught by any part of itself, not only its start');
+  assert.deepEqual(notesInBox(notes, { startPpq: 9, endPpq: 1, fromPitch: 90, toPitch: 40 }).sort(),
+    ['high', 'long', 'mid'], 'and the band may be drawn in either direction');
+  assert.deepEqual(notesInBox(notes, { startPpq: 0, endPpq: 0, fromPitch: 0, toPitch: 127 }), []);
+  assert.deepEqual(notesInBox(undefined, {}), []);
+});
+
+test('velocity is set over a selection, notes duplicate after themselves, and Snap belongs to the project', () => {
+  const { controller } = controllerRig();
+  const track = controller.model.addTrack('midi');
+  const clip = controller.model.addMidiClip(track.id, 0, 8, [
+    { pitch: 60, startPpq: 0, durationPpq: 1, velocity: 40, channel: 1 },
+    { pitch: 64, startPpq: 1, durationPpq: 1, velocity: 90, channel: 1 }
+  ]);
+  const ids = clip.notes.map((note) => note.id);
+
+  assert.equal(controller.model.setMidiNotes(clip.id, ids, { velocity: 111 }), 2);
+  assert.deepEqual(clip.notes.map((note) => note.velocity), [111, 111]);
+  controller.model.setMidiNotes(clip.id, ids, { velocity: 999 });
+  assert.deepEqual(clip.notes.map((note) => note.velocity), [127, 127], 'and it is clamped to MIDI range');
+  assert.equal(controller.model.setMidiNotes(clip.id, ids, { startPpq: 4 }), 2);
+  assert.deepEqual(clip.notes.map((note) => note.startPpq), [0, 1],
+    'timing is not settable here: that is move-notes, and it is relative');
+
+  // The two notes span 0..2, so the copies land at 2 and 3 -- immediately
+  // after the figure rather than at some fixed bar.
+  const copies = controller.model.duplicateMidiNotes(clip.id, ids);
+  assert.equal(copies.length, 2);
+  assert.deepEqual(copies.map((note) => note.startPpq), [2, 3]);
+  assert.equal(new Set(clip.notes.map((note) => note.id)).size, 4, 'the copies carry new ids');
+
+  // A copy that would land outside the clip's visible window is not created:
+  // the editor could not draw it, so the user could not take it back.
+  const late = controller.model.addMidiClip(track.id, 0, 2, [
+    { pitch: 60, startPpq: 1.5, durationPpq: 0.5, velocity: 80, channel: 1 }
+  ]);
+  assert.deepEqual(controller.model.duplicateMidiNotes(late.id, [late.notes[0].id]), []);
+
+  const snapped = controller.handleClipEditorRequest({
+    kind: 'update', clipId: clip.id, expectedProjectId: 'project-editing',
+    operation: 'set-snap', payload: { snap: '1 bar' }
+  });
+  assert.equal(snapped.ok, true);
+  assert.equal(controller.model.state.snap, '1 bar',
+    'one Snap for the project, reachable from the Clip Editor as well as the toolbar');
+  assert.equal(snapped.state.snap, '1 bar', 'and the editor is told the new value');
+});
+
+test('the Clip Editor can sound a note, and only through the cable the Patch Bay drew', async (t) => {
+  const { controller, hub, commands } = controllerRig();
+  const track = controller.model.addTrack('midi');
+  const clip = controller.model.addMidiClip(track.id, 0, 4, [
+    { pitch: 60, startPpq: 0, durationPpq: 1, velocity: 96, channel: 1 }
+  ]);
+  const routed = [];
+  hub.network.emitDataTo = (nodeId, portId, targetId, data) => {
+    routed.push({ nodeId, portId, targetId, raw: [...data.raw] });
+    return true;
+  };
+
+  assert.equal(controller.auditionNote(clip.id, { pitch: 60 }), false,
+    'a track with no Destination sounds nothing rather than inventing a route');
+
+  controller.model.updateTrack(track.id, { outputId: 'vst-001' });
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  assert.equal(controller.auditionNote(clip.id, { pitch: 64, velocity: 96, durationMs: 300 }), true);
+  assert.deepEqual(routed.map((item) => item.raw), [[0x90, 64, 96]], 'note on, at the velocity asked for');
+  assert.deepEqual([routed[0].nodeId, routed[0].portId, routed[0].targetId],
+    ['sequencer', 'midi-out', 'vst-001'], 'out through the network, like live input');
+
+  // The note-off is scheduled by the controller, never sent by the editor: one
+  // that rides on a pointerup is one a closed window can swallow.
+  t.mock.timers.tick(299);
+  assert.equal(routed.length, 1, 'still held');
+  t.mock.timers.tick(2);
+  assert.deepEqual(routed.at(-1).raw, [0x80, 64, 0], 'and released on its own');
+
+  routed.length = 0;
+  controller.auditionNote(clip.id, { pitch: 70 });
+  controller.auditionNote(clip.id, { pitch: 70 });
+  assert.deepEqual(routed.map((item) => item.raw), [[0x90, 70, 100], [0x80, 70, 0], [0x90, 70, 100]],
+    'a second tap on the same key retriggers instead of stacking two pending note-offs');
+
+  routed.length = 0;
+  controller.releaseAuditionNotes();
+  assert.deepEqual(routed.map((item) => item.raw), [[0x80, 70, 0]],
+    'and a project leaving silences what it left on');
+  t.mock.timers.tick(5000);
+  assert.equal(routed.length, 1, 'the cancelled timer never fires a second off');
+
+  assert.equal(controller.auditionNote(clip.id, { pitch: 'C' }), false);
+  assert.equal(controller.auditionNote('no-such-clip', { pitch: 60 }), false);
+  t.mock.timers.reset();
+  assert.equal(commands.some((command) => command.type === 'sync'), false,
+    'sounding a note is a performance: it writes no state and rebuilds no native plan');
+});

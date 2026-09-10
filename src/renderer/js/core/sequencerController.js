@@ -1,4 +1,4 @@
-import { SequencerModel, defaultSequencerState } from './sequencerModel.js';
+import { SequencerModel, defaultSequencerState, initialSequencerState } from './sequencerModel.js';
 import { normalizeTempo } from './tempoControl.js';
 import { AUDIO_INPUT_NODE_ID, SEQUENCER_NODE_ID } from './systemNodes.js';
 import { isControllerNode, controllerName } from './controllerNode.js';
@@ -21,6 +21,19 @@ const EXPORT_STALL_TIMEOUT_MS = 60000;
  * the round trip, short enough that a genuine refusal still surfaces.
  */
 const RECORD_CONFIRM_GRACE_FRAMES = 20;
+
+/**
+ * The upper bound on an auditioned note's length, and the source name it
+ * travels under.
+ *
+ * The bound is not politeness: the note-off is a scheduled callback, so an
+ * unbounded duration is a note held inside a VST for as long as the window
+ * lives. `clipEditorWindows.js` refuses anything longer on the way in; this
+ * is the same number on the renderer side, because a payload that arrived
+ * from anywhere else must land on the same ceiling.
+ */
+const AUDITION_MAX_MS = 4000;
+const AUDITION_SOURCE_ID = 'clip-editor-audition';
 
 /**
  * A cable carrying what is PLAYED into the sequencer.
@@ -69,6 +82,7 @@ export class SequencerController {
     this._recordConfirmPending = false;
     this._recordConfirmFrames = 0;
     this._clipClipboard = null;
+    this._auditionNotes = [];
     this._projectTransitionState = 'idle';
     this._projectTransitionEpoch = 0;
     this._projectTransitionEvents = [];
@@ -83,7 +97,13 @@ export class SequencerController {
   }
 
   load() {
-    this.model = new SequencerModel(this.hub.settings.get(STATE_KEY));
+    // An absent key means no sequencer state was ever authored -- a fresh
+    // launch or a brand new project -- and that opens on one MIDI track. A
+    // stored state whose track list is empty was emptied on purpose and is
+    // left alone, which is why the test is on the key and not on the length.
+    const stored = this.hub.settings.get(STATE_KEY);
+    const seeded = stored === null || stored === undefined;
+    this.model = new SequencerModel(seeded ? initialSequencerState() : stored);
     this.tempo = normalizeTempo(this.hub.settings.get('transportBpm'));
     this.metronomeEnabled = this.hub.settings.get('metronomeEnabled') === true;
     const storedMetronomeVolume = Number(this.hub.settings.get('metronomeVolume'));
@@ -99,7 +119,7 @@ export class SequencerController {
         migratedInput = true;
       }
     }
-    if (migratedInput) this.hub.settings.set(STATE_KEY, this.model.snapshot());
+    if (migratedInput || seeded) this.hub.settings.set(STATE_KEY, this.model.snapshot());
     this._unsubs.push(
       this.hub.events.on('engine:transport', (state) => {
         this.playheadPpq = Number(state?.ppqPosition) || 0;
@@ -253,6 +273,7 @@ export class SequencerController {
   }
 
   dispose() {
+    this.releaseAuditionNotes();
     this._disposed = true;
     this._clearExportWatchdog();
     for (const off of this._unsubs) off?.();
@@ -285,6 +306,7 @@ export class SequencerController {
   }
 
   beginProjectTransition() {
+    this.releaseAuditionNotes();
     this._projectTransitionEpoch += 1;
     this._projectTransitionState = 'pending';
     this._projectTransitionEvents = [];
@@ -388,11 +410,31 @@ export class SequencerController {
     return removed;
   }
 
+  selectAllClips() {
+    const count = this.model.selectAllClips();
+    // Selection is persisted UI state and no more: never rebuild the native
+    // playback plan for it. Same reasoning as `selectClip`.
+    if (count) this.changed({ syncNative: false, invalidateEditors: false });
+    return count;
+  }
+
   copySelectedClips() {
     const copied = this.model.copyClips();
     if (!copied) return false;
     this._clipClipboard = structuredClone(copied);
     return true;
+  }
+
+  /** Whether Paste has anything to paste. The context menu greys its entry on
+   *  this rather than offering an action that silently does nothing. */
+  hasClipboard() {
+    return Boolean(this._clipClipboard?.clips?.length);
+  }
+
+  /** Copy, then remove. One gesture, so a failed copy never deletes. */
+  cutSelectedClips() {
+    if (!this.copySelectedClips()) return 0;
+    return this.deleteSelectedClips();
   }
 
   pasteClips(atPpq = this.playheadPpq) {
@@ -406,6 +448,38 @@ export class SequencerController {
     const copies = this.model.duplicateClips();
     if (copies.length) this.changed();
     return copies;
+  }
+
+  /**
+   * The scissor. Cuts every clip in the list that the point actually crosses.
+   *
+   * The playhead is the default point because it is the one place on the
+   * timeline that is already exact -- and because Split is the operation you
+   * reach for after listening to where the cut should be.
+   */
+  splitClips(clipIds = this.model.selectedClipIds(), atPpq = this.playheadPpq) {
+    const parts = [];
+    for (const id of [...(Array.isArray(clipIds) ? clipIds : [])]) {
+      const halves = this.model.splitClip(id, atPpq, { bpm: this.tempo });
+      if (halves) parts.push(...halves);
+    }
+    if (!parts.length) return [];
+    // Both halves of every cut end up selected: whatever you were about to do
+    // to the clip, you are usually about to do to one of its halves.
+    this.model.state.selectedClipIds = [...new Set(parts.map((clip) => clip.id))];
+    this.model.state.selectedClipId = this.model.state.selectedClipIds.at(-1) || null;
+    this.model.state.selectionAnchorClipId = this.model.state.selectedClipIds[0] || null;
+    this.changed();
+    return parts;
+  }
+
+  quantizeClips(clipIds = this.model.selectedClipIds(), options = {}) {
+    let applied = 0;
+    for (const id of [...(Array.isArray(clipIds) ? clipIds : [])]) {
+      applied += this.model.quantizeMidiClip(id, { scope: 'entire', ...options });
+    }
+    if (applied) this.changed();
+    return applied;
   }
 
   clipEditorState(clipId) {
@@ -446,6 +520,63 @@ export class SequencerController {
     Promise.resolve().then(publish);
   }
 
+  /**
+   * Sound one note, now, through the clip's own track.
+   *
+   * The Clip Editor could be edited but not played: clicking a key or a note
+   * was silent, which is what makes a piano roll a spreadsheet. This is the
+   * one thing it does that is a **performance** and not an edit -- it changes
+   * no model state -- so it does not travel as an `update`, and it is not
+   * queued behind edits.
+   *
+   * It goes out through `emitDataTo` exactly as live input does, so invariant
+   * 2 still holds: no Patch Bay cable to the track's Destination, no sound,
+   * and the renderer does not invent a route to make one.
+   *
+   * **The note-off is scheduled here, never sent by the editor.** A note-off
+   * that rides on a `pointerup` is one that a lost pointer capture, a closed
+   * window or a project change can swallow -- and a note left on inside a VST
+   * outlives all three.
+   */
+  auditionNote(clipId, { pitch, velocity = 100, durationMs = 300 } = {}) {
+    if (this._disposed || this.hub.project?._transitionPending) return false;
+    const found = this.model._clip(clipId);
+    if (!found || found.track.type !== 'midi') return false;
+    const destination = found.track.outputId;
+    if (!destination) return false;
+    const note = Number(pitch);
+    if (!Number.isFinite(note)) return false;
+    const key = Math.round(Math.max(0, Math.min(127, note)));
+    const level = Math.round(Math.max(1, Math.min(127, Number(velocity) || 100)));
+    const ms = Math.max(10, Math.min(AUDITION_MAX_MS, Number(durationMs) || 300));
+
+    // A second tap on the same key retriggers instead of stacking: the first
+    // note's pending off would otherwise land in the middle of the second.
+    this._releaseAudition(destination, key);
+    if (!this._sendLiveMidi(destination, { sourceId: AUDITION_SOURCE_ID }, [0x90, key, level])) return false;
+    const entry = { destination, note: key, timer: null };
+    entry.timer = globalThis.setTimeout(() => this._releaseAudition(destination, key), ms);
+    this._auditionNotes.push(entry);
+    return true;
+  }
+
+  /** Send the note-off for one auditioned note, and forget it. */
+  _releaseAudition(destination, note) {
+    const index = this._auditionNotes.findIndex((entry) => entry.destination === destination && entry.note === note);
+    if (index < 0) return false;
+    const [entry] = this._auditionNotes.splice(index, 1);
+    globalThis.clearTimeout(entry.timer);
+    this._sendLiveMidi(destination, { sourceId: AUDITION_SOURCE_ID }, [0x80, note, 0]);
+    return true;
+  }
+
+  /** Silence every auditioned note. Called before a project leaves, and on
+   *  dispose: a scheduled note-off cannot be relied on across either. */
+  releaseAuditionNotes() {
+    for (const entry of [...this._auditionNotes]) this._releaseAudition(entry.destination, entry.note);
+    this._auditionNotes.length = 0;
+  }
+
   openClipEditor(clipId) {
     if (this.hub.project?._transitionPending || !this.model._clip(clipId) || typeof this.hub.api.clipEditorOpen !== 'function') return false;
     Promise.resolve(this.hub.api.clipEditorOpen(clipId)).catch(() => {});
@@ -457,6 +588,17 @@ export class SequencerController {
     if (request.kind === 'get') {
       const state = this.clipEditorState(clipId);
       return state ? { ok: true, state } : { ok: false, reason: 'clip-not-found' };
+    }
+    if (request.kind === 'audition') {
+      if (this.hub.project?._transitionPending) return { ok: false, reason: 'project-transition' };
+      if (request.expectedProjectId !== (this.hub.project?.projectId || '')) {
+        return { ok: false, reason: 'stale-project' };
+      }
+      if (!this.model._clip(clipId)) return { ok: false, reason: 'clip-not-found' };
+      const payload = request.payload && typeof request.payload === 'object' ? request.payload : {};
+      // `false` is not an error: it is "this track has no Destination, or no
+      // cable behind it". The editor says so rather than pretending to play.
+      return { ok: true, sounded: this.auditionNote(clipId, payload) };
     }
     if (request.kind === 'transport') {
       if (this.hub.project?._transitionPending) return { ok: false, reason: 'project-transition' };
@@ -487,6 +629,18 @@ export class SequencerController {
       applied = this.model.addMidiNote(clipId, payload) ? 1 : 0;
     } else if (request.operation === 'update-note' && found.track.type === 'midi') {
       applied = this.model.updateMidiNote(clipId, payload.noteId, payload.changes) ? 1 : 0;
+    } else if (request.operation === 'move-notes' && found.track.type === 'midi') {
+      applied = this.model.moveMidiNotes(clipId, payload.noteIds, payload);
+    } else if (request.operation === 'set-notes' && found.track.type === 'midi') {
+      applied = this.model.setMidiNotes(clipId, payload.noteIds, payload);
+    } else if (request.operation === 'duplicate-notes' && found.track.type === 'midi') {
+      applied = this.model.duplicateMidiNotes(clipId, payload.noteIds).length;
+    } else if (request.operation === 'set-snap') {
+      // Snap belongs to the project, not to a window. Editing it from the
+      // Clip Editor moves the arrangement's grid too, which is the point:
+      // one Snap with one meaning, reachable from wherever you are working.
+      applied = this.model.state.snap === payload.snap ? 0 : 1;
+      this.model.state.snap = payload.snap;
     } else if (request.operation === 'delete-notes' && found.track.type === 'midi') {
       applied = this.model.removeMidiNotes(clipId, payload.noteIds);
     } else if (request.operation === 'update-audio' && found.track.type === 'audio') {
@@ -772,15 +926,33 @@ export class SequencerController {
     if (!tracks.length) return 'Add at least one MIDI or audio track before recording.';
     const armed = tracks.filter((track) => track.armed);
     if (!armed.length) return 'Arm at least one track with its R button.';
-    if (armed.some((track) => this.hasInputRoute(track))) return '';
+    return this._inputRouteBlockReason(armed);
+  }
 
-    const armedMidi = armed.filter((track) => track.type === 'midi');
-    if (armedMidi.length) {
+  /**
+   * Why none of `tracks` has a usable input route, or '' as soon as one has.
+   *
+   * Extracted because two neighbouring questions need the same diagnosis over
+   * the same sentences: whether a take can start (the armed tracks) and
+   * whether what is played is heard (the armed OR monitored ones). Two copies
+   * of these strings drift the day one of them is reworded, and the user then
+   * reads two different explanations of a single missing cable.
+   *
+   * The sentences say "armed" because arming is the gesture that puts a MIDI
+   * track live -- `focusTrack` does it on a click. A track that is monitored
+   * and not armed reads the word as slightly off, and points at the right
+   * field anyway.
+   */
+  _inputRouteBlockReason(tracks) {
+    if (tracks.some((track) => this.hasInputRoute(track))) return '';
+
+    const midi = tracks.filter((track) => track.type === 'midi');
+    if (midi.length) {
       const source = this._midiSourceLabel();
       if (!this.hub.midi.selectedInputId) {
         return `No MIDI input is detected or selected. Connect ${source}, then choose it in the track Input field.`;
       }
-      if (armedMidi.every((track) => !track.inputId)) {
+      if (midi.every((track) => !track.inputId)) {
         return 'Choose the detected MIDI port in the armed track Input field.';
       }
       if (!this.hub.network.connectionsTo(SEQUENCER_NODE_ID, 'midi-in')
@@ -790,10 +962,47 @@ export class SequencerController {
       return `The armed MIDI track Input must match the MIDI port selected for ${source}.`;
     }
 
-    if (armed.every((track) => !track.inputId)) {
+    if (tracks.every((track) => !track.inputId)) {
       return 'Choose an audio source in the armed track Input field.';
     }
     return 'Connect the selected audio source to Sequencer AUDIO IN in Patch Bay.';
+  }
+
+  /**
+   * Why what is played into the sequencer reaches nothing, or '' when it does.
+   *
+   * `recordBlockReason` answers a neighbouring question and stops one
+   * condition short of this one: `_liveDestinationIds()` also demands a
+   * Destination and the cable that carries it, so a track that is armed and
+   * routed on its input side alone passes the record check and still plays
+   * into silence. That is the case found in real use on 2026-09-07 -- the
+   * transport read "Ready to record the armed and routed tracks" while the
+   * keyboard was mute, and nothing on screen said why.
+   *
+   * It stays silent where `recordBlockReason` already speaks (no Sequencer
+   * node, a project transition) and where there is nothing to say (no MIDI
+   * track at all): two sentences about one problem is the failure this
+   * method exists to fix, not a second copy of it.
+   */
+  liveBlockReason() {
+    if (this.hub.project?._transitionPending) return '';
+    if (!this.hub.network.getNode(SEQUENCER_NODE_ID)) return '';
+    const midi = this.model.state.tracks.filter((track) => track.type === 'midi');
+    if (!midi.length) return '';
+    const live = midi.filter((track) => track.armed || track.monitored);
+    if (!live.length) {
+      return 'No MIDI track is live. Arm one with its R button, or monitor it with I, to hear what you play.';
+    }
+    if (this._liveDestinationIds().length) return '';
+    const inputReason = this._inputRouteBlockReason(live);
+    if (inputReason) return inputReason;
+    const orphans = live.filter((track) => !track.outputId);
+    if (orphans.length === live.length) {
+      return orphans.length > 1
+        ? 'The live MIDI tracks have no Destination. What you play is routed nowhere.'
+        : `“${orphans[0].name}” has no Destination. What you play is routed nowhere.`;
+    }
+    return 'The live track Destination has no Patch Bay cable. Choose it again, or draw Sequencer MIDI OUT to it.';
   }
 
   setTrack(trackId, changes) {

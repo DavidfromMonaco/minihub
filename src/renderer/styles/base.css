@@ -1511,6 +1511,20 @@ body {
 .seq-metronome-light.pulse-precount { background:#3f8cff; border-color:#83b5ff; box-shadow:0 0 10px rgba(63,140,255,.95); }
 .seq-metronome-light.pulse-accent { background:#44dc83; border-color:#9af0bc; box-shadow:0 0 10px rgba(68,220,131,.9); }
 .seq-metronome-light.pulse-beat { background:#176637; border-color:#2b8a50; box-shadow:0 0 6px rgba(23,102,55,.75); }
+/* ui/contextMenu.js. It borrows the menu vocabulary that already exists above
+   for the Patch Bay -- .ctx-item and .ctx-separator -- and adds only what is
+   genuinely different: a panel fixed to the viewport rather than positioned
+   inside a module's container, a keyboard hint, and a destructive row. A
+   second `.ctx-item` declaration here would have silently restyled the Patch
+   Bay's own menus, since this rule sits later in the sheet. */
+.ctx-menu { position:fixed; z-index:900; min-width:190px; padding:4px; border:1px solid var(--border-strong); border-radius:var(--radius-sm); background:var(--bg-panel); box-shadow:0 12px 32px rgba(0,0,0,.6); }
+.ctx-menu .ctx-item { display:flex; align-items:center; justify-content:space-between; gap:16px; }
+.ctx-menu .ctx-item:focus-visible:not(:disabled) { background:var(--bg-hover); outline:0; }
+.ctx-menu .ctx-item.danger:hover:not(:disabled) { background:rgba(196,71,71,.28); color:#ffd4cf; }
+.ctx-hint { color:var(--text-faint); font:10px var(--mono); }
+.seq-zoom-control { gap:5px!important; }
+.seq-zoom-control input[type="range"] { width:96px; }
+.seq-zoom-btn { height:22px; padding:0 8px!important; font-size:10px; }
 .seq-export-panel { display:flex; align-items:center; flex-wrap:wrap; gap:8px; padding:6px 8px; border:1px solid var(--border); border-radius:6px; background:#171a1e; }
 .seq-export-panel select { min-width:82px; }
 .seq-play.active { color:var(--ok); border-color:rgba(62,207,126,.5); }
@@ -1520,10 +1534,33 @@ body {
 .seq-monitor.active { color:#07131c!important; background:#38bdf8!important; border-color:#7dd3fc!important; }
 .seq-record.blocked { color:#ffdb76; border-color:rgba(245,196,81,.65); background:rgba(245,196,81,.08); opacity:1; }
 .seq-stop:not(:disabled) { color:#fff; border-color:#ef6a5b; }
-.seq-arrangement { min-height:0; padding:0; overflow:hidden; }
-.seq-scroll { width:100%; height:100%; min-height:0; overflow:auto; overscroll-behavior:contain; }
+/* The shell's scrollbars. Chromium's default is a wide light slab, which is a
+   bright gash across a dark application. Scoped under `body` so the
+   `.omni-pearl` faceplate keeps its own (D-012: it consumes nothing from
+   here, and its rule is more specific). */
+body ::-webkit-scrollbar { width:10px; height:10px; }
+body ::-webkit-scrollbar-track { background:transparent; }
+body ::-webkit-scrollbar-thumb { border:3px solid transparent; border-radius:8px; background:#40464f; background-clip:content-box; }
+body ::-webkit-scrollbar-thumb:hover { background:#5b636e; background-clip:content-box; }
+body ::-webkit-scrollbar-corner { background:transparent; }
+
+.seq-arrangement { position:relative; min-height:0; padding:0; overflow:hidden; }
+/* The bottom padding is the rail's clearance: the rail floats over this panel,
+   and without it the last track's lane would sit under it. */
+.seq-scroll { width:100%; height:100%; min-height:0; padding-bottom:14px; box-sizing:border-box; overflow:auto; overscroll-behavior:contain; }
+/* The horizontal bar is replaced by .seq-rail below. The vertical one is kept:
+   with up to 64 tracks, "there is more below" has to be visible somewhere. */
+.seq-scroll::-webkit-scrollbar:horizontal { height:0; }
+/* A scroll rail, not a scrollbar: 4px at rest, 8px under the pointer, dark,
+   and absent entirely when the whole arrangement already fits. */
+.seq-rail { position:absolute; left:0; right:0; bottom:0; z-index:10; height:14px; padding:5px 3px; box-sizing:border-box; background:linear-gradient(to top,rgba(10,11,13,.85),rgba(10,11,13,0)); cursor:pointer; }
+.seq-rail[hidden] { display:none; }
+.seq-rail-thumb { position:absolute; top:5px; height:4px; min-width:22px; border-radius:3px; background:#4b525c; transition:height .1s ease,top .1s ease,background .1s ease; }
+.seq-rail:hover .seq-rail-thumb,.seq-rail.dragging .seq-rail-thumb { top:3px; height:8px; background:#6d7681; }
+.seq-rail.dragging { cursor:grabbing; }
+.seq-scroll.panning { cursor:grabbing; }
 .seq-canvas { position:relative; background:#15171a; }
-.seq-corner { position:sticky; left:0; top:0; z-index:9; width:360px; height:30px; padding:8px 12px; box-sizing:border-box; background:#22262b; border-right:1px solid var(--border); border-bottom:1px solid var(--border); color:var(--text-faint); font:10px var(--mono); letter-spacing:.12em; }
+.seq-corner { position:sticky; left:0; top:0; z-index:9; width:var(--seq-head,260px); height:30px; padding:8px 12px; box-sizing:border-box; background:#22262b; border-right:1px solid var(--border); border-bottom:1px solid var(--border); color:var(--text-faint); font:10px var(--mono); letter-spacing:.12em; }
 .seq-ruler { position:absolute; top:0; height:30px; z-index:3; background-color:#1b1e22; background-image:repeating-linear-gradient(to right,transparent 0,transparent calc(var(--seq-beat) - 1px),rgba(255,255,255,.07) var(--seq-beat)); border-bottom:1px solid var(--border); }
 .seq-ruler-mark { position:absolute; top:0; height:30px; border:0; border-left:1px solid #444a52; background:transparent; color:var(--text-dim); text-align:left; padding:3px 5px; cursor:pointer; }
 .seq-ruler-mark:hover { background:rgba(79,140,255,.12); }
@@ -1532,31 +1569,44 @@ body {
 .seq-ruler-mark i:nth-of-type(1){left:25%}.seq-ruler-mark i:nth-of-type(2){left:50%}.seq-ruler-mark i:nth-of-type(3){left:75%}
 .seq-track { position:absolute; left:0; right:0; border-bottom:1px solid #30343a; }
 .seq-track.focused .seq-track-head { box-shadow:inset 3px 0 0 var(--accent-sequencer); background:#262832; }
-.seq-track-head { position:sticky; left:0; z-index:7; height:100%; box-sizing:border-box; display:grid; grid-template-columns:30px 30px minmax(110px,1fr) 30px 26px; grid-template-rows:28px 27px 27px 20px 14px; gap:2px 5px; padding:5px 8px; background:#22262b; border-right:1px solid #3a3f46; }
-.seq-track-head button { border:1px solid var(--border); border-radius:4px; color:var(--text-dim); background:#191c20; cursor:pointer; }
-.seq-track-head select { min-width:0; height:22px; background:#191c20; color:var(--text-dim); border:1px solid var(--border); font-size:10px; }
-.seq-track-route-control { grid-column:1 / 6; display:grid; grid-template-columns:72px minmax(0,1fr); align-items:center; gap:6px; min-width:0; color:var(--text-faint); font:9px var(--mono); text-transform:uppercase; letter-spacing:.06em; }
-.seq-track-input { grid-row:2; }
-.seq-track-output { grid-row:3; }
-.seq-track-route-control select { width:100%; text-transform:none; letter-spacing:normal; }
-.seq-track-level { grid-column:1 / 6; grid-row:4; display:grid; grid-template-columns:72px minmax(0,1fr); align-items:center; gap:6px; color:var(--text-faint); font:9px var(--mono); text-transform:uppercase; letter-spacing:.06em; }
-.seq-track-level input[type="range"] { width:100%; }
-.seq-route-summary { grid-column:1 / 6; grid-row:5; display:flex; align-items:center; justify-content:space-between; gap:5px; overflow:hidden; font:8px var(--mono); white-space:nowrap; }
+/* Two rows, performance controls only. Input, Destination and the route
+   sentences live in .seq-inspector -- they are what made this five rows tall. */
+.seq-track-head { position:sticky; left:0; z-index:7; height:100%; box-sizing:border-box; display:grid; grid-template-columns:26px 26px minmax(0,1fr) 26px 22px; grid-template-rows:26px minmax(0,1fr); gap:3px 4px; padding:5px 8px; background:#22262b; border-right:1px solid #3a3f46; }
+.seq-track-head button { padding:0; border:1px solid var(--border); border-radius:4px; color:var(--text-dim); background:#191c20; font:600 10px var(--font); cursor:pointer; }
+.seq-track-level { grid-column:1 / 5; grid-row:2; display:grid; grid-template-columns:minmax(0,1fr) 50px; align-items:center; gap:6px; }
+.seq-track-level input[type="range"] { width:100%; height:14px; margin:0; }
+.seq-track-level output { color:var(--text-faint); font:9px var(--mono); text-align:right; }
+.seq-route-dots { grid-column:5; grid-row:2; display:flex; align-items:center; justify-content:flex-end; gap:3px; }
+.seq-route-dots i { width:9px; height:9px; display:grid; place-items:center; border-radius:50%; font:normal 7px var(--mono); font-style:normal; line-height:1; }
+.seq-route-dots i.seq-route-ok { color:#0d1f14; background:#4ade82; }
+.seq-route-dots i.seq-route-warning { color:#2a1f04; background:#f5c451; }
+.seq-route-dots i.seq-route-idle { color:var(--text-faint); background:#30343a; }
+.seq-route-summary { display:flex; align-items:center; gap:14px; overflow:hidden; font:9px var(--mono); white-space:nowrap; }
 .seq-route-summary span { overflow:hidden; text-overflow:ellipsis; }
 .seq-route-ok { color:#4ade82; }
 .seq-route-warning { color:#f5c451; }
 .seq-route-idle { color:var(--text-faint); }
-.seq-track-name { min-width:0; border:0; border-bottom:1px solid transparent; background:transparent; color:var(--text); font-weight:600; }
+.seq-track-name { min-width:0; border:0; border-bottom:1px solid transparent; background:transparent; color:var(--text); font-weight:600; font-size:11px; }
 .seq-track-name:focus { border-bottom-color:var(--accent); outline:0; }
+.seq-inspector { display:flex; align-items:center; flex-wrap:wrap; gap:10px; margin-top:9px; padding:7px 10px; border:1px solid var(--border); border-radius:6px; background:#191c20; font-size:11px; }
+.seq-inspector-label { color:var(--text-faint); font:9px var(--mono); text-transform:uppercase; letter-spacing:.1em; }
+.seq-inspector-name { max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--accent-sequencer); font-size:12px; }
+.seq-inspector-hint { color:var(--text-dim); }
+.seq-inspector-field { display:grid; grid-template-columns:max-content minmax(110px,210px); align-items:center; gap:6px; color:var(--text-faint); font:9px var(--mono); text-transform:uppercase; letter-spacing:.06em; }
+.seq-inspector-field select { width:100%; height:24px; padding:0 5px; color:var(--text-dim); background:#15171a; border:1px solid var(--border); border-radius:5px; font-size:11px; text-transform:none; letter-spacing:normal; }
+.seq-inspector .seq-route-summary { margin-left:auto; }
 .seq-mute.active { color:#17191d!important; background:#f5c451!important; }
 .seq-track-delete:hover { color:#ef6a5b; }
 .seq-track-lane { position:absolute; top:0; height:100%; background-image:repeating-linear-gradient(to right,transparent 0,transparent calc(var(--seq-beat,72px) - 1px),rgba(255,255,255,.035) var(--seq-beat,72px)); }
-.seq-clip { position:absolute; top:7px; height:62px; overflow:hidden; border:1px solid rgba(255,255,255,.2); border-radius:5px; text-align:left; color:#fff; cursor:grab; padding:3px 6px; box-shadow:0 2px 5px rgba(0,0,0,.25); }
+/* No height: top and bottom inset it into whatever the lane is. A fixed 62px
+   cannot follow a track that changes height, and it is what left 71px of
+   every lane empty. */
+.seq-clip { position:absolute; top:3px; bottom:3px; overflow:hidden; border:1px solid rgba(255,255,255,.2); border-radius:4px; text-align:left; color:#fff; cursor:grab; padding:2px 5px; box-shadow:0 2px 5px rgba(0,0,0,.25); }
 .seq-clip:active { cursor:grabbing; }
 .seq-clip.midi { background:linear-gradient(135deg,#5d44a1,#3d3269); }
 .seq-clip.audio { background:linear-gradient(135deg,#237a68,#174d44); }
 .seq-clip.audio.unavailable { border-color:#ef6a5b; background:repeating-linear-gradient(135deg,#5d2828 0,#5d2828 8px,#3e2020 8px,#3e2020 16px); }
-.seq-clip-media-error { position:absolute; left:6px; top:25px; z-index:2; color:#ffd4cf; font:600 10px var(--mono); }
+.seq-clip-media-error { position:absolute; left:5px; top:16px; z-index:2; color:#ffd4cf; font:600 9px var(--mono); }
 .seq-media-error { margin:10px 0 0; padding:9px 11px; border:1px solid #9d4747; border-radius:5px; color:#ffd4cf; background:#3e2020; }
 .seq-clip.selected { outline:2px solid #fff; outline-offset:1px; }
 .seq-clip.dragging { z-index:6; opacity:.78; box-shadow:0 8px 20px rgba(0,0,0,.48); transition:none; }
@@ -1564,15 +1614,16 @@ body {
 .seq-clip-resize { position:absolute; z-index:4; top:0; bottom:0; width:8px; cursor:ew-resize; background:rgba(255,255,255,.08); }
 .seq-clip-resize.start { left:0; border-right:1px solid rgba(255,255,255,.2); }
 .seq-clip-resize.end { right:0; border-left:1px solid rgba(255,255,255,.2); }
-.seq-midi-preview,.seq-waveform { position:absolute; left:4px; right:6px; top:20px; bottom:4px; pointer-events:none; }
+.seq-midi-preview,.seq-waveform { position:absolute; left:3px; right:4px; top:15px; bottom:3px; pointer-events:none; }
 .seq-midi-preview i { position:absolute; height:3px; min-width:2px; background:rgba(255,255,255,.75); border-radius:1px; }
 .seq-waveform i,.seq-audio-detail i { position:absolute; top:50%; width:2px; background:rgba(220,255,245,.7); transform:translateY(-50%); }
+.seq-marquee { position:absolute; z-index:6; border:1px solid rgba(79,140,255,.9); border-radius:2px; background:rgba(79,140,255,.14); pointer-events:none; }
 .seq-loop-range { position:absolute; top:0; z-index:1; pointer-events:none; border-left:1px solid transparent; border-right:1px solid transparent; }
 .seq-loop-range.enabled { background:rgba(79,140,255,.055); border-color:rgba(79,140,255,.45); }
 .seq-playhead { position:absolute; top:0; z-index:8; width:1px; background:#ef6a5b; pointer-events:none; box-shadow:0 0 4px rgba(239,106,91,.8); }
 .seq-playhead::before { content:''; position:absolute; top:0; left:-4px; border-left:4px solid transparent; border-right:4px solid transparent; border-top:7px solid #ef6a5b; }
-.seq-empty { position:absolute; left:250px; right:0; padding:70px 20px; color:var(--text-faint); text-align:center; }
+.seq-empty { position:absolute; left:var(--seq-head,260px); right:0; padding:44px 20px; color:var(--text-faint); text-align:center; }
 .seq-editor { min-height:120px; overflow:hidden; }
 .seq-export-state { color:#4ade82; max-width:300px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .seq-audio-detail { position:relative; height:90px; margin-top:14px; border:1px solid var(--border); border-radius:5px; background:#15201e; overflow:hidden; }
-@media (max-width:1000px) { .seq-tools label:nth-last-of-type(n+5){display:none}.seq-track-head{grid-template-columns:28px 28px minmax(54px,1fr) 28px 24px} }
+@media (max-width:1000px) { .seq-tools label:nth-last-of-type(n+5){display:none}.seq-track-head{grid-template-columns:24px 24px minmax(0,1fr) 24px 20px}.seq-track-level{grid-template-columns:minmax(0,1fr)}.seq-track-level output{display:none} }

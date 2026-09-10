@@ -170,8 +170,26 @@ Le Clip Editor est une **BrowserWindow séparée**, avec son propre preload
 ([clipEditorPreload.js](src/main/clipEditorPreload.js)) et son propre document
 ([clip-editor.html](src/renderer/clip-editor.html)). Il est piloté par
 [clipEditorWindows.js](src/main/clipEditorWindows.js), qui valide chaque
-opération entrante (`quantize`, `add-note`, `update-note`, `delete-notes`,
-`update-audio`) avant de la transmettre au renderer principal.
+opération entrante avant de la transmettre au renderer principal. La liste est
+énumérée, jamais déduite — `quantize`, `add-note`, `update-note`, `move-notes`,
+`set-notes`, `duplicate-notes`, `delete-notes`, `set-snap`, `update-audio` — et
+un test la compare à celle du modèle, parce que la frontière de processus
+(`main` en CommonJS, le modèle en module ES) interdit de n'en avoir qu'une.
+
+The split between `move-notes` and `set-notes` is deliberate: the first
+carries **deltas** (a drag), the second **absolute values** (a velocity), and a
+payload where some fields are relative and others are not gets misread once and
+is then wrong forever. `set-snap` is the one operation that writes project
+state which is not a clip — see [DECISIONS.md](DECISIONS.md) D-035.
+
+Two channels carry things that are **not** operations, because they are not
+edits: `clip-editor:transport` (Play, Stop, Return) and
+`clip-editor:audition` (sound one note). Neither writes model state, neither is
+queued behind edits, and both are refused for a stale project for the same
+reason an edit is. The audition's duration is bounded on both sides of the IPC —
+the note-off is a scheduled callback in the renderer, so an unbounded duration
+is a note held inside a VST for as long as the window lives
+([DECISIONS.md](DECISIONS.md) D-036).
 
 Seul le renderer principal canonique peut envoyer certaines commandes : les
 requêtes venant d'un éditeur périmé ou d'un WebContents inconnu sont rejetées
@@ -575,8 +593,34 @@ sans allocation, sans IPC ni travail UI côté producteur temps réel.
 `TICKS_PER_QUARTER = 960`. Limites dures : **64 pistes, 2048 clips par piste,
 65 536 notes par clip** (`SEQUENCER_LIMITS`).
 
-Grilles de quantification : 1/4, 1/8, 1/16, 1/32, 1/8 triolet, 1/16 triolet.
-Aimantation : 1 mesure, 1/2, 1/4, 1/8, 1/16, 1/32.
+Grilles de quantification : 1 mesure, 1/2, 1/4, 1/8, 1/16, 1/32, 1/8 triolet,
+1/16 triolet. Aimantation : 1 mesure, 1/2, 1/4, 1/8, 1/16, 1/32 — le premier
+vocabulaire **contient** le second, ce qui est ce qui permet au menu contextuel
+d'un clip d'offrir « Quantize to <l'aimantation courante> » sans trou.
+
+Zoom : de `ZOOM_MIN` = 1 à `ZOOM_MAX` = 240 pixels par noire. Le plancher de 1
+n'est pas une coquetterie — voir [DECISIONS.md](DECISIONS.md) D-033.
+
+**Note and clip group edits.** Four operations act on a selection rather than on
+one id, and three of them are shared with the Clip Editor's other window:
+
+| Operation | What it moves | Rule |
+|---|---|---|
+| `moveClips` | clips, across tracks | one common delta, reduced for the group |
+| `moveMidiNotes` | notes: start, pitch, duration | the same, via `clampNoteGroupDelta` |
+| `setMidiNotes` | notes: velocity, channel | absolute values, clamped per note |
+| `duplicateMidiNotes` | notes | copies one selection-span later |
+
+`clampNoteGroupDelta` is **exported and pure** because two processes need the
+identical answer: the model applies it, and the Clip Editor draws it a frame
+earlier, in another window, before any IPC has happened. A second
+implementation there drifts, and the symptom is a note that slides one way
+under the hand and lands another when released — which is the defect that
+motivated it.
+
+`splitClip` cuts a clip in two without redistributing anything: both halves
+keep the whole source and take a different window onto it
+([DECISIONS.md](DECISIONS.md) D-034).
 
 Une piste est `midi` ou `audio` ; un clip audio porte `trimStartSeconds`,
 `trimEndSeconds`, `gain`, `peaks` et un état de disponibilité du média.
@@ -666,6 +710,29 @@ l'échelle 0,405 et ses ports CONTROL sont placés sur les potentiomètres réel
 
 Les positions et le viewport sont de l'**état visuel** et ne doivent jamais
 entrer dans `hub.graph`.
+
+### Context menus
+
+There are **two implementations**, and that is a known duplication rather than a
+design.
+
+[ui/contextMenu.js](src/renderer/js/ui/contextMenu.js) is the shared one, used
+by the sequencer: it attaches to `document.body`, closes on Escape / a press
+anywhere / a wheel / a scroll / a blur / a resize / its caller's next render,
+removes every listener it added, and is built with `createElement` so a clip
+name reaching a label has no markup path to travel down (invariant 9 satisfied
+by construction). Position goes through the CSSOM (invariant 10).
+
+`routingModule.js` still carries its own, older, hand-built pair — one on a
+node, one on the canvas. The shared module **borrows their `.ctx-item` /
+`.ctx-separator` vocabulary** rather than declaring a second look; a first
+attempt redeclared `.ctx-item` and, sitting later in `base.css`, silently
+restyled the Patch Bay's menus. A test in `test/contextMenu.test.mjs` is what
+stops that returning.
+
+Unifying them means teaching the shared module about **submenus** — the canvas
+menu's New Node family hierarchy — so it is a piece of work, not a move. It is
+named in [ROADMAP.md](ROADMAP.md) where items 10 and 11 are recorded.
 
 ### Contrainte CSP
 
@@ -863,7 +930,8 @@ d'une capture forcée à l'extinction.
 ### `src/renderer/js/ui/` et `midi/`
 
 `sidebar.js`, `header.js`, `settingsModal.js`, `icons.js`,
-`miniLabControlSurface.js`, `omniPearl.js` — et côté MIDI `midiManager.js`,
+`miniLabControlSurface.js`, `omniPearl.js`, `contextMenu.js` — et côté MIDI
+`midiManager.js`,
 `parseMidi.js`, `controllerProfile.js`, `portRoles.js`, `decodeControl.js`,
 `minilab.js`, `minilabControls.js`, plus `profiles/` (one JSON file per
 controller).

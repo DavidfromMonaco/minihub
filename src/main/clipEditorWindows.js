@@ -2,9 +2,39 @@
 
 const CLIP_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/;
 const PROJECT_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/;
-const OPERATIONS = new Set(['quantize', 'add-note', 'update-note', 'delete-notes', 'update-audio']);
+const OPERATIONS = new Set([
+  'quantize', 'add-note', 'update-note', 'move-notes', 'set-notes',
+  'duplicate-notes', 'delete-notes', 'set-snap', 'update-audio'
+]);
+const SNAP_DIVISIONS = new Set(['1 bar', '1/2', '1/4', '1/8', '1/16', '1/32']);
+
+/**
+ * Sounding one note is a performance, not an edit, so it gets its own channel
+ * rather than an entry in OPERATIONS: it changes no model state, it must not
+ * be queued behind edits, and a stale project must refuse it for the same
+ * reason an edit is refused.
+ *
+ * The duration is bounded here and not by the caller's good intentions: the
+ * renderer schedules the note-off on this number, and an unbounded one is a
+ * note held in a VST for as long as the window lives.
+ */
+const AUDITION_MAX_MS = 4000;
+
+function validAudition(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const keys = Object.keys(value);
+  if (!keys.length || !keys.every((key) => ['pitch', 'velocity', 'durationMs'].includes(key))) return false;
+  if (!finite(value.pitch) || value.pitch < 0 || value.pitch > 127) return false;
+  if (value.velocity !== undefined && (!finite(value.velocity) || value.velocity < 1 || value.velocity > 127)) return false;
+  if (value.durationMs !== undefined
+    && (!finite(value.durationMs) || value.durationMs <= 0 || value.durationMs > AUDITION_MAX_MS)) return false;
+  return true;
+}
 const TRANSPORT_ACTIONS = new Set(['return-start', 'play', 'stop']);
-const QUANTIZE_GRIDS = new Set(['1/4', '1/8', '1/16', '1/32', '1/8 triplet', '1/16 triplet']);
+// Kept identical to QUANTIZE_GRIDS in core/sequencerModel.js. The process
+// boundary is why this is a second list -- main is CommonJS, the model is an
+// ES module -- so a test compares the two rather than trusting this comment.
+const QUANTIZE_GRIDS = new Set(['1 bar', '1/2', '1/4', '1/8', '1/16', '1/32', '1/8 triplet', '1/16 triplet']);
 const finite = (value) => typeof value === 'number' && Number.isFinite(value);
 const validIdList = (value) => Array.isArray(value) && value.length <= 65536
   && value.every((id) => typeof id === 'string' && CLIP_ID.test(id));
@@ -26,6 +56,29 @@ function validPayload(operation, value) {
     if (!CLIP_ID.test(String(value.noteId || '')) || !value.changes || typeof value.changes !== 'object' || Array.isArray(value.changes)) return false;
     const keys = Object.keys(value.changes);
     return keys.length > 0 && keys.every((key) => ['startPpq', 'durationPpq', 'pitch', 'velocity', 'channel'].includes(key) && finite(value.changes[key]));
+  }
+  if (operation === 'move-notes') {
+    // A drag of a whole selection: the deltas are the payload, so one gesture
+    // is one message however many notes it carries. At least one delta must
+    // be present, or this is an edit that edits nothing.
+    const deltas = ['deltaPpq', 'deltaPitch', 'deltaDurationPpq'];
+    return validIdList(value.noteIds) && value.noteIds.length > 0
+      && Object.keys(value).every((key) => ['noteIds', ...deltas].includes(key))
+      && deltas.some((key) => value[key] !== undefined)
+      && deltas.every((key) => value[key] === undefined || finite(value[key]));
+  }
+  if (operation === 'set-notes') {
+    // Absolute fields over a selection, and only the two a note editor may
+    // set: pitch and timing are the drag's business, through 'move-notes'.
+    const fields = ['velocity', 'channel'];
+    return validIdList(value.noteIds) && value.noteIds.length > 0
+      && Object.keys(value).every((key) => ['noteIds', ...fields].includes(key))
+      && fields.some((key) => value[key] !== undefined)
+      && fields.every((key) => value[key] === undefined || finite(value[key]));
+  }
+  if (operation === 'duplicate-notes') return validIdList(value.noteIds) && value.noteIds.length > 0;
+  if (operation === 'set-snap') {
+    return Object.keys(value).length === 1 && SNAP_DIVISIONS.has(value.snap);
   }
   if (operation === 'delete-notes') return validIdList(value.noteIds);
   if (operation === 'update-audio') {
@@ -124,6 +177,12 @@ class ClipEditorWindows {
       if (!editor || editor.clipId !== clipId || !PROJECT_ID.test(String(expectedProjectId || ''))
           || !TRANSPORT_ACTIONS.has(action)) return { ok: false, reason: 'invalid-request' };
       return this._requestCanonical(editor, 'transport', action, null, expectedProjectId);
+    });
+    this.ipcMain.handle('clip-editor:audition', (event, clipId, expectedProjectId, payload) => {
+      const editor = this._editorForSender(event);
+      if (!editor || editor.clipId !== clipId || !PROJECT_ID.test(String(expectedProjectId || ''))
+          || !validAudition(payload)) return { ok: false, reason: 'invalid-request' };
+      return this._requestCanonical(editor, 'audition', 'note', payload, expectedProjectId);
     });
     this.ipcMain.handle('clip-editor:respond', (event, response) => {
       if (!this._isMainSender(event) || !response || typeof response.requestId !== 'string') return false;
@@ -259,5 +318,6 @@ class ClipEditorWindows {
 }
 
 module.exports = {
-  ClipEditorWindows, CLIP_ID, PROJECT_ID, OPERATIONS, TRANSPORT_ACTIONS, validPayload, validTransportState
+  ClipEditorWindows, CLIP_ID, PROJECT_ID, OPERATIONS, TRANSPORT_ACTIONS, AUDITION_MAX_MS,
+  validAudition, validPayload, validTransportState
 };

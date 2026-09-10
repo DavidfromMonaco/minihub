@@ -1,9 +1,11 @@
+import fs from 'node:fs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { createHub } from '../src/renderer/js/core/hub.js';
 import { createMiniLabModule } from '../src/renderer/js/modules/minilab/minilabModule.js';
 import { createSequencerModule } from '../src/renderer/js/modules/sequencer/sequencerModule.js';
+import { defaultSequencerState } from '../src/renderer/js/core/sequencerModel.js';
 import { buildHeader } from '../src/renderer/js/ui/header.js';
 import { findClass, fire, installDom, makeEl } from './domShim.mjs';
 
@@ -33,7 +35,10 @@ function mockApi(initialSettings = {}) {
 }
 
 async function runtime(initialSettings = {}) {
-  const api = mockApi(initialSettings);
+  // An empty track list, declared. A project with no authored sequencer state
+  // opens on one MIDI track (see sequencer.test.mjs); every case here builds
+  // the tracks it needs.
+  const api = mockApi({ sequencerState: defaultSequencerState(), ...initialSettings });
   const hub = createHub(api);
   await hub.settings.load();
   hub.sequencer.load();
@@ -112,8 +117,8 @@ test('Sequencer renders actionable Record/Stop guidance and explicit per-track r
   hub.nodes.create('sequencer');
   hub.nodes.create('vst');
   hub.nodes.create('vst');
-  const track = hub.sequencer.model.addTrack('midi');
-  hub.sequencer.model.updateTrack(track.id, { armed: true });
+  const track = hub.sequencer.model.setTrackArmed(hub.sequencer.model.addTrack('midi').id, true);
+  assert.equal(hub.sequencer.model.state.focusedTrackId, track.id, 'arming focuses the track it arms');
   hub.engine.state = 'running';
   hub.modules.register(createSequencerModule(hub));
   const view = captureContainer();
@@ -129,7 +134,11 @@ test('Sequencer renders actionable Record/Stop guidance and explicit per-track r
   assert.match(view.markup(), /seq-record-status blocked[^>]*>No MIDI input is detected or selected/);
   assert.match(view.markup(), /<span>Input<\/span><select[^>]*>\s*<option value="">No MIDI input detected<\/option>/);
   assert.match(view.markup(), /<span>Destination<\/span><select[^>]*>[\s\S]*VST 1 — VST chain[\s\S]*VST 2 — VST chain/);
-  assert.match(view.markup(), /Each track has its own <strong>Input<\/strong> and <strong>Destination<\/strong>/);
+  assert.match(view.markup(), /data-track-inspector/);
+  assert.doesNotMatch(view.markup(), /<div class="seq-track-head"[^>]*>[\s\S]*?<select/,
+    'a 64px track head carries no select: Input and Destination live in the inspector');
+  assert.match(view.markup(), /seq-route-dots/,
+    'the route stays reportable on the track itself, as two dots');
   assert.match(view.markup(), /data-control="export-format"[\s\S]*WAV[\s\S]*MP3[\s\S]*OGG Vorbis/);
   assert.match(view.markup(), /data-control="wav-bits"[\s\S]*24-bit/);
   assert.doesNotMatch(view.markup(), /data-control="mp3-bitrate"|data-control="ogg-quality"/,
@@ -265,7 +274,7 @@ test('Audio Input is a real AUDIO OUT source and cable inconsistencies stay visi
   assert.match(view.markup(), /seq-route-ok">✓ Input cable connected/);
 
   hub.sequencer.setTrack(track.id, { outputId: vst.id });
-  const inputSelects = [...view.markup().matchAll(/<select data-track-control="input"[^>]*>([\s\S]*?)<\/select>/g)];
+  const inputSelects = [...view.markup().matchAll(/<select data-inspector-control="input"[^>]*>([\s\S]*?)<\/select>/g)];
   assert.ok(inputSelects.length > 0);
   assert.equal(inputSelects.some((match) => match[1].includes(`value="${vst.id}"`)), false,
     'a downstream audio destination is filtered from every source selector');
@@ -287,7 +296,7 @@ test('MIDI destinations include VST and Arpeggiator but never MiniLab hardware',
   const view = captureContainer();
   hub.modules.activate('sequencer', view.container);
 
-  const destination = /<select data-track-control="output"[^>]*>([\s\S]*?)<\/select>/.exec(view.markup())?.[1] || '';
+  const destination = /<select data-inspector-control="output"[^>]*>([\s\S]*?)<\/select>/.exec(view.markup())?.[1] || '';
   assert.match(destination, /VST 1 — VST chain/);
   assert.match(destination, /Arpeggiator 1 — Arpeggiator/);
   assert.doesNotMatch(destination, /MiniLab|hardware MIDI output|minilab-3/);
@@ -440,7 +449,7 @@ test('MIDI source selector exposes only the WebMIDI input feeding MiniLab routin
   const view = captureContainer();
   hub.modules.activate('sequencer', view.container);
 
-  const input = /<select data-track-control="input"[^>]*>([\s\S]*?)<\/select>/.exec(view.markup())?.[1] || '';
+  const input = /<select data-inspector-control="input"[^>]*>([\s\S]*?)<\/select>/.exec(view.markup())?.[1] || '';
   assert.match(input, /value="selected-midi" selected>MiniLab 3 MIDI<\/option>/);
   assert.doesNotMatch(input, /other-midi|Other Controller/,
     'enumerated ports that do not feed minilab-3 are not offered as parallel recording sources');
@@ -500,4 +509,169 @@ test('the timeline carries the view with the playhead instead of pinning the ope
 
   assert.equal(followScrollPpq(10, 0, 0), null, 'an unmeasured viewport is left alone');
   assert.equal(followScrollPpq(Number.NaN, 0, viewport), null);
+});
+
+test('Fit and Focus are two named framings, and the ruler stays readable at the bottom of the range', async () => {
+  const { frameSpan, rulerStride, sliderToZoom, zoomToSlider } =
+    await import('../src/renderer/js/modules/sequencer/sequencerModule.js');
+
+  // Fit a four-minute arrangement -- 480 quarters at 120 BPM -- into 1240 px
+  // of timeline. The old floor of 24 px per quarter could show twelve bars.
+  const fit = frameSpan({ startPpq: 0, endPpq: 480 }, 1240);
+  assert.ok(fit.zoom < 24, 'the floor had to come down for Fit to mean anything');
+  assert.ok(480 * fit.zoom <= 1240, 'and the whole arrangement fits the width it was given');
+  assert.equal(fit.scrollPpq, 0, 'bar one stays at bar one');
+
+  const focus = frameSpan({ startPpq: 64, endPpq: 80 }, 1240);
+  assert.ok(focus.zoom > fit.zoom, 'Focus on sixteen quarters is closer than Fit on 480');
+  assert.ok(focus.scrollPpq < 64 && focus.scrollPpq > 60,
+    'the framed span keeps a sliver of air before it, so it does not touch the edge');
+
+  assert.equal(frameSpan({ startPpq: 0, endPpq: 0 }, 1240), null, 'an empty span frames nothing');
+  assert.equal(frameSpan({ startPpq: 0, endPpq: 16 }, 0), null, 'nor does an unmeasured viewport');
+  assert.equal(frameSpan({ startPpq: 0, endPpq: 1 }, 100000).zoom, 240, 'and the ceiling holds');
+
+  // A mark per bar is a grey smear at the bottom of the range.
+  assert.equal(rulerStride(120, 72), 1, 'one mark per bar while a bar is wide');
+  assert.ok(rulerStride(2000, 4) >= 4, 'a coarser stride once a bar is sixteen pixels');
+  for (const zoom of [1, 4, 7, 12, 30, 72, 240]) {
+    const stride = rulerStride(2000, zoom);
+    assert.equal(Number.isInteger(Math.log2(stride)), true, `stride ${stride} is a power of two, never 3 bars`);
+    assert.ok(stride * 4 * zoom >= 50, `marks stay at least 50px apart at zoom ${zoom}`);
+  }
+  assert.ok(Math.ceil(20000 / rulerStride(20000, 240)) <= 512, 'a very long arrangement stays bounded');
+
+  // A grid line per quarter is a solid tint at the bottom of the range: the
+  // stylesheet leaves nothing transparent between two 1px rules.
+  const { gridPx } = await import('../src/renderer/js/modules/sequencer/sequencerModule.js');
+  assert.equal(gridPx(72), 72, 'a wide quarter is drawn as a quarter');
+  for (const zoom of [1, 2, 4, 8, 12, 72, 240]) {
+    const spacing = gridPx(zoom);
+    assert.ok(spacing >= 12, `grid lines stay ${spacing}px apart at zoom ${zoom}`);
+    assert.equal(Number.isInteger(Math.log2(spacing / zoom)), true,
+      'and the spacing stays a musical multiple of the quarter');
+  }
+
+  // The slider is logarithmic: linear over a sixty-fold range wastes most of it.
+  // A hundred integer steps over a 240-fold range is ~5.6% per step, so the
+  // round trip lands near where it started rather than exactly on it.
+  assert.ok(Math.abs(sliderToZoom(zoomToSlider(72)) - 72) / 72 < 0.06);
+  assert.equal(sliderToZoom(0), 1);
+  assert.equal(sliderToZoom(100), 240);
+  assert.ok(sliderToZoom(50) > 10 && sliderToZoom(50) < 20, 'mid-travel is the geometric middle');
+  assert.ok(sliderToZoom(60) - sliderToZoom(50) > sliderToZoom(10) - sliderToZoom(0),
+    'a constant ratio per pixel, not a constant number of pixels');
+});
+
+test('the arrangement answers the keyboard: select all, nudge, cut and paste', async () => {
+  const { hub } = await runtime();
+  hub.nodes.create('sequencer');
+  const first = hub.sequencer.model.addTrack('midi');
+  const second = hub.sequencer.model.addTrack('midi');
+  const clip = hub.sequencer.model.addMidiClip(first.id, 4, 4);
+  hub.sequencer.model.addMidiClip(first.id, 12, 4);
+  hub.modules.register(createSequencerModule(hub));
+  const view = captureContainer();
+  hub.modules.activate('sequencer', view.container);
+
+  assert.equal(hub.sequencer.selectAllClips(), 2, 'Ctrl+A reaches every clip in the arrangement');
+
+  hub.sequencer.selectClip(clip.id);
+  const step = 0.25;
+  assert.equal(hub.sequencer.moveClips([clip.id], step, null, { anchorClipId: clip.id }), true);
+  assert.equal(hub.sequencer.model._clip(clip.id).clip.startPpq, 4 + step,
+    'one arrow is one snap step, which is the accuracy the mouse cannot give');
+
+  assert.equal(hub.sequencer.moveClips([clip.id], 0, second.id, { anchorClipId: clip.id }), true);
+  assert.equal(hub.sequencer.model._clip(clip.id).track.id, second.id, 'and one arrow down is one track');
+
+  assert.equal(hub.sequencer.cutSelectedClips(), 1, 'cut removes what it copied');
+  assert.equal(hub.sequencer.model._clip(clip.id), null);
+  assert.equal(hub.sequencer.pasteClips(0).length, 1, 'and the clipboard still holds it');
+});
+
+test('a rubber band over the lanes selects in musical coordinates, and a click still clears', async () => {
+  const { clipsInSpan } = await import('../src/renderer/js/modules/sequencer/sequencerModule.js');
+  const tracks = [
+    { clips: [{ id: 'a', startPpq: 0, lengthPpq: 4 }, { id: 'b', startPpq: 8, lengthPpq: 4 }] },
+    { clips: [{ id: 'c', startPpq: 2, lengthPpq: 4 }] },
+    { clips: [{ id: 'd', startPpq: 0, lengthPpq: 16 }] }
+  ];
+
+  assert.deepEqual(clipsInSpan(tracks, { startPpq: 1, endPpq: 3, fromTrack: 0, toTrack: 1 }), ['a', 'c'],
+    'a band takes what it overlaps, on the tracks it spans');
+  assert.deepEqual(clipsInSpan(tracks, { startPpq: 5, endPpq: 7, fromTrack: 0, toTrack: 0 }), [],
+    'a band in the gap between two clips takes neither');
+  assert.deepEqual(clipsInSpan(tracks, { startPpq: 3, endPpq: 5, fromTrack: 0, toTrack: 0 }), ['a'],
+    'and touching one quarter of a clip is enough to take it');
+  assert.deepEqual(clipsInSpan(tracks, { startPpq: 20, endPpq: 1, fromTrack: 2, toTrack: 0 }).sort(),
+    ['a', 'b', 'c', 'd'], 'the band is drawn in any direction');
+  assert.deepEqual(clipsInSpan(tracks, { startPpq: 4, endPpq: 4, fromTrack: 0, toTrack: 2 }), ['c', 'd'],
+    'a band of zero width still covers what it passes through: the three-pixel '
+    + 'threshold is what keeps a plain click meaning "clear the selection", not this geometry');
+  assert.deepEqual(clipsInSpan(tracks, { startPpq: 0, endPpq: 99, fromTrack: 5, toTrack: 9 }), [],
+    'and a band below the last track finds nothing rather than throwing');
+  assert.deepEqual(clipsInSpan(undefined, {}), []);
+});
+
+test('a clip draws its notes in pixels, so resizing it cannot stretch them', async () => {
+  const source = fs.readFileSync(
+    new URL('../src/renderer/js/modules/sequencer/sequencerModule.js', import.meta.url), 'utf8'
+  );
+  const content = /function clipContent\([\s\S]*?\n}/.exec(source)?.[0] || '';
+  assert.ok(content, 'the clip body is one function, shared by the markup and the drag preview');
+
+  // The defect was percentages: `renderDragPreview` rewrites the element's
+  // width during a resize, every percentage re-resolves against the new width,
+  // and the notes stretched like rubber while nothing had actually moved.
+  assert.doesNotMatch(content, /seq-left-pct|seq-width-pct/,
+    'a note mark is placed in pixels from the clip start, never in percent of its width');
+  assert.match(content, /data-seq-left="\$\{\(visibleStart - sourceOffset\) \* zoom\}"/);
+  assert.match(content, /data-seq-bottom-pct=/, 'pitch stays a percentage: a resize does not change the height');
+  assert.match(source, /if \(drag\.kind !== 'resize-clip'\) continue;[\s\S]*?clipContent\(/,
+    'and a resize rebuilds them, because it moves which part of the source is shown');
+});
+
+test('the scroll rail draws and reads one mapping, and hides when everything fits', async () => {
+  const { railThumb } = await import('../src/renderer/js/modules/sequencer/sequencerModule.js');
+
+  assert.equal(railThumb({ scrollLeft: 0, scrollWidth: 800, clientWidth: 800, railWidth: 800 }), null,
+    'nothing to scroll, no rail: a full-width thumb that cannot move is furniture');
+  assert.equal(railThumb({ scrollWidth: 4000, clientWidth: 1000, railWidth: 0 }), null,
+    'and an unmeasured rail draws nothing rather than dividing by it');
+
+  const dimensions = { scrollWidth: 4000, clientWidth: 1000, railWidth: 1000 };
+  const start = railThumb({ ...dimensions, scrollLeft: 0 });
+  assert.equal(start.left, 3, 'at the left edge the thumb sits on the inset');
+  assert.ok(Math.abs(start.size - 994 * 0.25) < 1, 'the thumb is as wide a fraction as the window is');
+
+  const end = railThumb({ ...dimensions, scrollLeft: 3000 });
+  assert.ok(Math.abs(end.left + end.size - (1000 - 3)) < 1, 'and reaches the far edge at full scroll');
+  assert.equal(railThumb({ ...dimensions, scrollLeft: 99999 }).left, end.left, 'past the end clamps');
+
+  // Draw, then read back: the two directions must be inverses, or the thumb
+  // jumps out from under the pointer that grabbed it.
+  for (const scrollLeft of [0, 250, 1500, 3000]) {
+    const thumb = railThumb({ ...dimensions, scrollLeft });
+    const centre = thumb.left + thumb.size / 2;
+    assert.ok(Math.abs(thumb.scrollFor(centre) - scrollLeft) < 1,
+      `grabbing the thumb at ${scrollLeft} asks for ${scrollLeft}`);
+  }
+  const thumb = railThumb({ ...dimensions, scrollLeft: 0 });
+  assert.equal(thumb.scrollFor(-500), 0, 'dragging past either end clamps rather than overscrolling');
+  assert.equal(thumb.scrollFor(99999), 3000);
+});
+
+test('the arrangement replaces the native horizontal scrollbar rather than keeping it', () => {
+  const css = fs.readFileSync(new URL('../src/renderer/styles/base.css', import.meta.url), 'utf8');
+  assert.match(css, /\.seq-scroll::-webkit-scrollbar:horizontal \{ height:0; \}/,
+    'the light slab under the arrangement is gone');
+  assert.match(css, /\.seq-rail \{/, 'and a four-pixel rail says the same thing in its place');
+  assert.match(css, /body ::-webkit-scrollbar \{/,
+    'the shell dresses its remaining scrollbars instead of leaving them white');
+  const faceplate = fs.readFileSync(new URL('../src/renderer/styles/omni-pearl.css', import.meta.url), 'utf8');
+  assert.match(faceplate, /\.omni-pearl ::-webkit-scrollbar \{/,
+    'the faceplate declares its own in its own sheet, and `body ` scoping is what lets it win (D-012)');
+  assert.doesNotMatch(css, /^::-webkit-scrollbar/m,
+    'nothing here is declared unscoped, which would beat nothing but reach everything');
 });

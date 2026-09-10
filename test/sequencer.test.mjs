@@ -1,12 +1,16 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { SEQUENCER_LIMITS, SequencerModel, normalizeSequencerState, snapPpq, snapStep } from '../src/renderer/js/core/sequencerModel.js';
+import { SEQUENCER_LIMITS, SequencerModel, defaultSequencerState, normalizeSequencerState, snapPpq, snapStep } from '../src/renderer/js/core/sequencerModel.js';
 import { SequencerController } from '../src/renderer/js/core/sequencerController.js';
 import { EventBus } from '../src/renderer/js/core/eventBus.js';
 import { Network } from '../src/renderer/js/core/network.js';
 
 function rig(initial = {}) {
-  const data = { ...initial };
+  // The rig declares an empty track list on purpose. A project with NO
+  // authored sequencer state now opens on one MIDI track -- its own test says
+  // so below -- and every case here builds the tracks it needs, indexing them
+  // from zero.
+  const data = { sequencerState: defaultSequencerState(), ...initial };
   const commands = [];
   const events = new EventBus();
   const settings = { data, get: (key) => data[key], set: async (key, value) => { data[key] = value; } };
@@ -220,6 +224,47 @@ test('focused exclusive arm and intentional multi-arm route live MIDI to exact t
   controller.receiveMidiInput({ sourceId: 'minilab-port', raw: [0x90, 64, 100] });
   assert.deepEqual(commands.filter((item) => item.type === 'liveMidi').map((item) => item.chainId).sort(),
     ['vst-001', 'vst-002'], 'Ctrl/Meta/Shift arm explicitly enables multi-destination monitoring');
+});
+
+test('a project with no authored sequencer state opens on one focused MIDI track', () => {
+  // `undefined` overrides the rig's declared empty state, so this is the real
+  // shape of a fresh launch and of a brand new project: the key is absent.
+  const { controller, data } = rig({ sequencerState: undefined });
+  assert.equal(controller.model.state.tracks.length, 1);
+  assert.equal(controller.model.state.tracks[0].type, 'midi');
+  assert.equal(controller.model.state.focusedTrackId, controller.model.state.tracks[0].id,
+    'the opening track is focused, so the toolbar inspector shows its routing');
+  assert.equal(data.sequencerState.tracks.length, 1,
+    'the seed is written back rather than recomputed on every load');
+
+  const emptied = rig({ sequencerState: { ...defaultSequencerState(), tracks: [] } });
+  assert.equal(emptied.controller.model.state.tracks.length, 0,
+    'a project whose track list was emptied on purpose reopens empty');
+});
+
+test('the transport says why a played note reaches nothing, where Record reads ready', () => {
+  const { controller, hub } = rig();
+  const track = controller.model.addTrack('midi');
+  hub.midi.selectedInputId = 'selected-midi';
+  controller.model.updateTrack(track.id, { armed: true, inputId: 'selected-midi' });
+  hub.network.connect('minilab-3', 'midi-out', 'sequencer', 'midi-in');
+
+  assert.equal(controller.recordBlockReason(), '', 'the input side is complete, so a take can start');
+  assert.match(controller.liveBlockReason(), /has no Destination/,
+    'and nothing is routed anyway -- the condition the record check does not test');
+
+  controller.model.updateTrack(track.id, { outputId: 'vst-001' });
+  assert.match(controller.liveBlockReason(), /no Patch Bay cable/,
+    'a Destination chosen without its cable is the second half of the same silence');
+  hub.network.connect('sequencer', 'midi-out', 'vst-001', 'midi-in');
+  assert.equal(controller.liveBlockReason(), '', 'a complete route says nothing');
+
+  controller.model.updateTrack(track.id, { armed: false });
+  assert.match(controller.liveBlockReason(), /No MIDI track is live/);
+  controller.model.updateTrack(track.id, { monitored: true });
+  assert.equal(controller.liveBlockReason(), '', 'monitoring alone is a live route');
+  assert.match(controller.recordBlockReason(), /Arm at least one track/,
+    'and recording is still blocked, which is a different question');
 });
 
 test('record readiness explains each missing step instead of silently disabling Record', () => {

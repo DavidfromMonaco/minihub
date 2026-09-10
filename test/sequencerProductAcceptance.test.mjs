@@ -38,7 +38,11 @@ test('Sequencer toolbar exposes shared Play, actionable Record, distinct Stop, a
   assert.match(moduleSource, /data-action="stop"/);
   assert.match(moduleSource, /stopTransport\(\)/);
   assert.match(moduleSource, /seq-record-status/);
-  assert.match(moduleSource, /Each track has its own <strong>Input<\/strong> and <strong>Destination<\/strong>/);
+  assert.match(controllerSource, /liveBlockReason\(\)/,
+    'the transport says why what is played is heard by nothing, not only why a take is blocked');
+  assert.match(moduleSource, /data-track-inspector/);
+  assert.match(moduleSource, /const TRACK_HEIGHT = 64;/,
+    'a track is a lane with a clip in it, not a five-row form');
   const idleRecord = /<button class="btn seq-record[\s\S]*?data-action="start-record"([\s\S]*?)>Record<\/button>/.exec(moduleSource)?.[1] || '';
   assert.doesNotMatch(idleRecord, /recordBlockReason[^\n]*disabled/,
     'missing setup is reported by an actionable Record control instead of a silent grey button');

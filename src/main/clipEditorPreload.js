@@ -10,6 +10,9 @@ contextBridge.exposeInMainWorld('clipEditorAPI', {
   transport: (clipId, expectedProjectId, action) => ipcRenderer.invoke(
     'clip-editor:transport', clipId, expectedProjectId, action
   ),
+  audition: (clipId, expectedProjectId, payload) => ipcRenderer.invoke(
+    'clip-editor:audition', clipId, expectedProjectId, payload
+  ),
   onChanged: (callback) => {
     const listener = () => callback();
     ipcRenderer.on('clip-editor:changed', listener);
