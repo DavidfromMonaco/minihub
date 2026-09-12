@@ -33,7 +33,10 @@ const DEFAULTS = {
   // The imported controller profile MiniHub launches on, by file NAME -- never a
   // path. Written by main when a profile is imported or chosen, read by preload
   // before the renderer's first module evaluates. See controllerProfiles.js.
-  selectedProfileFile: null
+  selectedProfileFile: null,
+  // The agent channel (INTENT §8 sexies). Off, and off is the state in which
+  // MiniHub is the application it was before this existed.
+  agentChannel: false
 };
 
 function settingsPath() {

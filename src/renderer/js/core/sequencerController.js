@@ -1176,6 +1176,31 @@ export class SequencerController {
     return track;
   }
 
+  /**
+   * Add a track, and publish it.
+   *
+   * WHY THIS IS A METHOD AND NOT TWO LINES AT THE CALL SITE
+   * -------------------------------------------------------
+   * It was `model.addTrack(type); controller.changed();` inside two click
+   * handlers, which is fine until something other than a click needs a track.
+   * The agent channel does (INTENT §8 sexies), and `changed()` is the half a
+   * second caller forgets: without it the track exists in the model, the native
+   * plan does not know about it, and the open Clip Editors still believe in the
+   * arrangement before it.
+   */
+  addTrack(type = 'midi') {
+    const track = this.model.addTrack(type);
+    if (track) this.changed();
+    return track;
+  }
+
+  /** Add a MIDI clip to a track, and publish it. Same reasoning as `addTrack`. */
+  addMidiClip(trackId, startPpq = 0, lengthPpq = 4, notes = []) {
+    const clip = this.model.addMidiClip(trackId, startPpq, lengthPpq, notes);
+    if (clip) this.changed();
+    return clip;
+  }
+
   removeTrack(trackId) {
     const track = this.model.state.tracks.find((item) => item.id === trackId);
     if (track && this._activeInputNotes.size) this._panicLiveDestinations();
@@ -1290,7 +1315,11 @@ export class SequencerController {
     if (this.exporting) return false;
     const format = ['wav', 'mp3', 'ogg'].includes(String(options.format).toLowerCase())
       ? String(options.format).toLowerCase() : 'wav';
-    const filePath = await this.hub.api.audioPickSave(`${this.hub.project.currentProjectName} Mix`, format);
+    // Named by the caller, or chosen in the picker. The agent channel takes the
+    // first branch for the reason `ProjectManager._save` does: a modal opened by
+    // a request is a modal nobody was asked to answer.
+    const filePath = options.filePath
+      || await this.hub.api.audioPickSave(`${this.hub.project.currentProjectName} Mix`, format);
     if (!filePath) return false;
     const loop = this.model.state.loop;
     const startPpq = range === 'loop' ? loop.startPpq : 0;

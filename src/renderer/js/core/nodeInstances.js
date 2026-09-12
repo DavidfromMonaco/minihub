@@ -398,6 +398,36 @@ function cloneContentFor(typeId, content) {
   return content ? JSON.parse(JSON.stringify(content)) : null;
 }
 
+/**
+ * A node's content, made safe to trust, by type.
+ *
+ * WHY THIS IS A FUNCTION AND NOT A TERNARY INSIDE `load()`
+ * --------------------------------------------------------
+ * `load()` was the only reader of untrusted content -- a `.minihub` file, which
+ * can be corrupt or old. The agent channel is the second (INTENT 8 sexies), and
+ * its content arrives from outside with no guarantee at all. Two copies of
+ * "what a mixer's content is allowed to be" would drift, and the drift is
+ * silent: a malformed level reaches the engine as a NaN gain rather than as an
+ * error.
+ *
+ * A VST node's PLUGINS are deliberately not derived from the argument here --
+ * the caller decides whether they come from the payload (a project being
+ * loaded) or from the live chain (anything else). A plugin is a running native
+ * instance; it cannot be conjured by writing a list.
+ */
+export function normalizeContentFor(typeId, content) {
+  if (typeId === 'vst') {
+    return {
+      controlBindings: normalizeControlBindings(content?.controlBindings),
+      ...(Number.isSafeInteger(content?.nextPluginInstanceSeq) && content.nextPluginInstanceSeq >= 0
+        ? { nextPluginInstanceSeq: content.nextPluginInstanceSeq } : {})
+    };
+  }
+  if (typeId === 'mixer' || typeId === 'morpher') return normalizeNativeAudioContent(typeId, content);
+  if (typeId === 'arpeggiator') return normalizeArpeggiatorContent(content);
+  return content ?? null;
+}
+
 function normalizeNativeAudioContent(typeId, value) {
   const base = defaultContentFor(typeId); const source = value && typeof value === 'object' ? value : {};
   const inputs = Array.isArray(source.inputs) ? source.inputs.filter((p)=>p&&/^audio-in-[1-9][0-9]*$/.test(p.id)).map((p)=>({ id:p.id, level:Number.isFinite(p.level)?Math.max(0,Math.min(2,p.level)):1, muted:p.muted===true })) : base.inputs;
@@ -456,6 +486,75 @@ export class NodeInstanceManager {
     const inst = this.instances.get(instanceId);
     if (!inst || inst.type !== 'vst') return null;
     return new VstChain(inst.content, () => this._persist());
+  }
+
+  /**
+   * Put a plugin at the end of a VST node's chain, in the model and in the
+   * engine, and answer with the chain entry.
+   *
+   * WHY THIS IS A METHOD AND NOT THREE LINES AT THE CALL SITE
+   * ---------------------------------------------------------
+   * It was three lines inside the VST panel's click handler, which was fine
+   * while the panel was the only thing that could add a plugin. It is not any
+   * more: the agent channel adds one too (INTENT §8 sexies), and a second copy
+   * of "append, then tell the engine, and remember the index" is a copy that
+   * drifts. The failure is silent by nature -- a chain the renderer believes in
+   * and the engine has never heard of.
+   */
+  appendPlugin(instanceId, pluginId) {
+    const plugin = this.hub.engine.getPlugin(pluginId);
+    if (!plugin) return null;
+    const chain = this.getChain(instanceId);
+    if (!chain) return null;
+    const entry = chain.append({ pluginId: plugin.pluginId, name: plugin.name, role: plugin.role });
+    this.hub.engine.createInstance(instanceId, plugin.pluginId, entry.id, chain.plugins.length - 1);
+    return entry;
+  }
+
+  /**
+   * Move a plugin within its chain, in the model and in the engine.
+   *
+   * Out of the click handler for the same reason as its neighbours: the engine
+   * call carries the NEW index, and a caller that computes it differently
+   * leaves the renderer and the engine disagreeing about the order of the
+   * effects -- which is audible, and looks like nothing at all on screen.
+   */
+  movePlugin(instanceId, pluginInstanceId, toIndex) {
+    const chain = this.getChain(instanceId);
+    if (!chain || !chain.plugins.some((plugin) => plugin.id === pluginInstanceId)) return false;
+    const index = Math.max(0, Math.min(chain.plugins.length - 1, Math.trunc(Number(toIndex))));
+    if (!Number.isFinite(index)) return false;
+    if (!chain.reorder(pluginInstanceId, index)) return false;
+    this.hub.engine.reorderChain(instanceId, pluginInstanceId, index);
+    return true;
+  }
+
+  /** Bypass a plugin, in the model and in the engine. */
+  setPluginBypass(instanceId, pluginInstanceId, bypassed) {
+    const chain = this.getChain(instanceId);
+    if (!chain || !chain.plugins.some((plugin) => plugin.id === pluginInstanceId)) return false;
+    const next = bypassed === true;
+    chain.setBypass(pluginInstanceId, next);
+    this.hub.engine.setBypass(instanceId, pluginInstanceId, next);
+    return true;
+  }
+
+  /**
+   * Take a plugin out of a VST node's chain, in the model and in the engine.
+   *
+   * `targetInvalidated` is the line that must never be forgotten, and the
+   * reason this is a method: a CONTROL binding pointing at the plugin being
+   * removed outlives it otherwise, and a physical knob then writes to a target
+   * that no longer exists. Nothing throws -- the knob simply stops doing
+   * anything, and the binding still reads as live in the bindings bar.
+   */
+  removePlugin(instanceId, pluginInstanceId) {
+    const chain = this.getChain(instanceId);
+    if (!chain || !chain.plugins.some((plugin) => plugin.id === pluginInstanceId)) return false;
+    this.hub.control?.targetInvalidated?.(instanceId, pluginInstanceId, 'target-removed');
+    chain.remove(pluginInstanceId);
+    this.hub.engine.removeInstance(instanceId, pluginInstanceId);
+    return true;
   }
 
   /** Validated persistent CONTROL bindings owned by one VST node. */
@@ -533,16 +632,14 @@ export class NodeInstanceManager {
       if (instanceId !== entry.id) migratedStableIds.set(entry.id, instanceId);
       if (this.instances.has(instanceId)) continue; // duplicate id in the file
       if (type.singleton && this.list().some((instance) => instance.type === type.id)) continue;
+      // The plugins come from the FILE here, and only here: this is the one
+      // caller restoring a chain that existed, rather than editing a live one.
       const content = entry.type === 'vst'
         ? {
             plugins: (entry.content && Array.isArray(entry.content.plugins)) ? entry.content.plugins : [],
-            controlBindings: normalizeControlBindings(entry.content?.controlBindings),
-            ...(Number.isSafeInteger(entry.content?.nextPluginInstanceSeq)
-              && entry.content.nextPluginInstanceSeq >= 0
-              ? { nextPluginInstanceSeq: entry.content.nextPluginInstanceSeq }
-              : {})
+            ...normalizeContentFor('vst', entry.content)
           }
-        : ((entry.type === 'mixer' || entry.type === 'morpher') ? normalizeNativeAudioContent(entry.type, entry.content) : (entry.type === 'arpeggiator' ? normalizeArpeggiatorContent(entry.content) : (entry.content ?? null)));
+        : normalizeContentFor(entry.type, entry.content);
       if (entry.type === 'arpeggiator' && JSON.stringify(content) !== JSON.stringify(entry.content)) migratedArpeggiator = true;
 
       const instance = {
@@ -711,7 +808,29 @@ export class NodeInstanceManager {
   restoreContent(id, content) {
     const instance = this.instances.get(id);
     if (!instance) return false;
-    const next = cloneContentFor(instance.type, content);
+    return this._writeContent(instance, cloneContentFor(instance.type, content));
+  }
+
+  /**
+   * Write a node's content from OUTSIDE, normalising it first.
+   *
+   * `restoreContent` trusts its argument because the history only ever hands it
+   * back a snapshot it took itself. Nothing else may: a level of `"loud"` or a
+   * pattern of the wrong length reaches the engine as a NaN rather than as a
+   * complaint, so the agent channel writes through here.
+   *
+   * A VST node's plugins are not writable this way on purpose -- they are
+   * running native instances, added and removed by `appendPlugin` /
+   * `removePlugin`, which tell the engine. `_writeContent` keeps the live list.
+   */
+  setContent(id, content) {
+    const instance = this.instances.get(id);
+    if (!instance) return false;
+    return this._writeContent(instance, normalizeContentFor(instance.type, content));
+  }
+
+  /** Compare, keep what is not the caller's to write, persist, and signal. */
+  _writeContent(instance, next) {
     const kept = instance.type === 'vst'
       ? { ...(next || {}),
           plugins: instance.content?.plugins || [],
@@ -724,9 +843,9 @@ export class NodeInstanceManager {
     // The same two signals an ordinary edit of this node sends. `engineSync`
     // listens to both and republishes the whole plan, so the engine follows the
     // model rather than being handed a reverse command (D-032).
-    if (instance.type === 'arpeggiator') this.hub.events.emit('nativeMidi:stateChanged', { nodeId: id });
+    if (instance.type === 'arpeggiator') this.hub.events.emit('nativeMidi:stateChanged', { nodeId: instance.id });
     else if (instance.type === 'mixer' || instance.type === 'morpher') {
-      this.hub.events.emit('nativeAudio:stateChanged', { nodeId: id });
+      this.hub.events.emit('nativeAudio:stateChanged', { nodeId: instance.id });
     }
     return true;
   }
@@ -1060,17 +1179,9 @@ export class NodeInstanceManager {
           if (e.target.closest('#vst-add')) {
             const pick = container.querySelector('#vst-pick');
             if (!pick || !pick.value) return;
-            const plugin = hub.engine.getPlugin(pick.value);
-            if (!plugin) return;
-            const chain = manager.getChain(instance.id);
-            if (!chain) return;
-            const p = chain.append({
-              pluginId: plugin.pluginId,
-              name: plugin.name,
-              role: plugin.role
-            });
+            const p = manager.appendPlugin(instance.id, pick.value);
+            if (!p) return;
             statusMap.set(p.id, 'loading');
-            hub.engine.createInstance(instance.id, plugin.pluginId, p.id, chain.plugins.length - 1);
             rerenderChain();
             return;
           }
@@ -1100,32 +1211,19 @@ export class NodeInstanceManager {
             rerenderChain();
             hub.engine.openEditor(instance.id, id);
           } else if (action === 'bypass') {
-            const p = chain.plugins[idx];
-            const newBypass = !p.bypassed;
-            chain.setBypass(id, newBypass);
-            hub.engine.setBypass(instance.id, id, newBypass);
+            const newBypass = !chain.plugins[idx].bypassed;
+            manager.setPluginBypass(instance.id, id, newBypass);
             statusMap.set(id, newBypass ? 'bypassed' : 'ready');
             rerenderChain();
           } else if (action === 'remove') {
-            hub.control.targetInvalidated(instance.id, id, 'target-removed');
-            chain.remove(id);
-            hub.engine.removeInstance(instance.id, id);
+            manager.removePlugin(instance.id, id);
             statusMap.delete(id);
             editorNotes.delete(id);
             rerenderChain();
           } else if (action === 'up') {
-            if (idx > 0) {
-              chain.reorder(id, idx - 1);
-              hub.engine.reorderChain(instance.id, id, idx - 1);
-              rerenderChain();
-            }
+            if (idx > 0 && manager.movePlugin(instance.id, id, idx - 1)) rerenderChain();
           } else if (action === 'down') {
-            if (idx < chain.plugins.length - 1) {
-              chain.reorder(id, idx + 1);
-              // After reorder, the plugin moves to idx+1; engine index is the new position.
-              hub.engine.reorderChain(instance.id, id, idx + 1);
-              rerenderChain();
-            }
+            if (idx < chain.plugins.length - 1 && manager.movePlugin(instance.id, id, idx + 1)) rerenderChain();
           }
         };
 

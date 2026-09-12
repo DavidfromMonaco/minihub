@@ -18,6 +18,7 @@ import { bindMenuCommands } from './core/menuCommands.js';
 import { setupEditHistory } from './core/editHistory.js';
 import { applyHistorySnapshot } from './core/editHistoryApply.js';
 import { installHistoryKeys } from './ui/historyKeys.js';
+import { installAgentBridge } from './core/agentBridge.js';
 
 async function main() {
   const hub = createHub(window.hubAPI);
@@ -66,6 +67,9 @@ async function main() {
   setupEditHistory(hub, { apply: applyHistorySnapshot });
   hub.history.start();
   installHistoryKeys(hub);
+  // After the history, so an agent's undo steps the same line the keyboard
+  // steps. Returns null when the channel is off, which is the normal case.
+  installAgentBridge(hub);
 
   // UI shell.
   const sidebarEl = document.getElementById('sidebar');

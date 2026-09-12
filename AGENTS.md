@@ -57,6 +57,7 @@ build step) — C++17 audio engine (JUCE 9, PortAudio/WASAPI, VST3 SDK).
 | the native engine, real time | ARCHITECTURE §7 and §8 |
 | the sequencer | ARCHITECTURE §9 |
 | the UI, the CSP, styling | ARCHITECTURE §10 — visual references in `docs/design-references/` |
+| **driving the running app** | §7 bis below — there is a channel; do not click |
 | persistence, projects | ARCHITECTURE §11 |
 
 ## 4. Absolute rules
@@ -176,6 +177,41 @@ A change is finished only when **everything that touches it is green**:
 
 What no command proves is not proven. Do not report "it works" on the strength
 of having read the code. If a test fails, say so, with its output.
+
+## 7 bis. Driving the running application — do not take the screen
+
+**If you are an agent and you need MiniHub to DO something — build a patch, load
+a plugin, write notes, play, save, export — there is a channel for it. Use it.
+Do not drive the interface with screenshots and clicks.**
+
+The channel is off by default. Start the packaged build with it on:
+
+```bash
+MINIHUB_AGENT_CHANNEL=1 "dist/MiniHub/MiniHub.exe"
+```
+
+Then talk to it from the client, which lives **outside this repository** at
+`../minihub-agent/`:
+
+```bash
+node ../minihub-agent/minihub.mjs ping
+node ../minihub-agent/minihub.mjs describe
+```
+
+`../minihub-agent/AGENTS.md` holds the whole vocabulary and is the file to read
+before using it. The short version: `describe` to read the state, then typed
+requests for everything else — nodes, cables, plugins, parameters, tracks,
+clips, notes, the transport, the tempo, saving, exporting.
+
+Two things this is NOT. It is not a public API in the sense §6 of
+[INTENT.md](INTENT.md) refuses: an operation an agent can ask for is one the
+interface can already perform, and the vocabulary lives in
+`renderer/js/core/agentRequests.js`, which owns no behaviour of its own. And it
+is not code execution: a request is data, validated like a controller profile,
+never a script. The bounds are [INTENT.md](INTENT.md) §8 sexies.
+
+If something you need is missing from the vocabulary, **that is a gap to report
+and fill**, not a reason to reach for the mouse.
 
 `scripts/runtime-*-gauntlet.mjs` are one-off harnesses that drive the real
 application over CDP; they belong to closed investigations and are **not** part

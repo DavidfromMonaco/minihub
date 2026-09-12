@@ -31,8 +31,10 @@ const { ALLOWED_ENGINE_COMMANDS } = require('./engineCommandPolicy');
 const { ClipEditorWindows } = require('./clipEditorWindows');
 const { installProjectCloseGuard } = require('./projectCloseGuard');
 const { installAppMenu } = require('./appMenu');
+const { AgentChannel } = require('./agentChannel');
 
 let mainWindow = null;
+let agentChannel = null;
 let engine = null;
 let engineRestartAttempts = 0;
 let clipEditorWindows = null;
@@ -187,11 +189,49 @@ else app.on('second-instance', () => {
   mainWindow.show(); mainWindow.focus();
 });
 
+/**
+ * Open the agent channel, if it was asked for. INTENT §8 sexies.
+ *
+ * The environment variable is the demo switch and is named as one: the setting
+ * is where the answer belongs, and there is no control in the interface that
+ * writes it yet. Inventing that control to make a demo runnable would be
+ * inventing product to serve a test.
+ *
+ * Not asked for is the normal case, and in it nothing is created, nothing
+ * listens, and no endpoint file exists.
+ */
+function startAgentChannel() {
+  const enabled = process.env.MINIHUB_AGENT_CHANNEL === '1'
+    || loadSettings().agentChannel === true;
+  if (!enabled) return;
+  const endpointPath = path.join(app.getPath('userData'), 'agent-endpoint.json');
+  agentChannel = new AgentChannel({
+    net: require('net'),
+    ipcMain,
+    getMainWindow: () => mainWindow,
+    writeEndpoint: (endpoint) => {
+      try {
+        if (endpoint) fs.writeFileSync(endpointPath, JSON.stringify(endpoint, null, 2), { encoding: 'utf8', mode: 0o600 });
+        else fs.rmSync(endpointPath, { force: true });
+      } catch (error) {
+        diagnostics.log(`agent-channel:endpoint:${error && error.message}`);
+      }
+    },
+    log: (line) => {
+      console.log(`[agent-channel] ${line}`);
+      diagnostics.log(`agent-channel:${line}`);
+    }
+  });
+  agentChannel.bind();
+  agentChannel.start();
+}
+
 if (hasSingleInstanceLock) app.whenReady().then(() => {
   startupMark('electron-ready');
   diagnostics.logStartupInfo();
   createWindow();
   startEngine();
+  startAgentChannel();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
@@ -211,6 +251,10 @@ app.on('before-quit', async (event) => {
     mainWindow.close();
     return;
   }
+  // Before the engine, because stopping the engine can defer the quit and the
+  // endpoint file must not outlive the door it describes.
+  agentChannel?.stop();
+  agentChannel = null;
   if (engine) {
     event.preventDefault();
     await stopEngine();

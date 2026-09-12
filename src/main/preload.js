@@ -72,6 +72,18 @@ contextBridge.exposeInMainWorld('hubAPI', {
     return () => ipcRenderer.removeListener('clip-editor:request', listener);
   },
 
+  // --- Agent channel (INTENT §8 sexies) ---
+  // Shaped exactly like the Clip Editor bridge above, because it is the same
+  // problem: something outside this renderer asks it to do something the
+  // interface can do, and waits for the answer. The renderer still has no
+  // socket -- the door is the main process's, and only requests come through.
+  agentRespond: (response) => ipcRenderer.invoke('agent:respond', response),
+  onAgentRequest: (callback) => {
+    const listener = (_event, request) => callback(request);
+    ipcRenderer.on('agent:request', listener);
+    return () => ipcRenderer.removeListener('agent:request', listener);
+  },
+
   // --- Startup diagnostics ---
   diagnosticsLog: (line) => ipcRenderer.invoke('diagnostics:log', line),
   runtimeProvenance: () => ipcRenderer.invoke('diagnostics:provenance'),

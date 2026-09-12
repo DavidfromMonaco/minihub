@@ -453,7 +453,25 @@ public:
             setProp(item, "parameterId", juce::String(static_cast<juce::int64>(info.id)));
             setProp(item, "idStable", true);
             setProp(item, "name", fromVstString(info.title));
-            setProp(item, "normalizedValue", controller_->getParamNormalized(info.id));
+            const auto normalized = controller_->getParamNormalized(info.id);
+            setProp(item, "normalizedValue", normalized);
+            // WHY THE DISPLAY STRING IS PART OF THE PAYLOAD
+            // A normalised 0.42 is unreadable on its own: nothing outside the
+            // plugin knows whether that cutoff is 400 Hz or 8 kHz, because the
+            // curve between 0 and 1 belongs to the plugin and to nothing else.
+            // Anything reasoning about a value rather than merely transporting
+            // it -- a binding that wants to show what it is about to change, an
+            // agent asked for a darker filter -- is otherwise guessing. Empty
+            // when the plugin declines to format the value, which is a plugin
+            // saying "no text", not an error.
+            Steinberg::Vst::String128 display {};
+            setProp(item, "display",
+                    succeeded(controller_->getParamStringByValue(info.id, normalized, display))
+                        ? fromVstString(display) : juce::String());
+            // Zero means continuous. A display string reading "Saw" cannot say
+            // whether one other waveform sits behind it or eleven, and a caller
+            // stepping such a parameter has to know before it moves.
+            setProp(item, "stepCount", static_cast<int>(info.stepCount));
             setProp(item, "automatable",
                     (info.flags & Steinberg::Vst::ParameterInfo::kCanAutomate) != 0);
             setProp(item, "readOnly",

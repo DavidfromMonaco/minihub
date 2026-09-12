@@ -90,6 +90,17 @@ export class ProjectManager {
   async save(as = false) {
     return (await this._save({ as })).ok;
   }
+
+  /**
+   * Save to a path the caller names, with no picker and no alert.
+   *
+   * The outcome is returned rather than shown, because the caller is not
+   * looking at the screen.
+   */
+  async saveTo(filePath) {
+    if (!filePath || typeof filePath !== 'string') return { ok: false, reason: 'no-path' };
+    return this._save({ interactive: false, filePath });
+  }
   /**
    * Save the project and say what happened.
    *
@@ -102,7 +113,7 @@ export class ProjectManager {
    * the file picker, which is a step back into the application, never an
    * instruction to close it without the project.
    */
-  async _save({ as = false, interactive = true } = {}) {
+  async _save({ as = false, interactive = true, filePath: chosenPath = null } = {}) {
     const refuse = (reason, message) => {
       this.hub.events?.emit?.('project:save-error', { reason, message });
       if (interactive) globalThis.alert?.(message);
@@ -122,7 +133,11 @@ export class ProjectManager {
     // Native emits every state chunk before its completion marker. Give those
     // already-enqueued renderer events one turn before taking the snapshot.
     await new Promise((r) => setTimeout(r, 80));
-    let filePath = as ? null : this.currentProjectPath;
+    // A caller that already knows where the file goes never reaches the picker.
+    // That is what lets the agent channel save at all: a native file dialog
+    // opened by a request would sit on screen waiting for a human who is not
+    // being asked anything (INTENT 8 sexies).
+    let filePath = chosenPath || (as ? null : this.currentProjectPath);
     if (!filePath) filePath = await this.api.projectPickSave(this.currentProjectName);
     if (!filePath) return { ok: false, reason: 'cancelled' };
     const nextProjectName = (!this.currentProjectPath || as)
@@ -165,9 +180,12 @@ export class ProjectManager {
       } catch (_) {}
     });
   }
-  async load(filePath = null) {
+  async load(filePath = null, { discardApproved = false } = {}) {
     if (this._blockWhileRecording('load a project')) return false;
-    if (!this._confirmDiscardChanges('load another project')) return false;
+    // `confirm()` is a modal. A caller that has already settled the question --
+    // the agent channel, which refuses its own request rather than ask -- says
+    // so here instead of blocking the renderer on a dialog nobody will answer.
+    if (!discardApproved && !this._confirmDiscardChanges('load another project')) return false;
     const chosen = filePath || await this.api.projectPickOpen(); if (!chosen) return false;
     // Record may have started while the native picker was open. Do not even
     // read a candidate project once a take is active.
@@ -179,9 +197,9 @@ export class ProjectManager {
     if (!result?.ok) { if (filePath) await this.hub.settings.setMany({ recentProjectPath: null, recentProjectName: null }); alert(`Could not load project: ${result?.error || 'unknown error'}`); return false; }
     return this._replace(result.project, chosen, false, { discardApproved: true });
   }
-  async newProject() {
+  async newProject({ discardApproved = false } = {}) {
     if (this._blockWhileRecording('create a new project')) return false;
-    if (!this._confirmDiscardChanges('create a new project')) return false;
+    if (!discardApproved && !this._confirmDiscardChanges('create a new project')) return false;
     const now = new Date().toISOString();
     return this._replace({ format: 'minihub-project', version: 1, projectId: newId(), name: 'Untitled', createdAt: now, modifiedAt: now, network: { connections: [], layout: {}, viewport: null }, nodeInstances: { instances: [], idSeq: {} }, transport: { bpm: 120 }, master: { ...DEFAULT_MASTER_OUTPUT } }, null, true, { discardApproved: true });
   }

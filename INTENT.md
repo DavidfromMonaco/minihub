@@ -88,7 +88,9 @@ proposed "just in case" is to be refused.
 - **Not a platform extensible by code.** No in-house plugin system, no user
   scripting language, no public API, no callback of any kind. The plugins are
   VST3. Extension by **declarative data** — one controller profile — is allowed,
-  and nothing beyond it; see §8 ter.
+  and nothing beyond it; see §8 ter. A local channel over which an outside agent
+  asks for operations the interface already performs is not an extension of the
+  application by code, and is allowed on the terms of §8 sexies.
 - **Not a project with dependencies.** The absence of a bundler, a framework and
   any runtime dependency is a choice of identity, not technical lag
   ([DECISIONS.md](DECISIONS.md) D-003).
@@ -311,6 +313,65 @@ a control in the shell.
 
 Decision: [DECISIONS.md](DECISIONS.md) D-032. Workstream: [ROADMAP.md](ROADMAP.md)
 item 13.
+
+## 8 sexies. Refusal lifted: an agent may drive MiniHub from outside
+
+**Status: settled 2026-09-12. In scope.**
+
+§6 refuses a public API, and §8 bis refuses generation driven by a model. This
+lifting is not, like the ones above it, a case of the document having
+contradicted itself: nothing here was owed. It is a want, and it is written
+down as one.
+
+What makes it admissible is a distinction §6 was already drawing without naming
+it. The refusal of "an extensible platform" is a refusal of **code running
+inside the application that its author did not write** — a plugin system, a
+scripting language, a callback. An agent channel adds no such path: it lets an
+outside process ask for operations the interface already performs, over the
+request bus that already serves the Clip Editor window. The rule that settles a
+controller profile settles this too: **extensible by data, never by code.**
+
+What is lifted is **precisely bounded**:
+
+- a **local command channel**, owned by the main process, off by default,
+  reachable on loopback only and behind a token;
+- an agent is a **client of the request bus that already exists** — the one the
+  Clip Editor speaks. It asks for operations the interface can already perform,
+  and it gets the same refusals: a stale project, a missing clip, a transition
+  in flight;
+- the server that carries it — MCP or otherwise — lives **outside this
+  repository**, and never becomes a runtime dependency.
+
+What **stays** refused, and what this lifting must never be read as permitting:
+
+- **no model inside the application.** No API key, no chat panel, no stored
+  conversation, no "generate" button. MiniHub ships the channel; it never ships
+  a model and never talks to one;
+- **the application with the channel off is the application of today**, to the
+  bit. No existing feature may begin to depend on it — §7's rule, applied to a
+  socket instead of the internet;
+- **no audio and no project leave.** An agent reads a description: the
+  topology, the names, the parameters, the notes. Never a sample, never a take,
+  never a file;
+- **no rendered audio leaves** — no bounce, no excerpt, no buffer handed to a
+  model. Whether a *measurement* may be returned — a level, a clip flag, a
+  spectral centroid — is **open and undecided**: invariant 1 forbids samples,
+  not measurements, and `masterMeter` already crosses the IPC ten times a
+  second. Nothing in this workstream returns one, and that is where the
+  question was left, not how it was answered;
+- **the Matrix stays deterministic by seed.** An agent that edits its scenes is
+  authoring, as a person is. A Matrix that calls a model while it runs is what
+  §8 bis refused, and that stays refused;
+- **no second bus, and no second vocabulary.** An operation an agent can ask
+  for is one the interface can already perform. A command that exists only for
+  an agent is a public API by another route.
+
+The difference in one sentence: MiniHub accepts **requests** from an agent the
+way it already accepts them from its own second window. It does not host the
+agent, does not host its conversation, and never sends it your music.
+
+Workstream: `plans/active/agent-channel.md`. Decision:
+[DECISIONS.md](DECISIONS.md) D-038, once the code is written.
 
 ## 9. Trade-offs
 

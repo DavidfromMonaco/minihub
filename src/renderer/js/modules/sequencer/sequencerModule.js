@@ -746,8 +746,8 @@ export function createSequencerModule(hub) {
   }
 
   function bind() {
-    container.querySelector('[data-action="add-midi"]')?.addEventListener('click', () => { controller.model.addTrack('midi'); controller.changed(); });
-    container.querySelector('[data-action="add-audio"]')?.addEventListener('click', () => { controller.model.addTrack('audio'); controller.changed(); });
+    container.querySelector('[data-action="add-midi"]')?.addEventListener('click', () => { controller.addTrack('midi'); });
+    container.querySelector('[data-action="add-audio"]')?.addEventListener('click', () => { controller.addTrack('audio'); });
     container.querySelector('[data-action="go-start"]')?.addEventListener('click', () => controller.goToStart());
     container.querySelector('[data-action="go-end"]')?.addEventListener('click', () => controller.goToEnd());
     container.querySelector('[data-action="play"]')?.addEventListener('click', () => controller.playTransport());
@@ -923,7 +923,7 @@ export function createSequencerModule(hub) {
     lane?.addEventListener('dblclick', async (event) => {
       if (event.target.closest('.seq-clip')) return;
       const ppq = Math.max(0, (event.offsetX || 0) / controller.model.state.zoom);
-      if (track.type === 'midi') { controller.model.addMidiClip(trackId, ppq, 4); controller.changed(); }
+      if (track.type === 'midi') { controller.addMidiClip(trackId, ppq, 4); }
       else await controller.importAudio(trackId, ppq);
     });
   }
@@ -1221,7 +1221,7 @@ export function createSequencerModule(hub) {
         { label: track.name },
         { separator: true },
         track.type === 'midi'
-          ? { label: 'New MIDI clip here', hint: 'Double-click', action: () => { controller.model.addMidiClip(track.id, ppq, 4); controller.changed(); } }
+          ? { label: 'New MIDI clip here', hint: 'Double-click', action: () => { controller.addMidiClip(track.id, ppq, 4); } }
           : { label: 'Import audio here…', hint: 'Double-click', action: () => { controller.importAudio(track.id, ppq); } },
         { label: 'Paste here', hint: 'Ctrl+V', disabled: !controller.hasClipboard(), action: () => controller.pasteClips(ppq) },
         { separator: true },
