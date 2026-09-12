@@ -78,6 +78,21 @@ so the live objects have to be restored without navigating.
   forwards.
 - **A note arriving from a take.** `_acceptMidiRecording` is the boundary: the
   take is a performance, the clip it produces is authorship.
+- **`Ctrl+Z` inside a plugin's own editor window.** Asked and **refused by the
+  author on 2026-09-12**, so it is written here rather than left to be asked
+  again.
+
+  That window belongs to the ENGINE process -- a hand-built Win32 frame with the
+  VST3 view attached as a child (D-021). When it has focus the keys go to the
+  plugin and nothing reaches Chromium, so answering there means a keyboard hook
+  in the engine that SWALLOWS Ctrl+Z before the plugin sees it. Most plugins
+  implement their own undo on that key, and inside a plugin's window that is
+  what the gesture means: undo the last thing I did *in this plugin*. Taking it
+  would break a working function to offer one that undoes a cable in the Patch
+  Bay.
+
+  If the absence ever becomes a nuisance in use, the answer is a DIFFERENT
+  keystroke in that window -- one no plugin claims -- never this one.
 
 ## Steps
 
