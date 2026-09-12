@@ -7,6 +7,22 @@
  * Morpher / Metronome / Omnibox skin reuses the same surface
  * language instead of inventing new values.
  *
+ * THE PLATE IS GRAPHITE, AND IT USED TO BE NACRE
+ * ----------------------------------------------
+ * ROADMAP item 6, DECISIONS.md D-037: the faceplate now looks like the machine
+ * it draws -- a MiniLab 3 is a dark plate with white legends and backlit pads,
+ * not a cream one. D-012 is what made that a token edit rather than a rewrite:
+ * the sheet owns its whole palette and consumes nothing from `base.css`, so the
+ * shell could not follow it down.
+ *
+ * The sentence above -- every colour is a token -- was the part that was not
+ * true. Twenty-nine literals were scattered through sections 2 to 4, all of
+ * them light, and each one would have stayed white on the new plate. They are
+ * tokens now; the rule is that a colour appearing below this block is a bug.
+ *
+ * The name stayed. `omni-pearl` is a class, a file, two `npm run check` rules
+ * and every `op-` prefix in the library, and a rename buys a word.
+ *
  * Layer order:
  *   1. tokens      (--op-*)
  *   2. primitives  module frame, panels, labels, wells, control strip
@@ -22,45 +38,91 @@
 
 .omni-pearl {
   /* --- surfaces ---------------------------------------------------------- */
-  --op-bg: #edeae6;
-  --op-surface: #fbfaf9;
-  --op-surface-2: #f4f2ef;
-  --op-surface-raised: linear-gradient(180deg, #ffffff 0%, #f6f4f1 100%);
-  --op-surface-metal: linear-gradient(180deg, #ffffff 0%, #eceae6 52%, #e2ded8 100%);
-  --op-recess: linear-gradient(180deg, #eae7e2 0%, #f5f3f0 12%, #f8f6f4 100%);
-  --op-well: #f7f6f4;
+  --op-bg: #313337;
+  --op-surface: #34363b;
+  --op-surface-2: #2c2e32;
+  --op-surface-raised: linear-gradient(180deg, #41444a 0%, #383a40 100%);
+  --op-surface-metal: linear-gradient(180deg, #44474d 0%, #3a3d42 52%, #34363b 100%);
+  --op-recess: linear-gradient(180deg, #232529 0%, #282a2e 12%, #2a2c31 100%);
+  --op-well: #2a2c31;
+  --op-plate: linear-gradient(180deg, #3b3d42 0%, var(--op-bg) 100%);
 
   /* --- borders ----------------------------------------------------------- */
-  --op-border: #e2ded8;
-  --op-border-strong: #d2ccc4;
-  --op-hairline: rgba(90, 78, 64, 0.09);
-  --op-grid-line: rgba(90, 78, 64, 0.07);
-  --op-grid-line-strong: rgba(90, 78, 64, 0.16);
+  --op-border: #45484e;
+  --op-border-strong: #52565d;
+  --op-hairline: rgba(255, 255, 255, 0.07);
+  --op-grid-line: rgba(255, 255, 255, 0.055);
+  --op-grid-line-strong: rgba(255, 255, 255, 0.13);
 
   /* --- text -------------------------------------------------------------- */
-  --op-text: #3b3833;
-  --op-text-dim: #857e75;
-  --op-text-faint: #aca49a;
-  --op-text-on-accent: #ffffff;
+  --op-text: #eceef1;
+  --op-text-dim: #a3a8b0;
+  --op-text-faint: #848b94;
+  /* Near-black, not white: white on this orange is about 2.6:1, and the orange
+     is the one thing on the plate that is genuinely bright. */
+  --op-text-on-accent: #1d1a16;
 
   /* --- accent ------------------------------------------------------------ */
-  --op-orange: #f07d1d;
-  --op-orange-hover: #ff9038;
-  --op-orange-active: #d96a0f;
-  --op-orange-deep: #c85f08;
-  --op-orange-soft: rgba(240, 125, 29, 0.16);
-  --op-orange-tint: rgba(240, 125, 29, 0.07);
-  --op-orange-line: rgba(240, 125, 29, 0.45);
-  --op-orange-grad: linear-gradient(180deg, #ff9436 0%, #f07d1d 55%, #e06f10 100%);
+  --op-orange: #ff8b2c;
+  --op-orange-hover: #ffa254;
+  --op-orange-active: #f07d1d;
+  --op-orange-deep: #d9690d;
+  --op-orange-soft: rgba(255, 139, 44, 0.18);
+  --op-orange-tint: rgba(255, 139, 44, 0.09);
+  --op-orange-line: rgba(255, 139, 44, 0.5);
+  --op-orange-grad: linear-gradient(180deg, #ffa254 0%, #ff8b2c 55%, #ef7a17 100%);
+  --op-danger: #ff6b5e;
+  --op-danger-line: rgba(255, 107, 94, 0.5);
 
   /* --- depth ------------------------------------------------------------- */
-  --op-shadow-1: 0 1px 2px rgba(70, 58, 44, 0.07);
-  --op-shadow-2: 0 2px 6px rgba(70, 58, 44, 0.08), 0 1px 1px rgba(70, 58, 44, 0.05);
-  --op-shadow-3: 0 10px 30px rgba(70, 58, 44, 0.11), 0 2px 6px rgba(70, 58, 44, 0.06);
-  --op-bevel: inset 0 1px 0 rgba(255, 255, 255, 0.95);
-  --op-inset-1: inset 0 1px 2px rgba(70, 58, 44, 0.09);
-  --op-inset-2: inset 0 2px 5px rgba(70, 58, 44, 0.13), inset 0 -1px 0 rgba(255, 255, 255, 0.7);
-  --op-ring: 0 0 0 2px rgba(240, 125, 29, 0.35);
+  /* On a dark plate a shadow is black and a bevel is a thin light on the top
+     edge, where the pearl had it the other way round. */
+  --op-shadow-1: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --op-shadow-2: 0 2px 6px rgba(0, 0, 0, 0.34), 0 1px 1px rgba(0, 0, 0, 0.28);
+  --op-shadow-3: 0 12px 32px rgba(0, 0, 0, 0.42), 0 2px 6px rgba(0, 0, 0, 0.3);
+  --op-bevel: inset 0 1px 0 rgba(255, 255, 255, 0.09);
+  --op-inset-1: inset 0 1px 3px rgba(0, 0, 0, 0.42);
+  --op-inset-2: inset 0 2px 5px rgba(0, 0, 0, 0.5), inset 0 -1px 0 rgba(255, 255, 255, 0.06);
+  --op-ring: 0 0 0 2px rgba(255, 139, 44, 0.42);
+
+  /* --- machined parts ---------------------------------------------------- */
+  /* A knob is turned aluminium: a conic sweep for the milling, a radial for the
+     light falling on it, and a cap that catches it again. */
+  --op-knob-grad:
+    radial-gradient(circle at 50% 14%, rgba(255, 255, 255, 0.22) 0%, rgba(255, 255, 255, 0) 62%),
+    conic-gradient(from 210deg, #565960, #3d4046 24%, #565960 48%, #3b3e44 74%, #565960);
+  --op-knob-shadow:
+    0 2px 4px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    inset 0 -2px 3px rgba(0, 0, 0, 0.3);
+  --op-knob-cap: radial-gradient(circle at 50% 22%, #4d5057 0%, #44474d 55%, #383b41 100%);
+  --op-knob-cap-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08), 0 1px 2px rgba(0, 0, 0, 0.35);
+  --op-thumb: radial-gradient(circle at 50% 25%, #f2f3f5, #d8dade);
+  --op-thumb-shadow: 0 1px 3px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  --op-rail: linear-gradient(180deg, #3f4248 0%, #34373c 100%);
+  --op-rail-current: linear-gradient(180deg, #4a3a28 0%, #5d4526 100%);
+  --op-gloss: rgba(255, 255, 255, 0.28);
+  --op-cap-light: rgba(255, 255, 255, 0.55);
+  --op-handle: rgba(255, 255, 255, 0.001);
+  --op-handle-hover: rgba(255, 255, 255, 0.42);
+  --op-scroll-thumb-hover: #666b73;
+
+  /* --- key bed ------------------------------------------------------------ */
+  /* The one place the plate is allowed to be white. A piano roll whose keys are
+     both dark greys is a grid with note names down the side. */
+  --op-key-white: linear-gradient(90deg, #3c3f45 0%, #383b41 70%, #313439 100%);
+  --op-key-white-cap: linear-gradient(180deg, #e9eaec, #cfd2d6);
+  --op-key-black: linear-gradient(90deg, #313438 0%, #2d3034 70%, #282b2f 100%);
+  --op-key-black-cap: linear-gradient(180deg, #1a1c1f, #0f1113);
+  --op-row-black: rgba(0, 0, 0, 0.3);
+  /* NEUTRAL, AND THAT IS THE POINT. Chromatic puts every row in scale, so this
+     covers the entire roll: any hue here is not an accent, it is the colour of
+     the grid. The nacre tinted it orange, which on graphite read as a brown
+     stain over the whole pattern. In scale is a lift of light, out of scale is
+     the plate, and the orange stays on the things that are actually lit. */
+  --op-row-scale: rgba(255, 255, 255, 0.035);
+  --op-axis: linear-gradient(90deg, #3a3d42 0%, #34373c 100%);
+  --op-step-current: rgba(255, 139, 44, 0.16);
 
   /* --- geometry ---------------------------------------------------------- */
   --op-radius-lg: 16px;
@@ -90,7 +152,7 @@
   padding: 16px 16px 14px;
   border: 1px solid var(--op-border-strong);
   border-radius: var(--op-radius-lg);
-  background: linear-gradient(180deg, #f8f6f4 0%, var(--op-bg) 100%);
+  background: var(--op-plate);
   box-shadow: var(--op-shadow-3), var(--op-bevel);
 }
 
@@ -339,13 +401,8 @@
   position: absolute;
   inset: 7px;
   border-radius: 50%;
-  background:
-    radial-gradient(circle at 50% 14%, #ffffff 0%, rgba(255, 255, 255, 0) 62%),
-    conic-gradient(from 210deg, #ffffff, #e6e1da 24%, #ffffff 48%, #e4dfd8 74%, #ffffff);
-  box-shadow:
-    0 2px 4px rgba(70, 58, 44, 0.2),
-    inset 0 1px 0 rgba(255, 255, 255, 0.95),
-    inset 0 -2px 3px rgba(70, 58, 44, 0.12);
+  background: var(--op-knob-grad);
+  box-shadow: var(--op-knob-shadow);
 }
 
 .op-knob-body::after {
@@ -353,8 +410,8 @@
   position: absolute;
   inset: 5px;
   border-radius: 50%;
-  background: radial-gradient(circle at 50% 22%, #ffffff 0%, #f7f5f2 55%, #eae6e1 100%);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.75), 0 1px 2px rgba(70, 58, 44, 0.1);
+  background: var(--op-knob-cap);
+  box-shadow: var(--op-knob-cap-shadow);
 }
 
 .op-knob-svg {
@@ -444,8 +501,8 @@
   width: 22px;
   height: 22px;
   border-radius: 50%;
-  background: radial-gradient(circle at 50% 25%, #ffffff, #efece8);
-  box-shadow: 0 1px 3px rgba(70, 58, 44, 0.32), inset 0 1px 0 #fff;
+  background: var(--op-thumb);
+  box-shadow: var(--op-thumb-shadow);
   transition: transform 0.16s ease;
 }
 
@@ -488,8 +545,8 @@
 }
 
 .op-btn--danger:hover {
-  color: #b3352c;
-  border-color: rgba(179, 53, 44, 0.45);
+  color: var(--op-danger);
+  border-color: var(--op-danger-line);
 }
 
 .op-iconbtn {
@@ -590,7 +647,7 @@
   justify-content: center;
   height: calc(var(--op-roll-row) + 5px);
   border-bottom: 1px solid var(--op-border-strong);
-  background: linear-gradient(180deg, #ffffff 0%, #f3f1ed 100%);
+  background: var(--op-rail);
   box-shadow: inset 1px 0 0 var(--op-grid-line);
   color: var(--op-text-dim);
   font-size: 11px;
@@ -613,9 +670,9 @@
 }
 
 .omni-pearl .arp-roll-step.current {
-  background: linear-gradient(180deg, #fff4e8 0%, #ffe5cb 100%);
+  background: var(--op-rail-current);
   box-shadow: inset 0 -2px 0 var(--op-orange);
-  color: var(--op-orange-deep);
+  color: var(--op-orange);
 }
 
 /* ---------- pitch gutter: a real key bed ---------- */
@@ -629,7 +686,7 @@
   padding: 0 0 0 11px;
   border-right: 1px solid var(--op-border-strong);
   border-bottom: 1px solid var(--op-grid-line);
-  background: linear-gradient(90deg, #ffffff 0%, #fbfaf8 70%, #f1eeea 100%);
+  background: var(--op-key-white);
   color: var(--op-text);
   font-size: 10.5px;
   font-weight: 500;
@@ -645,22 +702,22 @@
   bottom: 1px;
   width: 26px;
   border-left: 1px solid var(--op-grid-line);
-  background: linear-gradient(180deg, #ffffff, #f2efeb);
+  background: var(--op-key-white-cap);
 }
 
 .omni-pearl .arp-pitch-label.black-key {
-  background: linear-gradient(90deg, #fbfaf8 0%, #f5f3f0 70%, #edeae6 100%);
+  background: var(--op-key-black);
   color: var(--op-text-dim);
 }
 
 .omni-pearl .arp-pitch-label.black-key::after {
   border-left: 0;
-  background: linear-gradient(180deg, #4a453f, #322e29);
+  background: var(--op-key-black-cap);
 }
 
 .omni-pearl .arp-pitch-label.root-row {
   box-shadow: inset 3px 0 0 var(--op-orange);
-  color: var(--op-orange-deep);
+  color: var(--op-orange);
   font-weight: 700;
 }
 
@@ -702,15 +759,18 @@
 }
 
 .omni-pearl .arp-roll-cell.black-row {
-  background: rgba(90, 78, 64, 0.035);
+  background: var(--op-row-black);
 }
 
 .omni-pearl .arp-roll-cell.in-scale {
-  background: rgba(240, 125, 29, 0.05);
+  background: var(--op-row-scale);
 }
 
+/* Both at once, as two layers: the warmth on top, the darker key underneath.
+   One flat colour for this case would have to be hand-mixed and would drift
+   away from its two halves the first time either is touched. */
 .omni-pearl .arp-roll-cell.black-row.in-scale {
-  background: rgba(240, 125, 29, 0.085);
+  background: linear-gradient(var(--op-row-scale), var(--op-row-scale)), var(--op-row-black);
 }
 
 .omni-pearl .arp-roll-cell.root-row {
@@ -739,22 +799,22 @@
 }
 
 .omni-pearl .arp-note-gloss {
-  fill: rgba(255, 255, 255, 0.32);
+  fill: var(--op-gloss);
 }
 
 .omni-pearl .arp-roll-note.selected .arp-note-body {
   fill: var(--op-orange-hover);
-  stroke: #8f4405;
+  stroke: var(--op-orange-deep);
   stroke-width: 1.4;
 }
 
 .omni-pearl .arp-note-resize {
-  fill: rgba(255, 255, 255, 0.001);
+  fill: var(--op-handle);
   cursor: ew-resize;
 }
 
 .omni-pearl .arp-roll-note:hover .arp-note-resize {
-  fill: rgba(255, 255, 255, 0.5);
+  fill: var(--op-handle-hover);
 }
 
 /* ---------- velocity ---------- */
@@ -785,7 +845,7 @@
   justify-content: space-between;
   padding: 3px 10px 3px 0;
   border-right: 1px solid var(--op-border-strong);
-  background: linear-gradient(90deg, #ffffff 0%, #fbfaf8 100%);
+  background: var(--op-axis);
   color: var(--op-text-faint);
   font-size: 9.5px;
 }
@@ -816,7 +876,7 @@
 }
 
 .omni-pearl .arp-velocity-step.current {
-  background: rgba(240, 125, 29, 0.12);
+  background: var(--op-step-current);
 }
 
 .omni-pearl .arp-velocity-step.inactive .arp-velocity-bar {
@@ -839,7 +899,7 @@
 }
 
 .omni-pearl .arp-velocity-cap {
-  fill: rgba(255, 255, 255, 0.5);
+  fill: var(--op-cap-light);
 }
 
 .omni-pearl .arp-velocity-step small {
@@ -873,7 +933,7 @@
 }
 
 .omni-pearl .arp-note-inspector strong {
-  color: var(--op-orange-deep);
+  color: var(--op-orange);
 }
 
 .omni-pearl .arp-note-inspector > span {
@@ -903,7 +963,7 @@
   border: 1px solid var(--op-orange-deep);
   border-radius: 50%;
   background: var(--op-orange-grad);
-  box-shadow: 0 1px 2px rgba(70, 58, 44, 0.3);
+  box-shadow: var(--op-shadow-1);
   -webkit-appearance: none;
   appearance: none;
 }
@@ -929,7 +989,7 @@
 }
 
 .omni-pearl ::-webkit-scrollbar-thumb:hover {
-  background: #bdb5aa;
+  background: var(--op-scroll-thumb-hover);
 }
 
 .omni-pearl ::-webkit-scrollbar-corner {

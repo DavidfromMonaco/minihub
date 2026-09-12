@@ -1735,3 +1735,71 @@ means a note-off that depends on a `pointerup`, which is the failure mode above.
 to check a pitch, where the length of the press is the length of the note. That
 needs a held-note registry that survives a lost pointer, and it is a bigger
 piece of work than this one.
+
+---
+
+## D-037 — The faceplate is graphite, and every colour in it is a token
+
+**Status**: in force · 2026-09-12 · **implemented**
+
+**Context** — ROADMAP item 6 carried a cosmetic task with a deadline attached to
+something outside the repository: the arpeggiator is the one module wearing the
+faceplate, so it is the one photographed for [minihub.site](https://minihub.site).
+The plate was nacre — a cream device face inside a near-black shell. The machine
+it draws is not cream: a MiniLab 3 is a dark plate with white legends and backlit
+pads, and the reference photograph in `docs/design-references/Minilab.png` is
+what the application was inviting a comparison with.
+
+The author chose graphite on 2026-09-12, over the alternative of keeping the
+nacre and calming the orange.
+
+**Decision** — `omni-pearl.css` **replaces** its palette rather than gaining a
+second one. D-012 rule 2 is what makes that the only available move, and D-012
+rule 1 is what makes it affordable: the sheet owns its complete `--op-*` set and
+consumes nothing from `base.css`, so a dark faceplate cannot drag the shell
+anywhere. The class, the file name and the `op-` prefix stay: they are two
+`npm run check` rules, a component library and every call site, and a rename
+buys a word.
+
+Three things the flip decided that a token table does not show:
+
+- **The roll is where the plate is allowed to be white.** A piano roll whose
+  black keys and white keys are both dark greys is a spreadsheet with note names
+  down the side. The key caps are near-white and near-black; the rest is
+  graphite.
+- **The in-scale marker is neutral.** Chromatic puts every row in scale, so that
+  marker covers the entire roll: whatever colour it is, it is the colour of the
+  grid rather than an accent. The nacre tinted it orange, which on graphite read
+  as a brown stain across the whole pattern — rejected on sight by the author,
+  2026-09-12. In scale is now a 3.5% lift of light, out of scale is the plate,
+  and the orange is left to the things that are actually lit: a note, the
+  playhead, the root row's edge. Black-and-in-scale is drawn as two layers
+  rather than one hand-mixed colour, so neither half can drift from the other.
+- **`--op-orange-deep` stopped being a text colour.** It is the bottom of the
+  gradient and the stroke around a lit note. On a dark plate it reads at about
+  3:1, and the three places that used it for text — the current step, the root
+  row, the inspector's step name — take the plain accent.
+
+**Consequence — the sheet's own claim became true.** Its header said every
+colour was a token; twenty-nine were not, all of them light literals in sections
+2 to 4 (knob milling, key caps, the sticky step rail, the note gloss, the
+scrollbar thumb). Each would have stayed cream on the new plate. They are tokens
+now, and the header states the rule: a colour appearing below the token block is
+a bug. That is the part of this entry that outlives the palette — the next
+change of look is a token table, not a hunt.
+
+**Proof in the code** — `src/renderer/styles/omni-pearl.css`: the token block
+(section 1) holds every colour, and `grep -E '#[0-9a-f]{3,8}|rgba?\(' ` over
+everything below it returns nothing. `npm run check` still passes `faceplate
+scope` and `one faceplate`.
+
+**What does not change** — D-012 in full. Containment, one shell and at most one
+faceplate, and a faceplate class only where its sheet is loaded. Its context
+paragraph describes `omni-pearl.css` as *claire*; that adjective is what this
+entry replaces, and nothing else in D-012 moves.
+
+**What would justify revisiting** — a second module wearing the faceplate whose
+content is genuinely light (a score, a waveform on paper, anything imitating
+print). Today only the arpeggiator wears it, and it imitates a backlit
+instrument. Or a reference device that is not dark: the plate follows the
+hardware, which is the whole argument above.
