@@ -763,6 +763,11 @@ body {
   gap: 8px;
 }
 
+/* `.btn` is inline-flex, which outranks the `hidden` attribute's own display:
+   none. Undo Align is the button that needs it -- it exists only after an
+   Align -- and without this rule it is simply always there. */
+.btn[hidden] { display: none; }
+
 .view-side-switch { cursor: pointer; }
 .view-side-switch-bg { fill: var(--bg-raised); stroke: var(--border-strong); stroke-width: 1; }
 .view-side-switch-label { fill: var(--text-dim); font: 600 9px var(--font); pointer-events: none; }

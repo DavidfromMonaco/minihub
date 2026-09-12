@@ -51,6 +51,77 @@ export function gridPositions(sizes, { startX = DEFAULT_X, startY = DEFAULT_Y, g
 }
 
 /**
+ * Lay the whole graph out along the signal, on demand.
+ *
+ * WHY THIS IS NOT THE LAYOUT INTENT SECTION 6 REFUSES
+ * ---------------------------------------------------
+ * What is refused there is a canvas that reorganises ITSELF -- a graph that
+ * moves while you are reading it and takes your node out from under the cursor.
+ * This function runs when the Align button is pressed, once, and never again
+ * until it is pressed again. Nothing in the render path may call it.
+ *
+ * WHAT "ALIGNED" MEANS HERE
+ * -------------------------
+ * A column is a distance from the sources: a node sits one column to the right
+ * of the furthest-left node that feeds it. Controllers have nothing upstream so
+ * they open the graph; Audio Output is fed by everything so it closes it. The
+ * insertion order the default grid uses says nothing about the signal, which is
+ * what made the old arrangement tidy rather than readable.
+ *
+ * The LONGEST path is what places a node, not the shortest: with
+ * `controller -> vst -> output` and `controller -> output`, ranking the output
+ * by its shortest path would put it beside the VST and draw a cable backwards.
+ *
+ * Within a column the current vertical order is kept. Reordering rows to
+ * minimise crossings is a better drawing and a worse command: the point of
+ * pressing this is to recognise your own patch afterwards.
+ *
+ * `edges` are node-to-node, direction included; a cycle cannot loop forever
+ * because the relaxation is bounded by the node count.
+ */
+export function alignPositions(boxes, edges = [], { startX = DEFAULT_X, startY = DEFAULT_Y, gap = NODE_GAP } = {}) {
+  const known = new Set(boxes.map((box) => box.id));
+  const links = edges.filter((edge) => edge && edge.from !== edge.to
+    && known.has(edge.from) && known.has(edge.to));
+
+  const column = new Map(boxes.map((box) => [box.id, 0]));
+  for (let pass = 0; pass < boxes.length; pass += 1) {
+    let moved = false;
+    for (const edge of links) {
+      const next = column.get(edge.from) + 1;
+      if (next > column.get(edge.to)) {
+        column.set(edge.to, next);
+        moved = true;
+      }
+    }
+    if (!moved) break;
+  }
+
+  // Ties are broken on the position the node already had, then on its id, so
+  // pressing Align twice on the same canvas is a no-op rather than a shuffle.
+  const ordered = [...boxes].sort((a, b) => column.get(a.id) - column.get(b.id)
+    || a.y - b.y || a.x - b.x || (a.id < b.id ? -1 : 1));
+
+  const positions = new Map();
+  let x = startX;
+  let index = 0;
+  while (index < ordered.length) {
+    const at = column.get(ordered[index].id);
+    let y = startY;
+    let width = 0;
+    while (index < ordered.length && column.get(ordered[index].id) === at) {
+      const box = ordered[index];
+      positions.set(box.id, { x, y });
+      y += (Number.isFinite(box.height) ? box.height : 0) + gap;
+      width = Math.max(width, Number.isFinite(box.width) ? box.width : 0);
+      index += 1;
+    }
+    x += width + gap;
+  }
+  return positions;
+}
+
+/**
  * Push apart nodes that overlap, moving each one as little as possible.
  *
  * Needed because positions are PERSISTED: a canvas laid out when every node was

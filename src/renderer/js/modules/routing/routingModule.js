@@ -19,7 +19,7 @@
  * Rendering uses native SVG (no framework): nodes are `<g>` groups positioned
  * with `transform`, ports are jack glyphs, cables are cubic bezier paths.
  */
-import { NetworkLayout, separateOverlaps, NODE_GAP } from '../../core/networkLayout.js';
+import { NetworkLayout, separateOverlaps, alignPositions, NODE_GAP } from '../../core/networkLayout.js';
 import { NetworkViewport } from '../../core/networkViewport.js';
 import { GRID_SIZE, dragPosition } from '../../core/grid.js';
 import { getNodeType, listNodeTypes, listOmniBoxCategories } from '../../core/nodeTypes.js';
@@ -84,6 +84,18 @@ export function createRoutingModule(hub) {
   let gridRects = []; // background rects that follow the viewBox
   let viewport = { x: 0, y: 0, zoom: 1 }; // world top-left + scale
   let placedSignature = '';               // which nodes, at which sizes, were separated
+
+  /**
+   * Where the nodes were before the last Align, or null.
+   *
+   * One state, never persisted, gone when the page is left. It is the Align
+   * button's own counterpart and deliberately NOT a history: ROADMAP item 13 is
+   * what will own undo across the application, and a second mechanism with its
+   * own rules is what that item exists to avoid. Dragging a node afterwards
+   * does not clear it -- Undo Align means "the canvas as it was before I
+   * pressed Align", and that includes the drag.
+   */
+  let alignUndo = null;                   // nodeId -> {x, y}
 
   let selectedCableId = null;
   let selectedNodeId = null; // Patch Bay UI selection (never persisted)
@@ -1309,6 +1321,8 @@ export function createRoutingModule(hub) {
           </span>
           <span class="viewport-controls">
             <span id="routing-zoom" class="zoom-readout">100%</span>
+            <button id="routing-align" class="btn btn-sm" title="Lay the nodes out along the signal, once">Align</button>
+            <button id="routing-unalign" class="btn btn-sm" title="Put the nodes back where they were before Align" hidden>Undo Align</button>
             <button id="routing-reset" class="btn btn-sm">Reset View</button>
           </span>
           <span class="new-node-control">
@@ -1351,6 +1365,11 @@ export function createRoutingModule(hub) {
 
     const resetBtn = container.querySelector('#routing-reset');
     if (resetBtn) resetBtn.addEventListener('click', resetView);
+
+    const alignBtn = container.querySelector('#routing-align');
+    if (alignBtn) alignBtn.addEventListener('click', alignNodes);
+    const unalignBtn = container.querySelector('#routing-unalign');
+    if (unalignBtn) unalignBtn.addEventListener('click', undoAlign);
 
     const newBtn = container.querySelector('#routing-new-node');
     const newType = container.querySelector('#routing-new-type');
@@ -1465,6 +1484,71 @@ export function createRoutingModule(hub) {
     }
   }
 
+  /**
+   * Move nodes to `next` and persist it. Returns whether anything moved.
+   *
+   * The separation pass in `render()` keys on which nodes are present at which
+   * sizes: neither changes here, so it does not re-run and cannot fight the
+   * arrangement that was just computed.
+   */
+  function applyPositions(next) {
+    if (next.size === 0) return false;
+    let moved = false;
+    const all = new Map();
+    for (const [id, pos] of next) {
+      const before = positions.get(id);
+      if (!before || before.x !== pos.x || before.y !== pos.y) moved = true;
+      positions.set(id, { x: pos.x, y: pos.y });
+      all.set(id, { x: pos.x, y: pos.y });
+    }
+    // Every node is pinned, including one that was already where it belongs.
+    // A node with no stored position falls back to the default grid, and that
+    // grid is derived from how many nodes there are and how big they are -- so
+    // leaving it unpinned means the arrangement quietly moves the day another
+    // node is added.
+    layout.setMany(all);
+    if (!moved) return false;
+    render();
+    // Without this the command looks broken whenever the canvas was panned:
+    // the nodes go where they belong, off screen, and nothing appears to have
+    // happened. Only pan and zoom change here.
+    fitToNodes();
+    viewportStore.save(viewport.x, viewport.y, viewport.zoom);
+    return true;
+  }
+
+  function nodeBoxes() {
+    return buildVisualNodes(hub.network).map((node) => {
+      const geo = nodeGeometry(node, { x: 0, y: 0 });
+      const pos = positions.get(node.id) || layout.get(node.id, 0);
+      return { id: node.id, x: pos.x, y: pos.y, width: geo.width, height: geo.height };
+    });
+  }
+
+  function alignNodes() {
+    const boxes = nodeBoxes();
+    if (boxes.length === 0) return;
+    const edges = hub.network.connections()
+      .map((cable) => ({ from: cable.from.nodeId, to: cable.to.nodeId }));
+    const before = new Map(boxes.map((box) => [box.id, { x: box.x, y: box.y }]));
+    if (!applyPositions(alignPositions(boxes, edges))) return;
+    alignUndo = before;
+    updateAlignControls();
+  }
+
+  function undoAlign() {
+    if (!alignUndo) return;
+    const restore = alignUndo;
+    alignUndo = null;
+    applyPositions(restore);
+    updateAlignControls();
+  }
+
+  function updateAlignControls() {
+    const btn = container && container.querySelector('#routing-unalign');
+    if (btn) btn.hidden = !alignUndo;
+  }
+
   function resetView() {
     // Fit all nodes into view instead of restoring a fixed origin, so the
     // Patch Bay never appears empty. Only viewport pan/zoom change.
@@ -1538,6 +1622,10 @@ export function createRoutingModule(hub) {
     }
     const resetBtn = container && container.querySelector('#routing-reset');
     if (resetBtn) resetBtn.removeEventListener('click', resetView);
+    const alignBtn = container && container.querySelector('#routing-align');
+    if (alignBtn) alignBtn.removeEventListener('click', alignNodes);
+    const unalignBtn = container && container.querySelector('#routing-unalign');
+    if (unalignBtn) unalignBtn.removeEventListener('click', undoAlign);
     window.removeEventListener('keydown', onKeyDown);
     document.removeEventListener('pointerdown', onGlobalPointerDown);
     if (container) container.classList.remove('routing-host');
@@ -1568,6 +1656,7 @@ export function createRoutingModule(hub) {
       suppressTimer = null;
     }
     drag = null;
+    alignUndo = null;
     rearView = false;
     viewSideSwitches = [];
   }
