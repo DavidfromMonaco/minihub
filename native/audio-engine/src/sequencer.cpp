@@ -279,13 +279,9 @@ bool SequencerEngine::sync(const juce::var& project,
         next->tracks.push_back(std::move(track));
     }
     auto* published=next.get();plans_.push_back(std::move(next));activePlan_.store(published,std::memory_order_release);
-    // Plans are immutable and retained until shutdown. Publishing while the
-    // callback owns an older raw pointer can therefore never reclaim live
-    // audio/MIDI data. Large decoded audio assets are shared across those
-    // plans by a file identity cache, so edits do not duplicate sample data.
-    const auto* hazard=planHazard_.load(std::memory_order_acquire);
-    const auto* exportPlan=exportPlan_.load(std::memory_order_acquire);
-    plans_.erase(std::remove_if(plans_.begin(),plans_.end(),[published,hazard,exportPlan](const auto& owned){return owned.get()!=published&&owned.get()!=hazard&&owned.get()!=exportPlan;}),plans_.end());
+    // Large decoded audio assets are shared across plans by a file identity
+    // cache, so edits do not duplicate sample data.
+    reclaimPlans(published);
     panic();return true;
 }
 
@@ -297,25 +293,51 @@ void SequencerEngine::clearPlan()
     panic();
     auto next=std::make_unique<Plan>();next->generation=++nextPlanGeneration_;auto* published=next.get();plans_.push_back(std::move(next));
     activePlan_.store(published,std::memory_order_release);
-    const auto* hazard=planHazard_.load(std::memory_order_acquire);
+    reclaimPlans(published);
+}
+
+void SequencerEngine::reclaimPlans(const Plan* published)
+{
+    // Publication comes first and the claims are read after it: a reader that
+    // claimed an older plan either sees the new pointer on its re-check and
+    // retries, or its claim is already visible here. The export plan itself is
+    // owned by preparedExportPlan_ and destroyed against its own claim in
+    // cancelExport() and serviceEvents().
+    const auto* liveHazard=liveHazard_.load(std::memory_order_acquire);
+    const auto* exportHazard=exportHazard_.load(std::memory_order_acquire);
     const auto* exportPlan=exportPlan_.load(std::memory_order_acquire);
-    plans_.erase(std::remove_if(plans_.begin(),plans_.end(),[published,hazard,exportPlan](const auto& owned){return owned.get()!=published&&owned.get()!=hazard&&owned.get()!=exportPlan;}),plans_.end());
+    plans_.erase(std::remove_if(plans_.begin(),plans_.end(),[published,liveHazard,exportHazard,exportPlan](const auto& owned){return owned.get()!=published&&owned.get()!=liveHazard&&owned.get()!=exportHazard&&owned.get()!=exportPlan;}),plans_.end());
 }
 
 SequencerEngine::Plan* SequencerEngine::acquirePlan(bool exportContext) noexcept
 {
+    auto& hazard = exportContext ? exportHazard_ : liveHazard_;
     Plan* plan=nullptr;
     Plan* current=nullptr;
     do {
         plan = exportContext ? exportPlan_.load(std::memory_order_acquire)
                              : activePlan_.load(std::memory_order_acquire);
-        planHazard_.store(plan,std::memory_order_release);
+        hazard.store(plan,std::memory_order_release);
         current = exportContext ? exportPlan_.load(std::memory_order_acquire)
                                 : activePlan_.load(std::memory_order_acquire);
     } while (plan != current);
     return plan;
 }
-void SequencerEngine::releasePlan() noexcept { planHazard_.store(nullptr,std::memory_order_release); }
+void SequencerEngine::releasePlan(bool exportContext) noexcept
+{
+    (exportContext ? exportHazard_ : liveHazard_).store(nullptr,std::memory_order_release);
+}
+
+uint64_t SequencerEngine::holdPlanForTesting(bool exportContext) noexcept
+{
+    const auto* plan=acquirePlan(exportContext);
+    return plan?plan->generation:0;
+}
+
+bool SequencerEngine::retainsPlanForTesting(uint64_t generation) const noexcept
+{
+    return std::any_of(plans_.begin(),plans_.end(),[generation](const auto& owned){return owned->generation==generation;});
+}
 
 int SequencerEngine::eventOffset(double target,double start,double qps,int count,const Transport& transport) noexcept
 {
@@ -331,7 +353,7 @@ void SequencerEngine::processMidi(int count,Transport& transport,MidiExecutionPl
     const bool exportContext=&transport==&offlineExportTransport_;auto* plan=acquirePlan(exportContext);if(!plan)return;
     const bool cleanup=(exportContext?exportMidiCleanupPending_:midiCleanupPending_).exchange(false,std::memory_order_acq_rel);
     const bool playing=transport.processingPlaying()&&transport.playing();
-    if(!playing&&!cleanup){releasePlan();return;}
+    if(!playing&&!cleanup){releasePlan(exportContext);return;}
     const double start=transport.ppqPosition(),qps=transport.quarterNotesPerSample();const bool chase=playing&&(exportContext?needsExportChase_:needsChase_).exchange(false);
     const bool sourceEnded=exportContext&&start>=exportSourceEndPpq();
     const bool sourceStopsThisBlock = playing&&exportContext
@@ -357,7 +379,7 @@ void SequencerEngine::processMidi(int count,Transport& transport,MidiExecutionPl
         for(const auto& item:buffer){const auto message=item.getMessage();const int channel=message.getChannel();if(channel<1||channel>16)continue;auto index=[channel](int pitch){return(size_t)((channel-1)*128+pitch);};if(message.isNoteOn()){auto& held=track.activeNotes[index(message.getNoteNumber())];if(held<std::numeric_limits<uint16_t>::max())++held;}else if(message.isNoteOff()){auto& held=track.activeNotes[index(message.getNoteNumber())];if(held>0)--held;}else if(message.isAllNotesOff()||message.isAllSoundOff())for(int pitch=0;pitch<128;++pitch)track.activeNotes[index(pitch)]=0;}
     }
     if(sourceStopsThisBlock){exportSourceStopSent_.store(true,std::memory_order_release);if(midiPlan)midiPlan->panicAll(nullptr);}
-    releasePlan();
+    releasePlan(exportContext);
 }
 
 void SequencerEngine::renderAudio(juce::AudioBuffer<float>& out,int count,Transport& transport) noexcept
@@ -374,7 +396,7 @@ void SequencerEngine::renderAudioForOutput(juce::AudioBuffer<float>& out,int cou
         const float peakAfterSum=std::max(sum.getMagnitude(0,0,count),sum.getMagnitude(1,0,count));const bool muted=track.runtime&&track.runtime->muted.load(std::memory_order_acquire);const float gain=muted?0.0f:(track.runtime?track.runtime->gain.load(std::memory_order_acquire):1.0f);if(gain!=1.0f)sum.applyGain(0,count,gain);const float peakAfterGain=std::max(sum.getMagnitude(0,0,count),sum.getMagnitude(1,0,count));
         if(track.runtime){track.runtime->activeClips.store(activeClips,std::memory_order_release);track.runtime->peakBeforeSum.store(peakBeforeSum,std::memory_order_release);track.runtime->peakAfterSum.store(peakAfterSum,std::memory_order_release);track.runtime->gainApplied.store(gain,std::memory_order_release);track.runtime->peakAfterGain.store(peakAfterGain,std::memory_order_release);}for(int ch=0;ch<2;++ch)out.addFrom(ch,0,sum,ch,0,count);
     }
-    releasePlan();
+    releasePlan(exportContext);
 }
 
 bool SequencerEngine::setTrackControl(const std::string& trackId,float gain,bool muted) noexcept
@@ -383,16 +405,22 @@ bool SequencerEngine::setTrackControl(const std::string& trackId,float gain,bool
     for(auto& track:plan->tracks)if(track.id==trackId&&track.runtime){track.runtime->gain.store(std::clamp(gain,0.0f,2.0f),std::memory_order_release);const bool wasMuted=track.runtime->muted.exchange(muted,std::memory_order_acq_rel);if(track.type=="midi"&&muted&&!wasMuted){midiCleanupPending_.store(true,std::memory_order_release);if(track.destination)track.destination->panic();}return true;}return false;
 }
 
+// Both lookups run on the audio thread once per VST node per block, between
+// processMidi() and the next edit. They used to load the plan pointer bare: a
+// publish landing in that window reclaimed the plan they were walking.
 SequencerEngine::MidiTrackGain SequencerEngine::midiTrackGainForOutput(const std::string& outputId,const Transport& transport) noexcept
 {
-    const bool exportContext=&transport==&offlineExportTransport_;auto* plan=exportContext?exportPlan_.load(std::memory_order_acquire):activePlan_.load(std::memory_order_acquire);if(!plan)return{};
-    for(auto& track:plan->tracks)if(track.type=="midi"&&track.midiOutputKind==Track::MidiOutputKind::chain&&track.outputId==outputId&&track.runtime){const bool muted=track.runtime->muted.load(std::memory_order_acquire);const float gain=muted?0.0f:track.runtime->gain.load(std::memory_order_acquire);track.runtime->gainApplied.store(gain,std::memory_order_release);return{true,gain};}return{};
+    const bool exportContext=&transport==&offlineExportTransport_;auto* plan=acquirePlan(exportContext);if(!plan)return{};
+    MidiTrackGain result;
+    for(auto& track:plan->tracks)if(track.type=="midi"&&track.midiOutputKind==Track::MidiOutputKind::chain&&track.outputId==outputId&&track.runtime){const bool muted=track.runtime->muted.load(std::memory_order_acquire);const float gain=muted?0.0f:track.runtime->gain.load(std::memory_order_acquire);track.runtime->gainApplied.store(gain,std::memory_order_release);result={true,gain};break;}
+    releasePlan(exportContext);return result;
 }
 
 void SequencerEngine::observeMidiTrackGain(const std::string& outputId,const Transport& transport,float peakBeforeGain,float gainApplied,float peakAfterGain) noexcept
 {
-    const bool exportContext=&transport==&offlineExportTransport_;auto* plan=exportContext?exportPlan_.load(std::memory_order_acquire):activePlan_.load(std::memory_order_acquire);if(!plan)return;
+    const bool exportContext=&transport==&offlineExportTransport_;auto* plan=acquirePlan(exportContext);if(!plan)return;
     for(auto& track:plan->tracks)if(track.type=="midi"&&track.midiOutputKind==Track::MidiOutputKind::chain&&track.outputId==outputId&&track.runtime){track.runtime->peakBeforeSum.store(peakBeforeGain,std::memory_order_release);track.runtime->peakAfterSum.store(peakBeforeGain,std::memory_order_release);track.runtime->gainApplied.store(gainApplied,std::memory_order_release);track.runtime->peakAfterGain.store(peakAfterGain,std::memory_order_release);}
+    releasePlan(exportContext);
 }
 
 std::vector<SequencerEngine::TrackSignalTrace> SequencerEngine::trackSignalTrace(const Transport* transport) const
@@ -403,7 +431,7 @@ std::vector<SequencerEngine::TrackSignalTrace> SequencerEngine::trackSignalTrace
 
 void SequencerEngine::captureSource(const std::string& source,const juce::AudioBuffer<float>& audio,int count,Transport& transport) noexcept
 {
-    if(!recording_.load(std::memory_order_relaxed))return;auto* plan=acquirePlan(false);if(!plan)return;for(auto& track:plan->tracks)if(track.type=="audio"&&track.armed&&track.inputId==source&&track.takeWriter)track.takeWriter->process(audio,count);releasePlan();
+    if(!recording_.load(std::memory_order_relaxed))return;auto* plan=acquirePlan(false);if(!plan)return;for(auto& track:plan->tracks)if(track.type=="audio"&&track.armed&&track.inputId==source&&track.takeWriter)track.takeWriter->process(audio,count);releasePlan(false);
 }
 
 void SequencerEngine::beginRecording(Transport& transport,bool startTransport)
@@ -500,7 +528,7 @@ bool SequencerEngine::cancelExport(bool publishTerminalEvent)
     exportError_.clear();
     panicExport();
     auto* frozen=exportPlan_.exchange(nullptr,std::memory_order_acq_rel);
-    while(planHazard_.load(std::memory_order_acquire)==frozen)juce::Thread::yield();
+    while(exportHazard_.load(std::memory_order_acquire)==frozen)juce::Thread::yield();
     preparedExportPlan_.reset();
     offlineExportTransport_.setPlaying(false);
     exportCancelledPending_.store(publishTerminalEvent,std::memory_order_release);
@@ -536,7 +564,7 @@ void SequencerEngine::processMaster(float* const* channels,int channelCount,int 
 
 juce::Array<juce::var> SequencerEngine::serviceEvents()
 {
-    juce::Array<juce::var> events;if(!exportFinishPending_.exchange(false))return events;if(exportCleanupPending_.load(std::memory_order_acquire)){exportFinishPending_.store(true,std::memory_order_release);return events;}while(exportCallbacks_.load(std::memory_order_acquire)>0)juce::Thread::yield();exportActive_=false;exportWriter_.reset();auto* frozen=exportPlan_.exchange(nullptr,std::memory_order_acq_rel);if(frozen)while(planHazard_.load(std::memory_order_acquire)==frozen)juce::Thread::yield();preparedExportPlan_.reset();offlineExportTransport_.setPlaying(false);const bool cancelled=exportCancelledPending_.exchange(false);if(!cancelled&&exportError_.isEmpty()&&exportFile_.getSize()<=0)exportError_="Encoder produced an empty file";if(exportError_.isNotEmpty())exportFile_.deleteFile();exportTransactionActive_.store(false,std::memory_order_release);juce::var message=makeObject();setProp(message,"type","sequencerExport");setProp(message,"state",cancelled?"cancelled":(exportError_.isEmpty()?"complete":"error"));setProp(message,"format",exportFormat_);setProp(message,"filePath",exportFile_.getFullPathName());setProp(message,"frames",exportFrames_.load());setProp(message,"sampleRate",sampleRate_);setProp(message,"channels",2);setProp(message,"message",exportError_);events.add(message);return events;
+    juce::Array<juce::var> events;if(!exportFinishPending_.exchange(false))return events;if(exportCleanupPending_.load(std::memory_order_acquire)){exportFinishPending_.store(true,std::memory_order_release);return events;}while(exportCallbacks_.load(std::memory_order_acquire)>0)juce::Thread::yield();exportActive_=false;exportWriter_.reset();auto* frozen=exportPlan_.exchange(nullptr,std::memory_order_acq_rel);if(frozen)while(exportHazard_.load(std::memory_order_acquire)==frozen)juce::Thread::yield();preparedExportPlan_.reset();offlineExportTransport_.setPlaying(false);const bool cancelled=exportCancelledPending_.exchange(false);if(!cancelled&&exportError_.isEmpty()&&exportFile_.getSize()<=0)exportError_="Encoder produced an empty file";if(exportError_.isNotEmpty())exportFile_.deleteFile();exportTransactionActive_.store(false,std::memory_order_release);juce::var message=makeObject();setProp(message,"type","sequencerExport");setProp(message,"state",cancelled?"cancelled":(exportError_.isEmpty()?"complete":"error"));setProp(message,"format",exportFormat_);setProp(message,"filePath",exportFile_.getFullPathName());setProp(message,"frames",exportFrames_.load());setProp(message,"sampleRate",sampleRate_);setProp(message,"channels",2);setProp(message,"message",exportError_);events.add(message);return events;
 }
 
 } // namespace mlh

@@ -583,6 +583,24 @@ une fois par seconde et par chaîne par le minuteur de diagnostic.
 `MetronomeTickQueue` (capacité 64) est une file à capacité fixe, sans verrou,
 sans allocation, sans IPC ni travail UI côté producteur temps réel.
 
+### Reading the arrangement from a realtime thread
+
+The sequencer publishes immutable plans and the message thread frees the old
+ones (`SequencerEngine::reclaimPlans`). A thread that walks a plan must claim it
+first, through `acquirePlan(exportContext)` / `releasePlan(exportContext)`: a
+bare `activePlan_.load()` is a plan that the next edit may free under the
+reader.
+
+There is **one claim per reader, not one shared slot.** The audio callback
+(`liveHazard_`) and the offline export worker (`exportHazard_`) read at the same
+moment on two threads; with a single slot the later store erased the earlier
+claim, and `test/native_tests.cpp` (`sequencer-plan-readers`) fails the day
+they share one again. The export plan itself belongs to `preparedExportPlan_`
+and is destroyed in `cancelExport()` / `serviceEvents()` once the export claim
+lets go of it. Readers on the message thread (`setTrackControl`, `panic`,
+`trackSignalTrace`, `beginRecording`) need no claim: reclamation runs on that
+same thread.
+
 ---
 
 ## 9. Le séquenceur

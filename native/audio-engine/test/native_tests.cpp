@@ -720,6 +720,40 @@ void testSequencerPreCountKeepsTheDownbeat()
     }
 }
 
+void testSequencerPlanReadersKeepTheirPlans()
+{
+    // The audio callback reads the live arrangement while the offline export
+    // worker reads its own, on another thread, at the same moment. Both used to
+    // claim their plan in ONE hazard slot: whichever stored last erased the
+    // other's claim, and the next edit freed a plan the callback was walking.
+    // The export worker's claim is taken here with no export running, which is
+    // exactly the store that used to wipe the live one.
+    mlh::SequencerEngine sequencer;sequencer.prepare(48000,512);mlh::Chain destination("vst-hazard");destination.setMidiEnabled(true);
+    juce::Array<juce::var> tracks;tracks.add(midiTrack("track-hazard","vst-hazard"));juce::Array<juce::var> info;std::string error;
+    const auto lookup=[&](const std::string&id){return id=="vst-hazard"?&destination:nullptr;};
+    const auto publish=[&](const char* label){expect(sequencer.sync(makeSequencerProject(tracks),lookup,48000,512,info,error),label);};
+    publish("hazard arrangement compiles");
+    const auto held=sequencer.holdPlanForTesting(false);
+    expect(held!=0,"the live reader claims the published plan");
+    sequencer.holdPlanForTesting(true);
+    publish("an edit publishes while the live plan is claimed");
+    expect(sequencer.retainsPlanForTesting(held),"the export worker's claim does not erase the audio callback's");
+    sequencer.releasePlanForTesting(true);sequencer.releasePlanForTesting(false);
+    publish("an edit publishes after the claim is dropped");
+    expect(!sequencer.retainsPlanForTesting(held),"a plan nobody claims is reclaimed at the next publish");
+
+    // The two lookups the audio network makes for every VST node, every block,
+    // now take the same claim -- and must give it back, or no plan would ever
+    // be reclaimed again.
+    mlh::Transport transport;transport.setSampleRate(48000);
+    const auto current=sequencer.holdPlanForTesting(false);sequencer.releasePlanForTesting(false);
+    const auto gain=sequencer.midiTrackGainForOutput("vst-hazard",transport);
+    expect(gain.controlled&&gain.gain==1.0f,"the track wired to the chain still sets its gain");
+    sequencer.observeMidiTrackGain("vst-hazard",transport,.5f,1.0f,.5f);
+    publish("an edit publishes after the per-block lookups");
+    expect(!sequencer.retainsPlanForTesting(current),"the per-block gain lookups release the plan they claim");
+}
+
 void testSequencerMidiStressLoopSeekAndStop()
 {
     mlh::SequencerEngine sequencer;sequencer.prepare(48000,24001);mlh::Chain destination("vst-stress");destination.setMidiEnabled(true);
@@ -1427,6 +1461,8 @@ int main(int argc, char** argv)
     testSequencerMidiSchedulingAndRecording();
     std::cerr << "[core] sequencer-precount\n";
     testSequencerPreCountKeepsTheDownbeat();
+    std::cerr << "[core] sequencer-plan-readers\n";
+    testSequencerPlanReadersKeepTheirPlans();
     std::cerr << "[core] sequencer-midi-stress\n";
     testSequencerMidiStressLoopSeekAndStop();
     std::cerr << "[core] physical-midi-arp\n";

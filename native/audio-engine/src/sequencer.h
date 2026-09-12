@@ -125,6 +125,12 @@ public:
     /** Lock-free diagnostic snapshot: clips -> SUM -> track gain -> destination. */
     std::vector<TrackSignalTrace> trackSignalTrace(const Transport* = nullptr) const;
 
+    /** Test seams: take and drop the claim a realtime reader takes on a plan,
+     *  and ask whether a publish kept a given plan alive. */
+    uint64_t holdPlanForTesting(bool exportContext) noexcept;
+    void releasePlanForTesting(bool exportContext) noexcept { releasePlan(exportContext); }
+    bool retainsPlanForTesting(uint64_t generation) const noexcept;
+
 private:
     struct MidiEvent {
         double startPpq = 0, endPpq = 0;
@@ -187,7 +193,10 @@ private:
     struct AudioTake { std::string trackId; AudioTakeWriter* writer=nullptr; double startPpq=0, bpm=120; };
 
     Plan* acquirePlan(bool exportContext) noexcept;
-    void releasePlan() noexcept;
+    void releasePlan(bool exportContext) noexcept;
+    /** Message thread: free every retained plan that is neither published nor
+     *  claimed by a realtime reader. */
+    void reclaimPlans(const Plan* published);
     static int eventOffset(double target, double blockStart, double qps, int count,
                            const Transport&) noexcept;
     double recordedPpq(MidiTake&, Transport&) const noexcept;
@@ -200,7 +209,12 @@ private:
     std::map<std::string, std::shared_ptr<AudioAsset>> audioAssets_;
     std::vector<std::unique_ptr<Plan>> plans_;
     uint64_t nextPlanGeneration_ = 0; // message thread only
-    std::atomic<Plan*> activePlan_{nullptr}, planHazard_{nullptr};
+    // One claim per reader, never one shared between them. The audio callback
+    // reads the live plan while the offline export worker reads the export
+    // plan, on another thread, at the same moment. With a single slot the
+    // later store erased the earlier claim, and the next edit could free the
+    // plan the callback was still walking.
+    std::atomic<Plan*> activePlan_{nullptr}, liveHazard_{nullptr}, exportHazard_{nullptr};
     // Captured before exportActive_ opens. It remains owned even if the editor
     // publishes a newer arrangement while the current master is rendering.
     std::atomic<Plan*> exportPlan_{nullptr};
