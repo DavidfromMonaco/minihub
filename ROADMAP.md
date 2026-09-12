@@ -7,7 +7,7 @@ Counter-intuitive choices: [DECISIONS.md](DECISIONS.md). Long workstreams:
 [PLANS.md](PLANS.md).
 
 **Current state** — branch `master`.
-848 JS tests green, 15 `npm run check` rules green, 3,954 native checks green
+853 JS tests green, 15 `npm run check` rules green, 3,963 native checks green
 across the four test binaries, a Release build with **0 errors and 0 warnings**,
 `dist/` synchronised with the sources.
 
@@ -26,12 +26,13 @@ the hardware out of the core — and its Étape A finished on 2026-09-04, so the
 was free for **importing a profile**, finished 2026-09-05 (item 8 below, D-027 to
 D-030).
 
-`plans/active/` is **not** empty, and the line above used to claim it was:
-[two-controllers-at-once.md](plans/active/two-controllers-at-once.md) has all
-eight steps ticked and committed since 2026-09-05, and has never been seen
-running with two keyboards on the desk — the BeatStep is the missing part, not
-the code. PLANS.md §2 says finished means moved; until that pass happens it
-holds the single slot.
+`plans/active/` holds
+[bindings-bar-docked.md](plans/active/bindings-bar-docked.md) — item 9, four of
+its eight steps landed on 2026-09-12. The slot before it was held by
+[two-controllers-at-once.md](plans/done/two-controllers-at-once.md), ticked
+since 2026-09-05 and waiting on a second keyboard; PLANS.md §2 holds that slot
+for work in progress and not for intentions, so it moved to `plans/done/` with
+the result "standby" and what had gone stale in it.
 
 ---
 
@@ -306,6 +307,50 @@ Two decisions taken rather than discovered:
 
 ---
 
+### 5. Dead code, duplicates and logging — `master`
+
+Done 2026-09-12. The audit's inventory was re-verified against the code before
+anything was touched, and **two of its entries did not survive that**, which is
+the part worth keeping:
+
+- `ControlBindingManager.dispose()` is not dead — a test calls it;
+- `SequencerController.dispose()` is never called from `src/`, but its
+  `_disposed` flag guards four live paths and D-036 names it as one of the two
+  places that silence a held audition note. Deleting it is a question about the
+  renderer's lifecycle — there is no teardown, the window closing takes the
+  process with it — not a dead-code sweep. Left standing, deliberately.
+
+Removed: `buildStampLabel`, `PORT_TYPES`, `HardwareConfigManager.dispose()`.
+Twelve symbols lost an `export` nobody imported. `renderControlBindings` kept
+its own: item 9 moves that interface into a window of its own, which is a second
+file importing it.
+
+That last sweep surfaced a documentation defect worth more than the sweep:
+**AGENTS §6 named `pearlKnob` as the faceplate's entry point** and the only
+consumer imports `pearlKnobMount`. `pearlKnob` draws the SVG with no control
+behind it, so a module author following that line would have built a knob that
+cannot be operated. Corrected.
+
+**The duplicates, and two of them were not duplicates at all.** `dedupeDevices`
+and `uniqueDevices` differed by a name check, so the two lists could disagree by
+an entry the settings key — which stores a device *by name* — cannot address.
+Of the five `clamp`s, two were different functions wearing the same name:
+`core/clamp.js` holds the plain one, and a variant now says what it adds in its
+own name (`clampFinite` coerces, `clamp01` bounds) and is built on top rather
+than beside. The two `formatDb` took opposite arguments — dBFS and a linear gain
+— and are `formatDbfs` and `formatGainDb`. `identityHeight(node)` never read its
+parameter and is `IDENTITY_H`. `homeModule` existed for one test.
+
+**The logging was worse than the entry described, and the fix is smaller.**
+`engineClient._onEvent` logged every engine event, and `main.js` already logs
+every engine event through `engineEventTrace` — with more detail and with the
+periodic types dropped. A renderer `console.log` is relayed back to main, so
+each event was written twice and the copy without a filter was the renderer's.
+The line is deleted rather than filtered: filtering it means repeating main's
+periodic list across a process boundary that forbids sharing it.
+
+---
+
 ### Outside the numbering
 
 - Snapshots from 24/08 preserved as branches (`snapshot/2026-08-24-*`), then
@@ -380,55 +425,6 @@ Sub-tasks:
 
 **Expected benefit**: a new node type = a new folder plus one line in the table,
 with no change to the registry.
-
-### 5. Dead code, duplicates and logging
-
-Inventory established during the audit; everything below is verified.
-
-**Genuinely dead** (no reference in `src/` or `test/`): `buildStampLabel`,
-`PORT_TYPES`, and three `dispose()` that are never called
-(`ControlBindingManager`, `HardwareConfigManager`, `SequencerController` — only
-`EngineClient`'s is used, in the tests).
-
-**Over-exported** (used only inside its own file): `clearFollowingTies`,
-`pitchRowsForPattern`, `pitchLabel`, `TEMPO_MIN`, `TEMPO_MAX`,
-`PLUGIN_FAMILIES`, `knobArcDash`, `knobPointerTransform`, `pearlKnob`,
-`DOCK_MIN_H`, `PORT_ROW`, `PAD_BOTTOM`, `renderControlBindings`.
-`MINILAB_NODE_HEIGHT` left this list by disappearing (item 8, step 6), and
-`dockHeight` left it by acquiring a test. `isMiniLab3Name` left the dead list
-the same way `MINILAB_NODE_HEIGHT` left this one: the port ranking became data,
-and the last regular expression that spelled a device name went with it.
-
-**Duplicates**:
-
-- `dedupeDevices` (`src/renderer/js/modules/audioOutput/audioOutputModule.js:32`)
-  and `uniqueDevices` (`src/renderer/js/core/hardwareConfig.js:20`) — the same
-  function, two versions;
-- five separate definitions of `clamp`;
-- two `formatDb` with different semantics (dBFS versus gain→dB);
-- `identityHeight(node)` ignores its parameter
-  (`src/renderer/js/core/nodeGeometry.js:32`);
-- `export const homeModule` (`src/renderer/js/modules/home/homeModule.js:55`)
-  exists only for a test and duplicates the real module's `navEntry`.
-
-**Logging** — `src/renderer/js/core/engineClient.js:204` runs a `console.log` on
-**every** engine event, including `masterMeter` (10 Hz), `transport`,
-`hostTiming`, `audioPathTelemetry`. And `src/main/main.js:89` relays every
-renderer console message to the main process. This is exactly what
-[engineEventTrace.js](src/main/engineEventTrace.js) was written to prevent —
-except that the filter only covers the disk path. The `command()` method just
-below (line 401) already applies the right filtering; `_onEvent` should adopt
-the same logic.
-
-~~**Identity on the C++ side**~~ — **done 2026-09-04**, item 8 step 8.
-`isPhysicalMidiDestination()` is deleted; the engine reads the node kind the
-renderer already sends. `minilab-3` appears nowhere in `native/`, and invariant 7
-is complete on both sides. See [DECISIONS.md](DECISIONS.md) D-008.
-
-**Escaping** — `src/renderer/js/core/nodeInstances.js:240` interpolates
-`${instance.name}` without `escapeHtml`, the only exception among neighbouring
-templates. Not exploitable (the name derives from the type and the ordinal), but
-worth aligning.
 
 ### 6. Visual consistency and naming
 
@@ -716,28 +712,47 @@ while `profile` stays the word of the format: renaming it for real would touch
 specifications, connectors, keybed, and a blueprint generated from the profile
 rather than drawn by hand. Written by the author, after the rest.
 
-### 9. The bindings bar, docked under the plugin window
+### 9. The bindings bar, docked under the plugin window — half done
 
-Decided 2026-09-04, not started: [DECISIONS.md](DECISIONS.md) D-021. Learning a
-knob costs two windows today, and the plugin editor usually covers what you were
-reading. A frameless Electron window carrying the existing bindings interface
-docks under the plugin editor and moves with it.
+Decided 2026-09-04 ([DECISIONS.md](DECISIONS.md) D-021), started 2026-09-12.
+Plan: [plans/active/bindings-bar-docked.md](plans/active/bindings-bar-docked.md),
+**4 of 8 steps**.
 
-It **replaces** the bindings panel rather than duplicating it: afterwards,
+Learning a knob costs two windows today, and the plugin editor usually covers
+what you were reading. A frameless Electron window carrying the existing
+bindings interface docks under the plugin editor and moves with it. It
+**replaces** the panel rather than duplicating it: afterwards
 `renderControlBindings()` is gone from the VST node's editor and bindings are
 reached from the plugin window only.
 
-The plugin editor is a hand-built Win32 frame owned by the **engine process**, so
-Chromium cannot draw inside it — which is why this is a second window rather than
-a strip, and why the alternatives were refused. See D-021.
+**The native half is done** — D-021 called it "one piece of native work, and it
+is small", and it was. The engine now emits `editorBounds`: the editor frame's
+outer rect, on open, on move and on resize, throttled to 60 Hz in the window
+proc with `WM_EXITSIZEMOVE` forcing an exact final report. Three things the code
+decided that the decision had left open:
 
-Native work, and it is the whole of it: `editorStatus` reports `width` and
-`height` but no position, and nothing is emitted when the window is dragged. The
-engine has to report the frame's position on move and on resize.
+- **the rect is the OUTER frame and needed its own four numbers.**
+  `editorStatus.width/height` are the *client* area, the size handed to the VST3
+  view, so docking against them would be off by the borders and title bar;
+- **it is its own message type.** Opening an editor is rare and worth a log
+  line; moving it fires every frame of a drag. `editorBounds` therefore joins
+  `PERIODIC_EVENTS` beside `masterMeter` — the trap AGENTS §9 describes, arrived
+  at on purpose this time;
+- **`Ipc::send` writes to stdout under a lock**, so an unthrottled report would
+  put a synchronous write on the thread drawing the plugin, once per frame.
 
-**Order**: after item 8's Étape A, and after or with D-018 — that decision
-refactors `ControlBindingManager`, which is what this window drives. Out of
-order, the refactor is paid twice.
+**What is left** — the Electron window itself (`src/main/bindingsWindow.js`),
+its page, the removal of the panel from the VST node's editor, and the
+documents. Steps 1 to 4 are additive: the engine says more than it did and
+nothing reads it yet, so the point of no return is step 7.
+
+**Built before D-018, and that is a decision.** D-021 says "after or with D-018,
+never before" — that decision refactors `ControlBindingManager`, which this
+window drives. Taken on 2026-09-12 anyway, with the cost named: the window is a
+new *host* for an interface that already exists, so as long as it MOVES
+`renderControlBindings()` instead of reimplementing it, D-018 later touches the
+same `armLearn()` it would have touched anyway plus one call site. Any binding
+rule appearing in the new window's own code is the plan going wrong.
 
 ---
 
