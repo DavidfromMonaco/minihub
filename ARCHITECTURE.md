@@ -756,11 +756,14 @@ valeur atteint un littéral de gabarit : un plugin nommé
 
 ⚠️ Il en coexiste **deux**, et c'est une dette identifiée :
 
-- `base.css` (1 486 lignes) — le langage historique : `.panel`, `.btn`, `.pill`,
+- `base.css` (1 634 lignes) — le langage historique : `.panel`, `.btn`, `.pill`,
   utilisé par 9 fichiers ;
-- `omni-pearl.css` (967 lignes) — le langage « Omni Pearl » : contrôles au rendu
-  matériel construits autour de **vrais** éléments de formulaire, utilisé par le
-  seul arpégiateur. `clip-editor.html` ne le charge même pas.
+- `omni-pearl.css` (1 027 lignes) — le langage « Omni Pearl » : contrôles au
+  rendu matériel construits autour de **vrais** éléments de formulaire, utilisé
+  par le seul arpégiateur. `clip-editor.html` ne le charge même pas. Façade
+  graphite depuis le 2026-09-12 ([DECISIONS.md](DECISIONS.md) D-037) : elle
+  ressemble à la machine qu'elle dessine, et toutes ses couleurs sont des
+  tokens.
 
 Voir [ROADMAP.md](ROADMAP.md), point 6.
 

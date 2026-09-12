@@ -7,7 +7,7 @@ Counter-intuitive choices: [DECISIONS.md](DECISIONS.md). Long workstreams:
 [PLANS.md](PLANS.md).
 
 **Current state** — branch `master`.
-814 JS tests green, 15 `npm run check` rules green, 3,954 native checks green
+848 JS tests green, 15 `npm run check` rules green, 3,954 native checks green
 across the four test binaries, a Release build with **0 errors and 0 warnings**,
 `dist/` synchronised with the sources.
 
@@ -24,7 +24,14 @@ Items 1 to 3 removed the structural obstacles; item 4 is what is left before
 adding a module becomes mechanical. Item 8 answered a different question — taking
 the hardware out of the core — and its Étape A finished on 2026-09-04, so the slot
 was free for **importing a profile**, finished 2026-09-05 (item 8 below, D-027 to
-D-030). `plans/active/` is empty again.
+D-030).
+
+`plans/active/` is **not** empty, and the line above used to claim it was:
+[two-controllers-at-once.md](plans/active/two-controllers-at-once.md) has all
+eight steps ticked and committed since 2026-09-05, and has never been seen
+running with two keyboards on the desk — the BeatStep is the missing part, not
+the code. PLANS.md §2 says finished means moved; until that pass happens it
+holds the single slot.
 
 ---
 
@@ -187,6 +194,118 @@ is no longer active, and the throw aborted the handler **after** the drag was
 armed and **before** the move listeners were attached — a drag that could never
 end. Both call sites catch it now; capture is a nicety, not the gesture.
 
+### 12. Patch Bay — an `Align` button that does what it says — `master`
+
+Asked 2026-09-07, done 2026-09-12. A canvas you rewire all day drifts, and the
+only way back to a readable graph was dragging every node by hand.
+
+**It is not the `automatic network layout` INTENT §6 refuses**, and the whole
+design rests on the distinction: what is refused is a canvas that reorganises
+itself — a graph that moves while you are reading it and takes your node out
+from under the cursor. `Align` runs when it is pressed, once. The test that
+matters most says exactly that: a network change plus a re-render moves nothing,
+and the button does.
+
+**What "aligned" means**, which was the half that had to be decided rather than
+assembled: a column is a distance from the sources, so the controllers open the
+graph and Audio Output closes it. The **longest** path places a node, not the
+shortest — with `controller -> vst -> output` and `controller -> output`, the
+shortest path would seat the output beside the VST and draw a cable backwards.
+Within a column the current vertical order is kept: reordering rows to minimise
+crossings is a better drawing and a worse command, because the point of pressing
+it is to recognise your own patch afterwards. Cycles across two cable types are
+reachable (they are refused per type, not globally), so the ranking is a
+relaxation bounded by the node count.
+
+**It can be taken back**, which is the other half. `Undo Align` appears next to
+it once there is something to undo and holds exactly one state, never persisted,
+gone when the Patch Bay is left. It is the button's counterpart and not a
+history: item 13 still owns undo across the application, and the day it covers
+node positions this one goes.
+
+Two things the code settled rather than the document: `Align` also fits the view,
+because otherwise the nodes go where they belong — off screen — and the command
+looks broken; and it pins **every** node including those already in place, since
+an unpinned node falls back to the default grid, and that grid is derived from
+how many nodes there are.
+
+`core/networkLayout.js` gained `alignPositions()`; `separateOverlaps()` and the
+render path are untouched.
+
+---
+
+### 14. A track's MIDI input survives the session — `master`
+
+Reported 2026-09-07, done 2026-09-12. The MIDI controller had to be picked again
+in the track Input field at every launch. The application already answered this
+once, correctly, and the sequencer did not reuse the answer.
+
+**Web MIDI ids are not stable, and this machine proved it**: the same MiniLab 3
+was `input-2`, then `input-0`, then `input-2` again across three sessions. A
+track stored `inputId` as a bare string, so once the id moved it no longer
+equalled `midi.selectedInputId`, `hasInputRoute` said no, and recording was
+refused with *"The armed MIDI track Input must match the MIDI port selected
+for …"*.
+
+**One answer, not a second scheme.** `preferenceForPort` and `samePhysicalPort`
+were private to `midi/midiManager.js`; they now live in
+[midi/portIdentity.js](src/renderer/js/midi/portIdentity.js) with
+`resolvePortPreference()`, and both the global selection and a track's input ask
+that file. Two answers to "is this the same physical port" disagree the day a
+port is renamed, and the disagreement surfaces as a track armed on the wrong
+device.
+
+A track carries `inputPort`, the same descriptor `midiInputPreference` has
+always used, and `SequencerController` re-resolves the id from it on
+`midi:preference` — later than `midi:ports`, which is what makes it the moment
+the port list has settled. Three consequences worth stating:
+
+- **an existing project keeps working**: a bare id with no descriptor is
+  believed exactly once, while it still resolves, and the fingerprint is written
+  back on the spot;
+- **a project file travels**: a descriptor that resolves to nothing clears the
+  id rather than keeping it. A stale `input-2` on another machine belongs to
+  whatever that machine enumerated second, and a track quietly armed on a
+  stranger's keyboard is worse than a track visibly unrouted — the rule D-029
+  applies to an absent node;
+- **the engine never sees the descriptor.** It is renderer bookkeeping about
+  where an id came from.
+
+---
+
+### 15. A button that opens the site's setup section — `master`
+
+Asked and done 2026-09-12. `Browse setups on minihub.site` sits beside
+`Import a profile…` in the controller page's Profile panel — the row where a
+setup already arrives is the row that says where setups come from.
+
+**The button was the small half.** The renderer could not open a URL at all:
+`shell.openExternal` appeared nowhere in `src/` and `window.hubAPI` had no
+method for it. What decided the shape is what `openExternal` does — it hands a
+string to the operating system's handler for that string's scheme, so a renderer
+that chooses the string chooses which program Windows launches, and this
+renderer is the one that displays a profile file written by a stranger (D-020).
+
+So the renderer asks for a **named destination** and
+[src/main/externalLinks.js](src/main/externalLinks.js) answers with the URL,
+exactly as `directories:open` takes a purpose rather than a path. An unknown name
+is refused; `https:` is re-checked even though every entry is written by hand, so
+the guarantee holds of the file rather than of today's contents. Adding a
+destination is one line.
+
+Two decisions taken rather than discovered:
+
+- **No confirmation dialog.** The label names the host instead — a click leaves
+  MiniHub, and a question nobody wants asked twice is worse than a sentence read
+  once. A test holds the label and the address to the same host, because a label
+  naming one place while the table opens another is a lie with no failing test
+  behind it.
+- **The renderer spells no URL.** A test says so of the panel and of the
+  controller page, which is what keeps the address list from quietly growing a
+  second home.
+
+---
+
 ### Outside the numbering
 
 - Snapshots from 24/08 preserved as branches (`snapshot/2026-08-24-*`), then
@@ -313,11 +432,13 @@ worth aligning.
 
 ### 6. Visual consistency and naming
 
-**Two design systems coexist, and that is deliberate.** `base.css` (1,486
-lines, `.panel`/`.btn` vocabulary) dresses the **dark shell**: header, sidebar,
-Patch Bay, modals. `omni-pearl.css` (967 lines, `op-*` vocabulary) is a **light,
-device-faceplate** language, meant for instrument surfaces placed inside that
-shell. Its header documents it: a module opts in by putting the `omni-pearl`
+**Two design systems coexist, and that is deliberate.** `base.css` (1,634
+lines, `.panel`/`.btn` vocabulary) dresses the **shell**: header, sidebar,
+Patch Bay, modals. `omni-pearl.css` (1,027 lines, `op-*` vocabulary) is a
+**device-faceplate** language, meant for instrument surfaces placed inside that
+shell. Both are dark since 2026-09-12 (D-037) and they are still not rivals: the
+faceplate owns its own complete token set and consumes nothing from the shell,
+which is exactly what let it change colour on its own. Its header documents it: a module opts in by putting the `omni-pearl`
 class on its root, and "nothing leaks outside that subtree".
 
 Measured 2026-09-02: `op-` is used by **three** files only — `ui/omniPearl.js`
@@ -337,14 +458,23 @@ editors (Mixer, Morpher, VST) is still possible, editor by editor, and is a
 matter of taste: the `ui/omniPearl.js` library is generic and explicitly allows
 for it.
 
-**Asked 2026-09-05, not started: the arpeggiator's colours are to be redone.**
-It is the one module wearing the faceplate, so it is the one that will be
-photographed: the author intends to take a screenshot of it for
-[minihub.site](https://minihub.site). That makes this cosmetic work with a
-deadline attached to something outside the repository, which is why it is written
-down rather than left to taste. Colours live in the `--op-*` token set at the top
-of `src/renderer/styles/omni-pearl.css`; D-012 is what says a change there stays
-inside the faceplate and cannot leak into the shell.
+~~**The arpeggiator's colours are to be redone**~~ — **done 2026-09-12**, and the
+direction was the author's: the plate is **graphite**, like the MiniLab 3 it
+draws. [DECISIONS.md](DECISIONS.md) D-037. A dark faceplate in a dark shell is
+not camouflage as long as the plate is lighter than the shell and keeps its
+bezel; what makes it read as an instrument is that the roll finally has white
+keys and black keys, which is the one place the plate is allowed to be white.
+
+What the flip cost, and it was the whole job: the sheet's own header claimed
+every colour was a token, and **twenty-nine were not**. All of them were light
+literals scattered through sections 2 to 4 — knob milling, key caps, the sticky
+step rail, the note gloss — and each would have stayed cream on the new plate.
+They are tokens now, and the header says a colour appearing below the token
+block is a bug. D-012 is what made the rest a token edit: the sheet consumes
+nothing from `base.css`, so the shell could not follow it down.
+
+Seen, not read: rendered on a bench page loading the real `base.css`,
+`omni-pearl.css` and `renderArpeggiatorEditor()`, at 1000 x 860.
 
 **Four names for one product**: "MiniLab Hub" (window title, README), "MiniHub"
 (executable, `dist/MiniHub`, the `.minihub` extension, `Documents/MiniHub`),
@@ -609,39 +739,6 @@ engine has to report the frame's position on move and on resize.
 refactors `ControlBindingManager`, which is what this window drives. Out of
 order, the refactor is paid twice.
 
-### 12. Patch Bay — an `Align` button that does what it says
-
-Asked 2026-09-07, not started. A canvas you rewire all day drifts, and the only
-way back to a readable graph is dragging every node by hand.
-
-**This is not the `automatic network layout` that INTENT §6 refuses**, and the
-distinction is the whole design: the refusal is aimed at a canvas that
-reorganises itself — a graph that moves while you are reading it, and moves your
-node out from under the cursor. `Align` is a **command**. It runs when it is
-asked to, once, and never again until it is asked again. Anything that starts
-running it on its own reopens §6.
-
-Most of it exists. `core/networkLayout.js` already holds both halves:
-`NetworkLayout.get(id, index, sizes)` places a node on a deterministic grid built
-from real node boxes, and `separateOverlaps(rects, gap)` pushes overlapping boxes
-apart — already called on every render, but only to repair collisions after a
-profile or project change (`routingModule.js:137`). `Align` is those two applied
-to the whole set on demand, then `layout.setMany(...)` to persist.
-
-What has to be decided rather than assembled:
-
-- **What "aligned" means.** Grid order is insertion order today, which has
-  nothing to do with signal flow. Ordering the columns by cable direction —
-  controller, then processing, then Audio Output — is what would make the button
-  worth pressing rather than merely tidy.
-- **Whether it can be taken back.** Rearranging every node is exactly the
-  gesture item 13 exists for.
-
-**If you take this one first** — before the history exists, `Align` moves every
-node with no way back to the arrangement you had. The button works; you just
-cannot change your mind about it. Doing item 13 first is what removes that, and
-it is the only thing linking the two.
-
 ---
 
 ### 13. An edit history — undo and redo across the application
@@ -681,53 +778,15 @@ Three things that will not be obvious later:
   `finishProjectTransition` already bracket that moment; the history is cleared
   there, and never spans two projects.
 
+**What item 12 left it** — `Align` carries a one-step, page-local undo of its
+own (see Done, item 12). It is the button's counterpart, not a second history,
+and the day this item covers node positions that one is deleted rather than
+reconciled.
+
 **If you take this one before item 4** — it still works, and it is worth doing.
 `core/nodeInstances.js` and `modules/routing/routingModule.js` are simply the two
 files where capturing the authored state is most tangled today, so the same work
 costs more before the split than after it. That is a price, not a barrier.
-
-### 14. A track's MIDI input must survive the session, like the controller does
-
-Reported 2026-09-07: the MIDI controller has to be picked again at every
-launch. The application already solves this once, correctly, and the sequencer
-does not reuse the answer.
-
-**Two levels, one robust and one not.** `midi/midiManager.js` stores the global
-selection as a *fingerprint*, not an id: `preferenceForPort` (line 24) records
-name, manufacturer and type, `samePhysicalPort` (line 33) matches on it, and
-`_resolveInputPreference` falls back to that match when the stored id no longer
-resolves. That is why `midiInputPreference` survives a relaunch.
-
-A sequencer track stores `inputId` as a bare string —
-`sequencerModel.js:111`, `typeof track?.inputId === 'string' ? track.inputId : ''`.
-No fingerprint, no migration.
-
-**Web MIDI ids are not stable, and this machine proves it.** On 2026-09-07 the
-same MiniLab 3 was `input-2`, then `input-0`, then `input-2` again across three
-sessions. When the id moves, the saved `track.inputId` points at nothing:
-`_liveDestinationIds` (`sequencerController.js:512`) requires
-`track.inputId === selectedInputId`, the track stops matching, and
-`recordBlockReason` produces *"The armed MIDI track Input must match the MIDI
-port selected for …"*. Re-picking the port in the track's Input field writes the
-new id and it works again — until the next launch.
-
-**The fix is to reuse what exists**, not to invent a second scheme: a track's
-input carries the same descriptor `midiInputPreference` does, resolved through
-`samePhysicalPort`. Three things that will bite:
-
-- **`preferenceForPort` and `samePhysicalPort` are module-private.** They have to
-  be exported before the sequencer can share them, and there must stay exactly
-  one answer to "is this the same physical port" — two implementations disagree
-  the day a port is renamed.
-- **Existing projects hold bare ids.** They must keep working: resolve the id
-  first, and on the first successful match write the descriptor back, the way
-  `_inputPreference` already migrates a legacy id-only setting.
-- **A project is a file that can move to another machine.** A descriptor that
-  resolves to nothing there has to leave the track visibly unrouted rather than
-  silently armed on the wrong port — the same rule as D-029 for an absent node.
-
-**If you take this one first** — nothing depends on it and it depends on
-nothing. It is small, and it removes a chore from every single launch.
 
 ---
 
