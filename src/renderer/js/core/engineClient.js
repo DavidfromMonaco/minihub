@@ -55,6 +55,7 @@ export class EngineClient {
     // drops queued touches from an object after it has been replaced.
     this._instanceGenerations = new Map(); // chainId -> Map(instanceId -> generation)
     this._editorStatuses = new Map(); // chainId -> Map(instanceId -> last native editorStatus)
+    this._editorBounds = new Map();   // chainId -> Map(instanceId -> last native editorBounds)
     this._instanceErrors = new Map();
     // Master export owns cloned processors and immutable network/arrangement
     // plans. Live edits therefore remain immediate. Only an audio-device
@@ -159,6 +160,19 @@ export class EngineClient {
     return this._engineGeneration;
   }
 
+  /**
+   * Where a plugin editor's frame is, or null.
+   *
+   * Kept beside the editor's open/closed record rather than inside it: the two
+   * arrive on different messages at wildly different rates (`editorStatus` when
+   * the user opens one, `editorBounds` on every frame of a drag), and merging
+   * them would make every drag rewrite the record that says whether the editor
+   * exists.
+   */
+  getEditorBounds(chainId, instanceId) {
+    return this._editorBounds.get(chainId)?.get(instanceId) || null;
+  }
+
   getEditorStatus(chainId, instanceId) {
     return this._editorStatuses.get(chainId)?.get(instanceId) || null;
   }
@@ -182,6 +196,7 @@ export class EngineClient {
     this.chains.clear(); // a dead engine holds no instances
     this._instanceGenerations.clear();
     this._editorStatuses.clear();
+    this._editorBounds.clear();
     this._instanceErrors.clear();
     this._setPlugins([]);
     this._setScanning(false);
@@ -299,6 +314,18 @@ export class EngineClient {
         this.events.emit('engine:instanceStatus', msg);
         break;
       }
+      case 'editorBounds': {
+        // The frame's OUTER rect, which is not `editorStatus`'s width/height:
+        // those are the client area the VST3 view was given. A window docking
+        // under this one lines up with the frame, borders included.
+        if (!this._editorBounds.has(msg.chainId)) this._editorBounds.set(msg.chainId, new Map());
+        this._editorBounds.get(msg.chainId).set(msg.instanceId, {
+          x: Number(msg.x) || 0, y: Number(msg.y) || 0,
+          width: Number(msg.width) || 0, height: Number(msg.height) || 0
+        });
+        this.events.emit('engine:editorBounds', msg);
+        break;
+      }
       case 'editorStatus': {
         if (!this._editorStatuses.has(msg.chainId)) this._editorStatuses.set(msg.chainId, new Map());
         const editors = this._editorStatuses.get(msg.chainId);
@@ -308,6 +335,7 @@ export class EngineClient {
           editors.set(msg.instanceId, { ...msg });
         } else if (msg.open !== true) {
           editors.delete(msg.instanceId);
+          this._editorBounds.get(msg.chainId)?.delete(msg.instanceId);
         }
         this.events.emit('engine:editorStatus', msg);
         break;

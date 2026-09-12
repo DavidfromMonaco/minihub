@@ -549,3 +549,65 @@ test('fresh app lifecycle waits for handshake then restores two persisted VST pa
   ]);
   assert.equal(sentOf(api, 'scanVst3').length, 1, 'background catalog scan is not a prerequisite for creates');
 });
+
+// ---- where the frame is, so something can dock under it ------------------------
+
+/*
+ * ROADMAP item 9, DECISIONS D-021. `editorStatus` reported a size and no
+ * position, and said nothing at all when the user dragged the window. The
+ * engine now sends `editorBounds` as its own message, and the split is the
+ * point: opening an editor is rare and logged, moving it fires every frame of a
+ * drag and is dropped before the disk (see engineEventTrace.test.cjs).
+ */
+
+test('the editor frame rect reaches the renderer and is kept per instance', () => {
+  const api = mockApi();
+  const hub = createHub(api);
+  hub.engine.init();
+
+  const seen = [];
+  hub.events.on('engine:editorBounds', (msg) => seen.push(msg));
+
+  api.emitEvent({ type: 'editorBounds', chainId: 'vst-001', instanceId: 'plugin-1', x: 420, y: 180, width: 1408, height: 861 });
+
+  assert.equal(seen.length, 1);
+  assert.deepEqual(hub.engine.getEditorBounds('vst-001', 'plugin-1'),
+    { x: 420, y: 180, width: 1408, height: 861 });
+  assert.equal(hub.engine.getEditorBounds('vst-001', 'plugin-2'), null,
+    'another instance of the same chain has its own window');
+});
+
+test('a drag overwrites the rect instead of accumulating records', () => {
+  const api = mockApi();
+  const hub = createHub(api);
+  hub.engine.init();
+
+  for (let x = 0; x < 60; x += 1) {
+    api.emitEvent({ type: 'editorBounds', chainId: 'vst-001', instanceId: 'plugin-1', x, y: 100, width: 800, height: 600 });
+  }
+
+  assert.equal(hub.engine.getEditorBounds('vst-001', 'plugin-1').x, 59);
+});
+
+test('closing the editor forgets where it was', () => {
+  const api = mockApi();
+  const hub = createHub(api);
+  hub.engine.init();
+
+  api.emitEvent({ type: 'editorBounds', chainId: 'vst-001', instanceId: 'plugin-1', x: 10, y: 20, width: 800, height: 600 });
+  api.emitEvent({ type: 'editorStatus', chainId: 'vst-001', instanceId: 'plugin-1', open: false });
+
+  assert.equal(hub.engine.getEditorBounds('vst-001', 'plugin-1'), null,
+    'a bar docked under a window that is gone has nothing to line up with');
+});
+
+test('the rect is coerced, because it crosses a process boundary', () => {
+  const api = mockApi();
+  const hub = createHub(api);
+  hub.engine.init();
+
+  api.emitEvent({ type: 'editorBounds', chainId: 'vst-001', instanceId: 'plugin-1', x: '12', y: null, width: undefined, height: NaN });
+
+  assert.deepEqual(hub.engine.getEditorBounds('vst-001', 'plugin-1'),
+    { x: 12, y: 0, width: 0, height: 0 });
+});

@@ -9,10 +9,34 @@ dans la même session, voire même utiliser les deux en même temps".
 15 rules, `npm run sync:dist` exit 0. Step 3 split in two when it was measured
 against the code; see the entry below.
 
-**Not yet seen running.** Everything below is proved by tests, and the
-application has not been launched with two profiles loaded since. The plan's own
-working note says a symptom is fixed when it has been SEEN fixed; that pass has
-not happened, and neither has a commit.
+**Result: standby, 2026-09-12.** Waiting on **hardware** — a second keyboard on
+the desk. Everything below is proved by tests and was committed on 2026-09-05
+(`e433e18`, `98be7f5`, `c89e6c3`); what has never happened is a launch with two
+profiles loaded, and the plan's own working note says a symptom is fixed when it
+has been SEEN fixed. Moved here rather than left in `plans/active/` because
+PLANS.md §2 holds one slot for work in progress, not for intentions, and the
+ROADMAP header had been claiming that slot was empty.
+
+**What has gone stale while it waited** — the part that matters, per PLANS.md:
+
+- **"Committing" is no longer left.** The *What is left* section below still says
+  two workstreams sit uncommitted in the same tree. They were both committed the
+  same day. Only the launch remains.
+- **The faceplate is graphite.** *The wrong faceplate, and what it settled*
+  describes the nacre plate; [DECISIONS.md](../../DECISIONS.md) D-037 replaced
+  that palette on 2026-09-12. The reasoning in that section still holds — it is
+  about which panel is drawn, not what colour it is — but every colour it names
+  is gone.
+- **"Is this the same physical port" moved.** `preferenceForPort` and
+  `samePhysicalPort` were private to `midi/midiManager.js` when this plan armed
+  ports; they now live in `midi/portIdentity.js` with `resolvePortPreference()`,
+  because the sequencer needed the same answer (ROADMAP item 14). Step 6's
+  arming code sits beside them now.
+- **The Learn panel is about to move house.** *What is left* ends on
+  `renderControlBindings` drawing one keyboard's surface for N keyboards. ROADMAP
+  item 9 moves that interface out of the VST node editor entirely, into a window
+  docked under the plugin editor, so that limitation will be fixed — or not — in
+  a different file than the one named below.
 
 ## Working note — read this before step 1
 

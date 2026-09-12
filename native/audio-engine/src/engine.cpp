@@ -719,6 +719,36 @@ void Engine::sendParameterTouched(PluginInstance& inst,
     ipc_.send(out);
 }
 
+/**
+ * Where the plugin editor's frame is, so a window can dock under it.
+ *
+ * Its own message type rather than another `editorStatus`, and the split is the
+ * point: opening or closing an editor happens once and is worth a line in the
+ * startup log; dragging it happens every frame of a drag. `editorStatus` stays
+ * rare and logged, `editorBounds` is periodic and is dropped by
+ * `src/main/engineEventTrace.js` exactly as `masterMeter` is. ROADMAP item 9,
+ * DECISIONS D-021.
+ *
+ * The rect is the OUTER frame, which is not what `editorStatus` reports:
+ * `width`/`height` there are the client area the VST3 view was given.
+ */
+void Engine::sendEditorBounds(PluginInstance& inst)
+{
+    if (shutdownRequested_
+        || !isCurrentInstanceGeneration(inst.chainId(), inst.instanceId(), inst.generation()))
+        return;
+    juce::var out = makeObject();
+    setProp(out, "type", "editorBounds");
+    setProp(out, "chainId", inst.chainId());
+    setProp(out, "instanceId", inst.instanceId());
+    setProp(out, "generation", inst.generation());
+    setProp(out, "x", inst.editorFrameX());
+    setProp(out, "y", inst.editorFrameY());
+    setProp(out, "width", inst.editorFrameWidth());
+    setProp(out, "height", inst.editorFrameHeight());
+    ipc_.send(out);
+}
+
 void Engine::sendEditorStatus(PluginInstance& inst, bool open, const juce::String& message)
 {
     if (shutdownRequested_
@@ -1333,6 +1363,11 @@ void Engine::cmdCreateInstance(const juce::var& msg)
         [this](PluginInstance& source)
         {
             sendEditorStatus(source, false);
+        });
+    inst->setEditorMovedCallback(
+        [this](PluginInstance& source)
+        {
+            sendEditorBounds(source);
         });
     auto alive = alive_;
 
@@ -2039,6 +2074,12 @@ void Engine::cmdOpenEditor(const juce::var& msg)
     if (!ok)
         setProp(out, "message", message.isNotEmpty() ? message : juce::String("editor could not be opened"));
     ipc_.send(out);
+
+    // The frame is on screen now, so say where. Without this the docked bar has
+    // nothing to line up with until the user drags the window, which is the one
+    // moment it must already be in place.
+    if (ok && inst->editorVisible())
+        sendEditorBounds(*inst);
 
     if (!ok)
         sendError("editor-open", "Could not open the editor for '" + inst->name() + "': " + message);

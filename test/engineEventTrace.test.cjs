@@ -8,9 +8,18 @@ test('periodic telemetry never reaches the synchronous startup log', () => {
   const trace = createEngineEventTrace();
   for (const type of ['masterMeter', 'hostTiming', 'audioPathTelemetry',
                       'transport', 'recorderState', 'nodeSafetyTelemetry',
-                      'metronomeTick']) {
+                      'metronomeTick', 'editorBounds']) {
     assert.equal(trace({ type }), null, type + ' must not be logged per occurrence');
   }
+});
+
+test('opening an editor is still a line, moving it is not', () => {
+  // The pair exists for exactly this: `editorStatus` fires when the user opens
+  // or closes an editor and is worth finding in a log afterwards; the geometry
+  // that follows it fires 60 times a second for as long as a drag lasts.
+  const trace = createEngineEventTrace();
+  assert.equal(trace({ type: 'editorStatus' }), 'engine:event editorStatus');
+  assert.equal(trace({ type: 'editorBounds' }), null);
 });
 
 test('lifecycle events are still logged with their details', () => {

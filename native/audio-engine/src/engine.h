@@ -157,6 +157,7 @@ private:
     void sendParameterTouched(PluginInstance& inst,
                               const PluginInstance::TouchedParameter& touched);
     void capturePluginStates(bool force);
+    void sendEditorBounds(PluginInstance& inst);
     void sendEditorStatus(PluginInstance& inst, bool open,
                           const juce::String& message = {});
     void sendParameterLearnState(const juce::String& learnId,

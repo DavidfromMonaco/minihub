@@ -616,6 +616,17 @@ public:
         return 0;
 #endif
     }
+#if JUCE_WINDOWS
+    int editorFrameX() const noexcept { return editor_ ? editor_->frameX() : 0; }
+    int editorFrameY() const noexcept { return editor_ ? editor_->frameY() : 0; }
+    int editorFrameWidth() const noexcept { return editor_ ? editor_->frameWidth() : 0; }
+    int editorFrameHeight() const noexcept { return editor_ ? editor_->frameHeight() : 0; }
+#else
+    int editorFrameX() const noexcept { return 0; }
+    int editorFrameY() const noexcept { return 0; }
+    int editorFrameWidth() const noexcept { return 0; }
+    int editorFrameHeight() const noexcept { return 0; }
+#endif
     void foregroundEditor() noexcept
     {
 #if JUCE_WINDOWS
@@ -777,6 +788,18 @@ private:
             if (window_) ::ShowWindow(window_, SW_HIDE);
         }
         bool visible() const noexcept { return window_ && ::IsWindowVisible(window_) != FALSE; }
+        int frameX() const noexcept { return frameRect().left; }
+        int frameY() const noexcept { return frameRect().top; }
+        int frameWidth() const noexcept
+        {
+            const RECT rect = frameRect();
+            return rect.right - rect.left;
+        }
+        int frameHeight() const noexcept
+        {
+            const RECT rect = frameRect();
+            return rect.bottom - rect.top;
+        }
         int width() const noexcept
         {
             RECT rect {};
@@ -849,6 +872,16 @@ private:
                 plugin_.owner_.directEditorClosed();
                 return 0;
             }
+            // A drag fires WM_MOVE every frame and WM_SIZE on every pixel of a
+            // resize. Both are reported, both through the same throttle: the
+            // bar docked under this window has to follow it, and an unthrottled
+            // report is a synchronous stdout write per frame, on the thread
+            // that is drawing the plugin. WM_EXITSIZEMOVE always reports, so
+            // the position the user let go of is exact rather than 16 ms stale.
+            if (message == WM_MOVE || message == WM_SIZE)
+                reportMoved(false);
+            if (message == WM_EXITSIZEMOVE)
+                reportMoved(true);
             if (message == WM_SIZE && attached_ && view_)
             {
                 Steinberg::ViewRect size {0, 0,
@@ -868,6 +901,29 @@ private:
             }
             return ::DefWindowProcW(window_, message, wParam, lParam);
         }
+        /** Outer frame in screen coordinates; an empty rect when there is none. */
+        RECT frameRect() const noexcept
+        {
+            RECT rect {0, 0, 0, 0};
+            if (window_) ::GetWindowRect(window_, &rect);
+            return rect;
+        }
+
+        /**
+         * Tell the owner the frame moved, at most once per frame period.
+         *
+         * `force` is for the end of a drag: the throttle would otherwise drop
+         * the final position, which is the only one that has to be right.
+         */
+        void reportMoved(bool force) noexcept
+        {
+            if (!window_ || !visible()) return;
+            const ULONGLONG now = ::GetTickCount64();
+            if (!force && now - lastMoveReport_ < kMoveReportIntervalMs) return;
+            lastMoveReport_ = now;
+            plugin_.owner_.directEditorMoved();
+        }
+
         Steinberg::tresult resizeFromPlugin(Steinberg::IPlugView* view,
                                              Steinberg::ViewRect* size)
         {
@@ -901,6 +957,10 @@ private:
         }
 
         DirectVst3Plugin& plugin_;
+        // 60 Hz, the rate the engine already publishes transport at. Slower
+        // makes the docked bar lag visibly behind the window it belongs to.
+        static constexpr ULONGLONG kMoveReportIntervalMs = 16;
+        ULONGLONG lastMoveReport_ = 0;
         HWND window_ = nullptr;
         HWND contentWindow_ = nullptr;
         bool attached_ = false;
@@ -1688,6 +1748,11 @@ void PluginInstance::closeEditor()
     stopTimer();
 }
 
+void PluginInstance::directEditorMoved()
+{
+    if (editorMovedCallback_) editorMovedCallback_(*this);
+}
+
 void PluginInstance::directEditorClosed()
 {
     cancelParameterLearn("editor-closed");
@@ -1708,6 +1773,26 @@ void PluginInstance::foregroundEditorIfAllowed()
 int PluginInstance::editorWidth() const
 {
     return plugin_ ? plugin_->editorWidth() : 0;
+}
+
+int PluginInstance::editorFrameX() const
+{
+    return plugin_ ? plugin_->editorFrameX() : 0;
+}
+
+int PluginInstance::editorFrameY() const
+{
+    return plugin_ ? plugin_->editorFrameY() : 0;
+}
+
+int PluginInstance::editorFrameWidth() const
+{
+    return plugin_ ? plugin_->editorFrameWidth() : 0;
+}
+
+int PluginInstance::editorFrameHeight() const
+{
+    return plugin_ ? plugin_->editorFrameHeight() : 0;
 }
 
 int PluginInstance::editorHeight() const

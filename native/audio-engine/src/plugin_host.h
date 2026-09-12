@@ -69,6 +69,14 @@ public:
     using ParameterLearnEndedCallback =
         std::function<void(PluginInstance&, const juce::String&, const juce::String&)>;
     using EditorClosedCallback = std::function<void(PluginInstance&)>;
+    /**
+     * The editor frame moved or was resized by the user.
+     *
+     * Separate from EditorClosedCallback because the two have opposite
+     * frequencies: closing happens once and is worth a log line, dragging
+     * happens every frame of a drag. ROADMAP item 9 / DECISIONS D-021.
+     */
+    using EditorMovedCallback = std::function<void(PluginInstance&)>;
 
     PluginInstance();
     ~PluginInstance() override;
@@ -124,6 +132,10 @@ public:
     {
         editorClosedCallback_ = std::move(callback);
     }
+    void setEditorMovedCallback(EditorMovedCallback callback)
+    {
+        editorMovedCallback_ = std::move(callback);
+    }
 
     bool armParameterLearn(const juce::String& learnId, juce::String& error);
     void cancelParameterLearn(const juce::String& reason);
@@ -136,6 +148,19 @@ public:
     void foregroundEditorIfAllowed();
     int editorWidth() const;
     int editorHeight() const;
+    /**
+     * The OUTER frame in screen pixels, all zero when the editor is not open.
+     *
+     * Deliberately not `editorWidth`/`editorHeight` above: those are the client
+     * area, the size the VST3 view was given. A window docked under this one
+     * has to line up with the frame, borders and title bar included, so it gets
+     * its own four numbers rather than a client size plus a guess about the
+     * non-client margins.
+     */
+    int editorFrameX() const;
+    int editorFrameY() const;
+    int editorFrameWidth() const;
+    int editorFrameHeight() const;
 
     juce::var getState() const;
     bool setState(const juce::var& state, juce::String& error);
@@ -156,6 +181,7 @@ private:
     void directParameterValue(int parameterIndex, float normalizedValue) noexcept;
     void directNonParameterStateChanged() noexcept;
     void directEditorClosed();
+    void directEditorMoved();
     void recordVst3BufferProcess(uint64_t blockId, uint32_t processCallInBlock,
                                  int numSamples, bool copiedToPluginInstance,
                                  const Vst3AudioBufferLayoutTrace&) noexcept;
@@ -179,6 +205,7 @@ private:
     ParameterTouchedCallback parameterTouchedCallback_;
     ParameterLearnEndedCallback parameterLearnEndedCallback_;
     EditorClosedCallback editorClosedCallback_;
+    EditorMovedCallback editorMovedCallback_;
 
     GestureLearnState learnState_;
     juce::String activeLearnId_;
