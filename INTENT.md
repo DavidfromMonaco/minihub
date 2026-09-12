@@ -302,6 +302,13 @@ What **stays** out of scope, and what the history must never become:
 The difference fits in one sentence: the history undoes **what you authored**,
 never **what you performed**.
 
+**Built 2026-09-12**, and the bound the building added: inside a node, a VST
+chain's plugin list is the one thing the history does not put back — a plugin is
+a running native instance, not a parameter. Everything else it named is there:
+the network, the tracks, the clips, the notes, reached by the keyboard on every
+page and in a Clip Editor window, by Undo / Redo in the application menu, and by
+a control in the shell.
+
 Decision: [DECISIONS.md](DECISIONS.md) D-032. Workstream: [ROADMAP.md](ROADMAP.md)
 item 13.
 

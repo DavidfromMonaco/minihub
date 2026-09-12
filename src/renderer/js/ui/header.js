@@ -9,6 +9,28 @@ export function buildHeader(hub, statusEl) {
   const renderProject = (state) => { if (projectEl) projectEl.textContent = `${state.currentProjectName}${state.dirty ? ' •' : ''}`; };
   hub.events.on('project:identity', renderProject);
   renderProject(hub.project);
+  /**
+   * Undo and Redo, disabled when there is nothing behind or ahead.
+   *
+   * The shell is the one surface that is on screen whatever page you are on, so
+   * it is where the history becomes VISIBLE -- the keyboard answers everywhere
+   * but says nothing about whether there is anything to answer with. The state
+   * arrives on `history:changed`, which the history already emits on every step,
+   * every undo and every redo.
+   */
+  const undoEl = document.getElementById('history-undo');
+  const redoEl = document.getElementById('history-redo');
+  const renderHistory = (state) => {
+    if (undoEl) undoEl.disabled = state?.canUndo !== true;
+    if (redoEl) redoEl.disabled = state?.canRedo !== true;
+  };
+  undoEl?.addEventListener('click', () => hub.history?.undo());
+  redoEl?.addEventListener('click', () => hub.history?.redo());
+  hub.events.on('history:changed', renderHistory);
+  // The history starts before the shell is built, so its first announcement is
+  // already past. Read it once rather than waiting for the next edit.
+  renderHistory(hub.history);
+
   const playEl = document.getElementById('transport-play');
   const stopEl = document.getElementById('transport-stop');
   const bpmEl = document.getElementById('transport-bpm');

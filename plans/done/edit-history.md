@@ -5,7 +5,8 @@ any page of the shell and from a Clip Editor window, against one linear history.
 **Origin** — asked 2026-09-12 ("ctrl z et ctrl shift z globale, qui marche de
 partout"). ROADMAP item 13, [DECISIONS.md](../../DECISIONS.md) D-032,
 [INTENT.md](../../INTENT.md) §8 quinquies.
-**Status** — in progress
+**Status** — **finished 2026-09-12.** Confirmed working by the author after two
+rounds of reported defects, both fixed and both covered by tests.
 
 ## Context
 
@@ -120,10 +121,10 @@ so the live objects have to be restored without navigating.
       Check: `node --test test/clipEditorWindows.test.cjs`
 - [x] 7a. Undo / Redo in the application menu, with their accelerators shown.
       Check: `node --test test/appMenu.test.cjs`
-- [ ] 7b. A control in the shell header, disabled when there is nothing to do.
+- [x] 7b. A control in the shell header, disabled when there is nothing to do.
       It listens to `history:changed`, which is already emitted.
       Check: `npm run check`
-- [ ] 8. Documents: D-032 marked implemented, INTENT §8 quinquies, ROADMAP.
+- [x] 8. Documents: D-032 marked implemented, INTENT §8 quinquies, ROADMAP.
       Check: `npm test` + `npm run check` + `npm run sync:dist`
 
 ## Fallback point
@@ -216,3 +217,14 @@ keyboard — barely better than not coming back at all. The subscription is in
 skipped rather than drawn.
 
 899 tests, 15 check rules, `dist/` synced.
+
+2026-09-12 — **Closed.** The header carries Undo and Redo, disabled when there is
+nothing behind or ahead; they read `history:changed`, which the history already
+emitted, and the initial state is read once rather than waited for — the history
+starts before the shell is built, so its first announcement is already past.
+
+D-032 is marked implemented and carries the bound this workstream added (a VST
+node's plugin list) and the two defects found on the day. INTENT §8 quinquies
+says what was built. ROADMAP item 13 moved to Done.
+
+902 tests, 15 check rules, `dist/` synced. `plans/active/` is empty.

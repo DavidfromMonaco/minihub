@@ -1506,7 +1506,12 @@ no `runtime-provenance.json`), `package.json` (`build:installer`).
 
 ## D-032 — An edit history that undoes authorship, not performance
 
-**Status**: in force · 2026-09-07 · **decided, not implemented**
+**Status**: in force · 2026-09-07 · **implemented 2026-09-12** —
+`core/editHistory.js`, `core/editHistoryApply.js`, `ui/historyKeys.js`. Built out
+of order: this entry said it should follow ROADMAP item 4, and the author asked
+for it first. That cost nothing in the end, and the reason is the paragraph
+below about snapshots — the split item 4 exists for would have been the price of
+an inverse-operation history, which this is not.
 
 **Context** — Asked on 2026-09-07: an event history with a control in the shell,
 entries in the application menu, and `Ctrl+Z` / `Ctrl+Shift+Z`. `undo/redo` was
@@ -1542,8 +1547,34 @@ network, tracks, clips, notes — and never **performed state**.
   successive saved versions of the `.minihub`, is the answer to the durable need
   and stays a separate question.
 
+**One bound was added while building, and it is the only thing the history
+refuses inside its own scope: a VST node's PLUGIN LIST.** Everything else in a
+node's content goes back whole — an arpeggiator's pattern, a mixer's levels,
+control bindings — because those are parameters the engine is told about again
+by the republish `engineSync` already performs. A plugin is not a parameter: it
+is a running native instance, so restoring the list means creating, removing and
+re-stating instances in the engine. Recording a step the restore could not
+honour is worse than not recording it, because `Ctrl+Z` would then claim to have
+undone something it had not. Reconciling a chain with the engine is its own
+workstream.
+
+**Two things found the day it shipped, both in what it refused rather than in
+what it did**, and both worth keeping because the next feature with a keyboard
+shortcut will meet them:
+
+- the guard meant to leave a text field its own undo was `input, select,
+  textarea`, and it turned away every faceplate control in the application. The
+  Patch Bay was the one place `Ctrl+Z` worked, because it is SVG with no form
+  control in it. The browser only owns that key where there is TEXT to undo;
+- the history restored the model and no node editor redrew, so undo was
+  invisible everywhere except the canvas — and invisible is indistinguishable
+  from broken. `mount()` answers `history:applied` now.
+
 **What would justify revisiting** — a project format that carries versions, which
 would make a persistent history a read of the file rather than a second store.
+Or, for the bound above, a chain reconciliation in the engine: the data is
+already sufficient (`chainSync` rebuilds a chain from the model at startup), what
+is missing is the diff and its failure handling.
 
 **Where it lands** — [ROADMAP.md](ROADMAP.md) item 13. It should follow item 4:
 splitting `nodeInstances.js` is what makes "capture and restore the authored

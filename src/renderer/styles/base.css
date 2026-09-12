@@ -182,6 +182,21 @@ body {
 .icon-button:active {
   background: var(--bg-active);
 }
+/* An icon button with nothing to do still has to look like a button, or the
+   header gains two invisible gaps. Dimmed and inert, never gone. */
+.icon-button:disabled {
+  opacity: 0.32;
+  cursor: default;
+}
+.icon-button:disabled:hover {
+  background: transparent;
+  border-color: transparent;
+  color: var(--text-dim);
+}
+.history-controls {
+  display: inline-flex;
+  gap: 2px;
+}
 
 /* ---------- Body layout ---------- */
 .app-body {

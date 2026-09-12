@@ -117,3 +117,65 @@ test('the shipped profile is what the header ends up saying', () => {
   assert.equal(module.navEntry.label, LOADED_PROFILE.device.model,
     'the sidebar entry and the Patch Bay card are the same device');
 });
+
+// ---- the history, made visible ---------------------------------------------
+
+/*
+ * The keyboard answers everywhere and says nothing about whether there is
+ * anything to answer with. The shell is the one surface on screen whatever page
+ * you are on, so it is where "there is something behind you" becomes visible.
+ */
+
+/** A header fixture with the two history buttons present. */
+function historyFixture({ canUndo = false, canRedo = false } = {}) {
+  const hub = makeHub();
+  hub.midi = { state: 'ready', isMiniLabConnected: () => false };
+  hub.sequencer = { tempo: 120, recording: false, playTransport() {}, stopTransport() {}, setTempo() {} };
+  hub.project = { currentProjectName: 'Untitled', dirty: false, save() {} };
+  const calls = [];
+  hub.history = {
+    canUndo, canRedo,
+    undo: () => { calls.push('undo'); },
+    redo: () => { calls.push('redo'); }
+  };
+  const buttons = { 'history-undo': makeEl('button'), 'history-redo': makeEl('button') };
+  for (const el of Object.values(buttons)) el.disabled = true;
+  const statusEl = makeEl('span');
+  const previous = document.getElementById;
+  document.getElementById = (id) => buttons[id] || null;
+  try { buildHeader(hub, statusEl); } finally { document.getElementById = previous; }
+  const click = (id) => buttons[id]._listeners.click?.forEach((fn) => fn({}));
+  return { hub, buttons, calls, click };
+}
+
+test('the buttons open in the state the history is already in', () => {
+  const idle = historyFixture();
+  assert.equal(idle.buttons['history-undo'].disabled, true);
+  assert.equal(idle.buttons['history-redo'].disabled, true);
+
+  // The history starts before the shell is built, so its first announcement is
+  // already past when this subscribes. It must read it rather than wait.
+  const midSession = historyFixture({ canUndo: true });
+  assert.equal(midSession.buttons['history-undo'].disabled, false);
+  assert.equal(midSession.buttons['history-redo'].disabled, true);
+});
+
+test('they follow the history as it moves', () => {
+  const fixture = historyFixture();
+  fixture.hub.events.emit('history:changed', { canUndo: true, canRedo: false });
+  assert.equal(fixture.buttons['history-undo'].disabled, false);
+  assert.equal(fixture.buttons['history-redo'].disabled, true);
+
+  fixture.hub.events.emit('history:changed', { canUndo: true, canRedo: true });
+  assert.equal(fixture.buttons['history-redo'].disabled, false);
+
+  fixture.hub.events.emit('history:changed', { canUndo: false, canRedo: false });
+  assert.equal(fixture.buttons['history-undo'].disabled, true);
+});
+
+test('clicking them is the same step the keyboard takes', () => {
+  const fixture = historyFixture({ canUndo: true, canRedo: true });
+  fixture.click('history-undo');
+  fixture.click('history-redo');
+  assert.deepEqual(fixture.calls, ['undo', 'redo'], 'one history, two doors');
+});

@@ -7,7 +7,7 @@ Counter-intuitive choices: [DECISIONS.md](DECISIONS.md). Long workstreams:
 [PLANS.md](PLANS.md).
 
 **Current state** — branch `master`.
-853 JS tests green, 15 `npm run check` rules green, 3,963 native checks green
+902 JS tests green, 15 `npm run check` rules green, 3,963 native checks green
 across the four test binaries, a Release build with **0 errors and 0 warnings**,
 `dist/` synchronised with the sources.
 
@@ -26,13 +26,13 @@ the hardware out of the core — and its Étape A finished on 2026-09-04, so the
 was free for **importing a profile**, finished 2026-09-05 (item 8 below, D-027 to
 D-030).
 
-`plans/active/` holds
-[bindings-bar-docked.md](plans/active/bindings-bar-docked.md) — item 9, four of
-its eight steps landed on 2026-09-12. The slot before it was held by
-[two-controllers-at-once.md](plans/done/two-controllers-at-once.md), ticked
-since 2026-09-05 and waiting on a second keyboard; PLANS.md §2 holds that slot
-for work in progress and not for intentions, so it moved to `plans/done/` with
-the result "standby" and what had gone stale in it.
+`plans/active/` is empty. Two plans sit in `plans/done/` with the result
+"standby", neither blocked on code:
+[two-controllers-at-once.md](plans/done/two-controllers-at-once.md) waits on a
+second keyboard on the desk, and
+[bindings-bar-docked.md](plans/done/bindings-bar-docked.md) has four of its eight
+steps landed and waits on nothing but the author's order. PLANS.md §2 holds that
+slot for work in progress, not for intentions.
 
 ---
 
@@ -348,6 +348,49 @@ periodic types dropped. A renderer `console.log` is relayed back to main, so
 each event was written twice and the copy without a filter was the renderer's.
 The line is deleted rather than filtered: filtering it means repeating main's
 periodic list across a process boundary that forbids sharing it.
+
+---
+
+### 13. An edit history — undo and redo across the application — `master`
+
+Asked 2026-09-07, built 2026-09-12 on the author's order.
+[DECISIONS.md](DECISIONS.md) D-032, [INTENT.md](INTENT.md) §8 quinquies, plan:
+[plans/done/edit-history.md](plans/done/edit-history.md).
+
+`Ctrl+Z` / `Ctrl+Shift+Z` (and `Ctrl+Y`) on every page of the shell and inside a
+Clip Editor window, Undo / Redo in the application menu, two controls in the
+header. One linear history, in session, and it cannot span two projects by
+construction: every project change reloads the renderer.
+
+**Snapshots, not inverse operations** — which is what let this be built BEFORE
+item 4 rather than after it as D-032 expected. The split item 4 exists for would
+have been the price of inverting every mutation in `nodeInstances.js` and
+`routingModule.js`; a snapshot needs one way to put the state back. The whole
+detection problem is one seam — `SettingsStore.onSet`, which already fired on
+every write — so neither of those two files was touched to make an edit
+observable.
+
+**The line, made mechanical.** `PERFORMED_KEYS` classifies every project key on
+one side or the other, and a test fails if a key added later lands on neither:
+the viewport, the tempo and the master fader are performed. The sequencer's own
+view fields are carried over from the live state at every restore, so an undo
+never throws the timeline around while you are reading it.
+
+**What it refuses inside its own scope**: a VST node's plugin list. A plugin is a
+running native instance, not a parameter; the rest of a node's content —
+patterns, levels, bindings — goes back whole, and the engine follows through the
+republish that already existed.
+
+**Two defects found the day it shipped, both in what it refused rather than in
+what it did**, and worth reading before the next feature with a shortcut:
+
+- the "leave a text field its own undo" guard was `input, select, textarea`,
+  which turned away every faceplate control in the application. The Patch Bay
+  was the one place `Ctrl+Z` worked, being SVG with no form control in it. The
+  browser owns that key only where there is text to undo;
+- the history restored the model and no node editor redrew, so undo was
+  invisible everywhere but the canvas — and invisible is indistinguishable from
+  broken.
 
 ---
 
@@ -755,53 +798,6 @@ same `armLearn()` it would have touched anyway plus one call site. Any binding
 rule appearing in the new window's own code is the plan going wrong.
 
 ---
-
-### 13. An edit history — undo and redo across the application
-
-Asked 2026-09-07. `undo/redo` was out of scope; the refusal is **lifted**, with
-its bounds, in [INTENT.md](INTENT.md) §8 quinquies and
-[DECISIONS.md](DECISIONS.md) D-032. Read those two before writing code: what this
-item must *not* undo is the part that carries the risk.
-
-**The surface**, as asked: a control in the shell header, Back and Forward in the
-application menu, and `Ctrl+Z` / `Ctrl+Shift+Z`.
-
-**The line the history draws** — it owns **authored** state (network, tracks,
-clips, notes) and never **performed** state (transport, a knob moved during a
-take, a plugin's internal state, the audio device). Undo restores the network and
-lets the existing `buildRoutingSync` resynchronise the engine from it; it never
-sends the engine a reverse command, because a live audio callback has no inverse.
-
-**Snapshots, not inverse operations.** D-032 settles this. `model.snapshot()` and
-`normalizeSequencerState` already make the sequencer snapshot-shaped, and the
-project layer already captures and restores whole state on save and load. An
-inverse-operation history would instead need a correct inverse for every mutation
-in `core/nodeInstances.js` (1,145 lines) and `modules/routing/routingModule.js`
-(1,496 lines) — which is the reason for the ordering below.
-
-Three things that will not be obvious later:
-
-- **Coalescing.** A slider emits one `input` per pixel of a drag; `engineSync.js`
-  already separates a topology change from a value change for exactly this
-  reason. The history needs the same distinction, or one drag becomes two hundred
-  undo steps.
-- **The keyboard is contested.** `sequencerModule.js` binds `document` keydown
-  while mounted, and the clip editor is a separate window with its own document.
-  Whether `Ctrl+Z` in the clip editor undoes a note edit or the last Patch Bay
-  change is a product decision, not an implementation detail.
-- **A project switch ends the history.** `beginProjectTransition` /
-  `finishProjectTransition` already bracket that moment; the history is cleared
-  there, and never spans two projects.
-
-**What item 12 left it** — `Align` carries a one-step, page-local undo of its
-own (see Done, item 12). It is the button's counterpart, not a second history,
-and the day this item covers node positions that one is deleted rather than
-reconciled.
-
-**If you take this one before item 4** — it still works, and it is worth doing.
-`core/nodeInstances.js` and `modules/routing/routingModule.js` are simply the two
-files where capturing the authored state is most tangled today, so the same work
-costs more before the split than after it. That is a price, not a barrier.
 
 ---
 
