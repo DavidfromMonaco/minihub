@@ -14,16 +14,46 @@
  * from them -- and if one ever does, it can call `stopPropagation()` and win,
  * which is the right way round.
  *
- * WHY AN EDITABLE TARGET IS LEFT ALONE
- * ------------------------------------
+ * WHY ONLY A TEXT FIELD IS LEFT ALONE
+ * -----------------------------------
  * A text field has its own undo, the browser's, and it is the one the user
  * means while a caret is in it. Undoing a project edit because someone was
  * fixing a typo in a node name would be the feature's worst first impression.
+ *
+ * `input, select, textarea` was the first guess and it was WRONG, reported from
+ * use on 2026-09-12: Ctrl+Z worked in the Patch Bay and nowhere else. The Patch
+ * Bay is SVG with no form control in it; every other surface is built out of
+ * real ones -- that is the whole point of Omni Pearl, a faceplate drawn around
+ * a genuine `<select>` or `<input>` so the keyboard and screen readers keep
+ * working. So focus sat on a control almost always, and the guard ate the
+ * keystroke almost always.
+ *
+ * The browser only has an undo where there is TEXT to undo. A select, a
+ * checkbox, a radio, a slider, a button have none, so the application's undo is
+ * the only one that means anything there.
  */
 
-const EDITABLE = 'input,select,textarea,[contenteditable="true"]';
+/** `<input>` types the browser gives a text-editing undo to. */
+const TEXT_INPUT_TYPES = new Set([
+  'text', 'search', 'url', 'tel', 'email', 'password', 'number', ''
+]);
 
-const isEditable = (target) => !!target?.closest?.(EDITABLE);
+function isTextField(element) {
+  if (!element || element.nodeType !== 1) return false;
+  const tag = String(element.tagName || '').toLowerCase();
+  if (tag === 'textarea') return true;
+  if (tag === 'input') return TEXT_INPUT_TYPES.has(String(element.type || '').toLowerCase());
+  return false;
+}
+
+/**
+ * Is the caret somewhere the browser owns Ctrl+Z?
+ *
+ * `closest` is used for `contenteditable` because the target can be a node
+ * INSIDE an editable region; a form control is the target itself.
+ */
+export const isTextEditingTarget = (target) =>
+  isTextField(target) || !!target?.closest?.('[contenteditable="true"],[contenteditable=""]');
 
 /**
  * @returns {'undo'|'redo'|null} what this keystroke asks for.
@@ -48,7 +78,7 @@ export function installHistoryKeys(hub, { target = globalThis.window } = {}) {
   if (!target?.addEventListener) return () => {};
   const onKeyDown = (event) => {
     const intent = historyIntent(event);
-    if (!intent || isEditable(event.target)) return;
+    if (!intent || isTextEditingTarget(event.target)) return;
     if (!hub.history) return;
     event.preventDefault();
     if (intent === 'undo') hub.history.undo();

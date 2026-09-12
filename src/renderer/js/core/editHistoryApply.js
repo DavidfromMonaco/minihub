@@ -38,8 +38,12 @@ function restoreInstances(hub, persisted) {
   }
 
   // Present in the snapshot, absent on screen: the node you just deleted.
+  // Present in both: its content may have moved -- an arpeggiator pattern
+  // drawn, a mixer level pushed. `restoreContent` is what knows which part of a
+  // node's content can go back and which cannot.
   for (const [id, entry] of wanted) {
-    if (!hub.nodes.get(id)) hub.nodes.restoreInstance(entry);
+    if (hub.nodes.get(id)) hub.nodes.restoreContent(id, entry.content);
+    else hub.nodes.restoreInstance(entry);
   }
 }
 

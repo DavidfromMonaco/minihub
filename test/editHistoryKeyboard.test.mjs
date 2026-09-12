@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { historyIntent, installHistoryKeys } from '../src/renderer/js/ui/historyKeys.js';
+import { historyIntent, installHistoryKeys, isTextEditingTarget } from '../src/renderer/js/ui/historyKeys.js';
 
 /**
  * Contract: one Ctrl+Z, on every page.
@@ -70,13 +70,55 @@ test('the keystroke reaches the history and the browser does not also act on it'
   assert.deepEqual(calls, ['undo', 'redo']);
 });
 
+/** A DOM-ish element: a tag, a type, and nothing else the predicate reads. */
+const el = (tagName, type = '') => ({
+  nodeType: 1, tagName, type, closest: () => null
+});
+
 test('a caret in a text field keeps its own undo', () => {
   const { press, calls } = rig();
-  const field = { closest: (sel) => (sel.includes('input') ? field : null) };
-  const event = press(key({ ctrlKey: true, target: field }));
+  const event = press(key({ ctrlKey: true, target: el('INPUT', 'text') }));
 
   assert.deepEqual(calls, [], 'undoing a project edit because someone was fixing a typo is the worst first impression this could make');
   assert.equal(event.defaultPrevented, undefined, 'and the field still gets the keystroke');
+});
+
+/*
+ * Reported from use on 2026-09-12: Ctrl+Z worked in the Patch Bay and nowhere
+ * else. The Patch Bay is SVG with no form control in it; every other surface --
+ * the arpeggiator, the VST node's page -- is built out of REAL selects, sliders
+ * and checkboxes, because that is what Omni Pearl draws its faceplate around.
+ * The old guard turned all of them away.
+ */
+
+test('a knob, a switch or a step grid does not swallow the shortcut', () => {
+  for (const target of [el('SELECT'), el('INPUT', 'range'), el('INPUT', 'checkbox'),
+    el('INPUT', 'radio'), el('BUTTON'), el('DIV')]) {
+    const { press, calls } = rig();
+    const event = press(key({ ctrlKey: true, target }));
+    assert.deepEqual(calls, ['undo'],
+      `${target.tagName}${target.type ? '[' + target.type + ']' : ''} has no text undo of its own`);
+    assert.equal(event.defaultPrevented, true);
+  }
+});
+
+test('the predicate answers for the text inputs and only those', () => {
+  for (const type of ['text', 'search', 'url', 'tel', 'email', 'password', 'number', '']) {
+    assert.equal(isTextEditingTarget(el('INPUT', type)), true, `input[type=${type}] types text`);
+  }
+  for (const type of ['range', 'checkbox', 'radio', 'color', 'file', 'button']) {
+    assert.equal(isTextEditingTarget(el('INPUT', type)), false, `input[type=${type}] does not`);
+  }
+  assert.equal(isTextEditingTarget(el('TEXTAREA')), true);
+  assert.equal(isTextEditingTarget(el('SELECT')), false);
+  assert.equal(isTextEditingTarget(null), false);
+});
+
+test('a contenteditable region is still left alone, from anywhere inside it', () => {
+  const region = { nodeType: 1, tagName: 'DIV', type: '' };
+  const inside = { nodeType: 1, tagName: 'SPAN', type: '',
+    closest: (sel) => (sel.includes('contenteditable') ? region : null) };
+  assert.equal(isTextEditingTarget(inside), true, 'the target can be a node inside the editable one');
 });
 
 test('before the history exists, the keystroke does nothing rather than throwing', () => {

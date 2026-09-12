@@ -162,3 +162,25 @@ Two other things the code settled:
 
 Left: the header control (7b), and the documents (8) — D-032 and INTENT §8
 quinquies still say "decided, not implemented".
+
+2026-09-12 — **Reported from use: it worked in the Patch Bay and nowhere else.**
+Two causes, both mine, both fixed.
+
+- **The keyboard guard was `input, select, textarea`.** The Patch Bay is SVG
+  with no form control in it; every other surface is built out of real ones,
+  because that is what Omni Pearl draws a faceplate around. So focus sat on a
+  control almost always and the guard ate the keystroke almost always. The
+  browser only owns Ctrl+Z where there is TEXT to undo: `isTextEditingTarget`
+  now answers for a textarea, a contenteditable and the text-like `<input>`
+  types, and for nothing else. The Clip Editor window had the same over-broad
+  line in front of its own history check; it uses the shared predicate now.
+- **A node's content was not compared at all**, so drawing in the arpeggiator
+  produced no step. The bound was too wide: it is not "content", it is a VST
+  node's **plugin list** and only that — a plugin is a running native instance.
+  An arpeggiator pattern, a mixer level, a control binding are parameters the
+  engine is told about by the republish `engineSync` already performs, so they
+  go back whole. `NodeInstanceManager.restoreContent` is what knows the
+  difference, and it emits the same two signals an ordinary edit of that node
+  sends.
+
+897 tests, 15 check rules, `dist/` synced.

@@ -698,6 +698,40 @@ export class NodeInstanceManager {
   }
 
   /**
+   * Put a live node's content back, and tell the engine.
+   *
+   * A VST node's PLUGIN LIST is deliberately kept as it is: those are running
+   * native instances, and swapping the list here would leave the engine holding
+   * plugins the model no longer lists. Everything else -- an arpeggiator's
+   * pattern, a mixer's levels, control bindings -- is a parameter the engine is
+   * told about by the republish below, so it goes back whole.
+   *
+   * Returns whether anything moved.
+   */
+  restoreContent(id, content) {
+    const instance = this.instances.get(id);
+    if (!instance) return false;
+    const next = cloneContentFor(instance.type, content);
+    const kept = instance.type === 'vst'
+      ? { ...(next || {}),
+          plugins: instance.content?.plugins || [],
+          ...(Number.isSafeInteger(instance.content?.nextPluginInstanceSeq)
+            ? { nextPluginInstanceSeq: instance.content.nextPluginInstanceSeq } : {}) }
+      : next;
+    if (JSON.stringify(kept) === JSON.stringify(instance.content)) return false;
+    instance.content = kept;
+    this._persist();
+    // The same two signals an ordinary edit of this node sends. `engineSync`
+    // listens to both and republishes the whole plan, so the engine follows the
+    // model rather than being handed a reverse command (D-032).
+    if (instance.type === 'arpeggiator') this.hub.events.emit('nativeMidi:stateChanged', { nodeId: id });
+    else if (instance.type === 'mixer' || instance.type === 'morpher') {
+      this.hub.events.emit('nativeAudio:stateChanged', { nodeId: id });
+    }
+    return true;
+  }
+
+  /**
    * Put a node back exactly as it was: same id, same ordinal, same content.
    *
    * Goes through `_add`, which is the single creation path, so naming, module

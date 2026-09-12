@@ -1,5 +1,5 @@
 import { escapeHtml } from './core/html.js';
-import { historyIntent } from './ui/historyKeys.js';
+import { historyIntent, isTextEditingTarget } from './ui/historyKeys.js';
 import { notesInBox, selectNoteIds } from './core/clipEditorSelection.js';
 import { MIN_NOTE_PPQ, SNAP_STEPS, clampNoteGroupDelta } from './core/sequencerModel.js';
 
@@ -772,18 +772,21 @@ async function load() {
 }
 
 function keyDown(event) {
-  if (event.target?.closest?.('input,select,textarea')) return;
-  // Undo is the application's, not this window's. It is answered before the
-  // `midi` guard below on purpose: Ctrl+Z has to work while an audio clip is
-  // open too, because the edit it undoes may have been made somewhere else
-  // entirely. INTENT §8 quinquies -- one linear history, reached from
-  // everywhere.
+  // Undo is answered FIRST, and with its own narrower guard.
+  //
+  // The line below turns away anything focused on a control, which is right for
+  // this window's note editing and wrong for undo: the snap selector and the
+  // velocity slider are a `<select>` and an `<input>`, so after touching either
+  // one Ctrl+Z would be swallowed. The browser only owns Ctrl+Z where there is
+  // text to undo. It is also answered before the `midi` check, because the edit
+  // it undoes may have been made on another page entirely.
   const intent = historyIntent(event);
-  if (intent) {
+  if (intent && !isTextEditingTarget(event.target)) {
     event.preventDefault();
     Promise.resolve(window.clipEditorAPI?.history?.(intent)).catch(() => {});
     return;
   }
+  if (event.target?.closest?.('input,select,textarea')) return;
   if (current?.track.type !== 'midi') return;
   if (event.key === 'Escape' && (lasso || drag)) {
     event.preventDefault();

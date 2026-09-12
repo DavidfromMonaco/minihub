@@ -203,22 +203,86 @@ test('applying a restore does not record itself as a new edit', async () => {
     'the restore writing the same keys an edit writes must not end its own redo chain');
 });
 
-// ---- the bound, stated rather than discovered ----------------------------------
+// ---- inside a node ---------------------------------------------------------------
 
-test('what happens inside a node is not a step, and does not pretend to be', async () => {
+/*
+ * Reported from use on 2026-09-12: Ctrl+Z worked in the Patch Bay and nowhere
+ * else. Half of that was the keyboard guard (see editHistoryKeyboard); the
+ * other half was here — what you change in an arpeggiator is a node's CONTENT,
+ * and content was not compared at all.
+ *
+ * The bound is narrower than that, and it is exactly one thing: a VST node's
+ * PLUGIN LIST. A plugin is a running native instance, so putting the list back
+ * means reconciling with the engine. Everything else inside a node is a
+ * parameter the engine is simply told about again.
+ */
+
+test('drawing in the arpeggiator is a step, and Ctrl+Z puts the pattern back', async () => {
   const hub = rig();
   const node = hub.nodes.create('arpeggiator');
   await tick();
-  assert.equal(hub.history.canUndo, true, 'creating it was');
+  const before = node.content.patternLength;
 
   node.content = { ...node.content, patternLength: 16 };
   await hub.nodes._persist();
   await tick();
+  assert.notEqual(hub.nodes.get(node.id).content.patternLength, before);
 
-  assert.equal(hub.history.canUndo, true);
+  await hub.history.undo();
+  assert.equal(hub.nodes.get(node.id).content.patternLength, before,
+    'the pattern is back, and the node was never deleted to get there');
+  assert.ok(hub.nodes.get(node.id), 'the node itself stayed');
+});
+
+test('restoring an arpeggiator republishes it to the engine', async () => {
+  const hub = rig();
+  const node = hub.nodes.create('arpeggiator');
+  await tick();
+  const republished = [];
+  hub.events.on('nativeMidi:stateChanged', (msg) => republished.push(msg));
+
+  node.content = { ...node.content, patternLength: 16 };
+  await hub.nodes._persist();
+  await tick();
+  await hub.history.undo();
+
+  assert.deepEqual(republished, [{ nodeId: node.id }],
+    'the engine follows the model rather than being handed a reverse command');
+});
+
+test('a VST chain keeps its plugins through an undo', async () => {
+  const hub = rig();
+  const node = hub.nodes.create('vst');
+  await tick();
+
+  // A plugin is added, then something else entirely is undone.
+  node.content = { ...node.content, plugins: [{ id: 'p1', pluginId: 'C:/x.vst3' }] };
+  await hub.nodes._persist();
+  await hub.settings.set('networkLayout', { [node.id]: { x: 5, y: 5 } });
+  await tick();
+  await hub.settings.set('networkLayout', { [node.id]: { x: 9, y: 9 } });
+  await tick();
+
+  await hub.history.undo();
+
+  assert.deepEqual(hub.nodes.get(node.id).content.plugins, [{ id: 'p1', pluginId: 'C:/x.vst3' }],
+    'the engine holds that instance; the model must not stop listing it');
+  assert.deepEqual(hub.settings.get('networkLayout'), { [node.id]: { x: 5, y: 5 } });
+});
+
+test('adding a plugin does not claim an undo step of its own', async () => {
+  const hub = rig();
+  const node = hub.nodes.create('vst');
+  await tick();
+  assert.equal(hub.history.canUndo, true, 'creating the node was a step');
+
+  node.content = { ...node.content, plugins: [{ id: 'p1', pluginId: 'C:/x.vst3' }] };
+  await hub.nodes._persist();
+  await tick();
+
   await hub.history.undo();
   assert.ok(!hub.nodes.get(node.id),
-    'one undo goes back past the creation: the pattern edit never claimed a step of its own');
+    'one undo goes back past the creation: the plugin list never claimed a step');
 });
 
 test('a node deleted after an edit comes back with the content it had', async () => {
@@ -234,6 +298,5 @@ test('a node deleted after an edit comes back with the content it had', async ()
   await tick();
   await hub.history.undo();
 
-  assert.equal(hub.nodes.get(node.id)?.content?.patternLength, 32,
-    'the present is refreshed even when nothing steps on it, or this returns the older content');
+  assert.equal(hub.nodes.get(node.id)?.content?.patternLength, 32);
 });

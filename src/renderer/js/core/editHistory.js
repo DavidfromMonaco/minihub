@@ -72,6 +72,29 @@ export const HISTORY_DEPTH = 50;
 
 const clone = (value) => (value === undefined ? undefined : JSON.parse(JSON.stringify(value)));
 
+/**
+ * A node's content, minus the one part of it the history cannot put back.
+ *
+ * That part is a VST node's PLUGIN LIST, and only that. A plugin in a chain is
+ * a running native instance: restoring the list means creating, removing and
+ * re-stating instances in the engine, which is a workstream of its own with its
+ * own failure modes. So it is not compared here -- because a step the restore
+ * could not honour is worse than no step: Ctrl+Z would claim to have undone
+ * something it had not.
+ *
+ * Everything else inside a node IS restorable and IS compared: an arpeggiator's
+ * pattern, a mixer's levels, a VST node's control bindings. None of them is a
+ * native instance -- they are parameters the engine is told about by the
+ * republish `engineSync` already performs, so putting them back is writing them
+ * and saying so.
+ */
+export function authoredContent(entry) {
+  if (!entry || typeof entry !== 'object') return null;
+  if (entry.type !== 'vst') return entry.content ?? null;
+  const { plugins, nextPluginInstanceSeq, ...rest } = entry.content || {};
+  return rest;
+}
+
 export class EditHistory {
   constructor(hub, { depth = HISTORY_DEPTH } = {}) {
     this.hub = hub;
@@ -171,7 +194,7 @@ export class EditHistory {
   changed(a, b) {
     for (const key of AUTHORED_KEYS) {
       if (key === 'nodeInstances') {
-        if (this._nodeIdentity(a[key]) !== this._nodeIdentity(b[key])) return true;
+        if (this._authoredNodes(a[key]) !== this._authoredNodes(b[key])) return true;
         continue;
       }
       if (key === 'sequencerState') {
@@ -183,13 +206,12 @@ export class EditHistory {
     return false;
   }
 
-  /** Which nodes exist, as a comparable string. Content is not part of it. */
-  _nodeIdentity(persisted) {
+  /** The nodes, and what is authored inside them, as one comparable string. */
+  _authoredNodes(persisted) {
     const entries = Array.isArray(persisted?.instances) ? persisted.instances : [];
-    return entries
-      .map((entry) => `${entry?.id}${entry?.type}${entry?.ordinal}`)
-      .sort()
-      .join('');
+    return JSON.stringify(entries
+      .map((entry) => [entry?.id, entry?.type, entry?.ordinal, authoredContent(entry)])
+      .sort((a, b) => String(a[0]).localeCompare(String(b[0]))));
   }
 
   /** A sequencer snapshot with its view fields dropped. */
