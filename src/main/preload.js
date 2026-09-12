@@ -95,5 +95,8 @@ contextBridge.exposeInMainWorld('hubAPI', {
   profilePick: () => ipcRenderer.invoke('profile:pick'),
   profileImport: (text) => ipcRenderer.invoke('profile:import', text),
   profileSelect: (fileName) => ipcRenderer.invoke('profile:select', fileName),
-  profileForget: (fileName) => ipcRenderer.invoke('profile:forget', fileName)
+  profileForget: (fileName) => ipcRenderer.invoke('profile:forget', fileName),
+  // A NAMED place on minihub.site, never a URL: main owns the address list.
+  // See src/main/externalLinks.js for why that distinction is the whole point.
+  siteOpen: (destination) => ipcRenderer.invoke('site:open', destination)
 });

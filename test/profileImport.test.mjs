@@ -186,14 +186,18 @@ function button(dataset = {}) {
   };
 }
 
-/** The three queries `bindControllerProfileSection` makes, and nothing else. */
-function fakeRoot({ importButton = null, load = [], unload = [], forget = [], loaded = null }) {
+/** The queries `bindControllerProfileSection` makes, and nothing else. */
+function fakeRoot({ importButton = null, setupsButton = null, load = [], unload = [], forget = [], loaded = null }) {
   // `loaded` defaults to the rows the Unload buttons imply, which is what the
   // real markup carries for every row EXCEPT the shipped one when nothing else
   // is loaded: it is running, and has no Unload.
   const rows = loaded ?? unload.map((button) => ({ dataset: { profileLoaded: button.dataset.profileUnload } }));
   return {
-    querySelector: (selector) => (selector === '#profile-import' ? importButton : null),
+    querySelector: (selector) => {
+      if (selector === '#profile-import') return importButton;
+      if (selector === '#profile-setups') return setupsButton;
+      return null;
+    },
     querySelectorAll: (selector) => {
       if (selector === '[data-profile-load]') return load;
       if (selector === '[data-profile-unload]') return unload;
@@ -204,12 +208,14 @@ function fakeRoot({ importButton = null, load = [], unload = [], forget = [], lo
   };
 }
 
-function fakeHub({ pick, imported = { ok: true }, selected = { ok: true }, forgotten = { ok: true } }) {
+function fakeHub({ pick, imported = { ok: true }, selected = { ok: true }, forgotten = { ok: true },
+  opened = true } = {}) {
   const calls = [];
   return {
     calls,
     hub: {
       api: {
+        siteOpen: async (destination) => { calls.push(['site', destination]); return opened; },
         profilePick: async () => { calls.push(['pick']); return pick; },
         profileImport: async (text) => { calls.push(['import', text.length]); return imported; },
         profileSelect: async (fileName) => { calls.push(['select', fileName]); return selected; },
@@ -442,4 +448,51 @@ test('the Learn panel opens the page it was told, and nothing when there is none
   assert.equal(branch, 'page',
     'the panel must navigate to what controllerModuleId() answered, not to a name it knows');
   assert.match(source, /const page = controllerModuleId\(hub\.modules\)/);
+});
+
+// ------------------------------------------------------------ leaving MiniHub ---
+
+/*
+ * ROADMAP item 15. The one button in the application that opens something
+ * outside it. What it must NOT do is choose the address: `shell.openExternal`
+ * launches whatever program the string's scheme belongs to, and this panel is
+ * the one that reads files from strangers.
+ */
+
+test('Browse setups asks for a name, never for a URL', async () => {
+  const setupsButton = button();
+  const { hub, calls } = fakeHub({});
+
+  bindControllerProfileSection(fakeRoot({ setupsButton }), hub, { refresh: () => {}, reload: () => {} });
+  await setupsButton.press();
+
+  assert.deepEqual(calls, [['site', 'setups']]);
+});
+
+test('a page that will not open says so instead of failing silently', async () => {
+  const setupsButton = button();
+  const outcomes = [];
+  const { hub } = fakeHub({ opened: false });
+
+  bindControllerProfileSection(fakeRoot({ setupsButton }), hub, {
+    refresh: (outcome) => outcomes.push(outcome), reload: () => {}
+  });
+  await setupsButton.press();
+
+  assert.equal(outcomes[0].message.ok, false);
+  assert.match(outcomes[0].message.text, /setups/,
+    'and it names the page, so the user can reach it himself');
+});
+
+test('opening a page restarts nothing', async () => {
+  const setupsButton = button();
+  let reloaded = false;
+  const { hub } = fakeHub({});
+
+  bindControllerProfileSection(fakeRoot({ setupsButton }), hub, {
+    refresh: () => {}, reload: () => { reloaded = true; }
+  });
+  await setupsButton.press();
+
+  assert.equal(reloaded, false, 'nothing about the loaded controllers changed');
 });

@@ -565,6 +565,9 @@ body {
    profile is fixed in one pass, and this is where that pays off. */
 .profile-actions { display: flex; justify-content: space-between; align-items: center;
   gap: 10px; margin-top: 12px; }
+/* The buttons group left, the hint stays right: `space-between` on the row
+   would otherwise push a second button into the middle. */
+.profile-action-buttons { display: flex; flex-wrap: wrap; gap: 8px; }
 
 .folder {
   padding: 8px 0;

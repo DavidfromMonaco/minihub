@@ -168,7 +168,10 @@ export function controllerProfileSectionHtml(state) {
       ${entries.map((entry) => profileRow(entry, selected)).join('')}
       ${faults}${message}
       <div class="profile-actions">
-        <button class="btn" id="profile-import">Import a profile…</button>
+        <span class="profile-action-buttons">
+          <button class="btn" id="profile-import">Import a profile…</button>
+          <button class="btn" id="profile-setups">Browse setups on minihub.site</button>
+        </span>
         <span class="folder-hint">Loading or unloading a controller reloads the window.</span>
       </div>`;
 }
@@ -202,6 +205,18 @@ export function bindControllerProfileSection(rootEl, hub, { refresh, reload = ()
         return;
       }
       reload();
+    });
+  }
+
+  // The one button that leaves MiniHub. It says where it goes in its own label
+  // rather than behind a confirmation: a dialog for "this opens your browser"
+  // is a question nobody wants asked twice. The renderer names the destination;
+  // `src/main/externalLinks.js` owns the address and refuses any other name.
+  const setupsButton = rootEl.querySelector('#profile-setups');
+  if (setupsButton) {
+    setupsButton.addEventListener('click', async () => {
+      if (await api.siteOpen?.('setups')) return;
+      refresh({ message: { ok: false, text: 'The setups page could not be opened. minihub.site/setups' } });
     });
   }
 

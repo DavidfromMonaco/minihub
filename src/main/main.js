@@ -18,6 +18,7 @@ const fs = require('fs');
 const { FORMATS: AUDIO_EXPORT_FORMATS, audioExportFormat, audioExportFilePath } = require('./audioExportPath');
 const { loadSettings, saveSettings, rememberDirectory, rememberDirectoryOfFile, persistPluginStateChunk } = require('./settings');
 const { PURPOSES: DIRECTORY_PURPOSES, isKnownPurpose, rememberedDirectory } = require('./recentDirectories');
+const { externalUrlFor } = require('./externalLinks');
 const controllerProfiles = require('./controllerProfiles');
 const { createEngineEventTrace } = require('./engineEventTrace');
 const { EngineProcess } = require('./engine');
@@ -299,6 +300,26 @@ ipcMain.handle('directories:choose', async (_event, purpose) => {
   if (result.canceled) return null;
   rememberDirectory(purpose, result.filePaths[0]);
   return result.filePaths[0];
+});
+/**
+ * Open one of MiniHub's own pages in the user's browser.
+ *
+ * Same shape as `directories:open` just below, and for a stronger reason: the
+ * renderer names a destination and `externalLinks.js` answers with the URL, so
+ * no string chosen in the renderer ever reaches the operating system. An
+ * unknown name is refused rather than opened.
+ */
+ipcMain.handle('site:open', async (_event, destination) => {
+  const url = externalUrlFor(destination);
+  if (!url) return false;
+  try {
+    await shell.openExternal(url);
+    return true;
+  } catch (_) {
+    // No browser, or the shell refused. The page cannot be reached and the
+    // caller says so; it is not worth taking the application down.
+    return false;
+  }
 });
 ipcMain.handle('directories:open', async (_event, purpose) => {
   if (!isKnownPurpose(purpose)) return false;
