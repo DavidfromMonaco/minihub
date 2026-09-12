@@ -31,12 +31,26 @@ const PROJECT_ITEMS = Object.freeze([
 ]);
 
 /**
+ * The two entries of the Edit menu.
+ *
+ * The Edit ROLES are still deliberately absent -- Chromium already answers
+ * Ctrl+C/V/X/A inside a text field without a menu. These two are different:
+ * nothing else in the application answers them, and the accelerators are
+ * declared here so the menu SHOWS them. The renderer binds the same keystrokes
+ * on `window` for the pages and windows a menu accelerator does not reach.
+ */
+const EDIT_ITEMS = Object.freeze([
+  { command: 'edit:undo', label: '&Undo', accelerator: 'CmdOrCtrl+Z' },
+  { command: 'edit:redo', label: '&Redo', accelerator: 'CmdOrCtrl+Shift+Z' }
+]);
+
+/**
  * The commands this menu can send, in menu order. The renderer keeps the other
  * half of the pair (`core/menuCommands.js`); a test compares the two lists,
  * because a command nobody answers is a menu entry that does nothing at all.
  */
 const MENU_COMMANDS = Object.freeze(
-  PROJECT_ITEMS.filter((item) => item.command).map((item) => item.command)
+  [...PROJECT_ITEMS, ...EDIT_ITEMS].filter((item) => item.command).map((item) => item.command)
 );
 
 const CHANNEL = 'menu:command';
@@ -49,6 +63,12 @@ function appMenuTemplate(send) {
     {
       label: '&File',
       submenu: [...projectItems, { type: 'separator' }, { role: 'quit', label: 'E&xit' }]
+    },
+    {
+      label: '&Edit',
+      submenu: EDIT_ITEMS.map((item) => ({
+        label: item.label, accelerator: item.accelerator, click: () => send(item.command)
+      }))
     },
     {
       label: '&View',

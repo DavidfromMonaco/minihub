@@ -14,7 +14,12 @@ const ACTIONS = new Map([
   ['project:template', (hub) => hub.project.newFromBasicTemplate()],
   ['project:open', (hub) => hub.project.load()],
   ['project:save', (hub) => hub.project.save(false)],
-  ['project:save-as', (hub) => hub.project.save(true)]
+  ['project:save-as', (hub) => hub.project.save(true)],
+  // The menu accelerator and the `window` keydown are two doors on one room:
+  // the menu reaches the shell, the keydown reaches a Clip Editor window the
+  // menu does not own. Both end here.
+  ['edit:undo', (hub) => hub.history?.undo()],
+  ['edit:redo', (hub) => hub.history?.redo()]
 ]);
 
 /** The commands answered here, in the order the menu lists them. */

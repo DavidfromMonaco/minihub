@@ -5,7 +5,15 @@ the bindings interface sits under the plugin editor and moves with it, and
 `renderControlBindings()` is gone from the VST node's editor.
 **Origin** — ROADMAP item 9, [DECISIONS.md](../../DECISIONS.md) D-021, asked
 2026-09-04, started 2026-09-12.
-**Status** — in progress
+**Status** — **standby, 2026-09-12.** Four of eight steps landed and committed
+(`9b38c1e`). Waiting on nothing technical: the author asked for the edit history
+first, and PLANS.md §2 holds the single slot for the work in progress.
+
+**Nothing has gone stale yet** — it was parked the same day it was opened. The
+part to re-read before resuming is the D-018 note in *Context*: the window must
+MOVE `renderControlBindings()`, never reimplement it, or that decision's refactor
+is paid twice. Steps 1 to 4 are additive and already in `master`, so resuming
+costs nothing beyond step 5.
 
 ## Context
 

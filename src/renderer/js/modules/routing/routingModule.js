@@ -1394,6 +1394,16 @@ export function createRoutingModule(hub) {
 
     subs.push(
       hub.events.on('network:change', onNetworkChange),
+      // An undo rewrote `networkLayout` under us. The cache below only fills in
+      // positions it is MISSING, so without this the nodes stay where they were
+      // and the canvas quietly disagrees with the project.
+      hub.events.on('history:applied', () => {
+        positions = new Map();
+        placedSignature = '';
+        alignUndo = null;
+        updateAlignControls();
+        render();
+      }),
       () => window.removeEventListener('resize', applyViewBox)
     );
   }

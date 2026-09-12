@@ -1,4 +1,5 @@
 import { escapeHtml } from './core/html.js';
+import { historyIntent } from './ui/historyKeys.js';
 import { notesInBox, selectNoteIds } from './core/clipEditorSelection.js';
 import { MIN_NOTE_PPQ, SNAP_STEPS, clampNoteGroupDelta } from './core/sequencerModel.js';
 
@@ -771,8 +772,19 @@ async function load() {
 }
 
 function keyDown(event) {
-  if (current?.track.type !== 'midi') return;
   if (event.target?.closest?.('input,select,textarea')) return;
+  // Undo is the application's, not this window's. It is answered before the
+  // `midi` guard below on purpose: Ctrl+Z has to work while an audio clip is
+  // open too, because the edit it undoes may have been made somewhere else
+  // entirely. INTENT §8 quinquies -- one linear history, reached from
+  // everywhere.
+  const intent = historyIntent(event);
+  if (intent) {
+    event.preventDefault();
+    Promise.resolve(window.clipEditorAPI?.history?.(intent)).catch(() => {});
+    return;
+  }
+  if (current?.track.type !== 'midi') return;
   if (event.key === 'Escape' && (lasso || drag)) {
     event.preventDefault();
     if (lasso) lassoCancel();

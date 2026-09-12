@@ -15,6 +15,9 @@ import { setupControlRouting } from './core/controlRouting.js';
 import { setupChainSync } from './core/chainSync.js';
 import { BUILD_STAMP } from './core/buildStamp.js';
 import { bindMenuCommands } from './core/menuCommands.js';
+import { setupEditHistory } from './core/editHistory.js';
+import { applyHistorySnapshot } from './core/editHistoryApply.js';
+import { installHistoryKeys } from './ui/historyKeys.js';
 
 async function main() {
   const hub = createHub(window.hubAPI);
@@ -54,6 +57,15 @@ async function main() {
   // even when the native engine was already running before this renderer.
   hub.sequencer.syncNative();
   hub.project.finishBootstrap();
+
+  // The history starts HERE and not earlier: bootstrap is the project arriving
+  // on screen, and the state it arrives in is the one there is nothing to undo
+  // back past. Anything before this point -- restoring instances, restoring
+  // cables, the first native publication -- is the project being opened, not
+  // edited. DECISIONS D-032.
+  setupEditHistory(hub, { apply: applyHistorySnapshot });
+  hub.history.start();
+  installHistoryKeys(hub);
 
   // UI shell.
   const sidebarEl = document.getElementById('sidebar');

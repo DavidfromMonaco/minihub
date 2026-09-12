@@ -357,6 +357,26 @@ export class Network {
    * So: absent means remembered, wrong means dropped, and nothing that is
    * remembered ever routes.
    */
+  /**
+   * Make the cable set exactly `connections`, cutting what is not in it.
+   *
+   * `restore()` is additive on purpose -- it is the startup path, where there
+   * is nothing to cut. Undo is the opposite question: put the canvas back,
+   * which means a cable drawn since the snapshot has to go. Kept next to
+   * `restore()` so the two cannot drift about what a connection IS.
+   */
+  replaceConnections(connections) {
+    const wanted = new Set((Array.isArray(connections) ? connections : [])
+      .map((value) => Network._endpointPair(value))
+      .filter(Boolean)
+      .map((pair) => `${pair.from.nodeId}${pair.from.portId}${pair.to.nodeId}${pair.to.portId}`));
+    for (const c of [...this._connections]) {
+      const key = `${c.from.nodeId}${c.from.portId}${c.to.nodeId}${c.to.portId}`;
+      if (!wanted.has(key)) this.disconnect(c.from.nodeId, c.from.portId, c.to.nodeId, c.to.portId);
+    }
+    this.restore(connections);
+  }
+
   restore(connections) {
     if (!Array.isArray(connections)) return;
     this._unresolved = [];

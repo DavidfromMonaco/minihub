@@ -39,7 +39,15 @@ export function createHub(api) {
   hub.nodes = new NodeInstanceManager(hub);
   hub.project = new ProjectManager(hub, api);
   hub.sequencer = new SequencerController(hub);
-  settings.onSet = (key) => { if (PROJECT_KEYS.includes(key)) hub.project.markDirty(); };
+  // One hook, two readers. `onSet` is the only place that sees every write, so
+  // it is where "the project is dirty" and "that was an edit" are both decided
+  // -- neither has to be wired into `nodeInstances.js` or `routingModule.js`.
+  // `hub.history` appears later (app.js, once the project is on screen), so the
+  // call is optional by construction rather than by accident.
+  settings.onSet = (key, value) => {
+    if (PROJECT_KEYS.includes(key)) hub.project.markDirty();
+    hub.history?.observe?.(key, value);
+  };
 
   return hub;
 }

@@ -639,18 +639,27 @@ export class NodeInstanceManager {
    * module registration, network registration and persistence cannot drift
    * apart between them.
    */
-  _add(typeId, content) {
+  _add(typeId, content, { id = null, ordinal = null } = {}) {
     const type = getNodeType(typeId);
     if (!type) return null;
     // Singleton creation is deliberately a no-op. Returning null also keeps a
     // repeated Patch Bay create action from moving/reselecting the live node.
     if (type.singleton && this.list().some((instance) => instance.type === typeId)) return null;
     const instance = {
-      id: type.stableId || this._nextId(typeId),
+      // `id` is only ever supplied by a restore -- the edit history putting
+      // back the node you just deleted. That is not invariant 4's "a node id is
+      // never reused": it is the SAME node, with the same content, coming back
+      // under the identity every cable and every layout entry still names. A
+      // new node never takes this path.
+      id: id || type.stableId || this._nextId(typeId),
       type: typeId,
-      ordinal: this._lowestFreeOrdinal(typeId),
+      ordinal: Number.isInteger(ordinal) && ordinal > 0 ? ordinal : this._lowestFreeOrdinal(typeId),
       content
     };
+    // The sequence must never fall behind an id that exists, or the next new
+    // node collides with the one just restored and registration throws.
+    const restoredSuffix = idSuffix(instance.id);
+    if (restoredSuffix > (this._idSeq[typeId] || 0)) this._idSeq[typeId] = restoredSuffix;
     instance.name = nodeDisplayName(type, instance.ordinal);
     this.instances.set(instance.id, instance);
     this._registerModule(instance);
@@ -686,6 +695,21 @@ export class NodeInstanceManager {
     const type = getNodeType(snapshot.type);
     if (!type || type.copyable === false) return null;
     return this._add(snapshot.type, cloneContentFor(snapshot.type, snapshot.content));
+  }
+
+  /**
+   * Put a node back exactly as it was: same id, same ordinal, same content.
+   *
+   * Goes through `_add`, which is the single creation path, so naming, module
+   * registration and network registration cannot drift from the ordinary one.
+   */
+  restoreInstance(entry) {
+    if (!entry || typeof entry !== 'object' || typeof entry.id !== 'string') return null;
+    if (this.instances.has(entry.id)) return this.instances.get(entry.id);
+    const type = getNodeType(entry.type);
+    if (!type) return null;
+    return this._add(entry.type, cloneContentFor(entry.type, entry.content),
+      { id: entry.id, ordinal: entry.ordinal });
   }
 
   /** Delete a user-created instance (native/system nodes are never deletable). */

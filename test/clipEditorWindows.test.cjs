@@ -224,9 +224,9 @@ test('sequential open/close cycles replace WebContents IDs and cannot consume st
   // handler per channel.
   assert.deepEqual([...handlers.keys()].sort(), [
     'clip-editor:audition', 'clip-editor:close-all', 'clip-editor:get',
-    'clip-editor:invalidate', 'clip-editor:open', 'clip-editor:ready',
-    'clip-editor:respond', 'clip-editor:transport', 'clip-editor:transport-publish',
-    'clip-editor:update'
+    'clip-editor:history', 'clip-editor:invalidate', 'clip-editor:open',
+    'clip-editor:ready', 'clip-editor:respond', 'clip-editor:transport',
+    'clip-editor:transport-publish', 'clip-editor:update'
   ], 'bind remains idempotent and does not accumulate IPC handlers');
 
   await handlers.get('clip-editor:open')(mainEvent, 'clip-midi-1');

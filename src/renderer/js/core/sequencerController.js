@@ -348,6 +348,26 @@ export class SequencerController {
     return true;
   }
 
+  /**
+   * Adopt an authored state wholesale -- the edit history putting the music
+   * back.
+   *
+   * Goes through `changed()` rather than writing `sequencerState` directly,
+   * because that is what republishes the native plan and invalidates the open
+   * Clip Editors. A window still showing a clip this state does not have is the
+   * failure mode that would otherwise be found by clicking it.
+   *
+   * The view fields in `state` are the LIVE ones: `EditHistory.forApply` put
+   * them there, so an undo does not scroll the timeline out from under you.
+   */
+  restoreState(state) {
+    if (!state || typeof state !== 'object') return false;
+    if (this._activeInputNotes.size) this._panicLiveDestinations();
+    this.model = new SequencerModel(state);
+    this.changed();
+    return true;
+  }
+
   changed({ render = true, syncNative = true, invalidateEditors = true } = {}) {
     const snapshot = this.model.snapshot();
     this.hub.settings.set(STATE_KEY, snapshot);
@@ -610,6 +630,20 @@ export class SequencerController {
       // `false` is not an error: it is "this track has no Destination, or no
       // cable behind it". The editor says so rather than pretending to play.
       return { ok: true, sounded: this.auditionNote(clipId, payload) };
+    }
+    if (request.kind === 'history') {
+      // Deliberately not gated on the clip or on the project id: the editor is
+      // where the key was pressed, not what is being undone. A stale window
+      // asking to step the history is still asking for the same one step.
+      const history = this.hub.history;
+      if (!history) return { ok: false, reason: 'unsupported-request' };
+      if (request.operation !== 'undo' && request.operation !== 'redo') {
+        return { ok: false, reason: 'unsupported-request' };
+      }
+      // The answer says whether there was anything to do, so the window can
+      // stay silent rather than flash something that did not happen.
+      return Promise.resolve(history[request.operation]())
+        .then((moved) => ({ ok: true, moved: moved === true }));
     }
     if (request.kind === 'transport') {
       if (this.hub.project?._transitionPending) return { ok: false, reason: 'project-transition' };

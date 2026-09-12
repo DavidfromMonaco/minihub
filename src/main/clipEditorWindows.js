@@ -31,6 +31,7 @@ function validAudition(value) {
   return true;
 }
 const TRANSPORT_ACTIONS = new Set(['return-start', 'play', 'stop']);
+const HISTORY_DIRECTIONS = new Set(['undo', 'redo']);
 // Kept identical to QUANTIZE_GRIDS in core/sequencerModel.js. The process
 // boundary is why this is a second list -- main is CommonJS, the model is an
 // ES module -- so a test compares the two rather than trusting this comment.
@@ -183,6 +184,20 @@ class ClipEditorWindows {
       if (!editor || editor.clipId !== clipId || !PROJECT_ID.test(String(expectedProjectId || ''))
           || !validAudition(payload)) return { ok: false, reason: 'invalid-request' };
       return this._requestCanonical(editor, 'audition', 'note', payload, expectedProjectId);
+    });
+    /**
+     * Ctrl+Z pressed in a Clip Editor window.
+     *
+     * It carries no clip and no project id on purpose: this is not an edit to
+     * THIS clip, it is the application's one history being asked to step. The
+     * window is only the place the key was pressed -- INTENT §8 quinquies says
+     * one linear history, so a second one living in this window is exactly what
+     * must not happen.
+     */
+    this.ipcMain.handle('clip-editor:history', (event, direction) => {
+      const editor = this._editorForSender(event);
+      if (!editor || !HISTORY_DIRECTIONS.has(direction)) return { ok: false, reason: 'invalid-request' };
+      return this._requestCanonical(editor, 'history', direction, null, '');
     });
     this.ipcMain.handle('clip-editor:respond', (event, response) => {
       if (!this._isMainSender(event) || !response || typeof response.requestId !== 'string') return false;
