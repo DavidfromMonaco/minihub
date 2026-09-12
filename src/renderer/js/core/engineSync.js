@@ -10,6 +10,8 @@
  * Disconnecting either cable immediately stops that chain from receiving MIDI
  * or reaching the physical output, so the Patch Bay stays meaningful.
  */
+import { midiThruReach } from './midiThru.js';
+
 export function describeAudioNetwork(hub) {
   const supported = new Set(['audio-input', 'vst', 'mixer', 'morpher', 'sequencer', 'audio-output']);
   return hub.network.listNodes().filter((node) => supported.has(node.type)).map((node) => {
@@ -25,6 +27,29 @@ export function describeAudioNetwork(hub) {
   });
 }
 
+/**
+ * What an arpeggiator's notes reach: the VSTs and hardware outputs it is cabled
+ * to, and every instrument those VSTs pass MIDI on to (D-039).
+ *
+ * The native plan follows this list and nothing else, so the series is resolved
+ * here, from the cables, by the same walk live playing uses. An arpeggiator met
+ * along the way is left out: the engine cannot feed one arpeggiator from
+ * another, cabled directly or through a VST.
+ */
+function arpeggiatorDestinations(hub, nodeId) {
+  const destinations = [];
+  const add = (id) => { if (!destinations.includes(id)) destinations.push(id); };
+  for (const connection of hub.network.connectionsFrom(nodeId, 'midi-out')) {
+    const type = hub.network.getNode(connection.to.nodeId)?.type;
+    if (type !== 'vst' && type !== 'midi-output') continue;
+    add(connection.to.nodeId);
+    for (const hop of midiThruReach(hub.network, connection.to.nodeId)) {
+      if (hop.kind !== 'arpeggiator') add(hop.id);
+    }
+  }
+  return destinations;
+}
+
 export function describeMidiNetwork(hub) {
   const supported = new Set(['arpeggiator', 'vst', 'midi-output']);
   return hub.network.listNodes().filter((node) => supported.has(node.type)).map((node) => {
@@ -32,7 +57,7 @@ export function describeMidiNetwork(hub) {
       .filter((c) => hub.network.getNode(c.from.nodeId)?.outputs.find((p) => p.id === c.from.portId)?.type === 'midi')
       .map((c) => ({ sourceNodeId: c.from.nodeId, sourcePortId: c.from.portId }));
     const content = hub.nodes?.get(node.id)?.content || {};
-    const destinations=node.type==='arpeggiator'?hub.network.connectionsFrom(node.id,'midi-out').filter((c)=>['vst','midi-output'].includes(hub.network.getNode(c.to.nodeId)?.type)).map((c)=>c.to.nodeId):[];
+    const destinations = node.type === 'arpeggiator' ? arpeggiatorDestinations(hub, node.id) : [];
     return { id: node.id, nodeType: node.type, inputs: incoming, destinations, ...(node.type === 'arpeggiator' ? content : {}) };
   });
 }

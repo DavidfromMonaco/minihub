@@ -146,6 +146,47 @@ test('track output selection creates authoritative Patch Bay routes', async () =
   assert.equal(sync.project.tracks.find((track) => track.id === midi.id).outputId, 'vst-001');
 });
 
+test('a MIDI track hands the engine the series cabled behind its destination (D-039)', async () => {
+  const { controller, hub, commands } = rig();
+  const seriesVst = (id) => hub.network.addNode({
+    id, name: id, type: 'vst',
+    inputs: [{ id: 'midi-in', type: 'midi' }],
+    outputs: [{ id: 'midi-out', type: 'midi' }, { id: 'audio-out', type: 'audio' }]
+  });
+  seriesVst('vst-010'); seriesVst('vst-011');
+  hub.network.addNode({ id: 'arp-010', name: 'Arp', type: 'arpeggiator', inputs: [{ id: 'midi-in', type: 'midi' }], outputs: [{ id: 'midi-out', type: 'midi' }] });
+  hub.network.connect('vst-010', 'midi-out', 'vst-011', 'midi-in');
+  hub.network.connect('vst-011', 'midi-out', 'arp-010', 'midi-in');
+  hub.network.connect('vst-011', 'midi-out', 'minilab-3', 'midi-in');
+  const midi = controller.model.addTrack('midi');
+  const audio = controller.model.addTrack('audio');
+  controller.setTrack(midi.id, { outputId: 'vst-010' });
+  controller.setTrack(audio.id, { outputId: 'audio-output' });
+  await new Promise((resolve) => queueMicrotask(resolve));
+
+  const latest = () => commands.filter((command) => command.type === 'syncSequencer').at(-1).project.tracks;
+  assert.deepEqual(latest().find((track) => track.id === midi.id).thru, [
+    { id: 'vst-011', kind: 'vst' },
+    { id: 'arp-010', kind: 'arpeggiator' },
+    { id: 'minilab-3', kind: 'midi-output' }
+  ], 'the destination stays the one the track shows; the series rides beside it');
+  assert.equal(latest().find((track) => track.id === midi.id).outputId, 'vst-010');
+  assert.deepEqual(latest().find((track) => track.id === audio.id).thru, [], 'an audio track has no MIDI series');
+
+  // engineSync re-publishes on every network:change in the application; the
+  // rig has no engineSync, so it asks directly.
+  hub.network.disconnect('vst-010', 'midi-out', 'vst-011', 'midi-in');
+  controller.syncNative();
+  await new Promise((resolve) => queueMicrotask(resolve));
+  assert.deepEqual(latest().find((track) => track.id === midi.id).thru, [],
+    'a pulled cable leaves the plan with the instrument it fed');
+
+  controller.setTrack(midi.id, { outputId: '' });
+  controller.syncNative();
+  await new Promise((resolve) => queueMicrotask(resolve));
+  assert.deepEqual(latest().find((track) => track.id === midi.id).thru, [], 'no destination, no series');
+});
+
 test('multiple MIDI tracks keep independent VST destinations and visible fan-out cables', async () => {
   const { controller, hub, commands } = rig();
   hub.network.addNode({

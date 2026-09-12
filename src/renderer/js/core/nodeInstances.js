@@ -51,6 +51,7 @@ import { currentArpeggiatorStep, moveCustomNote, removeCustomNote, renderArpCont
 import { icon } from '../ui/icons.js';
 import { getNodeEditor, registerNodeEditor } from './nodeEditors.js';
 import { createDisposers } from './disposers.js';
+import { midiThruReach } from './midiThru.js';
 
 /** Coalescing window for continuous native-value controls (Mixer / Morpher
  *  levels, mutes, master level, Morpher steps). Long enough to collapse a drag
@@ -375,9 +376,16 @@ function buildRoutingNode(instance, hub) {
         if (hub.control) hub.control.route(instance.id, data);
         return;
       }
-      if (portId !== 'midi-in') return;
-      if (data && Array.isArray(data.raw) && hub.engine) {
-        hub.engine.midi(instance.id, data.raw);
+      if (portId !== 'midi-in' || !data || !Array.isArray(data.raw)) return;
+      hub.engine?.midi(instance.id, data.raw);
+      // MIDI OUT repeats what came in (D-039). The series is walked once from
+      // here instead of re-emitted, so an instrument two cables away plays the
+      // note once, and the Sequencer's MIDI IN is never handed a VST's notes.
+      // A VST in the series takes the note straight into its chain -- through
+      // its own onInput it would walk the rest of the series a second time.
+      for (const hop of midiThruReach(hub.network, instance.id)) {
+        if (hop.kind === 'vst') hub.engine?.midi(hop.id, data.raw);
+        else hub.network.emitDataTo(hop.via, 'midi-out', hop.id, data);
       }
     }
   };

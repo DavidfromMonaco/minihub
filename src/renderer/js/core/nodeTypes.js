@@ -29,7 +29,13 @@ export const NODE_TYPES = {
         { id: 'audio-in', type: 'audio', label: 'AUDIO IN' },
         { id: 'ctrl-in', type: 'control', label: 'CTRL IN' }
       ],
-      outputs: [{ id: 'audio-out', type: 'audio', label: 'AUDIO OUT' }]
+      // MIDI OUT repeats what enters MIDI IN, so one track can play a series of
+      // instruments (D-039, `midiThru.js`). It faces MIDI IN, and AUDIO OUT faces
+      // AUDIO IN, the way the Sequencer node lines its rows up by signal.
+      outputs: [
+        { id: 'midi-out', type: 'midi', label: 'MIDI OUT' },
+        { id: 'audio-out', type: 'audio', label: 'AUDIO OUT' }
+      ]
     }
   },
   mixer: {

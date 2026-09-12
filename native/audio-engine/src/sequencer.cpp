@@ -193,7 +193,7 @@ juce::StringArray SequencerEngine::oggQualityOptions()
 
 juce::var SequencerEngine::exportSnapshotTrace() const
 {
-    juce::var snapshot=makeObject();auto* plan=exportPlan_.load(std::memory_order_acquire);if(!plan)return snapshot;setProp(snapshot,"generation",static_cast<juce::int64>(plan->generation));juce::Array<juce::var> tracks;for(const auto& track:plan->tracks){juce::var trackTrace=makeObject();setProp(trackTrace,"id",juce::String(track.id));setProp(trackTrace,"type",juce::String(track.type));setProp(trackTrace,"muted",track.runtime&&track.runtime->muted.load(std::memory_order_acquire));setProp(trackTrace,"volume",track.runtime?track.runtime->gain.load(std::memory_order_acquire):1.0f);setProp(trackTrace,"armed",track.armed);setProp(trackTrace,"inputId",juce::String(track.inputId));setProp(trackTrace,"outputId",juce::String(track.outputId));juce::Array<juce::var> clips;for(const auto& clip:track.clips){juce::var clipTrace=makeObject();setProp(clipTrace,"id",juce::String(clip.id));setProp(clipTrace,"type",juce::String(clip.type));setProp(clipTrace,"startPpq",clip.startPpq);setProp(clipTrace,"lengthPpq",clip.lengthPpq);setProp(clipTrace,"state",clip.available?"scheduled":"unavailable");clips.add(clipTrace);}setProp(trackTrace,"clips",clips);tracks.add(trackTrace);}setProp(snapshot,"tracks",tracks);return snapshot;
+    juce::var snapshot=makeObject();auto* plan=exportPlan_.load(std::memory_order_acquire);if(!plan)return snapshot;setProp(snapshot,"generation",static_cast<juce::int64>(plan->generation));juce::Array<juce::var> tracks;for(const auto& track:plan->tracks){juce::var trackTrace=makeObject();setProp(trackTrace,"id",juce::String(track.id));setProp(trackTrace,"type",juce::String(track.type));setProp(trackTrace,"muted",track.runtime&&track.runtime->muted.load(std::memory_order_acquire));setProp(trackTrace,"volume",track.runtime?track.runtime->gain.load(std::memory_order_acquire):1.0f);setProp(trackTrace,"armed",track.armed);setProp(trackTrace,"inputId",juce::String(track.inputId));setProp(trackTrace,"outputId",juce::String(track.outputId));juce::Array<juce::var> thru;for(const auto& hop:track.thru)thru.add(juce::String(hop.id));setProp(trackTrace,"thru",thru);juce::Array<juce::var> clips;for(const auto& clip:track.clips){juce::var clipTrace=makeObject();setProp(clipTrace,"id",juce::String(clip.id));setProp(clipTrace,"type",juce::String(clip.type));setProp(clipTrace,"startPpq",clip.startPpq);setProp(clipTrace,"lengthPpq",clip.lengthPpq);setProp(clipTrace,"state",clip.available?"scheduled":"unavailable");clips.add(clipTrace);}setProp(trackTrace,"clips",clips);tracks.add(trackTrace);}setProp(snapshot,"tracks",tracks);return snapshot;
 }
 
 void SequencerEngine::prepare(double sampleRate, int blockSize)
@@ -233,6 +233,22 @@ bool SequencerEngine::sync(const juce::var& project,
             if(outputKind=="midi-output")track.midiOutputKind=Track::MidiOutputKind::physical;
             else if(outputKind=="arpeggiator")track.midiOutputKind=Track::MidiOutputKind::processor;
             else{track.destination=chainLookup(track.outputId);if(!track.destination&&outputKind.isNotEmpty())track.midiOutputKind=Track::MidiOutputKind::processor;}
+            // The series behind the destination (D-039), by kind like the
+            // destination itself. A kind this build does not know is skipped
+            // rather than refused: it names a node a newer renderer can route to.
+            if(const auto* thru=value["thru"].getArray()){
+                if(thru->size()>64)return failClosed("Too many MIDI thru destinations on a Sequencer track");
+                for(const auto& hop:*thru){
+                    const auto hopId=hop["id"].toString();const auto hopKind=hop["kind"].toString();
+                    if(!validId(hopId))return failClosed("Invalid MIDI thru destination id");
+                    Track::Thru entry;entry.id=hopId.toStdString();
+                    if(hopKind=="midi-output")entry.kind=Track::MidiOutputKind::physical;
+                    else if(hopKind=="arpeggiator")entry.kind=Track::MidiOutputKind::processor;
+                    else if(hopKind=="vst"){entry.chain=chainLookup(entry.id);if(!entry.chain)continue;}
+                    else continue;
+                    track.thru.push_back(std::move(entry));
+                }
+            }
         }
         if (track.type=="audio") {
             auto& owned=takeWriters_[track.id];if(!owned)owned=std::make_unique<AudioTakeWriter>(track.id);
@@ -365,6 +381,7 @@ void SequencerEngine::processMidi(int count,Transport& transport,MidiExecutionPl
         : -1;
     for(auto& track:plan->tracks){if(track.type!="midi"||track.outputId.empty())continue;auto& buffer=track.midiScratch;buffer.clear();
         const auto destinationEpoch=track.destination?track.destination->midiEpoch():0;
+        for(auto& hop:track.thru)hop.blockEpoch=hop.chain?hop.chain->midiEpoch():0;
         if(cleanup){for(int channel=1;channel<=16;++channel){for(int pitch=0;pitch<128;++pitch){auto& held=track.activeNotes[(size_t)((channel-1)*128+pitch)];while(held>0){buffer.addEvent(juce::MidiMessage::noteOff(channel,pitch),0);--held;}}buffer.addEvent(juce::MidiMessage::allNotesOff(channel),0);buffer.addEvent(juce::MidiMessage::allSoundOff(channel),0);}}
         const bool muted=track.runtime&&track.runtime->muted.load(std::memory_order_acquire);
         int activeClips=0;
@@ -375,7 +392,12 @@ void SequencerEngine::processMidi(int count,Transport& transport,MidiExecutionPl
         if(sourceStopsThisBlock)for(int channel=1;channel<=16;++channel){buffer.addEvent(juce::MidiMessage::allNotesOff(channel),sourceStopOffset);buffer.addEvent(juce::MidiMessage::allSoundOff(channel),sourceStopOffset);}
         if(buffer.isEmpty())continue;
         const bool mayDispatch=cleanup||transport.playing();if(!mayDispatch)continue;
-        if(track.midiOutputKind==Track::MidiOutputKind::physical){if(hardware)hardware->sendBlock(buffer,callbackStartMs,sampleRate_);}else if(track.midiOutputKind==Track::MidiOutputKind::processor){if(midiPlan)midiPlan->pushInputBuffer(track.outputId,buffer);}else if(track.destination)track.destination->pushMidi(buffer,destinationEpoch);
+        bool hardwareSent=false;
+        if(track.midiOutputKind==Track::MidiOutputKind::physical){if(hardware)hardware->sendBlock(buffer,callbackStartMs,sampleRate_);hardwareSent=true;}else if(track.midiOutputKind==Track::MidiOutputKind::processor){if(midiPlan)midiPlan->pushInputBuffer(track.outputId,buffer);}else if(track.destination)track.destination->pushMidi(buffer,destinationEpoch);
+        // The same block, at the same sample offsets, to every node in the
+        // series. There is one hardware output however many controller nodes
+        // the series reaches, so it hears the block once.
+        for(const auto& hop:track.thru){if(hop.kind==Track::MidiOutputKind::physical){if(hardware&&!hardwareSent)hardware->sendBlock(buffer,callbackStartMs,sampleRate_);hardwareSent=true;}else if(hop.kind==Track::MidiOutputKind::processor){if(midiPlan)midiPlan->pushInputBuffer(hop.id,buffer);}else if(hop.chain)hop.chain->pushMidi(buffer,hop.blockEpoch);}
         for(const auto& item:buffer){const auto message=item.getMessage();const int channel=message.getChannel();if(channel<1||channel>16)continue;auto index=[channel](int pitch){return(size_t)((channel-1)*128+pitch);};if(message.isNoteOn()){auto& held=track.activeNotes[index(message.getNoteNumber())];if(held<std::numeric_limits<uint16_t>::max())++held;}else if(message.isNoteOff()){auto& held=track.activeNotes[index(message.getNoteNumber())];if(held>0)--held;}else if(message.isAllNotesOff()||message.isAllSoundOff())for(int pitch=0;pitch<128;++pitch)track.activeNotes[index(pitch)]=0;}
     }
     if(sourceStopsThisBlock){exportSourceStopSent_.store(true,std::memory_order_release);if(midiPlan)midiPlan->panicAll(nullptr);}
@@ -402,7 +424,7 @@ void SequencerEngine::renderAudioForOutput(juce::AudioBuffer<float>& out,int cou
 bool SequencerEngine::setTrackControl(const std::string& trackId,float gain,bool muted) noexcept
 {
     if(!std::isfinite(gain))return false;auto* plan=activePlan_.load(std::memory_order_acquire);if(!plan)return false;
-    for(auto& track:plan->tracks)if(track.id==trackId&&track.runtime){track.runtime->gain.store(std::clamp(gain,0.0f,2.0f),std::memory_order_release);const bool wasMuted=track.runtime->muted.exchange(muted,std::memory_order_acq_rel);if(track.type=="midi"&&muted&&!wasMuted){midiCleanupPending_.store(true,std::memory_order_release);if(track.destination)track.destination->panic();}return true;}return false;
+    for(auto& track:plan->tracks)if(track.id==trackId&&track.runtime){track.runtime->gain.store(std::clamp(gain,0.0f,2.0f),std::memory_order_release);const bool wasMuted=track.runtime->muted.exchange(muted,std::memory_order_acq_rel);if(track.type=="midi"&&muted&&!wasMuted){midiCleanupPending_.store(true,std::memory_order_release);panicDestinations(track);}return true;}return false;
 }
 
 // Both lookups run on the audio thread once per VST node per block, between
@@ -412,7 +434,13 @@ SequencerEngine::MidiTrackGain SequencerEngine::midiTrackGainForOutput(const std
 {
     const bool exportContext=&transport==&offlineExportTransport_;auto* plan=acquirePlan(exportContext);if(!plan)return{};
     MidiTrackGain result;
-    for(auto& track:plan->tracks)if(track.type=="midi"&&track.midiOutputKind==Track::MidiOutputKind::chain&&track.outputId==outputId&&track.runtime){const bool muted=track.runtime->muted.load(std::memory_order_acquire);const float gain=muted?0.0f:track.runtime->gain.load(std::memory_order_acquire);track.runtime->gainApplied.store(gain,std::memory_order_release);result={true,gain};break;}
+    const auto apply=[&result](Track& track){const bool muted=track.runtime->muted.load(std::memory_order_acquire);const float gain=muted?0.0f:track.runtime->gain.load(std::memory_order_acquire);track.runtime->gainApplied.store(gain,std::memory_order_release);result={true,gain};};
+    for(auto& track:plan->tracks)if(track.type=="midi"&&track.midiOutputKind==Track::MidiOutputKind::chain&&track.outputId==outputId&&track.runtime){apply(track);break;}
+    // An instrument further down a track's series answers to that track's fader
+    // and mute too (D-039): lowering the track must lower all of it, not one
+    // layer. A track cabled to the instrument directly outranks one that
+    // reaches it through another VST, which is why this is a second pass.
+    if(!result.controlled)for(auto& track:plan->tracks)if(track.type=="midi"&&track.runtime&&std::any_of(track.thru.begin(),track.thru.end(),[&outputId](const Track::Thru& hop){return hop.kind==Track::MidiOutputKind::chain&&hop.id==outputId;})){apply(track);break;}
     releasePlan(exportContext);return result;
 }
 
@@ -466,12 +494,21 @@ juce::Array<juce::var> SequencerEngine::finishRecording(Transport& transport)
 
 void SequencerEngine::panic() noexcept
 {
-    needsChase_.store(true);midiCleanupPending_.store(true,std::memory_order_release);auto* plan=activePlan_.load(std::memory_order_acquire);if(!plan)return;for(auto& track:plan->tracks)if(track.destination)track.destination->panic();
+    needsChase_.store(true);midiCleanupPending_.store(true,std::memory_order_release);auto* plan=activePlan_.load(std::memory_order_acquire);if(!plan)return;for(const auto& track:plan->tracks)panicDestinations(track);
 }
 
 void SequencerEngine::panicExport() noexcept
 {
-    needsExportChase_.store(true);exportMidiCleanupPending_.store(true,std::memory_order_release);auto* plan=exportPlan_.load(std::memory_order_acquire);if(!plan)return;for(auto& track:plan->tracks)if(track.destination)track.destination->panic();exportCleanupPending_.store(true,std::memory_order_release);
+    needsExportChase_.store(true);exportMidiCleanupPending_.store(true,std::memory_order_release);auto* plan=exportPlan_.load(std::memory_order_acquire);if(!plan)return;for(const auto& track:plan->tracks)panicDestinations(track);exportCleanupPending_.store(true,std::memory_order_release);
+}
+
+void SequencerEngine::panicDestinations(const Track& track) noexcept
+{
+    // Every chain the track plays, the series behind its destination included:
+    // a note held in the third instrument of a series is as stuck as one held
+    // in the first.
+    if(track.destination)track.destination->panic();
+    for(const auto& hop:track.thru)if(hop.chain)hop.chain->panic();
 }
 
 bool SequencerEngine::prepareExportPlan(
@@ -484,6 +521,10 @@ bool SequencerEngine::prepareExportPlan(
     auto next=std::make_unique<Plan>();next->generation=source->generation;next->tracks.reserve(source->tracks.size());
     for(const auto& original:source->tracks){Track track;track.id=original.id;track.type=original.type;track.inputId=original.inputId;track.outputId=original.outputId;track.armed=original.armed;track.midiOutputKind=original.midiOutputKind;track.midi=original.midi;track.audio=original.audio;track.clips=original.clips;track.runtime=std::make_shared<TrackRuntime>();if(original.runtime){track.runtime->gain.store(original.runtime->gain.load(std::memory_order_acquire),std::memory_order_relaxed);track.runtime->muted.store(original.runtime->muted.load(std::memory_order_acquire),std::memory_order_relaxed);}if(track.type=="audio"){track.audioSumScratch.setSize(2,std::max(blockSize_,4096),false,true,false);track.audioSumScratch.clear();}
         if(track.type=="midi"&&track.midiOutputKind==Track::MidiOutputKind::chain&&!track.outputId.empty()){track.destination=chainLookup(track.outputId);if(!track.destination){error="Export destination is unavailable: "+track.outputId;return false;}}
+        // The series is bounced too, against the export's own cloned chains: an
+        // instrument heard while playing and missing from the file is exactly
+        // the surprise an export must not hold.
+        for(const auto& hop:original.thru){auto entry=hop;entry.blockEpoch=0;if(entry.kind==Track::MidiOutputKind::chain){entry.chain=chainLookup(entry.id);if(!entry.chain){error="Export destination is unavailable: "+entry.id;return false;}}track.thru.push_back(std::move(entry));}
         if(track.type=="midi")track.midiScratch.ensureSize(std::max<size_t>(8192,track.midi.size()*24+256));next->tracks.push_back(std::move(track));}
     preparedExportPlan_=std::move(next);needsExportChase_.store(true);return true;
 }

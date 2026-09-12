@@ -346,7 +346,7 @@ nécessaire. La barre latérale, le graphe et la navigation suivent.
 
 | Type | Catégorie | Entrées | Sorties | Contenu |
 |---|---|---|---|---|
-| `vst` | Plugin | midi, audio, control | audio | chaîne de plugins |
+| `vst` | Plugin | midi, audio, control | midi, audio | chaîne de plugins |
 | `mixer` | Audio | audio ×N (dynamique) | audio | niveaux, mutes, master |
 | `morpher` | Audio | audio ×N (dynamique) | audio | niveaux, pas de morphing |
 | `arpeggiator` | MIDI | midi | midi | motif, gamme, mode, rythme |
@@ -416,6 +416,36 @@ un doublon, et un **cycle** pour les types `midi` et `audio`
 `emitDataTo(nodeId, portId, targetNodeId, data)` traverse **un seul** câble
 existant — c'est ce qui permet au séquenceur de choisir laquelle de ses
 branches de sortie reçoit un événement live, sans jamais inventer de route.
+
+### MIDI through a VST node
+
+A VST node's `midi-out` repeats what enters its `midi-in`: a track, a keyboard
+or an arpeggiator wired into one instrument plays every node cabled after it
+([DECISIONS.md](DECISIONS.md) D-039). The track's Destination stays the first
+VST; the rest is the Patch Bay's business.
+
+The series is answered by **one walk**,
+[midiThru.js](src/renderer/js/core/midiThru.js) `midiThruReach(network,
+nodeId)`: breadth-first along MIDI OUT cables, each node once, through VSTs
+only. An arpeggiator and a `midi-output` node end it; the Sequencer is never in
+it. Three consumers deliver on that one answer, which is the point of it being
+one:
+
+| Consumer | How it delivers |
+|---|---|
+| live playing — the VST node's `onInput` | `engine.midi` for each VST in the series; `emitDataTo(via, 'midi-out', …)` for an arpeggiator or a hardware output |
+| sequencer playback and export | `SequencerController.syncNative()` sends each MIDI track a `thru` list; the native `Track` pushes the same block into every entry |
+| an arpeggiator | `describeMidiNetwork` folds the series into its `destinations` |
+
+Two things the walk refuses on purpose. It never re-emits through
+`network.emitData`: the Sequencer's MIDI IN assumes only a controller emits
+into it (`isCanonicalMidiIngress`), and a naive re-emission would have recorded
+a VST's copy of every note. And an instrument two paths reach plays once — a
+per-cable copy would double it.
+
+A track's fader and mute cover its whole series (`midiTrackGainForOutput`, second
+pass): lowering a track that lowered one layer would read as broken. A track
+cabled to an instrument directly outranks one that reaches it through a series.
 
 ### Synchronisation vers le moteur
 
@@ -928,6 +958,7 @@ d'une capture forcée à l'extinction.
 | `nodeGeometry.js`, `graphLayout.js`, `graphViewport.js`, `viewportMath.js`, `grid.js` | géométrie et état visuel du Patch Bay |
 | `engineClient.js` | client du moteur, cache d'état, corrélation des requêtes |
 | `engineSync.js` | graphe → plan natif, séparation topologie/valeurs |
+| `midiThru.js` | what a VST node's MIDI OUT reaches — the one walk every consumer of a series reads |
 | `chainSync.js` | reconstruction des chaînes VST après (re)démarrage moteur |
 | `midiRouting.js`, `controlRouting.js` | injection MIDI et CONTROL dans le graphe |
 | `controlBindings.js` | mappages MiniLab → paramètres VST3, Learn |

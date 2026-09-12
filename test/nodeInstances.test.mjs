@@ -37,10 +37,10 @@ test('VST type uses the centralized orange accent', () => {
   assert.equal(NODE_TYPES.vst.accent, '--accent-vst');
 });
 
-test('VST type declares MIDI IN, AUDIO IN, CTRL IN, AUDIO OUT', () => {
+test('VST type declares MIDI IN, AUDIO IN, CTRL IN, MIDI OUT, AUDIO OUT', () => {
   const ports = getNodeType('vst').ports;
   assert.deepEqual(ports.inputs.map((p) => p.id), ['midi-in', 'audio-in', 'ctrl-in']);
-  assert.deepEqual(ports.outputs.map((p) => p.id), ['audio-out']);
+  assert.deepEqual(ports.outputs.map((p) => p.id), ['midi-out', 'audio-out']);
 });
 
 test('video/image placeholders declare no speculative ports', () => {
@@ -109,7 +109,7 @@ test('VST instance registers a routing node with the type ports', () => {
   assert.ok(node);
   assert.equal(node.type, 'vst');
   assert.deepEqual(node.inputs.map((p) => p.id), ['midi-in', 'audio-in', 'ctrl-in']);
-  assert.deepEqual(node.outputs.map((p) => p.id), ['audio-out']);
+  assert.deepEqual(node.outputs.map((p) => p.id), ['midi-out', 'audio-out']);
 });
 
 // ---- deletion ---------------------------------------------------------------

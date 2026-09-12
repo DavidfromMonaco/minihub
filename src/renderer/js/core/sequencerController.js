@@ -3,6 +3,7 @@ import { normalizeTempo } from './tempoControl.js';
 import { AUDIO_INPUT_NODE_ID, SEQUENCER_NODE_ID } from './systemNodes.js';
 import { isControllerNode, controllerName } from './controllerNode.js';
 import { preferenceForPort, resolvePortPreference } from '../midi/portIdentity.js';
+import { midiThruReach } from './midiThru.js';
 
 const STATE_KEY = 'sequencerState';
 const LEGACY_DEVICE_INPUT_ID = 'device-input';
@@ -722,7 +723,14 @@ export class SequencerController {
           outputKind: this.hub.network.getNode(track.outputId)?.type || '',
           outputId: track.type === 'midi'
             ? (routedMidi.has(track.outputId) ? track.outputId : '')
-            : (routedAudio.has(track.outputId) ? track.outputId : '')
+            : (routedAudio.has(track.outputId) ? track.outputId : ''),
+          // The instruments the destination's MIDI OUT carries this track on to
+          // (D-039). The engine follows the list; the cables are walked here,
+          // by the same function live playing uses, so playback, export and the
+          // keyboard can never disagree about the series.
+          thru: track.type === 'midi' && routedMidi.has(track.outputId)
+            ? midiThruReach(this.hub.network, track.outputId).map(({ id, kind }) => ({ id, kind }))
+            : []
         }))
       };
       this.hub.engine.syncSequencer(native);

@@ -164,10 +164,21 @@ private:
     };
     struct Track {
         enum class MidiOutputKind { chain, processor, physical };
+        /** One node the destination's MIDI OUT carries this track on to
+         *  (D-039). The renderer walks the cables; the plan only follows. */
+        struct Thru {
+            std::string id;
+            MidiOutputKind kind = MidiOutputKind::chain;
+            Chain* chain = nullptr;
+            // Audio-thread-owned, like midiScratch: captured before the block
+            // generates anything, for the reason destinationEpoch is.
+            uint32_t blockEpoch = 0;
+        };
         std::string id, type, inputId, outputId;
         bool armed = false;
         MidiOutputKind midiOutputKind = MidiOutputKind::chain;
         Chain* destination = nullptr;
+        std::vector<Thru> thru;
         AudioTakeWriter* takeWriter = nullptr; // append-only owner in takeWriters_
         juce::MidiBuffer midiScratch; // pre-sized outside the audio callback
         juce::AudioBuffer<float> audioSumScratch; // SUM, cleared once per track/block
@@ -178,6 +189,8 @@ private:
         std::vector<ClipTrace> clips;
     };
     struct Plan { uint64_t generation = 0; std::vector<Track> tracks; };
+    /** Panic every chain one track plays: its destination and its series. */
+    static void panicDestinations(const Track&) noexcept;
 
     struct RecordedMidiEvent {
         double startPpq = 0, durationPpq = 0;

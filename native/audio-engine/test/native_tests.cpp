@@ -817,6 +817,71 @@ void testSequencerPhysicalMidiOutputAndArpeggiatorRoute()
     transport.setLoop(false,0,4);transport.seekPpq(0);transport.setPlaying(true);transport.beginBlock();sequencer.processMidi(12000,transport,midiPlan.get());midiPlan->process(12000,transport);juce::MidiBuffer midi;destination.pullMidi(midi,12000);int arpOnSample=-1;for(const auto& event:midi)if(event.getMessage().isNoteOn())arpOnSample=event.samplePosition;expect(arpOnSample==6000,"Sequencer timestamp enters the existing Arpeggiator before its exact next 1/16 step");
 }
 
+void testSequencerMidiThruPlaysTheSeries()
+{
+    // D-039. A track wired to one VST plays every node that VST's MIDI OUT is
+    // cabled to. The renderer walks the cables and hands the plan the list; the
+    // plan has to deliver on it everywhere a destination is honoured -- the
+    // block, the fader, the mute, the panic and the bounce.
+    mlh::SequencerEngine sequencer;sequencer.prepare(48000,12000);CapturingMidiOutput hardware;
+    mlh::Chain first("vst-first"),second("vst-second");first.setMidiEnabled(true);second.setMidiEnabled(true);
+    const auto lookup=[&](const std::string& id)->mlh::Chain*{if(id=="vst-first")return &first;if(id=="vst-second")return &second;return nullptr;};
+    const auto hop=[](const char* id,const char* kind){juce::var value=mlh::makeObject();mlh::setProp(value,"id",id);mlh::setProp(value,"kind",kind);return value;};
+    auto series=midiTrack("track-series","vst-first");mlh::setProp(series,"outputKind","vst");
+    juce::Array<juce::var> thru;thru.add(hop("vst-second","vst"));thru.add(hop("arp-series","arpeggiator"));thru.add(hop("controller-a","midi-output"));thru.add(hop("controller-b","midi-output"));mlh::setProp(series,"thru",thru);
+    juce::Array<juce::var> tracks;tracks.add(series);juce::Array<juce::var> info;std::string error;
+    expect(sequencer.sync(makeSequencerProject(tracks),lookup,48000,12000,info,error),"a track with a series behind its destination compiles");
+
+    mlh::Chain arpTarget("vst-arp-target");arpTarget.setMidiEnabled(true);
+    mlh::MidiNetworkSpec spec;mlh::MidiNetworkNodeSpec arp;arp.id="arp-series";arp.kind="arpeggiator";arp.arp.rate=2;arp.arp.patternLength=16;arp.destinations={"vst-arp-target"};spec.nodes.push_back(arp);
+    auto midiPlan=mlh::MidiExecutionPlan::compile(spec,[&](const std::string& id){return id=="vst-arp-target"?&arpTarget:nullptr;},error);
+    expect(midiPlan!=nullptr,"the arpeggiator in the series compiles");if(!midiPlan)return;
+
+    mlh::Transport transport;transport.setSampleRate(48000);transport.setPlaying(true);transport.beginBlock();
+    sequencer.processMidi(12000,transport,midiPlan.get(),&hardware,1000.0);
+    const auto playsTheNote=[](mlh::Chain& chain){juce::MidiBuffer midi;chain.pullMidi(midi,12000);int ons=0;bool exact=true;for(const auto& event:midi)if(event.getMessage().isNoteOn()){++ons;exact&=event.samplePosition==0&&event.getMessage().getNoteNumber()==64&&event.getMessage().getVelocity()==87&&event.getMessage().getChannel()==3;}return ons==1&&exact;};
+    expect(playsTheNote(first),"the destination plays the note");
+    expect(playsTheNote(second),"the VST behind it plays the same note, at the same sample");
+    int hardwareOns=0;for(const auto& event:hardware.captured)if(event.getMessage().isNoteOn())++hardwareOns;
+    expect(hardware.blocks==1&&hardwareOns==1,"two controller nodes in the series share one hardware output, which hears the block once");
+    midiPlan->process(12000,transport);
+    expect(midiPlan->nodes()[0].arp->holdsNoteForTesting(64),"the arpeggiator in the series receives the track's note as its input");
+
+    const auto seriesGain=sequencer.midiTrackGainForOutput("vst-second",transport);
+    expect(seriesGain.controlled&&seriesGain.gain==1.0f,"an instrument in the series answers to the track's fader");
+    expect(sequencer.setTrackControl("track-series",.5f,false),"the fader moves");
+    expect(sequencer.midiTrackGainForOutput("vst-second",transport).gain==.5f,"and the whole series follows it, not one layer");
+    expect(!sequencer.midiTrackGainForOutput("vst-arp-target",transport).controlled,"an arpeggiator's destination still answers to no track: the arpeggiator is its own source");
+    const auto epochBeforeMute=second.midiEpoch();
+    expect(sequencer.setTrackControl("track-series",.5f,true),"the track mutes");
+    expect(second.midiEpoch()!=epochBeforeMute&&sequencer.midiTrackGainForOutput("vst-second",transport).gain==0.0f,"muting the track silences and cuts the series too");
+
+    auto direct=midiTrack("track-direct","vst-second");mlh::setProp(direct,"volume",.25);
+    tracks.clear();tracks.add(series);tracks.add(direct);
+    expect(sequencer.sync(makeSequencerProject(tracks),lookup,48000,12000,info,error),"a second track cabled straight to the instrument compiles");
+    expect(sequencer.midiTrackGainForOutput("vst-second",transport).gain==.25f,"a track cabled to the instrument directly outranks one that reaches it through another VST");
+
+    // Resync to the series alone for the bounce, so the only instrument that
+    // can be missing from the snapshot is the one behind the destination.
+    tracks.clear();tracks.add(series);
+    expect(sequencer.sync(makeSequencerProject(tracks),lookup,48000,12000,info,error),"the series arrangement is restored for the bounce");
+    mlh::Chain exportFirst("vst-first"),exportSecond("vst-second");exportFirst.setMidiEnabled(true);exportSecond.setMidiEnabled(true);
+    std::string snapshotError;
+    expect(!sequencer.prepareExportPlan([&](const std::string& id)->mlh::Chain*{return id=="vst-first"?&exportFirst:nullptr;},snapshotError),"a bounce missing its clone of an instrument in the series refuses to start rather than leave it out");
+    expect(snapshotError.find("vst-second")!=std::string::npos,"and names the instrument it could not clone");
+    expect(sequencer.prepareExportPlan([&](const std::string& id)->mlh::Chain*{if(id=="vst-first")return &exportFirst;if(id=="vst-second")return &exportSecond;return nullptr;},snapshotError),"with every clone present the series is part of the export snapshot");
+    const auto exportFile=juce::File::getSpecialLocation(juce::File::tempDirectory).getNonexistentChildFile("MiniHub-midi-thru",".wav");
+    juce::String startError;mlh::Transport liveClock;liveClock.setSampleRate(48000);
+    expect(sequencer.startExport(exportFile,24,0,1,0,liveClock,startError),"the series bounce starts");
+    auto& offline=sequencer.exportTransport();offline.beginBlock();
+    sequencer.processMidi(256,offline,nullptr,nullptr,0);
+    juce::MidiBuffer bounced;exportSecond.pullMidi(bounced,256);bool bouncedOn=false;for(const auto& event:bounced)bouncedOn|=event.getMessage().isNoteOn()&&event.getMessage().getNoteNumber()==64;
+    expect(bouncedOn,"the bounce plays the instrument behind the destination, on its cloned chain");
+    juce::MidiBuffer live;second.pullMidi(live,256);bool leaked=false;for(const auto& event:live)leaked|=event.getMessage().isNoteOn();
+    expect(!leaked,"and never on the live one");
+    sequencer.cancelExport(false);exportFile.deleteFile();
+}
+
 juce::File deterministicVst3()
 {
     auto root=juce::File::getSpecialLocation(juce::File::currentExecutableFile).getParentDirectory().getParentDirectory();
@@ -1046,7 +1111,53 @@ void testRealVst3SequencerPlaybackArpAndMasterExport()
     tracks.clear();tracks.add(track);expect(sequencer.sync(makeSequencerProject(tracks),[&](const std::string&id){return id=="vst-e2e"?&chain:nullptr;},48000,256,info,error),"direct VST3 export route restores");transport.setPlaying(false);transport.seekPpq(0);
     auto renderExport=[&](mlh::AudioExecutionPlan& plan,const juce::String& tag){auto file=juce::File::getSpecialLocation(juce::File::tempDirectory).getNonexistentChildFile("MiniHub-vst3-e2e-"+tag,".wav");juce::String exportError;std::string snapshotError;expect(sequencer.prepareExportPlan([&](const std::string&id){return id=="vst-e2e"?&chain:nullptr;},snapshotError),"real VST3 export arrangement is cloned");expect(sequencer.startExport(file,24,0,1,0,transport,exportError),"successive real VST3 master export starts");float left[256]{},right[256]{};float* out[]={left,right};auto& offline=sequencer.exportTransport();while(sequencer.exporting()){juce::FloatVectorOperations::clear(left,256);juce::FloatVectorOperations::clear(right,256);offline.beginBlock();sequencer.processMidi(256,offline);plan.process(out,2,256,offline,scratch);sequencer.processMaster(out,2,256,offline);offline.advance(256);}expect(sequencer.consumeExportCleanupRequest(),"real VST3 export requests terminal MIDI cleanup");const auto events=sequencer.serviceEvents();expect(events.size()==1&&events[0]["state"].toString()=="complete","real VST3 master export completes");return file;};
     std::cerr << "[vst3-e2e] exports\n";auto unityFile=renderExport(*unity,"unity"),halfFile=renderExport(*half,"half");expect(sequencer.setTrackControl("track-vst-e2e",.501187f,false),"live MIDI track fader updates the VST return without rebuilding Engine 2");auto trackMinusSixFile=renderExport(*unity,"track-minus-6");expect(sequencer.setTrackControl("track-vst-e2e",1.995262f,false),"+6 dB MIDI track fader updates the VST return");auto trackPlusSixFile=renderExport(*half,"track-plus-6");auto read=[&](const juce::File& file){juce::WavAudioFormat wav;std::unique_ptr<juce::AudioFormatReader> reader(wav.createReaderFor(file.createInputStream().release(),true));expect(reader&&reader->sampleRate==48000&&reader->lengthInSamples==24000&&reader->bitsPerSample==24,"VST3 WAV timing, duration and format are exact");juce::AudioBuffer<float> audio(2,reader?(int)reader->lengthInSamples:1);if(reader)reader->read(&audio,0,audio.getNumSamples(),0,true,true);return audio;};auto unityAudio=read(unityFile),halfAudio=read(halfFile),trackMinusSixAudio=read(trackMinusSixFile),trackPlusSixAudio=read(trackPlusSixFile);const float unityPeak=unityAudio.getMagnitude(0,0,unityAudio.getNumSamples()),halfPeak=halfAudio.getMagnitude(0,0,halfAudio.getNumSamples()),trackMinusSixPeak=trackMinusSixAudio.getMagnitude(0,0,trackMinusSixAudio.getNumSamples()),trackPlusSixPeak=trackPlusSixAudio.getMagnitude(0,0,trackPlusSixAudio.getNumSamples());std::cerr<<"[vst3-e2e] gain peaks unity="<<unityPeak<<" mixerHalf="<<halfPeak<<" trackMinus6="<<trackMinusSixPeak<<" halfThenTrackPlus6="<<trackPlusSixPeak<<"\n";expect(unityPeak>.15f&&std::abs(halfPeak/unityPeak-.5f)<.03f,"Mixer volume is printed into the real VST3 WAV");expect(std::abs(trackMinusSixPeak/unityPeak-.501187f)<.03f&&std::abs(trackPlusSixPeak/halfPeak-1.995262f)<.04f,"VST track 0/-6/+6 dB is applied after the instrument and printed by the shared live/export DSP path");expect(unityAudio.getMagnitude(0,1,11000)>.1f&&unityAudio.getMagnitude(0,12100,unityAudio.getNumSamples()-12100)<.0001f,"VST3 WAV starts on time and is silent after Note Off (no stuck note)");
-    auto muted=track;mlh::setProp(muted,"muted",true);tracks.clear();tracks.add(muted);expect(sequencer.sync(makeSequencerProject(tracks),[&](const std::string&id){return id=="vst-e2e"?&chain:nullptr;},48000,256,info,error),"muted VST3 Sequencer route compiles");auto mutedFile=renderExport(*unity,"muted");auto mutedAudio=read(mutedFile);expect(mutedAudio.getMagnitude(0,0,mutedAudio.getNumSamples())<.0001f,"track mute prints deterministic silence through VST3 export");if(const char* keep=std::getenv("MLH_GAIN_STAGING_ARTIFACT");keep&&*keep){juce::File artifact(juce::String::fromUTF8(keep));artifact.deleteFile();expect(unityFile.copyFileTo(artifact),"validated linear-float Master WAV artifact is retained on request");}unityFile.deleteFile();halfFile.deleteFile();trackMinusSixFile.deleteFile();trackPlusSixFile.deleteFile();mutedFile.deleteFile();std::cerr << "[vst3-e2e] complete\n";
+    auto muted=track;mlh::setProp(muted,"muted",true);tracks.clear();tracks.add(muted);expect(sequencer.sync(makeSequencerProject(tracks),[&](const std::string&id){return id=="vst-e2e"?&chain:nullptr;},48000,256,info,error),"muted VST3 Sequencer route compiles");auto mutedFile=renderExport(*unity,"muted");auto mutedAudio=read(mutedFile);expect(mutedAudio.getMagnitude(0,0,mutedAudio.getNumSamples())<.0001f,"track mute prints deterministic silence through VST3 export");if(const char* keep=std::getenv("MLH_GAIN_STAGING_ARTIFACT");keep&&*keep){juce::File artifact(juce::String::fromUTF8(keep));artifact.deleteFile();expect(unityFile.copyFileTo(artifact),"validated linear-float Master WAV artifact is retained on request");}unityFile.deleteFile();halfFile.deleteFile();trackMinusSixFile.deleteFile();trackPlusSixFile.deleteFile();mutedFile.deleteFile();
+
+    // D-039, with two real VST3 instruments. The second hears the track only
+    // because the plan carries it as the series behind the destination, and the
+    // proof has to be audio at both stages -- in the live block, under the
+    // track's mute, and in the bounced file.
+    std::cerr << "[vst3-e2e] series\n";
+    {
+        juce::var hop=mlh::makeObject();mlh::setProp(hop,"id","vst-e2e-b");mlh::setProp(hop,"kind","vst");juce::Array<juce::var> thru;thru.add(hop);
+        auto seriesTrack=midiTrack("track-vst-series","vst-e2e");mlh::setProp(seriesTrack,"outputKind","vst");mlh::setProp(seriesTrack,"thru",thru);
+        juce::Array<juce::var> seriesTracks;seriesTracks.add(seriesTrack);
+        const auto both=[&](const std::string& id)->mlh::Chain*{if(id=="vst-e2e")return &chain;if(id=="vst-e2e-b")return &secondChain;return nullptr;};
+        expect(sequencer.sync(makeSequencerProject(seriesTracks),both,48000,256,info,error),"one track routes into two real VST3 instruments in series");
+        mlh::AudioNetworkSpec seriesNetwork;auto head=networkNode("vst-e2e",mlh::AudioNodeKind::vst);auto tail=networkNode("vst-e2e-b",mlh::AudioNodeKind::vst);auto seriesMix=networkNode("mixer-series",mlh::AudioNodeKind::mixer);
+        seriesMix.inputs={{"audio-in-1","vst-e2e","audio-out",1,false},{"audio-in-2","vst-e2e-b","audio-out",1,false}};
+        auto seriesOut=networkNode("audio-output",mlh::AudioNodeKind::output);seriesOut.inputs={{"audio-in","mixer-series","audio-out",1,false}};
+        seriesNetwork.nodes={seriesOut,seriesMix,tail,head};
+        auto seriesPlan=mlh::AudioExecutionPlan::compile(seriesNetwork,both,&sequencer,256,error);
+        expect(seriesPlan!=nullptr,"two VST nodes in series -> Mixer -> Audio Output compiles");
+        if(seriesPlan){
+            const auto stagePeak=[&](const char* id){for(const auto& node:seriesPlan->nodes())if(node.id==id)return std::max(node.output.getMagnitude(0,0,256),node.output.getMagnitude(1,0,256));return 0.0f;};
+            float seriesLeft[256]{},seriesRight[256]{};float* seriesLive[]={seriesLeft,seriesRight};
+            transport.setLoop(false,0,4);transport.seekPpq(0);transport.setPlaying(true);transport.beginBlock();
+            sequencer.processMidi(256,transport);seriesPlan->process(seriesLive,2,256,transport,scratch);
+            expect(stagePeak("vst-e2e")>.1f,"the destination instrument sounds");
+            expect(stagePeak("vst-e2e-b")>.1f,"the instrument behind it sounds from the same track, in the same block");
+            transport.advance(256);
+            expect(sequencer.setTrackControl("track-vst-series",1.0f,true),"the series track mutes");
+            juce::FloatVectorOperations::clear(seriesLeft,256);juce::FloatVectorOperations::clear(seriesRight,256);
+            transport.beginBlock();sequencer.processMidi(256,transport);seriesPlan->process(seriesLive,2,256,transport,scratch);
+            expect(stagePeak("vst-e2e")==0.0f&&stagePeak("vst-e2e-b")==0.0f,"muting the track silences the whole series, not one layer of it");
+            expect(sequencer.setTrackControl("track-vst-series",1.0f,false),"the series track unmutes for the bounce");
+            transport.setPlaying(false);transport.seekPpq(0);
+            const auto seriesFile=juce::File::getSpecialLocation(juce::File::tempDirectory).getNonexistentChildFile("MiniHub-vst3-e2e-series",".wav");
+            std::string seriesSnapshotError;juce::String seriesExportError;
+            expect(sequencer.prepareExportPlan(both,seriesSnapshotError),"the series is part of the export snapshot");
+            expect(sequencer.startExport(seriesFile,24,0,1,0,transport,seriesExportError),"the series bounce starts");
+            auto& seriesOffline=sequencer.exportTransport();float bouncedTail=0;
+            while(sequencer.exporting()){juce::FloatVectorOperations::clear(seriesLeft,256);juce::FloatVectorOperations::clear(seriesRight,256);seriesOffline.beginBlock();sequencer.processMidi(256,seriesOffline);seriesPlan->process(seriesLive,2,256,seriesOffline,scratch);bouncedTail=std::max(bouncedTail,stagePeak("vst-e2e-b"));sequencer.processMaster(seriesLive,2,256,seriesOffline);seriesOffline.advance(256);}
+            expect(sequencer.consumeExportCleanupRequest(),"the series bounce requests terminal MIDI cleanup");
+            const auto seriesEvents=sequencer.serviceEvents();expect(seriesEvents.size()==1&&seriesEvents[0]["state"].toString()=="complete","the series bounce completes");
+            expect(bouncedTail>.1f,"the bounce plays the instrument behind the destination");
+            auto seriesAudio=read(seriesFile);expect(seriesAudio.getMagnitude(0,0,seriesAudio.getNumSamples())>.1f,"and the file carries the series");
+            seriesFile.deleteFile();
+        }
+    }
+    std::cerr << "[vst3-e2e] complete\n";
 }
 
 void testSequencerAudioInputRoutingAuthority()
@@ -1467,6 +1578,8 @@ int main(int argc, char** argv)
     testSequencerMidiStressLoopSeekAndStop();
     std::cerr << "[core] physical-midi-arp\n";
     testSequencerPhysicalMidiOutputAndArpeggiatorRoute();
+    std::cerr << "[core] midi-thru-series\n";
+    testSequencerMidiThruPlaysTheSeries();
     std::cerr << "[core] audio-input-routing\n";
     testSequencerAudioInputRoutingAuthority();
     std::cerr << "[core] sequencer-sum-gain\n";

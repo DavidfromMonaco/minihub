@@ -1834,3 +1834,77 @@ content is genuinely light (a score, a waveform on paper, anything imitating
 print). Today only the arpeggiator wears it, and it imitates a backlit
 instrument. Or a reference device that is not dark: the plate follows the
 hardware, which is the whole argument above.
+
+---
+
+## D-039 — A VST node's MIDI OUT repeats what enters it
+
+**Status**: in force · 2026-09-12 · **implemented**
+
+**Context** — Asked on 2026-09-12: put VSTs in series, so that one track plays
+as many instruments as wanted. A track had one destination, and a VST node had
+no MIDI output: whatever entered a chain stopped at its first instrument. Only
+the arpeggiator could reach several nodes. The author set the bound in the same
+breath: the track keeps showing one destination, the instrument closest to the
+Sequencer, and the rest of the series lives in the Patch Bay.
+
+INTENT §6's refusal of "other DAWs have it" is not what this answers to; §3 is.
+Layering instruments under one part is how a track gets finished, and one
+generative source driving several synths is what playing live asks for.
+
+**Decision** — the `vst` node type gains a `midi-out` port that repeats what
+enters `midi-in`. The series is answered by one walk,
+`core/midiThru.js` `midiThruReach`, and every consumer delivers on that walk:
+live playing, the sequencer's native plan and its export, an arpeggiator's
+destinations. Four things the walk settles that a port does not:
+
+- **It is not a re-emission.** A VST pushing its notes back through
+  `network.emitData` was the obvious build and the wrong one: the Sequencer's
+  MIDI IN assumes only a controller ever emits into it
+  (`isCanonicalMidiIngress`), so a VST cabled there would have recorded a copy
+  of every note. The walk never offers the Sequencer anything.
+- **An instrument two paths reach plays once.** A copy per cable would double
+  its notes, and a lattice of cables would multiply them.
+- **A track's fader and mute cover its whole series.** Lowering a track that
+  lowers one layer of its sound reads as broken. A track cabled to an
+  instrument directly outranks one that reaches it through another VST.
+- **What a plugin generates itself does not come out.** MIDI OUT repeats; it
+  does not transform. The host discards a plugin's output events today
+  (`outputEvents_` in `plugin_host.cpp` is cleared and never read), and a VST3
+  MIDI effect does not work inside a chain at all.
+
+**Consequence** —
+
+- The native `Track` carries a `thru` list beside its destination, and every
+  place that honoured the destination honours the list: the block and its
+  sample offsets, the epoch captured before the block is generated, the fader,
+  the mute, the panic, and the export snapshot — which refuses to start when a
+  clone of an instrument in the series is missing, rather than bounce without
+  it.
+- One hardware output hears a block once, however many controller nodes a
+  series reaches.
+- An arpeggiator met along a series ends it, and one met from another
+  arpeggiator is left out of that arpeggiator's destinations: the engine cannot
+  feed one arpeggiator from another, which was already true cabled directly.
+- A VST → Sequencer MIDI IN cable carries nothing, as an arpeggiator's always
+  did.
+- On the node, MIDI OUT faces MIDI IN and AUDIO OUT moved one row down to face
+  AUDIO IN, the way the Sequencer node lines its rows up. A saved cable names a
+  port, not a row, so every project opens unchanged; an older build keeps a
+  MIDI OUT cable waiting (D-029).
+
+**What would justify revisiting** — a VST3 MIDI effect worth hosting: a plugin
+whose generated notes are the point, a chord or arpeggio VST. Its notes would
+have to leave by MIDI OUT, which means reading `outputEvents_`, ordering chains
+inside the block, and deciding whether the output replaces or joins what came
+in — from what the plugin declares, never from an option put to the user.
+
+**Proof in the code** — `src/renderer/js/core/midiThru.js`; the VST `onInput`
+in `nodeInstances.js`; `arpeggiatorDestinations` in `engineSync.js`; `thru` in
+`SequencerController.syncNative()`; `Track::Thru`, `processMidi`,
+`midiTrackGainForOutput`, `panicDestinations` and `prepareExportPlan` in
+`native/audio-engine/src/sequencer.{h,cpp}`. Tests: `test/midiThru.test.mjs`,
+`test/sequencer.test.mjs`, native `midi-thru-series`, and `[vst3-e2e] series`,
+where two real VST3 instruments both sound from one track, both fall silent
+under its mute, and both are in the bounced file. With the dispatch and the
+fader pass removed, seven native assertions fail.
