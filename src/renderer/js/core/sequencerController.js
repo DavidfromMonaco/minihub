@@ -2,6 +2,7 @@ import { SequencerModel, defaultSequencerState, initialSequencerState } from './
 import { normalizeTempo } from './tempoControl.js';
 import { AUDIO_INPUT_NODE_ID, SEQUENCER_NODE_ID } from './systemNodes.js';
 import { isControllerNode, controllerName } from './controllerNode.js';
+import { preferenceForPort, resolvePortPreference } from '../midi/portIdentity.js';
 
 const STATE_KEY = 'sequencerState';
 const LEGACY_DEVICE_INPUT_ID = 'device-input';
@@ -119,6 +120,10 @@ export class SequencerController {
         migratedInput = true;
       }
     }
+    // MIDI ports are usually not enumerated yet at this point -- `midi.init()`
+    // runs later in app.js -- so this pass is for the case where they are, and
+    // `midi:preference` below is what answers on a normal launch.
+    if (this._resolveMidiTrackInputs()) migratedInput = true;
     if (migratedInput || seeded) this.hub.settings.set(STATE_KEY, this.model.snapshot());
     this._unsubs.push(
       this.hub.events.on('engine:transport', (state) => {
@@ -151,6 +156,12 @@ export class SequencerController {
       }),
       this.hub.events.on('engine:metronomeTick', (event) => {
         this.hub.events.emit('sequencer:metronome-tick', event);
+      }),
+      // Emitted once the port list has settled AND the preferred port has been
+      // re-armed, which is later than 'midi:ports' and is the moment a track's
+      // stored port can be matched against something real.
+      this.hub.events.on('midi:preference', () => {
+        if (this._resolveMidiTrackInputs()) this.changed();
       }),
       this.hub.events.on('engine:sequencerMidiRecorded', (message) => this._acceptMidiRecording(message)),
       this.hub.events.on('engine:sequencerAudioRecorded', (message) => this._acceptAudioRecording(message)),
@@ -667,7 +678,9 @@ export class SequencerController {
       const routedAudio = new Set(this.hub.network.connectionsFrom('sequencer', 'audio-out').map((connection) => connection.to.nodeId));
       const native = {
         ...state,
-        tracks: state.tracks.map((track) => ({
+        // `inputPort` is renderer bookkeeping about which cable the id came
+        // from; the engine is handed the resolved id or nothing.
+        tracks: state.tracks.map(({ inputPort, ...track }) => ({
           ...track,
           inputId: track.type === 'midi'
             ? (incomingMidi.length > 0 && track.inputId === this.hub.midi.selectedInputId ? track.inputId : '')
@@ -885,6 +898,70 @@ export class SequencerController {
     return !this._audioReachableFrom(target.id).has(SEQUENCER_NODE_ID);
   }
 
+  _midiInputs() {
+    return this.hub.midi?.listInputs?.() ?? [];
+  }
+
+  /**
+   * Point every MIDI track at the port it was chosen against, not at the id
+   * that port happened to carry the day it was chosen.
+   *
+   * A Web MIDI id is assigned per session: the same MiniLab 3 was `input-2`,
+   * then `input-0`, then `input-2` again over three launches on the author's
+   * machine (2026-09-07). A track holding the stale id no longer equals
+   * `midi.selectedInputId`, so `hasInputRoute` says no and recording is refused
+   * with "The armed MIDI track Input must match the MIDI port selected for ...".
+   * Re-picking the port in the Input field fixed it until the next launch.
+   *
+   * `track.inputPort` is the same descriptor `midiInputPreference` has always
+   * used for the global selection, and `midi/portIdentity.js` is the single
+   * answer to "is this the same physical port" -- two answers to that disagree
+   * the day a port is renamed.
+   *
+   * Returns whether anything moved, so the caller decides about persisting.
+   */
+  _resolveMidiTrackInputs() {
+    const inputs = this._midiInputs();
+    let changed = false;
+    for (const track of this.model.state.tracks) {
+      if (track.type !== 'midi') continue;
+
+      if (!track.inputPort) {
+        // A project written before the descriptor existed holds a bare id and
+        // nothing else. It is believed exactly once -- while it still resolves
+        // -- and the fingerprint is written back on the spot, the way
+        // `_inputPreference` already migrates an id-only setting.
+        const port = track.inputId ? inputs.find((item) => item.id === track.inputId) : null;
+        if (!port) continue;
+        this.model.updateTrack(track.id, { inputPort: preferenceForPort(port) });
+        changed = true;
+        continue;
+      }
+
+      const port = resolvePortPreference(track.inputPort, inputs);
+      if (!port) {
+        // The device is not on this desk. Clearing the id is the point rather
+        // than a side effect: a project file travels, and a stale `input-2`
+        // over there belongs to whatever that machine enumerated second. The
+        // track has to be visibly unrouted instead of quietly armed on a
+        // stranger's keyboard -- the same rule D-029 applies to an absent node.
+        // The descriptor stays, so the track re-arms itself when the device
+        // comes back.
+        if (track.inputId) {
+          this.model.updateTrack(track.id, { inputId: '' });
+          changed = true;
+        }
+        continue;
+      }
+
+      if (track.inputId !== port.id || track.inputPort.id !== port.id) {
+        this.model.updateTrack(track.id, { inputId: port.id, inputPort: preferenceForPort(port) });
+        changed = true;
+      }
+    }
+    return changed;
+  }
+
   hasInputRoute(track) {
     if (!track?.inputId || !this.hub.network.getNode(SEQUENCER_NODE_ID)) return false;
     if (track.type === 'midi') {
@@ -1013,6 +1090,14 @@ export class SequencerController {
     const previous = this.model.state.tracks.find((item) => item.id === trackId);
     const previousOutput = previous?.outputId || '';
     const previousInput = previous?.inputId || '';
+    // The Input field hands over an id, which is all the DOM has. Storing the
+    // port's fingerprint next to it here is what lets `_resolveMidiTrackInputs`
+    // find the same hardware again next launch.
+    if (previous?.type === 'midi' && 'inputId' in changes && !('inputPort' in changes)) {
+      const id = String(changes.inputId || '');
+      const port = id ? this._midiInputs().find((item) => item.id === id) : null;
+      changes = { ...changes, inputPort: port ? preferenceForPort(port) : null };
+    }
     if (this._activeInputNotes.size && ['armed', 'monitored', 'inputId', 'outputId'].some((key) => key in changes)) {
       this._panicLiveDestinations();
     }

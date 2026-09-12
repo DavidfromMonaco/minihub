@@ -2,39 +2,18 @@ import { parseMidiMessage } from './parseMidi.js';
 import { isMiniLabName, isPerformanceInputName, bestMiniLabInput } from './minilab.js';
 import { isPerformancePort, bestPerformancePort } from './portRoles.js';
 import { LOADED_PROFILES } from './loadedProfile.js';
+import {
+  normalizePortPreference, preferenceForPort, samePhysicalPort, resolvePortPreference
+} from './portIdentity.js';
 
 const MIDI_INPUT_PREFERENCE_KEY = 'midiInputPreference';
 
-function normalizedIdentityText(value) {
-  return String(value || '').trim().toLocaleLowerCase();
-}
-
-export function normalizeMidiInputPreference(value) {
-  if (!value || typeof value !== 'object') return null;
-  const field = (name, max) => typeof value[name] === 'string' && value[name].length <= max
-    ? value[name] : '';
-  const id = field('id', 256);
-  const name = field('name', 256);
-  const manufacturer = field('manufacturer', 256);
-  const type = field('type', 32) || 'input';
-  if (!id && !name) return null;
-  return { id, name, manufacturer, type };
-}
-
-function preferenceForPort(port) {
-  return {
-    id: port.id,
-    name: port.name || '',
-    manufacturer: port.manufacturer || '',
-    type: port.type || 'input'
-  };
-}
-
-function samePhysicalPort(port, preference) {
-  return normalizedIdentityText(port?.name) === normalizedIdentityText(preference?.name)
-    && normalizedIdentityText(port?.manufacturer) === normalizedIdentityText(preference?.manufacturer)
-    && normalizedIdentityText(port?.type || 'input') === normalizedIdentityText(preference?.type || 'input');
-}
+/**
+ * The descriptor shape moved to `portIdentity.js` when the sequencer started
+ * needing the same answer for a track's input. Re-exported under its old name
+ * because that is what the settings key is called and what the tests import.
+ */
+export const normalizeMidiInputPreference = normalizePortPreference;
 
 /**
  * MIDI device layer built on the Web MIDI API.
@@ -250,14 +229,10 @@ export class MidiManager {
     return typeof legacyId === 'string' && legacyId ? { id: legacyId, name: '', manufacturer: '', type: 'input' } : null;
   }
 
+  // Legacy ID-only settings have no fingerprint yet. Once resolved, they are
+  // immediately migrated to the stable descriptor form.
   _resolveInputPreference(preference) {
-    if (!preference) return null;
-    const exact = preference.id ? this.inputs.get(preference.id) : null;
-    // Legacy ID-only settings have no fingerprint yet. Once resolved, they are
-    // immediately migrated to the stable descriptor form.
-    if (exact && (!preference.name || samePhysicalPort(exact, preference))) return exact;
-    if (!preference.name) return null;
-    return this.listInputs().find((port) => samePhysicalPort(port, preference)) || null;
+    return resolvePortPreference(preference, this.listInputs());
   }
 
   _persistInputPreference(port) {

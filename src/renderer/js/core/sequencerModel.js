@@ -1,3 +1,5 @@
+import { normalizePortPreference } from '../midi/portIdentity.js';
+
 const SNAP_STEPS = Object.freeze({
   '1 bar': 4,
   '1/2': 2,
@@ -168,6 +170,12 @@ function normalizeTrack(track, index) {
     muted: track?.muted === true,
     volume: clamp(finite(track?.volume, 1), 0, 2),
     inputId: typeof track?.inputId === 'string' ? track.inputId : '',
+    // What `inputId` means depends on the track: a Patch Bay node id for audio,
+    // a Web MIDI port id for MIDI -- and a Web MIDI id is only valid for as long
+    // as the session that enumerated it. `inputPort` is the fingerprint that
+    // survives, and `SequencerController` re-resolves the id from it at every
+    // launch. An audio track has nothing to fingerprint: its node id is ours.
+    inputPort: type === 'midi' ? normalizePortPreference(track?.inputPort) : null,
     outputId: typeof track?.outputId === 'string' ? track.outputId : '',
     clips: Array.isArray(track?.clips) ? track.clips.slice(0, SEQUENCER_LIMITS.clipsPerTrack).map((clip) => normalizeClip(clip, type)) : []
   };
@@ -326,6 +334,9 @@ export class SequencerModel {
     if ('muted' in changes) track.muted = changes.muted === true;
     if ('volume' in changes) track.volume = clamp(changes.volume, 0, 2);
     if ('inputId' in changes) track.inputId = String(changes.inputId || '');
+    if ('inputPort' in changes) {
+      track.inputPort = track.type === 'midi' ? normalizePortPreference(changes.inputPort) : null;
+    }
     if ('outputId' in changes) track.outputId = String(changes.outputId || '');
     return track;
   }
