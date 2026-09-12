@@ -3,8 +3,8 @@ import {
   ARP_OFFSET_MIN, ARP_OFFSET_MAX, semitoneOffsetToMidi
 } from './arpeggiatorState.js';
 import { knobFraction, pearlKnobMount, pearlSelect, pearlSwitch, pearlIconButton, syncKnobMount } from '../ui/omniPearl.js';
+import { clamp } from './clamp.js';
 
-const clamp=(value,min,max)=>Math.max(min,Math.min(max,value));
 const modulo=(value,base)=>((value%base)+base)%base;
 
 export function scaleContainsOffset(scaleName, semitoneOffset) {
@@ -34,7 +34,7 @@ export function setCustomNote(content, stepIndex, requestedOffset) {
   step.semitoneOffset=editedSemitoneOffset(content,requestedOffset);step.rest=false;step.tie=false;return true;
 }
 
-export function clearFollowingTies(content, stepIndex) {
+function clearFollowingTies(content, stepIndex) {
   for(let index=stepIndex+1;index<content.patternLength&&content.customPattern[index]?.tie;index+=1){
     content.customPattern[index].tie=false;
     content.customPattern[index].rest=true;
@@ -93,7 +93,7 @@ export function currentArpeggiatorStep(ppqPosition,rate,patternLength) {
   return absolute%length;
 }
 
-export function pitchRowsForPattern(content) {
+function pitchRowsForPattern(content) {
   const active=content.customPattern.slice(0,content.patternLength)
     .filter((step)=>!step.rest&&!step.tie).map((step)=>step.semitoneOffset);
   const highest=Math.max(24,...active),lowest=Math.min(-24,...active);
@@ -106,7 +106,7 @@ function followingTieCount(content,stepIndex){let count=0;for(let i=stepIndex+1;
 function noteName(root,offset){return ARP_ROOTS[modulo(root+offset,12)];}
 
 /** Sounding pitch of a row, e.g. `C4` - the label the keybed prints. */
-export function pitchLabel(root,offset){
+function pitchLabel(root,offset){
   const midi=semitoneOffsetToMidi(root,offset);
   return `${ARP_ROOTS[modulo(midi,12)]}${Math.floor(midi/12)-1}`;
 }

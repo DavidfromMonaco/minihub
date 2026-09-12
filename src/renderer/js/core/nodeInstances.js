@@ -304,7 +304,7 @@ function renderVstEditor(instance, type, hub, statusMap, editorNotes) {
   return `
     <div class="panel">
       <div class="row">
-        <h1 class="page-title">${instance.name}</h1>
+        <h1 class="page-title">${escapeHtml(instance.name)}</h1>
         <span class="spacer"></span>
         <span class="pill accent-vst">VST</span>
         <span id="vst-engine-status" class="pill ${engineDown ? 'off' : 'ok'}">${engineDown ? 'Engine unavailable' : 'Engine ready'}</span>

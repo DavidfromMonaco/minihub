@@ -15,6 +15,7 @@
  * without stealing focus from the control the user is operating).
  */
 import { escapeHtml } from '../core/html.js';
+import { clamp } from '../core/clamp.js';
 
 // Knob geometry. 270 degrees of travel starting bottom-left, like the hardware.
 const KNOB_CENTER = 29;
@@ -25,18 +26,18 @@ const KNOB_CIRCUMFERENCE = 2 * Math.PI * KNOB_RADIUS;
 const KNOB_ARC_LENGTH = (KNOB_CIRCUMFERENCE * KNOB_SWEEP) / 360;
 
 const round = (value, digits = 2) => Number(Number(value).toFixed(digits));
-const clamp01 = (value) => Math.max(0, Math.min(1, Number(value) || 0));
+const clamp01 = (value) => clamp(Number(value) || 0, 0, 1);
 
 /** Fraction of a value inside an ordered option list (single option -> 0). */
 export function knobFraction(index, count) {
   return count > 1 ? clamp01(index / (count - 1)) : 0;
 }
 
-export function knobArcDash(fraction) {
+function knobArcDash(fraction) {
   return `${round(KNOB_ARC_LENGTH * clamp01(fraction))} ${round(KNOB_CIRCUMFERENCE)}`;
 }
 
-export function knobPointerTransform(fraction) {
+function knobPointerTransform(fraction) {
   return `rotate(${round(KNOB_START_ANGLE + KNOB_SWEEP * clamp01(fraction))} ${KNOB_CENTER} ${KNOB_CENTER})`;
 }
 
@@ -44,7 +45,7 @@ export function knobPointerTransform(fraction) {
  * A rotary control face. Purely presentational: the value is changed by the
  * native control the caller stacks over it (see `pearlKnobMount`).
  */
-export function pearlKnob({ fraction = 0, display = '', small = false } = {}) {
+function pearlKnob({ fraction = 0, display = '', small = false } = {}) {
   const value = display === '' ? '' : `<span class="op-knob-value" data-op-knob-display>${escapeHtml(display)}</span>`;
   return `<span class="op-knob${small ? ' op-knob--sm' : ''}" data-op-knob>
       <span class="op-knob-body"></span>

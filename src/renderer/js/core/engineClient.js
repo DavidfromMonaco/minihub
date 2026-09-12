@@ -200,8 +200,22 @@ export class EngineClient {
     this._refreshed = false;
   }
 
+  /**
+   * No log line here, deliberately.
+   *
+   * `src/main/main.js` already logs every engine event through
+   * `engineEventTrace`, with more detail than this line carried and with the
+   * periodic types dropped -- `masterMeter` alone is 10 Hz. This one ran on
+   * EVERY event, and a renderer `console.log` is relayed back to the main
+   * process, so each event was written twice and the periodic ones were the
+   * copy that had no filter.
+   *
+   * Restoring it means repeating main's periodic list in the renderer, which
+   * the module boundary forbids sharing (CommonJS there, ES modules here). Two
+   * lists that must agree and cannot be checked is a worse trade than one line
+   * of local debugging.
+   */
   _onEvent(msg) {
-    console.log(`[engineClient:event] ${msg.type}${msg.count !== undefined ? ' count=' + msg.count : ''}`);
     switch (msg.type) {
       case 'hello':
         if (msg.sequencerExportCapabilities && typeof msg.sequencerExportCapabilities === 'object') {

@@ -1,3 +1,5 @@
+import { clamp } from './clamp.js';
+
 export const ARP_ROOTS = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
 export const ARP_SCALES = Object.freeze({
   Chromatic:[0,1,2,3,4,5,6,7,8,9,10,11], 'Major / Ionian':[0,2,4,5,7,9,11],
@@ -12,8 +14,6 @@ export const ARP_LENGTHS = [4,8,16,32];
 export const ARP_PATTERN_VERSION = 2;
 export const ARP_OFFSET_MIN = -127;
 export const ARP_OFFSET_MAX = 127;
-
-const clamp=(n,a,b)=>Math.max(a,Math.min(b,n));
 export function defaultArpeggiatorContent() {
   return { root:0, scale:'Chromatic', mode:'Up', rate:'1/16', patternLength:8, randomSeed:0x5eed1234,
     customPatternVersion:ARP_PATTERN_VERSION, snapToScale:false,

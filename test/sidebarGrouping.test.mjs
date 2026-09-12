@@ -13,14 +13,14 @@ import { makeEl, installDom } from './domShim.mjs';
 
 installDom();
 const { buildSidebar } = await import('../src/renderer/js/ui/sidebar.js');
-const { homeModule } = await import('../src/renderer/js/modules/home/homeModule.js');
+const { createHomeModule } = await import('../src/renderer/js/modules/home/homeModule.js');
 const { createMiniLabModule } = await import('../src/renderer/js/modules/minilab/minilabModule.js');
 const { createRoutingModule } = await import('../src/renderer/js/modules/routing/routingModule.js');
 const { createAudioOutputModule } = await import('../src/renderer/js/modules/audioOutput/audioOutputModule.js');
 
 function setup() {
   const hub = makeFullHub();
-  hub.modules.register(homeModule);
+  hub.modules.register(createHomeModule(hub));
   hub.modules.register(createMiniLabModule(hub));
   hub.modules.register(createRoutingModule(hub));
   hub.modules.register(createAudioOutputModule(hub));

@@ -1,4 +1,5 @@
 import { normalizePortPreference } from '../midi/portIdentity.js';
+import { clamp } from './clamp.js';
 
 const SNAP_STEPS = Object.freeze({
   '1 bar': 4,
@@ -55,7 +56,10 @@ export const ZOOM_MIN = 1;
 export const ZOOM_MAX = 240;
 
 const finite = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
-const clamp = (value, min, max) => Math.max(min, Math.min(max, finite(value, min)));
+/* Everything here is read back from a project file, so the coercion is the
+   point: `clampFinite` is `clamp` over whatever `finite()` made of the
+   argument, and the name is what keeps it from being mistaken for the other. */
+const clampFinite = (value, min, max) => clamp(finite(value, min), min, max);
 const uid = (prefix) => globalThis.crypto?.randomUUID?.() || `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
 export function snapStep(value) {
@@ -121,14 +125,14 @@ export function defaultSequencerState() {
 }
 
 function normalizeNote(note, sourceLength) {
-  const startPpq = clamp(note?.startPpq, 0, Math.max(0, sourceLength));
+  const startPpq = clampFinite(note?.startPpq, 0, Math.max(0, sourceLength));
   return {
     id: typeof note?.id === 'string' && note.id ? note.id : uid('note'),
-    pitch: Math.round(clamp(note?.pitch, 0, 127)),
+    pitch: Math.round(clampFinite(note?.pitch, 0, 127)),
     startPpq,
-    durationPpq: clamp(note?.durationPpq, MIN_NOTE_PPQ, Math.max(MIN_NOTE_PPQ, sourceLength - startPpq)),
-    velocity: Math.round(clamp(note?.velocity, 1, 127)),
-    channel: Math.round(clamp(note?.channel, 1, 16))
+    durationPpq: clampFinite(note?.durationPpq, MIN_NOTE_PPQ, Math.max(MIN_NOTE_PPQ, sourceLength - startPpq)),
+    velocity: Math.round(clampFinite(note?.velocity, 1, 127)),
+    channel: Math.round(clampFinite(note?.channel, 1, 16))
   };
 }
 
@@ -140,10 +144,10 @@ function normalizeClip(clip, type) {
     name: String(clip?.name || (type === 'midi' ? 'MIDI Clip' : 'Audio Clip')).slice(0, 160),
     startPpq,
     lengthPpq,
-    gain: clamp(finite(clip?.gain, 1), 0, 2)
+    gain: clampFinite(finite(clip?.gain, 1), 0, 2)
   };
   if (type === 'midi') {
-    base.sourceOffsetPpq = clamp(clip?.sourceOffsetPpq, 0, Math.max(0, finite(clip?.sourceLengthPpq, lengthPpq) - lengthPpq));
+    base.sourceOffsetPpq = clampFinite(clip?.sourceOffsetPpq, 0, Math.max(0, finite(clip?.sourceLengthPpq, lengthPpq) - lengthPpq));
     base.sourceLengthPpq = Math.max(base.sourceOffsetPpq + lengthPpq, finite(clip?.sourceLengthPpq, lengthPpq));
     base.notes = Array.isArray(clip?.notes)
       ? clip.notes.slice(0, SEQUENCER_LIMITS.notesPerClip).map((note) => normalizeNote(note, base.sourceLengthPpq)).sort((a, b) => a.startPpq - b.startPpq || a.pitch - b.pitch)
@@ -154,7 +158,7 @@ function normalizeClip(clip, type) {
     const fallbackEnd = base.trimStartSeconds + Math.max(0.001, finite(clip?.durationSeconds, 1));
     base.trimEndSeconds = Math.max(base.trimStartSeconds + 0.001, finite(clip?.trimEndSeconds, fallbackEnd));
     base.durationSeconds = Math.max(0.001, finite(clip?.durationSeconds, base.trimEndSeconds));
-    base.peaks = Array.isArray(clip?.peaks) ? clip.peaks.slice(0, 512).map((p) => clamp(p, 0, 1)) : [];
+    base.peaks = Array.isArray(clip?.peaks) ? clip.peaks.slice(0, 512).map((p) => clampFinite(p, 0, 1)) : [];
   }
   return base;
 }
@@ -168,7 +172,7 @@ function normalizeTrack(track, index) {
     armed: track?.armed === true,
     monitored: track?.monitored === true,
     muted: track?.muted === true,
-    volume: clamp(finite(track?.volume, 1), 0, 2),
+    volume: clampFinite(finite(track?.volume, 1), 0, 2),
     inputId: typeof track?.inputId === 'string' ? track.inputId : '',
     // What `inputId` means depends on the track: a Patch Bay node id for audio,
     // a Web MIDI port id for MIDI -- and a Web MIDI id is only valid for as long
@@ -200,7 +204,7 @@ export function normalizeSequencerState(value) {
     tracks,
     loop: { enabled: value?.loop?.enabled === true, startPpq: loopStart, endPpq: loopEnd },
     snap: Object.hasOwn(SNAP_STEPS, value?.snap) ? value.snap : base.snap,
-    zoom: clamp(value?.zoom, ZOOM_MIN, ZOOM_MAX),
+    zoom: clampFinite(value?.zoom, ZOOM_MIN, ZOOM_MAX),
     scrollPpq: Math.max(0, finite(value?.scrollPpq)),
     selectedClipId,
     selectedClipIds,
@@ -332,7 +336,7 @@ export class SequencerModel {
     if ('armed' in changes) track.armed = changes.armed === true;
     if ('monitored' in changes) track.monitored = changes.monitored === true;
     if ('muted' in changes) track.muted = changes.muted === true;
-    if ('volume' in changes) track.volume = clamp(changes.volume, 0, 2);
+    if ('volume' in changes) track.volume = clampFinite(changes.volume, 0, 2);
     if ('inputId' in changes) track.inputId = String(changes.inputId || '');
     if ('inputPort' in changes) {
       track.inputPort = track.type === 'midi' ? normalizePortPreference(changes.inputPort) : null;
@@ -444,7 +448,7 @@ export class SequencerModel {
     const found = this._clip(clipId);
     if (!found) return false;
     const step = snapStep(this.state.snap);
-    const tempo = clamp(bpm, 20, 300);
+    const tempo = clampFinite(bpm, 20, 300);
     if (edge === 'start') {
       const oldEnd = found.clip.startPpq + found.clip.lengthPpq;
       let nextStart = Math.max(0, Math.min(oldEnd - step, snapPpq(valuePpq, this.state.snap)));
@@ -458,7 +462,7 @@ export class SequencerModel {
         const nextTrim = found.clip.trimStartSeconds + secondsDelta;
         if (nextTrim < 0) nextStart += -nextTrim * tempo / 60;
         if (nextTrim >= found.clip.trimEndSeconds - 0.001) nextStart -= (nextTrim - (found.clip.trimEndSeconds - 0.001)) * tempo / 60;
-        found.clip.trimStartSeconds = clamp(
+        found.clip.trimStartSeconds = clampFinite(
           found.clip.trimStartSeconds + (nextStart - found.clip.startPpq) * 60 / tempo,
           0,
           Math.max(0, found.clip.trimEndSeconds - 0.001)
@@ -485,9 +489,9 @@ export class SequencerModel {
     if (!found || found.track.type !== 'midi' || found.clip.notes.length >= SEQUENCER_LIMITS.notesPerClip) return null;
     const startBound = found.clip.sourceOffsetPpq;
     const endBound = startBound + found.clip.lengthPpq;
-    const startPpq = clamp(note.startPpq, startBound, Math.max(startBound, endBound - MIN_NOTE_PPQ));
+    const startPpq = clampFinite(note.startPpq, startBound, Math.max(startBound, endBound - MIN_NOTE_PPQ));
     const normalized = normalizeNote({ ...note, id: uid('note'), startPpq }, endBound);
-    normalized.durationPpq = clamp(note.durationPpq, MIN_NOTE_PPQ, Math.max(MIN_NOTE_PPQ, endBound - startPpq));
+    normalized.durationPpq = clampFinite(note.durationPpq, MIN_NOTE_PPQ, Math.max(MIN_NOTE_PPQ, endBound - startPpq));
     found.clip.notes.push(normalized);
     found.clip.notes.sort((a, b) => a.startPpq - b.startPpq || a.pitch - b.pitch);
     return normalized;
@@ -500,11 +504,11 @@ export class SequencerModel {
     if (!note) return null;
     const startBound = found.clip.sourceOffsetPpq;
     const endBound = startBound + found.clip.lengthPpq;
-    if ('startPpq' in changes) note.startPpq = clamp(changes.startPpq, startBound, Math.max(startBound, endBound - MIN_NOTE_PPQ));
-    if ('durationPpq' in changes) note.durationPpq = clamp(changes.durationPpq, MIN_NOTE_PPQ, Math.max(MIN_NOTE_PPQ, endBound - note.startPpq));
-    if ('pitch' in changes) note.pitch = Math.round(clamp(changes.pitch, 0, 127));
-    if ('velocity' in changes) note.velocity = Math.round(clamp(changes.velocity, 1, 127));
-    if ('channel' in changes) note.channel = Math.round(clamp(changes.channel, 1, 16));
+    if ('startPpq' in changes) note.startPpq = clampFinite(changes.startPpq, startBound, Math.max(startBound, endBound - MIN_NOTE_PPQ));
+    if ('durationPpq' in changes) note.durationPpq = clampFinite(changes.durationPpq, MIN_NOTE_PPQ, Math.max(MIN_NOTE_PPQ, endBound - note.startPpq));
+    if ('pitch' in changes) note.pitch = Math.round(clampFinite(changes.pitch, 0, 127));
+    if ('velocity' in changes) note.velocity = Math.round(clampFinite(changes.velocity, 1, 127));
+    if ('channel' in changes) note.channel = Math.round(clampFinite(changes.channel, 1, 16));
     found.clip.notes.sort((a, b) => a.startPpq - b.startPpq || a.pitch - b.pitch);
     return note;
   }
@@ -538,10 +542,10 @@ export class SequencerModel {
     const durationDelta = finite(deltaDurationPpq);
 
     for (const note of notes) {
-      note.startPpq = clamp(note.startPpq + startDelta, lower, lastStart);
-      note.pitch = Math.round(clamp(note.pitch + pitchDelta, 0, 127));
+      note.startPpq = clampFinite(note.startPpq + startDelta, lower, lastStart);
+      note.pitch = Math.round(clampFinite(note.pitch + pitchDelta, 0, 127));
       const room = Math.max(MIN_NOTE_PPQ, upper - note.startPpq);
-      note.durationPpq = clamp(note.durationPpq + durationDelta, MIN_NOTE_PPQ, room);
+      note.durationPpq = clampFinite(note.durationPpq + durationDelta, MIN_NOTE_PPQ, room);
     }
     found.clip.notes.sort((a, b) => a.startPpq - b.startPpq || a.pitch - b.pitch);
     return notes.length;
@@ -562,8 +566,8 @@ export class SequencerModel {
     const wanted = new Set((Array.isArray(noteIds) ? noteIds : []).filter((id) => typeof id === 'string'));
     const notes = found.clip.notes.filter((note) => wanted.has(note.id));
     for (const note of notes) {
-      if ('velocity' in changes) note.velocity = Math.round(clamp(changes.velocity, 1, 127));
-      if ('channel' in changes) note.channel = Math.round(clamp(changes.channel, 1, 16));
+      if ('velocity' in changes) note.velocity = Math.round(clampFinite(changes.velocity, 1, 127));
+      if ('channel' in changes) note.channel = Math.round(clampFinite(changes.channel, 1, 16));
     }
     return notes.length;
   }
@@ -598,7 +602,7 @@ export class SequencerModel {
         ...note,
         id: uid('note'),
         startPpq,
-        durationPpq: clamp(note.durationPpq, MIN_NOTE_PPQ, Math.max(MIN_NOTE_PPQ, upper - startPpq))
+        durationPpq: clampFinite(note.durationPpq, MIN_NOTE_PPQ, Math.max(MIN_NOTE_PPQ, upper - startPpq))
       });
     }
     if (!copies.length) return [];
@@ -621,13 +625,13 @@ export class SequencerModel {
     if (!found || found.track.type !== 'audio' || !changes || typeof changes !== 'object' || Array.isArray(changes)) return null;
     const duration = Math.max(0.001, finite(found.clip.durationSeconds, 0.001));
     if ('trimStartSeconds' in changes) {
-      found.clip.trimStartSeconds = clamp(changes.trimStartSeconds, 0, Math.max(0, found.clip.trimEndSeconds - 0.001));
+      found.clip.trimStartSeconds = clampFinite(changes.trimStartSeconds, 0, Math.max(0, found.clip.trimEndSeconds - 0.001));
     }
     if ('trimEndSeconds' in changes) {
-      found.clip.trimEndSeconds = clamp(changes.trimEndSeconds, found.clip.trimStartSeconds + 0.001, duration);
+      found.clip.trimEndSeconds = clampFinite(changes.trimEndSeconds, found.clip.trimStartSeconds + 0.001, duration);
     }
-    if ('gain' in changes) found.clip.gain = clamp(changes.gain, 0, 2);
-    const tempo = clamp(bpm, 20, 300);
+    if ('gain' in changes) found.clip.gain = clampFinite(changes.gain, 0, 2);
+    const tempo = clampFinite(bpm, 20, 300);
     found.clip.lengthPpq = Math.max(MIN_CLIP_PPQ, (found.clip.trimEndSeconds - found.clip.trimStartSeconds) * tempo / 60);
     return found.clip;
   }
@@ -638,7 +642,7 @@ export class SequencerModel {
     const found = this._clip(clipId);
     const gridTicks = QUANTIZE_GRIDS[grid];
     if (!found || found.track.type !== 'midi' || !gridTicks) return 0;
-    const amount = Math.round(clamp(strength, 0, 100));
+    const amount = Math.round(clampFinite(strength, 0, 100));
     const lower = ppqToTicks(found.clip.sourceOffsetPpq);
     const upper = ppqToTicks(found.clip.sourceOffsetPpq + found.clip.lengthPpq);
     const selected = new Set(Array.isArray(selectedNoteIds) ? selectedNoteIds : []);
@@ -669,13 +673,13 @@ export class SequencerModel {
       let nextStart = originalStart;
       if (startVisible) {
         nextStart = interpolate(originalStart, quantized(originalStart));
-        nextStart = clamp(nextStart, lower, Math.min(upper - MIN_NOTE_TICKS, sourceUpper - originalDuration));
+        nextStart = clampFinite(nextStart, lower, Math.min(upper - MIN_NOTE_TICKS, sourceUpper - originalDuration));
       }
       if (timing === 'starts+ends') {
         let nextEnd = originalEnd;
         if (endVisible) nextEnd = interpolate(originalEnd, quantized(originalEnd));
-        if (startVisible) nextStart = clamp(nextStart, lower, nextEnd - MIN_NOTE_TICKS);
-        if (endVisible) nextEnd = clamp(nextEnd, nextStart + MIN_NOTE_TICKS, upper);
+        if (startVisible) nextStart = clampFinite(nextStart, lower, nextEnd - MIN_NOTE_TICKS);
+        if (endVisible) nextEnd = clampFinite(nextEnd, nextStart + MIN_NOTE_TICKS, upper);
         note.startPpq = ticksToPpq(nextStart);
         note.durationPpq = ticksToPpq(nextEnd - nextStart);
       } else {
@@ -718,7 +722,7 @@ export class SequencerModel {
     const headLength = cut - clip.startPpq;
     const tailLength = clip.startPpq + clip.lengthPpq - cut;
     if (headLength < MIN_CLIP_PPQ || tailLength < MIN_CLIP_PPQ) return null;
-    const tempo = clamp(bpm, 20, 300);
+    const tempo = clampFinite(bpm, 20, 300);
 
     const raw = { ...structuredClone(clip), id: uid('clip'), startPpq: cut, lengthPpq: tailLength };
     if (track.type === 'midi') {

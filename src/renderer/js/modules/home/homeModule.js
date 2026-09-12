@@ -53,4 +53,3 @@ export function createHomeModule(hub) { return {
   }
 }; }
 
-export const homeModule = { id: 'home', name: 'Home', navEntry: { label: 'Home', icon: 'home', group: 'home', fixed: true } };

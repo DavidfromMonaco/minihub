@@ -1,5 +1,5 @@
-export const TEMPO_MIN = 20;
-export const TEMPO_MAX = 300;
+const TEMPO_MIN = 20;
+const TEMPO_MAX = 300;
 
 export function normalizeTempo(value, fallback = 120) {
   const numeric = Number(value);

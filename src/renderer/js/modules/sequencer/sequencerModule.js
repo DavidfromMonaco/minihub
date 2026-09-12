@@ -144,7 +144,7 @@ export function clipsInSpan(tracks, { startPpq = 0, endPpq = 0, fromTrack = 0, t
 const gainToDb = (gain) => gain > 0
   ? Math.max(-60, Math.min(6, 20 * Math.log10(gain))) : -60;
 const dbToGain = (db) => db <= -60 ? 0 : 10 ** (db / 20);
-const formatDb = (gain) => {
+const formatGainDb = (gain) => {
   const db = gainToDb(gain);
   return db <= -60 ? '−∞ dB' : `${db >= 0 ? '+' : ''}${db.toFixed(1)} dB`;
 };
@@ -727,7 +727,7 @@ export function createSequencerModule(hub) {
                 <input class="seq-track-name" data-track-control="name" value="${escapeHtml(track.name)}">
                 <button class="seq-mute ${track.muted ? 'active' : ''}" data-track-action="mute" title="Mute">M</button>
                 <button class="seq-track-delete" data-track-action="delete" title="Delete track">×</button>
-                <label class="seq-track-level"><input data-track-control="volume" type="range" min="-60" max="6" step="0.1" value="${gainToDb(track.volume)}" aria-label="${escapeHtml(track.name)} level in dB"><output data-track-level-value>${formatDb(track.volume)}</output></label>
+                <label class="seq-track-level"><input data-track-control="volume" type="range" min="-60" max="6" step="0.1" value="${gainToDb(track.volume)}" aria-label="${escapeHtml(track.name)} level in dB"><output data-track-level-value>${formatGainDb(track.volume)}</output></label>
                 ${routeDots(routeStates(hub, track, sequencerNode.id))}
               </div>
               <div class="seq-track-lane" data-seq-left="${TRACK_HEADER}" data-seq-width="${timelineWidth}" data-seq-beat="${gridLinePx}">${track.clips.filter((clip) => clip.startPpq + clip.lengthPpq >= visibleStart && clip.startPpq <= visibleEnd).map((clip) => clipMarkup(track, clip, zoom, selectedClipIds.has(clip.id))).join('')}</div>
@@ -892,7 +892,7 @@ export function createSequencerModule(hub) {
     volume?.addEventListener('input', (event) => {
       const gain = dbToGain(Number(event.target.value));
       const value = element.querySelector('[data-track-level-value]');
-      if (value) value.textContent = formatDb(gain);
+      if (value) value.textContent = formatGainDb(gain);
       controller.setTrackControl(trackId, { volume: gain }, { render: false });
     });
     volume?.addEventListener('change', (event) => controller.setTrackControl(

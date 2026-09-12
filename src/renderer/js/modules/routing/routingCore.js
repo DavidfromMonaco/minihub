@@ -10,8 +10,6 @@
  * testable in Node without a DOM.
  */
 
-export const PORT_TYPES = ['midi', 'audio', 'control'];
-
 /**
  * Secondary distinction for each port type (beyond color) so ports are not
  * identified by color alone. `shape` drives the jack glyph, `label` the text.

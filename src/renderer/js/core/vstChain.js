@@ -74,7 +74,7 @@ export function getVstRole(roleId) {
  * alphabetically by plugin name, and empty families are dropped so the picker
  * only shows categories that actually contain plugins.
  */
-export const PLUGIN_FAMILIES = [
+const PLUGIN_FAMILIES = [
   { id: 'instruments', label: 'INSTRUMENTS', roles: ['instrument'] },
   { id: 'audio-effects', label: 'AUDIO EFFECTS', roles: ['audio-effect'] },
   { id: 'midi-effects', label: 'MIDI EFFECTS', roles: ['midi-effect'] },

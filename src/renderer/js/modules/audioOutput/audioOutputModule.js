@@ -17,6 +17,7 @@ import {
   updateMasterOutput
 } from '../../core/masterOutput.js';
 import { AUDIO_OUTPUT_NODE_ID } from '../../core/systemNodes.js';
+import { uniqueDevices } from '../../core/hardwareConfig.js';
 
 const SAMPLE_RATES = [44100, 48000, 88200, 96000];
 const BUFFER_SIZES = [128, 256, 512, 1024];
@@ -24,20 +25,8 @@ const BUFFER_SIZES = [128, 256, 512, 1024];
 const CONFIG_KEY = 'audioOutputConfig';
 
 const meterPercent = (db) => Math.max(0, Math.min(100, ((Number(db) || -100) + 60) / 60 * 100));
-const formatDb = (db, floor = -100) => Number.isFinite(Number(db)) && Number(db) > floor
+const formatDbfs = (db, floor = -100) => Number.isFinite(Number(db)) && Number(db) > floor
   ? `${Number(db).toFixed(1)} dBFS` : '−∞ dBFS';
-
-/** Deduplicate engine output devices by name, preferring WASAPI low latency. */
-function dedupeDevices(devices) {
-  const byName = new Map();
-  for (const d of devices || []) {
-    const existing = byName.get(d.name);
-    if (!existing || (d.isWASAPI && !existing.isWASAPI)) {
-      byName.set(d.name, d);
-    }
-  }
-  return [...byName.values()];
-}
 
 export function createAudioOutputModule(hub) {
   let container = null;
@@ -54,7 +43,7 @@ export function createAudioOutputModule(hub) {
   }
 
   function render() {
-    const devices = dedupeDevices(hub.engine.devices);
+    const devices = uniqueDevices(hub.engine.devices);
     const st = engineStateText();
     const cfg = hub.settings.get(CONFIG_KEY) || {};
     const master = normalizeMasterOutput(hub.settings.get(MASTER_OUTPUT_KEY));
@@ -216,8 +205,8 @@ export function createAudioOutputModule(hub) {
     // Subscribe to engine events for live status.
     subs.push(
       hub.events.on('engine:devices', () => {
-        hub.diagnostics.log(`audioOutput: devices event -> render ${dedupeDevices(hub.engine.devices).length} options`);
-        fillDeviceSelect(dedupeDevices(hub.engine.devices), hub.settings.get(CONFIG_KEY)?.deviceName);
+        hub.diagnostics.log(`audioOutput: devices event -> render ${uniqueDevices(hub.engine.devices).length} options`);
+        fillDeviceSelect(uniqueDevices(hub.engine.devices), hub.settings.get(CONFIG_KEY)?.deviceName);
       }),
       hub.events.on('engine:deviceState', (msg) => updateDeviceState(msg)),
       hub.events.on('engine:state', updateEngineState),
@@ -251,11 +240,11 @@ export function createAudioOutputModule(hub) {
     const observation = meter.audioOutputObservation || {};
     els.meterLeft.style.width = `${meterPercent(leftDb)}%`;
     els.meterRight.style.width = `${meterPercent(rightDb)}%`;
-    els.peakLeft.textContent = formatDb(leftDb);
-    els.peakRight.textContent = formatDb(rightDb);
+    els.peakLeft.textContent = formatDbfs(leftDb);
+    els.peakRight.textContent = formatDbfs(rightDb);
     els.clip.classList.toggle('active', meter.clip === true);
     els.clip.setAttribute('aria-pressed', meter.clip === true ? 'true' : 'false');
-    els.preGainPeak.textContent = formatDb(Number(meter.preGainPeakDb));
+    els.preGainPeak.textContent = formatDbfs(Number(meter.preGainPeakDb));
     els.automaticGainReduction.textContent = meter.automaticGainReduction === true ? 'ON' : 'OFF';
     pathTelemetry.set('network:audio-output', {
       ...observation, scope: 'network', nodeId: AUDIO_OUTPUT_NODE_ID, role: 'output',
@@ -305,7 +294,7 @@ export function createAudioOutputModule(hub) {
       els.pathDiagnostics.appendChild(empty);
       return;
     }
-    const peakDb = (gain) => formatDb(gain > 0 ? 20 * Math.log10(gain) : -100);
+    const peakDb = (gain) => formatDbfs(gain > 0 ? 20 * Math.log10(gain) : -100);
     for (const record of records) {
       const identity = record.instanceId
         ? `${record.name || record.nodeId} · ${record.instanceId}`

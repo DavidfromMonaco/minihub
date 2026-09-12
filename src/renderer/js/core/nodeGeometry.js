@@ -12,9 +12,9 @@
  */
 export const NODE_WIDTH = 200;
 export const IDENTITY_H = 88; // upper identity/content area height
-export const DOCK_MIN_H = 46; // I/O dock minimum height
-export const PORT_ROW = 30; // vertical spacing between ports
-export const PAD_BOTTOM = 12; // padding below the last port row
+const DOCK_MIN_H = 46; // I/O dock minimum height
+const PORT_ROW = 30; // vertical spacing between ports
+const PAD_BOTTOM = 12; // padding below the last port row
 
 /**
  * A node that carries a `surface` draws its control ports where the device puts
@@ -105,19 +105,14 @@ export function dockHeight(node) {
   return Math.max(DOCK_MIN_H, rows * PORT_ROW + PAD_BOTTOM);
 }
 
-/** Total node height (identity area + I/O dock). */
-export function identityHeight(node) {
-  return IDENTITY_H;
-}
-
 export function nodeHeight(node) {
   if (node.surface) return surfaceNodeHeight(node.surface);
-  return identityHeight(node) + dockHeight(node);
+  return IDENTITY_H + dockHeight(node);
 }
 
 /** World Y of a port row (ports live inside the I/O dock). */
 export function portY(node, index) {
-  return identityHeight(node) + (index + 0.5) * PORT_ROW;
+  return IDENTITY_H + (index + 0.5) * PORT_ROW;
 }
 
 /**

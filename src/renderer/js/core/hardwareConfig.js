@@ -17,7 +17,15 @@ export function normalizeAudioOutputConfig(value) {
   return { deviceName, sampleRate, bufferSize };
 }
 
-function uniqueDevices(devices) {
+/**
+ * The engine's device list, one entry per NAME, WASAPI winning a tie.
+ *
+ * Exported because `modules/audioOutput` asked the same question with its own
+ * copy (`dedupeDevices`), and the copy did not filter out a device with no
+ * usable name -- so the two lists could differ by an entry that the settings
+ * key, which stores a device by name, cannot address.
+ */
+export function uniqueDevices(devices) {
   const byName = new Map();
   for (const device of devices || []) {
     if (!boundedText(device?.name)) continue;
@@ -58,11 +66,6 @@ export class HardwareConfigManager {
       hub.events.on('engine:state', (state) => this._onEngineState(state)),
       hub.events.on('engine:error', (error) => this._onEngineError(error))
     ];
-  }
-
-  dispose() {
-    this._unsubs.forEach((off) => { if (typeof off === 'function') off(); });
-    this._unsubs = [];
   }
 
   /** Persist an explicit user choice and apply it without waiting for another refresh. */

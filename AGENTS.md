@@ -109,7 +109,7 @@ scope; here are the technical prohibitions:
   | What you are dressing | Sheet | How |
   |---|---|---|
   | the app shell: header, sidebar, Patch Bay, cables, modals, settings forms | `base.css` | classes `.panel`, `.btn`, `.pill`… |
-  | an instrument surface: anything imitating a device faceplate — knobs, switches, step grids | `omni-pearl.css` | put `class="omni-pearl"` on the module root, then build the controls with `ui/omniPearl.js` (`pearlKnob`, `pearlSelect`, `pearlSwitch`, `pearlIconButton`) |
+  | an instrument surface: anything imitating a device faceplate — knobs, switches, step grids | `omni-pearl.css` | put `class="omni-pearl"` on the module root, then build the controls with `ui/omniPearl.js` (`pearlKnobMount`, `pearlSelect`, `pearlSwitch`, `pearlIconButton`) |
 
   **This is containment, not layering.** The faceplate is not paint applied over
   `base.css`: `.omni-pearl` redefines its **own** complete token set (`--op-*`)

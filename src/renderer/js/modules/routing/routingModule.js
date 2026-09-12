@@ -27,7 +27,6 @@ import {
   NODE_WIDTH,
   nodeWidth,
   IDENTITY_H,
-  identityHeight,
   surfaceScale,
   surfacePortRowY,
   SURFACE_Y,
@@ -230,7 +229,7 @@ export function createRoutingModule(hub) {
 
       const clipped = svgEl('g', { 'clip-path': `url(#${clipId})` });
       // Upper identity/content surface (family-tinted) + lower I/O dock.
-      const identityH=identityHeight(node);
+      const identityH=IDENTITY_H;
       clipped.appendChild(svgEl('rect', { class: 'node-identity', x: 0, y: 0, width, height: identityH }));
       clipped.appendChild(svgEl('rect', { class: 'node-dock', x: 0, y: identityH, width, height: height - identityH }));
       clipped.appendChild(svgEl('rect', { class: 'node-dock-divider', x: 0, y: identityH, width, height: 1 }));

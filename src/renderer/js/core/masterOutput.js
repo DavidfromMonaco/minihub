@@ -1,8 +1,9 @@
+import { clamp } from './clamp.js';
+
 export const MASTER_OUTPUT_KEY = 'masterOutput';
 export const DEFAULT_MASTER_OUTPUT = Object.freeze({ gainDb: 0 });
 
 const finite = (value, fallback) => Number.isFinite(Number(value)) ? Number(value) : fallback;
-const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
 export function normalizeMasterOutput(value) {
   return {
