@@ -124,3 +124,67 @@ test('without a registered editor the type still falls back to the generic shell
   assert.match(container.innerHTML, /No video assigned|No image assigned|panel/,
     'the generic shell still renders when no editor is registered');
 });
+
+// ---- an undo happening under an open editor ---------------------------------
+
+/*
+ * Reported from use on 2026-09-12: "Ctrl+Z in the arpeggiator acts on the Patch
+ * Bay". It did not. It restored the arpeggiator's pattern correctly, and the
+ * panel went on drawing the old one -- so the only change the eye could find
+ * was on the canvas, which listens for `history:applied` and this did not.
+ *
+ * A node editor that does not answer that event is a node editor where undo is
+ * invisible, which is indistinguishable from undo being broken.
+ */
+
+test('a mounted editor redraws when the history puts its node back', async () => {
+  const hub = createHub(mockApi());
+  hub.engine.init();
+
+  let renders = 0;
+  const unregister = registerNodeEditor('image', {
+    render: ({ instance }) => `<p data-probe="${instance.id}">render ${renders += 1}</p>`
+  });
+
+  try {
+    const node = hub.nodes.create('image');
+    const module = hub.modules.get(node.id);
+    const container = makeContainer();
+    module.mount(container);
+    assert.equal(renders, 1, 'mounting drew it once');
+
+    hub.events.emit('history:applied', { keys: ['nodeInstances'] });
+    assert.equal(renders, 2, 'an undo under the panel redraws it from the model');
+
+    // And the subscription is not a leak: invariant 8.
+    module.unmount();
+    hub.events.emit('history:applied', { keys: ['nodeInstances'] });
+    assert.equal(renders, 2, 'an unmounted editor answers nothing');
+  } finally {
+    unregister();
+  }
+});
+
+test('an editor whose node the undo deleted does not try to redraw it', async () => {
+  const hub = createHub(mockApi());
+  hub.engine.init();
+
+  let renders = 0;
+  const unregister = registerNodeEditor('image', {
+    render: () => `<p data-probe="x">render ${renders += 1}</p>`
+  });
+
+  try {
+    const node = hub.nodes.create('image');
+    const container = makeContainer();
+    hub.modules.get(node.id).mount(container);
+    assert.equal(renders, 1);
+
+    // This is the order a restore runs in: the node goes, then the event.
+    hub.nodes.delete(node.id);
+    assert.doesNotThrow(() => hub.events.emit('history:applied', { keys: ['nodeInstances'] }));
+    assert.equal(renders, 1, 'drawing a node that no longer exists is not a redraw, it is a crash waiting');
+  } finally {
+    unregister();
+  }
+});

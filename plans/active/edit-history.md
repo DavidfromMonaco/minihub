@@ -199,3 +199,20 @@ Two causes, both mine, both fixed.
   sends.
 
 897 tests, 15 check rules, `dist/` synced.
+
+2026-09-12 — **Reported again: "Ctrl+Z in the arpeggiator acts on the Patch
+Bay".** It did not. The step was recorded, the undo restored the pattern in the
+model — proved by driving the manager exactly as the editor does, mutating
+`instance.content` in place and calling `_persist()` — and **the panel went on
+drawing the old pattern**. The only change the eye could find was on the canvas,
+which listens for `history:applied`; no node editor did.
+
+An editor that does not answer that event is an editor where undo is invisible,
+which is indistinguishable from undo being broken. `mount()` now redraws on it,
+preferring the finer refreshers where they exist (`rerenderArpCustom`,
+`rerenderChain`) because a full repaint throws the roll back to the top of the
+keyboard — barely better than not coming back at all. The subscription is in
+`subs`, so `unmount()` removes it, and a node deleted BY that very undo is
+skipped rather than drawn.
+
+899 tests, 15 check rules, `dist/` synced.

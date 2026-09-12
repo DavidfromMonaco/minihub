@@ -878,12 +878,47 @@ export class NodeInstanceManager {
         const editorContext = { instance, type, hub, statusMap, editorNotes };
         // A type with no registered editor is not an error: `video`, `image`
         // and `audio-input` deliberately have none and show the generic shell.
-        container.innerHTML = editor ? editor.render(editorContext) : renderGenericShell(instance, type);
-        // The control surface carries its coordinates on `data-*` because the
-        // CSP drops an inline style attribute in silence; this is what turns
-        // them into a position, and it has to run after every innerHTML.
-        applyMiniLabSurfaceLayout(container);
-        afterArpRender(true);
+        /**
+         * Draw this node's editor from the model. `center` re-centres the
+         * arpeggiator roll, which is wanted when the panel opens and jarring
+         * on a redraw the user did not ask a panel for.
+         */
+        function paintEditor(center = false) {
+          container.innerHTML = editor ? editor.render(editorContext) : renderGenericShell(instance, type);
+          // The control surface carries its coordinates on `data-*` because the
+          // CSP drops an inline style attribute in silence; this is what turns
+          // them into a position, and it has to run after every innerHTML.
+          applyMiniLabSurfaceLayout(container);
+          afterArpRender(center);
+        }
+        paintEditor(true);
+
+        /**
+         * An undo or a redo changed this node under the panel drawing it.
+         *
+         * Reported from use on 2026-09-12: `Ctrl+Z` in the arpeggiator "acted on
+         * the Patch Bay". It did not -- it restored the pattern correctly and
+         * the panel went on showing the old drawing, so the only visible change
+         * was on the canvas, which listens for this event and this one did not.
+         *
+         * The finer refreshers are preferred where they exist because they keep
+         * the roll's scroll position; a panel whose notes come back at the cost
+         * of jumping to the top of the keyboard is barely better than one that
+         * does not come back at all.
+         */
+        subs.push(hub.events.on('history:applied', () => {
+          if (!manager.instances.has(instance.id)) return; // deleted by this very undo
+          if (type.id === 'arpeggiator') {
+            syncArpControlStrip(container, instance.content);
+            rerenderArpCustom();
+            return;
+          }
+          if (type.id === 'vst') {
+            rerenderChain();
+            return;
+          }
+          paintEditor(false);
+        }));
 
         if (type.id === 'vst') {
           // Live engine status for this chain.
