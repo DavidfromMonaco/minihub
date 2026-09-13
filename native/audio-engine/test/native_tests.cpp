@@ -1,4 +1,5 @@
 #include "gesture_learn_state.h"
+#include "host_system.h"
 #include "transport.h"
 #include "audio_take_writer.h"
 #include "audio_network.h"
@@ -197,6 +198,26 @@ void testResetDropsPendingAndArmedState()
     state.reset(0);
     expect(!state.consume().has_value(), "destruction/reset drops stale pending touch");
     expect(!state.isArmed(), "destruction/reset cancels Learn");
+}
+
+// A plugin's web page is found through the port its browser process listens on.
+// The engine reads that from the machine's TCP table, where both the address and
+// the port are stored in network byte order: a swapped port here would send main
+// knocking on the wrong door, and the page would read as "not reachable".
+void testLoopbackListenerIsReportedWithItsPort()
+{
+    juce::StreamingSocket listener;
+    expect(listener.createListener(0, "127.0.0.1"), "a loopback listener can be opened for the test");
+    const int port = listener.getBoundPort();
+    expect(port > 0, "the operating system chose a port for the listener");
+#if JUCE_WINDOWS
+    const auto listeners = mlh::loopbackTcpListeners();
+    const auto own = listeners.find(static_cast<long long>(::GetCurrentProcessId()));
+    const bool reported = own != listeners.end()
+        && std::find(own->second.begin(), own->second.end(), port) != own->second.end();
+    expect(reported, "the loopback listener is reported under this process, with its own port");
+#endif
+    listener.close();
 }
 
 void testUtf8HostChromeAndMetronomeEvents()
@@ -1542,6 +1563,8 @@ int main(int argc, char** argv)
     testLearnCapturesOnlyPostArmAndFirstDistinctParameter();
     std::cerr << "[core] reset\n";
     testResetDropsPendingAndArmedState();
+    std::cerr << "[core] loopback-listener\n";
+    testLoopbackListenerIsReportedWithItsPort();
     std::cerr << "[core] utf8-metronome\n";
     testUtf8HostChromeAndMetronomeEvents();
     std::cerr << "[core] transport-freeze\n";

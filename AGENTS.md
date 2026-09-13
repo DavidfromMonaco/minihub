@@ -190,6 +190,16 @@ The channel is off by default. Start the packaged build with it on:
 MINIHUB_AGENT_CHANNEL=1 "dist/MiniHub/MiniHub.exe"
 ```
 
+Where the channel is already turned on in the settings (`agentChannel: true`),
+open MiniHub with the client instead. It launches through the Windows shell, the
+way a double-click does: an agent running inside a packaged app (Codex Desktop)
+would otherwise hand MiniHub that app's identity, and every plugin would keep
+its login and downloads in that app's private storage (DECISIONS D-041).
+
+```bash
+node ../minihub-agent/minihub.mjs start
+```
+
 Then talk to it from the client, which lives **outside this repository** at
 `../minihub-agent/`:
 
@@ -201,7 +211,9 @@ node ../minihub-agent/minihub.mjs describe
 `../minihub-agent/AGENTS.md` holds the whole vocabulary and is the file to read
 before using it. The short version: `describe` to read the state, then typed
 requests for everything else — nodes, cables, plugins, parameters, tracks,
-clips, notes, the transport, the tempo, saving, exporting.
+clips, notes, the transport, the tempo, saving, exporting, the windows on
+screen, and the web page a plugin such as Splice INSTRUMENT shows in its own
+window.
 
 Two things this is NOT. It is not a public API in the sense §6 of
 [INTENT.md](INTENT.md) refuses: an operation an agent can ask for is one the

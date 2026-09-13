@@ -1,4 +1,4 @@
-import { describeSetup } from './agentDescribe.js';
+import { describeSetup, describeWindows } from './agentDescribe.js';
 import { getVstParametersForNode } from './vstParameterDiscovery.js';
 import { CONTROL_BINDING_VERSION } from './controlBindings.js';
 import { updateMasterOutput } from './masterOutput.js';
@@ -55,8 +55,17 @@ const MUTATING = new Set([
  */
 const UNGATED = new Set([
   'transport', 'set-tempo', 'set-master', 'open-editor', 'close-editor',
-  'project', 'export', 'cancel-export', 'scan-plugins', 'devices'
+  'project', 'export', 'cancel-export', 'scan-plugins', 'devices',
+  'show-window', 'open-clip-editor', 'browser'
 ]);
+
+/**
+ * What a `browser` request may carry to the main process, by name.
+ *
+ * Listed rather than spread: main validates each field again, and a request is
+ * data an agent wrote, so nothing it did not mean to send should ride along.
+ */
+const BROWSER_FIELDS = ['operation', 'ref', 'x', 'y', 'count', 'text', 'replace', 'key', 'deltaX', 'deltaY', 'filePath'];
 
 const failed = (reason, message) => (message ? { ok: false, reason, message } : { ok: false, reason });
 
@@ -142,7 +151,47 @@ export async function handleAgentRequest(hub, request = {}) {
   }
 
   if (kind === 'describe') {
-    return { ok: true, projectId: hub.project?.projectId || '', setup: describeSetup(hub) };
+    const setup = describeSetup(hub);
+    setup.windows = describeWindows(hub, await Promise.resolve(hub.api?.windowState?.()).catch(() => null));
+    return { ok: true, projectId: hub.project?.projectId || '', setup };
+  }
+
+  if (kind === 'show-window') {
+    // The page first, then the window: the person should see the window arrive
+    // already on what the agent is about to work on, not a flash of the old page.
+    const page = typeof request.page === 'string' ? request.page : '';
+    if (page && !hub.modules?.get?.(page)) {
+      return failed('unknown-page', `pages: ${describeWindows(hub).pages.map((entry) => entry.id).join(', ')}`);
+    }
+    if (page && !hub.modules.show(page)) return failed('page-unavailable');
+    // In front, not focused: the keyboard stays with whatever the person is
+    // typing in. See `window:show-main` in main.js.
+    const shown = await Promise.resolve(hub.api?.showMainWindow?.()).catch(() => false);
+    return { ok: true, page: hub.modules?.activeId || '', shown: shown === true };
+  }
+
+  if (kind === 'open-clip-editor') {
+    // The same opening a double-click on the clip does, window reuse included.
+    const clipId = String(request.clipId || '');
+    if (hub.project?._transitionPending) return failed('project-transition');
+    return hub.sequencer?.openClipEditor?.(clipId) ? { ok: true, clipId } : failed('clip-not-found');
+  }
+
+  if (kind === 'browser') {
+    // The page lives in a plugin window drawn by the engine and is reached by
+    // main, which owns sockets; this side only checks the plugin is one this
+    // project holds. Whether its window is open, and what is in it, is asked of
+    // the engine itself.
+    const nodeId = String(request.nodeId || '');
+    const pluginInstanceId = String(request.pluginInstanceId || '');
+    const plugins = hub.nodes?.get?.(nodeId)?.content?.plugins;
+    if (!Array.isArray(plugins) || !plugins.some((plugin) => plugin.id === pluginInstanceId)) {
+      return failed('plugin-not-found');
+    }
+    if (typeof hub.api?.pluginBrowser !== 'function') return failed('unsupported-request');
+    const payload = { nodeId, pluginInstanceId };
+    for (const field of BROWSER_FIELDS) if (field in request) payload[field] = request[field];
+    return hub.api.pluginBrowser(payload);
   }
 
   if (kind === 'create-node') {

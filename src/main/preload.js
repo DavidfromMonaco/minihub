@@ -83,6 +83,11 @@ contextBridge.exposeInMainWorld('hubAPI', {
     ipcRenderer.on('agent:request', listener);
     return () => ipcRenderer.removeListener('agent:request', listener);
   },
+  // A plugin's web page is reached by main, which owns the sockets; the renderer
+  // only names the plugin and the gesture. See src/main/pluginBrowser.js.
+  pluginBrowser: (request) => ipcRenderer.invoke('plugin-browser:request', request),
+  windowState: () => ipcRenderer.invoke('window:state'),
+  showMainWindow: () => ipcRenderer.invoke('window:show-main'),
 
   // --- Startup diagnostics ---
   diagnosticsLog: (line) => ipcRenderer.invoke('diagnostics:log', line),

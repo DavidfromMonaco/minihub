@@ -96,6 +96,8 @@ endif()
 # --- Native audio engine executable -------------------------------------------
 add_executable(mlh_audio_engine
     src/main.cpp
+    src/host_system.h
+    src/host_system.cpp
     src/ipc.h
     src/ipc.cpp
     src/vst3_scanner.h
@@ -177,6 +179,8 @@ if(BUILD_TESTING)
 
     add_executable(mlh_native_tests
         test/native_tests.cpp
+        src/host_system.h
+        src/host_system.cpp
         src/gesture_learn_state.h
         src/transport.h
         src/audio_network.h
@@ -204,7 +208,7 @@ if(BUILD_TESTING)
     )
     target_include_directories(mlh_native_tests PRIVATE src "${VST3_SDK_ROOT}")
     target_link_libraries(mlh_native_tests PRIVATE
-        juce::juce_audio_processors juce::juce_audio_formats sdk_hosting psapi)
+        juce::juce_audio_processors juce::juce_audio_formats sdk_hosting psapi iphlpapi)
     target_compile_definitions(mlh_native_tests PRIVATE
         JUCE_PLUGINHOST_VST3=1
         JUCE_USE_OGGVORBIS=1
@@ -243,6 +247,7 @@ target_link_libraries(mlh_audio_engine PRIVATE
     portaudio_static
     sdk_hosting
     psapi
+    iphlpapi
 )
 
 # JUCE 9 writes OGG Vorbis in-process. MP3 writing is provided by JUCE's

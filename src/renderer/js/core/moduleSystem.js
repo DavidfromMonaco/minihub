@@ -21,6 +21,7 @@ export class ModuleSystem {
     this.hub = hub;
     this.modules = new Map();
     this.activeId = null;
+    this.container = null;
   }
 
   register(module) {
@@ -43,6 +44,7 @@ export class ModuleSystem {
   activate(id, container) {
     const module = this.modules.get(id);
     if (!module) return false;
+    if (container) this.container = container;
     if (this.activeId === id) return false;
 
     const current = this.modules.get(this.activeId);
@@ -71,6 +73,21 @@ export class ModuleSystem {
 
     this.hub.events.emit('module:activated', id);
     return true;
+  }
+
+  /**
+   * Bring a page on screen for a caller that holds no container.
+   *
+   * Every page mounts into the one shared `#content`, so the container the last
+   * activation used IS the page area. An agent asking for the Patch Bay has no
+   * element to pass, and handing it one would put the DOM into a file that owns
+   * none. Answers true when the page is the one showing afterwards, including
+   * when it already was -- to a caller, "it is on screen" is the whole question.
+   */
+  show(id) {
+    if (!this.modules.has(id) || (!this.container && this.activeId !== id)) return false;
+    if (this.activeId === id) return true;
+    return this.activate(id, this.container);
   }
 
   get(id) {

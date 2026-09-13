@@ -1,4 +1,5 @@
 #include "engine.h"
+#include "host_system.h"
 #include "realtime_drops.h"
 #include "var_util.h"
 
@@ -498,6 +499,7 @@ void Engine::handleCommand(const juce::var& msg)
     else if (type == "setChainOutputEnabled") cmdSetChainOutputEnabled(msg);
     else if (type == "openEditor") cmdOpenEditor(msg);
     else if (type == "closeEditor") cmdCloseEditor(msg);
+    else if (type == "getEditorBrowsers") cmdGetEditorBrowsers(msg);
     else if (type == "getState") cmdGetState(msg);
     else if (type == "setState") cmdSetState(msg);
     else if (type == "getVstParameters") cmdGetVstParameters(msg);
@@ -505,7 +507,6 @@ void Engine::handleCommand(const juce::var& msg)
     else if (type == "setVstParameterLearn") cmdSetVstParameterLearn(msg);
     else if (type == "setTransport") cmdSetTransport(msg);
     else if (type == "getTransport") cmdGetTransport(msg);
-    else if (type == "foregroundEditors") cmdForegroundEditors(msg);
     else if (type == "syncAudioNetwork") cmdSyncAudioNetwork(msg);
     else if (type == "setAudioNodeValues") cmdSetAudioNodeValues(msg);
     else if (type == "syncMidiNetwork") cmdSyncMidiNetwork(msg);
@@ -959,6 +960,10 @@ void Engine::cmdHello(const juce::var& msg)
     setProp(process, "activeAudioStreams", audioEngine_.activeStreamCount());
     setProp(process, "lifetime", "application");
     setProp(process, "reason", "Electron main-process singleton");
+    // Asked of the engine because Electron cannot tell: MiniHub inherits the
+    // package identity of a packaged app that launched it, and the engine is
+    // its child, so the answer is the same for both processes.
+    setProp(process, "packageFamilyName", juce::String::fromUTF8(currentPackageFamilyName().c_str()));
     setProp(out, "nativeProcess", process);
     ipc_.send(out);
 }
@@ -1686,13 +1691,6 @@ void Engine::cmdGetTransport(const juce::var&)
     setProp(out, "numerator", 4); setProp(out, "denominator", 4); ipc_.send(out);
 }
 
-void Engine::cmdForegroundEditors(const juce::var&)
-{
-    for (auto& entry : chains_)
-        for (auto* plugin : entry.second->copyPlugins())
-            plugin->foregroundEditorIfAllowed();
-}
-
 void Engine::cmdSyncAudioNetwork(const juce::var& msg)
 {
     AudioNetworkSpec spec;
@@ -2103,6 +2101,62 @@ void Engine::cmdCloseEditor(const juce::var& msg)
     setProp(out, "pluginId", inst->pluginId());
     setProp(out, "generation", inst->generation());
     setProp(out, "open", inst->editorVisible());
+    ipc_.send(out);
+}
+
+/**
+ * Where the page shown in one plugin editor can be reached, if anywhere.
+ *
+ * Main asks this when an agent wants to act in a plugin's web interface. The
+ * answer pairs each embedded browser window with the loopback ports its process
+ * listens on: WebView2 opens its DevTools port only because Electron started
+ * this engine with `--remote-debugging-port=0`, so the port is chosen by the
+ * browser and can only be discovered, never predicted. Walking the windows of
+ * THIS editor, rather than every browser process on the machine, is what keeps
+ * a request from ever reaching a page that is not inside a MiniHub window.
+ *
+ * Always answered, under the request's id: main is waiting on it.
+ */
+void Engine::cmdGetEditorBrowsers(const juce::var& msg)
+{
+    const juce::String chainId = msg["chainId"].toString();
+    const juce::String instanceId = msg["instanceId"].toString();
+
+    juce::var out = makeObject();
+    setProp(out, "type", "editorBrowsers");
+    setProp(out, "requestId", msg["requestId"].toString().substring(0, 160));
+    setProp(out, "chainId", chainId);
+    setProp(out, "instanceId", instanceId);
+
+    juce::String code, message;
+    PluginInstance* inst = lookupInstance(chainId, instanceId, code, message);
+    const bool open = inst != nullptr && inst->editorVisible();
+    setProp(out, "found", inst != nullptr);
+    setProp(out, "open", open);
+
+    juce::Array<juce::var> browsers;
+    if (open)
+    {
+        const auto windows = inst->editorBrowserWindows();
+        const auto listeners = windows.empty() ? std::map<long long, std::vector<int>> {}
+                                               : loopbackTcpListeners();
+        for (const auto& window : windows)
+        {
+            juce::var entry = makeObject();
+            setProp(entry, "processId", static_cast<juce::int64>(window.processId));
+            setProp(entry, "x", window.x);
+            setProp(entry, "y", window.y);
+            setProp(entry, "width", window.width);
+            setProp(entry, "height", window.height);
+            juce::Array<juce::var> ports;
+            if (const auto found = listeners.find(window.processId); found != listeners.end())
+                for (const int port : found->second)
+                    ports.add(port);
+            setProp(entry, "ports", ports);
+            browsers.add(entry);
+        }
+    }
+    setProp(out, "browsers", browsers);
     ipc_.send(out);
 }
 

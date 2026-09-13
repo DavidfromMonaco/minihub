@@ -154,6 +154,28 @@ Named because each one is tempting:
 - [ ] 9. Still open: an MCP stdio wrapper, if Codex is to call these as tools
       rather than as shell commands. The CLI needs no configuration, so this
       buys convenience, not capability.
+- [x] 10. **A plugin window stays where the person put it** (D-040). The main
+      window's `focus` handler and the engine's `foregroundEditors` are gone.
+      Check: `test/agentWindows.test.mjs` + live — **green 2026-09-13**:
+      MiniHub restored from the taskbar reported `focused: true` and the open
+      Splice window stayed behind it.
+- [x] 11. **The windows an agent works in, on screen** (D-040). `show-window`
+      (a page, then the window in front without the keyboard), `open-clip-editor`,
+      and `describe.windows`. Check: `npm test` + live — **green 2026-09-13**:
+      MiniHub rose from behind a plugin window with the keyboard left where it
+      was; a Clip Editor opened and was listed.
+- [x] 12. **A plugin's web page** (D-041). The engine starts with a WebView2
+      DevTools port while the channel is on, `getEditorBrowsers` finds the page
+      of one editor, `src/main/pluginBrowser.js` acts in it: `read`, `click`,
+      `hover`, `type`, `press`, `scroll`, `screenshot`.
+      Check: `npm run build:native` (0/0) + the four native binaries +
+      `npm test` + `npm run check` + live on Splice INSTRUMENT 2.4.17 — **green
+      2026-09-13**: the outline read its heading and buttons, and a click, a
+      replace-typing, Enter, a wheel and a hover all arrived `isTrusted`.
+- [x] 13. **The launch context** (D-041). `hello.nativeProcess.packageFamilyName`,
+      `describe.windows.launchedInsidePackage`, and `node minihub.mjs start`
+      outside the repository. Check: **run 2026-09-13** with
+      `Invoke-CommandInDesktopPackage` on Codex's package, both ways.
 
 ## Fallback point
 
@@ -168,6 +190,29 @@ the four native test binaries, and `npm run sync:dist` — all green (AGENTS.md
 today, and a prompt describing a two-track setup produces one that sounds.
 
 ## Log
+
+2026-09-13 — "give Codex more power": act in the web pages plugins show,
+show the windows it works in, and stop a plugin window from refusing to go
+behind MiniHub. Three things were only found by running, not by reading.
+
+**The Splice login was never lost; it was filed somewhere else.** Codex Desktop
+is a packaged app, and what it launches inherits its identity: every folder a
+plugin created in AppData on 2026-09-12 sits in Codex's private storage, the
+login tokens included. A MiniHub opened from the desktop reads the real AppData
+and asks again. No MiniHub code was wrong, and none could see it -- hence the
+engine reporting `packageFamilyName`, and a client `start` that goes through the
+shell. The COM-activated explorer that performs the launch has no package
+identity to hand on.
+
+**`focus()` is not "in front".** With a browser in front, `show-window` built on
+the existing `window:focus-main` left MiniHub behind: Windows refuses the
+foreground to a process the person is not using. Restoring from the taskbar was
+the one case that worked, which is how the first check passed by accident.
+
+**The accessibility tree does not hold everything on screen.** Splice's "Don't
+have an account?" is not in it at all. The outline is faithful to the tree, so
+`screenshot` exists and writes CSS pixels: a point read off the image is a point
+`click` accepts, whatever the screen's scaling.
 
 2026-09-12 — "it must cover everything so it can do everything". Widening it
 turned up the same shape a fourth and fifth time: "set a mixer's level", "move a

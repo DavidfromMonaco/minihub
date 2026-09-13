@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { makeFullHub } from './helpers.mjs';
 import {
-  describeAudio, describeCables, describeCatalogue, describeNodes, describeSequencer, describeSetup
+  describeAudio, describeCables, describeCatalogue, describeNodes, describeSequencer, describeSetup, describeWindows
 } from '../src/renderer/js/core/agentDescribe.js';
 
 /**
@@ -161,4 +161,25 @@ test('the description says whether the machine can make a sound at all', () => {
   assert.equal(audio.running, true);
   assert.equal(audio.device, 'Speakers');
   assert.equal(describeSetup(hub).audio.running, true, 'and it is part of one read, not a second question');
+});
+
+// ---- the windows on screen ----------------------------------------------------------
+
+test('an open plugin editor is described by the node and plugin that own it', () => {
+  const hub = rig();
+  const vst = hub.nodes.create('vst');
+  vst.content.plugins = [{ id: 'plugin-2', pluginId: 'C:/Splice.vst3', name: 'Splice INSTRUMENT' }];
+  hub.engine = { getOpenEditors: (chainId) => (chainId === vst.id ? [{ instanceId: 'plugin-2', open: true }] : []) };
+
+  const windows = describeWindows(hub, { main: { visible: true, minimized: true, focused: false }, clipEditors: [] });
+  assert.deepEqual(windows.pluginEditors, [{ nodeId: vst.id, pluginInstanceId: 'plugin-2', name: 'Splice INSTRUMENT' }]);
+  assert.deepEqual(windows.main, { visible: true, minimized: true, focused: false });
+  assert.equal(windows.launchedInsidePackage, null, 'an ordinary launch names no package');
+  assert.ok(windows.pages.some((page) => page.id === vst.id), "a node's own page is one show-window accepts");
+});
+
+test('without the main process the windows describe as unknown rather than as closed', () => {
+  const windows = describeWindows(rig());
+  assert.equal(windows.main, null);
+  assert.deepEqual(windows.clipEditors, []);
 });

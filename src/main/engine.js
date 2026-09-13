@@ -37,12 +37,16 @@ class EngineProcess {
    * @param {(state: string, error?: string) => void} opts.onStateChange
    * @param {(text: string) => void} [opts.onStderr]
    * @param {string} [opts.exePath]
+   * @param {object} [opts.env]  the engine's environment; the parent's when omitted
    */
-  constructor({ onEvent, onStateChange, onStderr, exePath }) {
+  constructor({ onEvent, onStateChange, onStderr, exePath, env }) {
     this.onEvent = onEvent || (() => {});
     this.onStateChange = onStateChange || (() => {});
     this.onStderr = onStderr || (() => {});
     this.exePath = exePath || defaultExePath();
+    this.env = env || null;
+    this._queries = new Map();
+    this._querySeq = 0;
     this.child = null;
     this._rl = null;
     this.state = 'stopped'; // stopped | starting | running | error
@@ -91,7 +95,8 @@ class EngineProcess {
       const args = ['--role', 'live', '--parent-pid', String(process.pid), '--created-at', createdAt];
       this.child = spawn(this.exePath, args, {
         stdio: ['pipe', 'pipe', 'pipe'],
-        windowsHide: true
+        windowsHide: true,
+        ...(this.env ? { env: this.env } : {})
       });
       activeSupervisor = this;
       this.onStderr(`native-process role=live pid=${this.child.pid} parentPid=${process.pid} createdAt=${createdAt} audioDevice=owned lifetime=app reason=electron-main args=${JSON.stringify(args)} path=${this.exePath} sha256=${this.executableSha256()}`);
@@ -145,12 +150,19 @@ class EngineProcess {
     }
     if (msg.type === 'shutdownAck') this._settleShutdownAck(true);
     if (msg.type === 'pluginStateCaptureComplete') this._settleStateCapture(true);
+    const query = typeof msg.requestId === 'string' ? this._queries.get(msg.requestId) : null;
+    if (query && msg.type === query.replyType) {
+      // Consumed, not forwarded: main asked, and nobody else is waiting on it.
+      this._settleQuery(msg.requestId, msg);
+      return;
+    }
     this.onEvent(msg);
   }
 
   _onExit(code, signal) {
     this._settleStateCapture(false);
     this._settleShutdownAck(false);
+    this._settleAllQueries();
     const wasRunning = this.state === 'running';
     this._rl = null;
     this.child = null;
@@ -172,6 +184,7 @@ class EngineProcess {
 
   _fail(message) {
     this._settleStateCapture(false);
+    this._settleAllQueries();
     this.state = 'error';
     this.error = message;
     if (!this.child && activeSupervisor === this) activeSupervisor = null;
@@ -188,6 +201,39 @@ class EngineProcess {
       console.error('[engine] send failed:', err);
       return false;
     }
+  }
+
+  /**
+   * Ask the engine one question from the main process and wait for its answer.
+   *
+   * The renderer keeps its own request bookkeeping in `engineClient`; this is
+   * for the few questions main asks itself. The answer is the first event of
+   * `replyType` carrying this request's id, or `null` when the engine is gone,
+   * the command could not be written, or nothing came back in time -- a caller
+   * holding a socket open for an agent must be able to say "no answer" rather
+   * than hang with it.
+   */
+  query(msg, { replyType, timeoutMs = 3000 } = {}) {
+    if (!this.child || !replyType) return Promise.resolve(null);
+    const requestId = `main-query-${++this._querySeq}`;
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => this._settleQuery(requestId, null), timeoutMs);
+      this._queries.set(requestId, { replyType, resolve, timer });
+      if (!this.send({ ...msg, v: PROTOCOL_VERSION, requestId })) this._settleQuery(requestId, null);
+    });
+  }
+
+  _settleQuery(requestId, answer) {
+    const pending = this._queries.get(requestId);
+    if (!pending) return false;
+    this._queries.delete(requestId);
+    clearTimeout(pending.timer);
+    pending.resolve(answer);
+    return true;
+  }
+
+  _settleAllQueries() {
+    for (const requestId of [...this._queries.keys()]) this._settleQuery(requestId, null);
   }
 
   /** Clean shutdown: ask the engine to quit, then force-kill if needed. */

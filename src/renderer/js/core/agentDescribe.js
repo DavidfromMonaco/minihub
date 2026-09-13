@@ -172,6 +172,38 @@ export function describeAudio(hub) {
   };
 }
 
+/**
+ * What is on screen, so an agent can show the person what it is working on.
+ *
+ * `main` comes from the main process, which alone knows whether MiniHub's own
+ * window is visible at all: a launch with a hidden window style leaves every
+ * request answering while the person sees nothing. `launchedInsidePackage` is
+ * the other thing nothing on screen says -- see `recordLaunchContext` in
+ * main.js. The plugin editors are the renderer's record of what the engine
+ * reported open; the pages are the ids `show-window` accepts.
+ */
+export function describeWindows(hub, mainState = null) {
+  const pages = (typeof hub.modules?.list === 'function' ? hub.modules.list() : [])
+    .filter((module) => module.navEntry)
+    .map((module) => ({ id: module.id, label: module.navEntry.label || module.name || module.id }));
+  const pluginEditors = [];
+  for (const instance of typeof hub.nodes?.list === 'function' ? hub.nodes.list() : []) {
+    const plugins = Array.isArray(instance?.content?.plugins) ? instance.content.plugins : [];
+    for (const status of hub.engine?.getOpenEditors?.(instance.id) || []) {
+      const plugin = plugins.find((entry) => entry.id === status.instanceId);
+      pluginEditors.push({ nodeId: instance.id, pluginInstanceId: status.instanceId, name: plugin?.name || '' });
+    }
+  }
+  return {
+    main: mainState?.main || null,
+    page: hub.modules?.activeId || null,
+    pages,
+    pluginEditors,
+    clipEditors: Array.isArray(mainState?.clipEditors) ? mainState.clipEditors : [],
+    launchedInsidePackage: mainState?.launchedInsidePackage || null
+  };
+}
+
 /** The whole description, in one object. */
 export function describeSetup(hub) {
   return {

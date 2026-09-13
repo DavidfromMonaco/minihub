@@ -20,6 +20,7 @@
 #include <array>
 #include <cmath>
 #include <cstring>
+#include <cwchar>
 #include <iostream>
 #include <limits>
 #include <string>
@@ -645,6 +646,13 @@ public:
     int editorFrameWidth() const noexcept { return 0; }
     int editorFrameHeight() const noexcept { return 0; }
 #endif
+    std::vector<EmbeddedBrowserWindow> editorBrowserWindows() const
+    {
+#if JUCE_WINDOWS
+        if (editor_) return editor_->browserWindows();
+#endif
+        return {};
+    }
     void foregroundEditor() noexcept
     {
 #if JUCE_WINDOWS
@@ -828,6 +836,48 @@ private:
             RECT rect {};
             return window_ && ::GetClientRect(window_, &rect) ? rect.bottom - rect.top : 0;
         }
+
+        /**
+         * The outermost Chromium window of each other process inside this frame.
+         *
+         * WebView2 nests three levels deep and only the middle one says whose it
+         * is: a `Chrome_WidgetWin_0` the loader creates in OUR process, then a
+         * `Chrome_WidgetWin_1` owned by the browser process, then that process's
+         * own children and the GPU process's `Intermediate D3D Window`. Keeping
+         * only windows whose parent is ours reports the browser process once and
+         * never the GPU process, which serves no page.
+         */
+        std::vector<EmbeddedBrowserWindow> browserWindows() const
+        {
+            struct Walk {
+                std::vector<EmbeddedBrowserWindow> found;
+                DWORD self = 0;
+            } walk;
+            walk.self = ::GetCurrentProcessId();
+            if (!window_)
+                return walk.found;
+            ::EnumChildWindows(window_, [](HWND child, LPARAM parameter) -> BOOL
+            {
+                auto& state = *reinterpret_cast<Walk*>(parameter);
+                DWORD owner = 0;
+                ::GetWindowThreadProcessId(child, &owner);
+                DWORD parentOwner = 0;
+                ::GetWindowThreadProcessId(::GetParent(child), &parentOwner);
+                if (owner == 0 || owner == state.self || parentOwner != state.self)
+                    return TRUE;
+                wchar_t className[64] {};
+                ::GetClassNameW(child, className, 64);
+                if (std::wcsncmp(className, L"Chrome_WidgetWin", 16) != 0)
+                    return TRUE;
+                RECT rect {};
+                ::GetWindowRect(child, &rect);
+                state.found.push_back({ static_cast<long long>(owner), rect.left, rect.top,
+                                        rect.right - rect.left, rect.bottom - rect.top });
+                return TRUE;
+            }, reinterpret_cast<LPARAM>(&walk));
+            return walk.found;
+        }
+
         void foreground() noexcept
         {
             if (!window_)
@@ -1811,6 +1861,12 @@ int PluginInstance::editorFrameWidth() const
 int PluginInstance::editorFrameHeight() const
 {
     return plugin_ ? plugin_->editorFrameHeight() : 0;
+}
+
+std::vector<EmbeddedBrowserWindow> PluginInstance::editorBrowserWindows() const
+{
+    return plugin_ && editorVisible() ? plugin_->editorBrowserWindows()
+                                      : std::vector<EmbeddedBrowserWindow> {};
 }
 
 int PluginInstance::editorHeight() const

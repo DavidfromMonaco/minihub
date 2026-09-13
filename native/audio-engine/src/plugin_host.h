@@ -12,6 +12,7 @@
 #include <map>
 #include <memory>
 #include <set>
+#include <vector>
 
 namespace mlh {
 
@@ -21,6 +22,24 @@ struct Vst3AudioBufferLayoutTrace;
 juce::String pluginEditorWindowTitle(const juce::String& pluginName);
 juce::String pluginEditorUntouchedText();
 juce::String pluginEditorLearnArmedText();
+
+/**
+ * An embedded browser's window inside a plugin editor, drawn by another process.
+ *
+ * A plugin whose interface is a web page (Splice INSTRUMENT, Analog Lab V) hosts
+ * Chromium through WebView2, and Chromium draws the page from its own browser
+ * process into a window parented inside our frame. That window is the only link
+ * between a plugin editor and the process serving its page: the process id is
+ * how the page is found again, and the rectangle tells two pages served by one
+ * browser process apart.
+ */
+struct EmbeddedBrowserWindow {
+    long long processId = 0;
+    int x = 0;
+    int y = 0;
+    int width = 0;
+    int height = 0;
+};
 
 struct PluginProcessingTelemetry {
     float lastMilliseconds = 0.0f;
@@ -161,6 +180,8 @@ public:
     int editorFrameY() const;
     int editorFrameWidth() const;
     int editorFrameHeight() const;
+    /** Empty when the editor is closed or shows no embedded browser. */
+    std::vector<EmbeddedBrowserWindow> editorBrowserWindows() const;
 
     juce::var getState() const;
     bool setState(const juce::var& state, juce::String& error);

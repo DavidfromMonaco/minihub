@@ -1908,3 +1908,136 @@ in `nodeInstances.js`; `arpeggiatorDestinations` in `engineSync.js`; `thru` in
 where two real VST3 instruments both sound from one track, both fall silent
 under its mute, and both are in the bounced file. With the dispatch and the
 fader pass removed, seven native assertions fail.
+
+## D-040 — The window the person clicks is the one in front
+
+**Status**: in force · 2026-09-13 · **implemented**
+
+**Context** — Since the first build, the main window's `focus` event sent the
+engine `foregroundEditors`, and every open plugin window came back in front of
+MiniHub each time MiniHub took the focus. It reads as a convenience in a code
+review and as a fault on screen: on 2026-09-12 a Splice window an agent had
+opened could not be put behind MiniHub at all. The author asked to keep the
+choice of which window is in front. In the same request: an agent must be able
+to put the windows it works in on screen — it had launched MiniHub with a
+hidden window style twice without anyone noticing.
+
+**Decision** — Nothing comes forward because MiniHub took the focus. A window
+comes forward when someone asks for that window: the person opening an editor,
+a Learn aimed at a plugin, an agent's `open-editor`, `open-clip-editor` or
+`show-window`. The focus handler is gone, and so is the engine command, so
+nothing can revive the behaviour by sending it.
+
+`show-window` puts MiniHub's window in front **without taking the keyboard**.
+Windows refuses the foreground to a process the person is not using, so
+`BrowserWindow.focus()` alone left the window behind a browser and flashed the
+taskbar — measured, with Chrome in front. Passing through the always-on-top band
+and leaving it at once puts the window above everything and leaves the order
+the person's again: the next window they click goes in front of MiniHub as
+usual. Measured on 2026-09-13: MiniHub rose from behind a plugin window to the
+top while the keyboard stayed where it was, and no window was left topmost.
+
+**Consequence** —
+
+- A plugin window behind MiniHub is found again by opening its editor again, or
+  from the taskbar, where each editor frame has its own button.
+- Verified live after the change: MiniHub restored from the taskbar genuinely
+  took the focus (it reported `focused: true`) and the open Splice window stayed
+  behind it for the 1.5 s watched — the instant the old handler fired.
+- `describe` gained `windows`: whether MiniHub's own window is visible, the page
+  on screen, the pages `show-window` accepts, the open plugin editors and Clip
+  Editors.
+- **Not changed:** Clip Editor windows are still owned by the main window
+  (`parent: mainWindow`), so they stay above MiniHub by construction. The same
+  wish covers them; that change waits for the author's word.
+
+**What would justify revisiting** — People losing plugin windows behind MiniHub
+in ordinary use, taskbar or not. The answer would be a visible list of open
+plugin windows, never the automatic raise, which takes the choice away again.
+
+**Proof in the code** — `src/main/main.js` (no `focus` handler on the main
+window; `window:show-main`, `window:state`); `native/audio-engine/src/engine.cpp`
+(no `foregroundEditors`); `core/moduleSystem.js` `show()`;
+`core/agentRequests.js` `show-window` and `open-clip-editor`;
+`core/agentDescribe.js` `describeWindows`. Tests: `test/agentWindows.test.mjs`,
+`test/agentRequests.test.mjs`, `test/agentDescribe.test.mjs`.
+
+## D-041 — An agent works in a plugin's web page through its DevTools port, never through the screen
+
+**Status**: in force · 2026-09-13 · **implemented**
+
+**Context** — Some plugins draw their interface as a web page. Splice
+INSTRUMENT's library — find a pack, download it, load a preset — is a JUCE
+`WebBrowserComponent` on WebView2; Analog Lab V and Atmospheres embed WebView2
+too. None of that is a VST3 parameter, so the vocabulary could not reach it: on
+2026-09-12 the author searched, downloaded and loaded the sound by hand while an
+agent read screenshots of it. Asked on 2026-09-13: the agent must be able to do it.
+
+**Decision** — While the agent channel is on, Electron starts the engine with
+`--remote-debugging-port=0` appended to `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS`.
+Every browser a plugin opens then listens on a loopback port of its own
+choosing. The engine finds the page of ONE editor: it walks that frame's child
+windows for the Chromium window another process owns, and reads that process's
+loopback ports from the TCP table (`getEditorBrowsers`, which main alone may
+send). Main speaks the Chrome DevTools Protocol to that page and to no other.
+
+The vocabulary is a person's: `read` (the accessibility tree as an outline with
+refs), `click`, `hover`, `type`, `press`, `scroll`, `screenshot`. Refused by
+construction: evaluating a script, navigating to an address, acting in a plugin
+whose window is closed.
+
+Three alternatives were weighed and refused:
+
+- **Taking the screen** — screenshots and synthesised clicks. It takes the
+  person's mouse and keyboard while they work, which the author refused for
+  agents from the start, and it aims at pixels.
+- **UI Automation.** It reaches web content, but clicks through accessibility
+  actions — no hover, none of the pointer events some frameworks listen for —
+  and it would be a COM client inside the one process that owns the audio
+  device.
+- **Pointing WebView2 at a folder of MiniHub's own** (`WEBVIEW2_USER_DATA_FOLDER`).
+  It would avoid the conflict below, and it would take every plugin away from
+  the web state it keeps where it chose to keep it.
+
+DevTools input is trusted input delivered to the page without touching the
+system cursor, behind other windows too. Measured on Splice INSTRUMENT 2.4.17:
+`isTrusted` was true for the click, the key presses and the wheel.
+
+**Consequence** —
+
+- The port opens for every plugin web page while the channel is on — on the
+  author's machine, always. It is loopback only and has no secret: a program
+  already running on the machine could attach to a plugin's page, as it could
+  already read that plugin's files.
+- WebView2 refuses to share a browser between hosts started with different
+  arguments on the same user-data folder. Analog Lab V keeps one folder for
+  every Arturia application (`C:\ProgramData\Arturia\Shared\x64\webview2`), so
+  with another Arturia application using its web view at the same time,
+  whichever started second can show an empty web panel. Splice creates a fresh
+  folder at each launch and is not affected. Turning the channel off removes
+  the argument.
+- A page opened before the argument existed cannot be reached; the answer says
+  so (`web-page-unreachable`) instead of failing vaguely.
+- **Launch context.** A packaged application — Codex Desktop — hands its package
+  identity to what it launches, and Windows then files every folder a plugin
+  creates in AppData inside that application's storage. Splice's login of
+  2026-09-12 is there, which is why a MiniHub opened from the desktop asked for
+  it again. Electron cannot tell reliably, so the engine reports
+  `packageFamilyName` in `hello`, `describe` carries it as
+  `launchedInsidePackage`, and the client outside this repository launches
+  MiniHub through the shell (`explorer.exe`). Verified with
+  `Invoke-CommandInDesktopPackage`: MiniHub launched inside Codex's package
+  named it; the client's `start`, run inside that same package, started MiniHub
+  outside it.
+
+**What would justify revisiting** — A plugin whose web interface is not
+WebView2, which this does not reach; or the Arturia conflict turning up in
+ordinary use, which would call for the argument to be opt-in per launch rather
+than tied to the channel — not for giving the capability up.
+
+**Proof in the code** — `src/main/pluginBrowser.js`; `withWebViewDebugging` and
+`recordLaunchContext` in `src/main/main.js`; `EngineProcess.query` in
+`src/main/engine.js`; `native/audio-engine/src/host_system.{h,cpp}`;
+`EditorWindow::browserWindows` in `plugin_host.cpp`; `cmdGetEditorBrowsers` in
+`engine.cpp`. Tests: `test/pluginBrowser.test.cjs`, `test/engineProcess.test.cjs`,
+native `[core] loopback-listener`.

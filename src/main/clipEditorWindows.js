@@ -113,6 +113,11 @@ class ClipEditorWindows {
 
   setMainWindow(window) { this.mainWindow = window; }
 
+  /** The clips that have a live window right now. */
+  openClipIds() {
+    return [...this.windows].filter(([, window]) => this._isWindowLive(window)).map(([clipId]) => clipId);
+  }
+
   _contents(window) { return window ? this.windowContents.get(window) || window.webContents : null; }
 
   _isContentsLive(contents) {

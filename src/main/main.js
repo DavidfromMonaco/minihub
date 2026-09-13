@@ -32,9 +32,13 @@ const { ClipEditorWindows } = require('./clipEditorWindows');
 const { installProjectCloseGuard } = require('./projectCloseGuard');
 const { installAppMenu } = require('./appMenu');
 const { AgentChannel } = require('./agentChannel');
+const { PluginBrowser, withWebViewDebugging } = require('./pluginBrowser');
 
 let mainWindow = null;
 let agentChannel = null;
+let pluginBrowser = null;
+// Empty unless a packaged application launched MiniHub; the engine reports it.
+let launchedInsidePackage = '';
 let engine = null;
 let engineRestartAttempts = 0;
 let clipEditorWindows = null;
@@ -90,9 +94,8 @@ function createWindow() {
   startupMark('renderer-load-start');
   mainWindow.webContents.once('dom-ready', () => startupMark('dom-ready'));
   mainWindow.webContents.once('did-finish-load', () => startupMark('renderer-load-complete'));
-  mainWindow.on('focus', () => {
-    if (engine) engine.send({ v: 1, type: 'foregroundEditors' });
-  });
+  // No handler brings plugin windows back when this window takes the focus: the
+  // window the person clicks is the one in front. DECISIONS D-040.
 
   // Relay renderer console messages to the main-process log so native-engine and
   // renderer issues are visible in one place. Electron >= 37 passes a single
@@ -119,7 +122,12 @@ const engineEventTrace = createEngineEventTrace();
 function startEngine() {
   if (engine) return;
   engine = new EngineProcess({
+    // A plugin's web page opens its DevTools port only when its browser starts,
+    // and its browser starts inside this process: the argument has to be in the
+    // engine's environment from the first instant, or no page is ever reachable.
+    env: agentChannelEnabled() ? withWebViewDebugging(process.env) : undefined,
     onEvent: (msg) => {
+      if (msg.type === 'hello') recordLaunchContext(msg.nativeProcess);
       // Native state capture must survive application shutdown. The renderer
       // may already be gone when the final forced capture arrives, so Electron
       // persists the complete chunk against the same stable plugin identity.
@@ -200,10 +208,35 @@ else app.on('second-instance', () => {
  * Not asked for is the normal case, and in it nothing is created, nothing
  * listens, and no endpoint file exists.
  */
+function agentChannelEnabled() {
+  return process.env.MINIHUB_AGENT_CHANNEL === '1' || loadSettings().agentChannel === true;
+}
+
+/**
+ * Remember whether MiniHub runs under another application's package.
+ *
+ * Only the engine can tell (Electron has no reliable answer), and the question
+ * matters for one reason the person would never guess: a packaged launcher --
+ * Codex Desktop -- makes Windows file every folder a plugin creates in AppData
+ * inside that launcher's private storage. A plugin logged in under one launch is
+ * then logged out under the other. The agent sees this in `describe` and the
+ * log keeps it, because nothing on screen will.
+ */
+function recordLaunchContext(nativeProcess) {
+  const name = String(nativeProcess?.packageFamilyName || '').slice(0, 256);
+  if (name !== launchedInsidePackage && name) diagnostics.log(`launch:inside-package name=${name}`);
+  launchedInsidePackage = name;
+}
+
 function startAgentChannel() {
-  const enabled = process.env.MINIHUB_AGENT_CHANNEL === '1'
-    || loadSettings().agentChannel === true;
-  if (!enabled) return;
+  if (!agentChannelEnabled()) return;
+  pluginBrowser = new PluginBrowser({
+    queryEngine: (msg, replyType) => (engine ? engine.query(msg, { replyType }) : Promise.resolve(null)),
+    fetch: globalThis.fetch,
+    WebSocket: globalThis.WebSocket,
+    fs,
+    log: (line) => diagnostics.log(`plugin-browser:${line}`)
+  });
   const endpointPath = path.join(app.getPath('userData'), 'agent-endpoint.json');
   agentChannel = new AgentChannel({
     net: require('net'),
@@ -547,6 +580,58 @@ ipcMain.handle('window:focus-main', () => {
   mainWindow.focus();
   mainWindow.webContents.focus();
   return mainWindow.isFocused();
+});
+
+/**
+ * Put MiniHub's window in front of the person, for an agent about to work in it.
+ *
+ * Not `window:focus-main`: Windows refuses the foreground to a process the
+ * person is not using, so `focus()` alone leaves the window behind whatever they
+ * are in and flashes the taskbar -- verified with a browser in front. Passing
+ * through the always-on-top band puts the window above everything without
+ * taking the keyboard from what they are typing in, and leaving the band at once
+ * hands the order straight back to them: the next window they click goes in
+ * front of MiniHub as usual. DECISIONS D-040.
+ */
+ipcMain.handle('window:show-main', (event) => {
+  if (!mainWindow || mainWindow.isDestroyed() || event.sender !== mainWindow.webContents) return false;
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.setAlwaysOnTop(true);
+  mainWindow.setAlwaysOnTop(false);
+  mainWindow.moveTop();
+  return mainWindow.isVisible() && !mainWindow.isMinimized();
+});
+
+/**
+ * The windows an agent may be working in, as facts it cannot see for itself.
+ *
+ * The plugin editors are the renderer's to report (it tracks them from the
+ * engine); these are the ones only this process knows: whether MiniHub's own
+ * window is even on screen -- a launch with a hidden window style leaves it
+ * invisible while everything else answers -- and which clips have a window.
+ */
+ipcMain.handle('window:state', (event) => {
+  if (!mainWindow || mainWindow.isDestroyed() || event.sender !== mainWindow.webContents) return null;
+  return {
+    main: {
+      visible: mainWindow.isVisible(),
+      minimized: mainWindow.isMinimized(),
+      focused: mainWindow.isFocused()
+    },
+    clipEditors: clipEditorWindows ? clipEditorWindows.openClipIds() : [],
+    launchedInsidePackage: launchedInsidePackage || null
+  };
+});
+
+// A plugin's web page, acted on for an agent. Only the main renderer may ask,
+// and only while the agent channel exists: see src/main/pluginBrowser.js.
+ipcMain.handle('plugin-browser:request', (event, request) => {
+  if (!mainWindow || mainWindow.isDestroyed() || event.sender !== mainWindow.webContents) {
+    return { ok: false, reason: 'invalid-request' };
+  }
+  if (!pluginBrowser) return { ok: false, reason: 'agent-channel-off' };
+  return pluginBrowser.handle(request && typeof request === 'object' ? request : {});
 });
 
 // --- Engine IPC -------------------------------------------------------------

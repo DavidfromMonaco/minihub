@@ -484,3 +484,79 @@ test('a rescan is started, and says so rather than pretending to have finished',
   assert.deepEqual(await handleAgentRequest(hub, { kind: 'scan-plugins' }), { ok: true, started: true });
   assert.equal(hub.engine.scanned, true);
 });
+
+// ---- the windows an agent works in ------------------------------------------------
+
+test('show-window brings the page on screen first, then the window, and says where it landed', async () => {
+  const hub = rig();
+  const order = [];
+  const content = { innerHTML: '' };
+  hub.modules.register({ id: 'home', navEntry: { label: 'Home' }, mount() { order.push('mount:home'); } });
+  hub.modules.register({ id: 'routing', navEntry: { label: 'Routing' }, mount() { order.push('mount:routing'); } });
+  hub.modules.activate('home', content);
+  hub.api = {
+    focusMainWindow: async () => { order.push('focus-that-steals-the-keyboard'); return true; },
+    showMainWindow: async () => { order.push('show'); return true; }
+  };
+
+  const answer = await handleAgentRequest(hub, { kind: 'show-window', page: 'routing' });
+  assert.deepEqual(answer, { ok: true, page: 'routing', shown: true });
+  assert.deepEqual(order, ['mount:home', 'mount:routing', 'show'],
+    'the window is put in front without taking the keyboard from what the person is typing in');
+
+  const unknown = await handleAgentRequest(hub, { kind: 'show-window', page: 'mixer-page' });
+  assert.equal(unknown.reason, 'unknown-page');
+  assert.match(unknown.message, /routing/, 'the refusal lists the pages that do exist');
+
+  assert.deepEqual(await handleAgentRequest(hub, { kind: 'show-window' }), { ok: true, page: 'routing', shown: true },
+    'with no page the window alone is shown, on whatever page it holds');
+});
+
+test('open-clip-editor opens the window a double-click would, and refuses a clip that is not there', async () => {
+  const hub = rig();
+  const opened = [];
+  hub.sequencer = { openClipEditor: (clipId) => { opened.push(clipId); return clipId === 'clip-1'; } };
+  assert.deepEqual(await handleAgentRequest(hub, { kind: 'open-clip-editor', clipId: 'clip-1' }), { ok: true, clipId: 'clip-1' });
+  assert.equal((await handleAgentRequest(hub, { kind: 'open-clip-editor', clipId: 'nope' })).reason, 'clip-not-found');
+  assert.deepEqual(opened, ['clip-1', 'nope']);
+});
+
+test('describe says which windows are open and whether MiniHub runs inside another app', async () => {
+  const hub = rig();
+  hub.modules.register({ id: 'routing', navEntry: { label: 'Routing' }, mount() {} });
+  hub.api = {
+    windowState: async () => ({
+      main: { visible: false, minimized: false, focused: false },
+      clipEditors: ['clip-9'],
+      launchedInsidePackage: 'OpenAI.Codex_2p2nqsd0c76g0'
+    })
+  };
+  const { setup } = await handleAgentRequest(hub, { kind: 'describe' });
+  assert.deepEqual(setup.windows.main, { visible: false, minimized: false, focused: false },
+    'a window launched hidden is reported hidden, which nothing else would reveal');
+  assert.deepEqual(setup.windows.clipEditors, ['clip-9']);
+  assert.equal(setup.windows.launchedInsidePackage, 'OpenAI.Codex_2p2nqsd0c76g0');
+  assert.deepEqual(setup.windows.pages, [{ id: 'routing', label: 'Routing' }]);
+});
+
+// ---- a plugin's web page ----------------------------------------------------------
+
+test('a browser request names a plugin this project holds, and carries only its own fields to main', async () => {
+  const hub = rig();
+  const node = (await ask(hub, { kind: 'create-node', typeId: 'vst' })).node;
+  const { plugin } = await ask(hub, { kind: 'add-plugin', nodeId: node.id, pluginId: DEXED.pluginId });
+  const sent = [];
+  hub.api = { pluginBrowser: async (payload) => { sent.push(payload); return { ok: true, operation: payload.operation }; } };
+
+  assert.equal((await handleAgentRequest(hub, { kind: 'browser', operation: 'read', nodeId: node.id, pluginInstanceId: 'plugin-99' })).reason,
+    'plugin-not-found');
+  assert.deepEqual(sent, [], 'a plugin the project does not hold is never looked for');
+
+  const answer = await handleAgentRequest(hub, {
+    kind: 'browser', operation: 'click', nodeId: node.id, pluginInstanceId: plugin.instanceId,
+    ref: 12, expectedProjectId: 'stale-on-purpose', script: 'alert(1)'
+  });
+  assert.deepEqual(answer, { ok: true, operation: 'click' },
+    'acting in a plugin window is not gated on the project: it is not an edit of it');
+  assert.deepEqual(sent, [{ nodeId: node.id, pluginInstanceId: plugin.instanceId, operation: 'click', ref: 12 }]);
+});

@@ -86,6 +86,7 @@ private:
     void cmdSetChainOutputEnabled(const juce::var& msg);
     void cmdOpenEditor(const juce::var& msg);
     void cmdCloseEditor(const juce::var& msg);
+    void cmdGetEditorBrowsers(const juce::var& msg);
     void cmdGetState(const juce::var& msg);
     void cmdSetState(const juce::var& msg);
     void cmdGetVstParameters(const juce::var& msg);
@@ -93,7 +94,6 @@ private:
     void cmdSetVstParameterLearn(const juce::var& msg);
     void cmdSetTransport(const juce::var& msg);
     void cmdGetTransport(const juce::var& msg);
-    void cmdForegroundEditors(const juce::var& msg);
     void cmdSyncAudioNetwork(const juce::var& msg);
     void cmdSetAudioNodeValues(const juce::var& msg);
     void cmdSyncMidiNetwork(const juce::var& msg);
