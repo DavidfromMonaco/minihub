@@ -128,8 +128,8 @@ building rather than in advance:
 ## Log
 
 2026-09-12 — Opened. The slot was held by `two-controllers-at-once.md`, which had
-all eight steps ticked since 2026-09-05 and waits on a second keyboard; it moved
-to `plans/done/` with the result "standby" and what had gone stale in it.
+all eight steps ticked since 2026-09-05; it moved to `plans/done/` with the
+result "standby" and what had gone stale in it.
 
 2026-09-12 — Steps 1 to 4 landed. Native: 0 errors 0 warnings on a **forced**
 recompile of `plugin_host.cpp` and `engine.cpp`, and the four binaries green

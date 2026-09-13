@@ -50,7 +50,8 @@ build step) — C++17 audio engine (JUCE 9, PortAudio/WASAPI, VST3 SDK).
 | anything at all | this file + [INTENT.md](INTENT.md) |
 | the architecture, a contract, a module | [ARCHITECTURE.md](ARCHITECTURE.md) — table of contents at the top |
 | a decision that looks absurd | [DECISIONS.md](DECISIONS.md) **before** "repairing" it |
-| what is left to do | [ROADMAP.md](ROADMAP.md) |
+| what is in progress | [TASKS.md](TASKS.md) — read only that file |
+| what was done, what was never started | [ROADMAP.md](ROADMAP.md) |
 | a long, multi-session task | [PLANS.md](PLANS.md), then `plans/active/` |
 | IPC, the engine protocol | ARCHITECTURE §4 |
 | the network, ports, cycles | ARCHITECTURE §6 |
@@ -174,6 +175,8 @@ A change is finished only when **everything that touches it is green**:
 | anything in `src/` | `npm run sync:dist` (otherwise the provenance test fails) |
 | `native/audio-engine/src/` | `npm run build:native` **0 errors 0 warnings** + the four test binaries |
 | an ARCHITECTURE §13 invariant | add the test that would have caught it |
+
+A task that starts is added to [TASKS.md](TASKS.md); a task that finishes is **deleted** from it, in the same commit.
 
 What no command proves is not proven. Do not report "it works" on the strength
 of having read the code. If a test fails, say so, with its output.

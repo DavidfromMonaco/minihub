@@ -26,10 +26,8 @@ the hardware out of the core — and its Étape A finished on 2026-09-04, so the
 was free for **importing a profile**, finished 2026-09-05 (item 8 below, D-027 to
 D-030).
 
-`plans/active/` is empty. Two plans sit in `plans/done/` with the result
-"standby", neither blocked on code:
-[two-controllers-at-once.md](plans/done/two-controllers-at-once.md) waits on a
-second keyboard on the desk, and
+`plans/active/` is empty. One plan sits in `plans/done/` with the result
+"standby", not blocked on code:
 [bindings-bar-docked.md](plans/done/bindings-bar-docked.md) has four of its eight
 steps landed and waits on nothing but the author's order. PLANS.md §2 holds that
 slot for work in progress, not for intentions.
