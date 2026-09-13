@@ -63,6 +63,7 @@ contextBridge.exposeInMainWorld('hubAPI', {
   clipEditorOpen: (clipId) => ipcRenderer.invoke('clip-editor:open', clipId),
   clipEditorReady: () => ipcRenderer.invoke('clip-editor:ready'),
   clipEditorCloseAll: (reason) => ipcRenderer.invoke('clip-editor:close-all', reason),
+  clipEditorClose: (clipId) => ipcRenderer.invoke('clip-editor:close', clipId),
   clipEditorInvalidate: () => ipcRenderer.invoke('clip-editor:invalidate'),
   clipEditorPublishTransport: (state) => ipcRenderer.invoke('clip-editor:transport-publish', state),
   clipEditorRespond: (response) => ipcRenderer.invoke('clip-editor:respond', response),
@@ -88,6 +89,9 @@ contextBridge.exposeInMainWorld('hubAPI', {
   pluginBrowser: (request) => ipcRenderer.invoke('plugin-browser:request', request),
   windowState: () => ipcRenderer.invoke('window:state'),
   showMainWindow: () => ipcRenderer.invoke('window:show-main'),
+  // Exit, asked for by a request. Nothing comes back: the process that would
+  // answer is the one going away. See src/main/quitRequest.js.
+  quitApplication: (options) => ipcRenderer.send('app:quit', { discardUnsaved: options?.discardUnsaved === true }),
 
   // --- Startup diagnostics ---
   diagnosticsLog: (line) => ipcRenderer.invoke('diagnostics:log', line),

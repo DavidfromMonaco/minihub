@@ -56,7 +56,7 @@ const MUTATING = new Set([
 const UNGATED = new Set([
   'transport', 'set-tempo', 'set-master', 'open-editor', 'close-editor',
   'project', 'export', 'cancel-export', 'scan-plugins', 'devices',
-  'show-window', 'open-clip-editor', 'browser'
+  'show-window', 'open-clip-editor', 'close-clip-editor', 'browser'
 ]);
 
 /**
@@ -131,6 +131,38 @@ async function projectRequest(hub, request) {
   return failed('unsupported-request');
 }
 
+/**
+ * Quit, the way Exit does.
+ *
+ * WHY IT ANSWERS BEFORE IT ACTS
+ * -----------------------------
+ * For `load` and `new` the renderer that would answer is torn down; here it is
+ * the whole process. The answer goes out first and the quit follows on the next
+ * turn of the loop, so the caller reads `quitting` instead of a dropped
+ * connection it cannot tell from a crash.
+ *
+ * WHY ONLY A PROJECT WITH NO FILE IS REFUSED
+ * ------------------------------------------
+ * A project with a file is written on the way out, as it is for a person, and
+ * `saving` says so. One that has never been saved is where Exit asks a question
+ * in a modal (`projectCloseGuard.js`), with nobody there to answer it. That is
+ * `unsaved-changes`, resolved by saving to a path first, or by saying
+ * `discardUnsaved` -- the dialog's own "Quit without saving".
+ */
+function quitRequest(hub, request) {
+  if (typeof hub.api?.quitApplication !== 'function') return failed('unsupported-request');
+  const project = hub.project;
+  const dirty = project?.dirty === true;
+  const hasFile = Boolean(project?.currentProjectPath);
+  if (dirty && !hasFile && request.discardUnsaved !== true) {
+    return failed('unsaved-changes',
+      `"${project.currentProjectName}" has never been saved: save it to a filePath, or pass discardUnsaved`);
+  }
+  const discardUnsaved = dirty && !hasFile;
+  setTimeout(() => hub.api.quitApplication({ discardUnsaved }), 0);
+  return { ok: true, quitting: true, saving: dirty && hasFile };
+}
+
 const trackSummary = (track) => ({
   id: track.id, name: track.name, type: track.type,
   outputId: track.outputId || '', muted: track.muted === true, volume: track.volume
@@ -176,6 +208,16 @@ export async function handleAgentRequest(hub, request = {}) {
     if (hub.project?._transitionPending) return failed('project-transition');
     return hub.sequencer?.openClipEditor?.(clipId) ? { ok: true, clipId } : failed('clip-not-found');
   }
+
+  if (kind === 'close-clip-editor') {
+    // The window's own close button: the clip is not touched, and nothing is asked.
+    const clipId = String(request.clipId || '');
+    if (typeof hub.api?.clipEditorClose !== 'function') return failed('unsupported-request');
+    const closed = await Promise.resolve(hub.api.clipEditorClose(clipId)).catch(() => false);
+    return closed === true ? { ok: true, clipId } : failed('not-open');
+  }
+
+  if (kind === 'quit') return quitRequest(hub, request);
 
   if (kind === 'browser') {
     // The page lives in a plugin window drawn by the engine and is reached by

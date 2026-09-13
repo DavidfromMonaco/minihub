@@ -176,6 +176,16 @@ Named because each one is tempting:
       `describe.windows.launchedInsidePackage`, and `node minihub.mjs start`
       outside the repository. Check: **run 2026-09-13** with
       `Invoke-CommandInDesktopPackage` on Codex's package, both ways.
+- [x] 14. **Closing what it opened**, reported missing by Codex on 2026-09-13:
+      `close-clip-editor`, and `quit`, which takes Exit's road
+      (`src/main/quitRequest.js`) — a project with a file is saved on the way
+      out, a never-saved one is refused unless `discardUnsaved`.
+      Check: `npm test` (1010) + `npm run check` + `npm run sync:dist` + live
+      — **green 2026-09-13**: a Clip Editor opened, was listed, closed and left
+      `describe`; `quit` refused a never-saved project and MiniHub kept
+      listening; with `discardUnsaved` the answer arrived, then the process was
+      gone. Not run live: `quit` on a project with a file (the unchanged close
+      guard saves it, as for Exit).
 
 ## Fallback point
 

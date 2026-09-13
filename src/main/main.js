@@ -30,6 +30,7 @@ const { readProject, writeProjectAtomic } = require('./projectFiles');
 const { ALLOWED_ENGINE_COMMANDS } = require('./engineCommandPolicy');
 const { ClipEditorWindows } = require('./clipEditorWindows');
 const { installProjectCloseGuard } = require('./projectCloseGuard');
+const { quitOnRequest } = require('./quitRequest');
 const { installAppMenu } = require('./appMenu');
 const { AgentChannel } = require('./agentChannel');
 const { PluginBrowser, withWebViewDebugging } = require('./pluginBrowser');
@@ -303,6 +304,14 @@ ipcMain.on('project:close-state', (event, state) => {
   // guard. Clip Editors and stale WebContents cannot clear this state.
   if (!mainWindow || mainWindow.isDestroyed() || event.sender !== mainWindow.webContents) return;
   projectCloseGuard?.setProjectState(state);
+});
+// Exit, asked for by a request (the agent channel's `quit`). The same sender
+// check as above: a Clip Editor may not close the application it lives in.
+ipcMain.on('app:quit', (event, options) => {
+  if (!mainWindow || mainWindow.isDestroyed() || event.sender !== mainWindow.webContents) return;
+  const discardUnsaved = options?.discardUnsaved === true;
+  diagnostics.log(`app:quit requested discardUnsaved=${discardUnsaved}`);
+  quitOnRequest({ app, guard: projectCloseGuard, discardUnsaved });
 });
 
 // The renderer owns the project file: only it can capture VST state and build a

@@ -521,6 +521,46 @@ test('open-clip-editor opens the window a double-click would, and refuses a clip
   assert.deepEqual(opened, ['clip-1', 'nope']);
 });
 
+test('close-clip-editor closes the window its own close button would, and says when none is open', async () => {
+  const hub = rig();
+  const closed = [];
+  hub.api = { clipEditorClose: async (clipId) => { closed.push(clipId); return clipId === 'clip-1'; } };
+  assert.deepEqual(await handleAgentRequest(hub, { kind: 'close-clip-editor', clipId: 'clip-1' }), { ok: true, clipId: 'clip-1' });
+  assert.equal((await handleAgentRequest(hub, { kind: 'close-clip-editor', clipId: 'clip-2' })).reason, 'not-open');
+  assert.deepEqual(closed, ['clip-1', 'clip-2']);
+});
+
+// ---- quitting ---------------------------------------------------------------------
+
+test('quit answers before it acts, and a project with a file is saved on the way out rather than refused', async () => {
+  const hub = rig();
+  const quits = [];
+  hub.api = { quitApplication: (options) => quits.push(options) };
+  hub.project = fakeProject({ dirty: true, path: 'C:/Projects/Tribal.minihub' });
+
+  assert.deepEqual(await handleAgentRequest(hub, { kind: 'quit' }), { ok: true, quitting: true, saving: true });
+  // The process that sends the answer is the one about to go away.
+  assert.deepEqual(quits, [], 'not yet: the answer goes first');
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  assert.deepEqual(quits, [{ discardUnsaved: false }], 'then Exit, whose close guard writes the file');
+});
+
+test('quit refuses a project that has never been saved, unless losing it was meant', async () => {
+  const hub = rig();
+  const quits = [];
+  hub.api = { quitApplication: (options) => quits.push(options) };
+  hub.project = fakeProject({ dirty: true });
+
+  assert.equal((await handleAgentRequest(hub, { kind: 'quit' })).reason, 'unsaved-changes');
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  assert.deepEqual(quits, [], 'no quit, so no dialog left waiting for somebody who is not there');
+
+  assert.deepEqual(await handleAgentRequest(hub, { kind: 'quit', discardUnsaved: true }),
+    { ok: true, quitting: true, saving: false });
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  assert.deepEqual(quits, [{ discardUnsaved: true }]);
+});
+
 test('describe says which windows are open and whether MiniHub runs inside another app', async () => {
   const hub = rig();
   hub.modules.register({ id: 'routing', navEntry: { label: 'Routing' }, mount() {} });

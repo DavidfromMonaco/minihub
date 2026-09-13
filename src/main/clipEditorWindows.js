@@ -230,6 +230,10 @@ class ClipEditorWindows {
       this.closeAll(boundedReason);
       return true;
     });
+    this.ipcMain.handle('clip-editor:close', (event, clipId) => {
+      if (!this._isMainSender(event) || !CLIP_ID.test(String(clipId || ''))) return false;
+      return this.close(String(clipId));
+    });
     this.ipcMain.handle('clip-editor:ready', (event) => {
       if (!this._isMainSender(event)) return false;
       this.acceptingOpens = true;
@@ -326,6 +330,22 @@ class ClipEditorWindows {
       clearTimeout(pending.timer);
       pending.resolve({ ok: false, reason });
     }
+  }
+
+  /**
+   * One window's own close button, pressed from outside it.
+   *
+   * Retired before it is closed, as `closeAll` does, so the window has left
+   * `openClipIds()` by the time the caller reads the windows again -- 'closed'
+   * arrives a turn later, and a list that still names a window that was just
+   * closed reads as a close that failed.
+   */
+  close(clipId) {
+    const window = this.windows.get(clipId);
+    if (!window) return false;
+    this._retire(clipId, window, 'editor-closed');
+    if (!window.isDestroyed()) window.close();
+    return true;
   }
 
   closeAll(reason = 'closed') {

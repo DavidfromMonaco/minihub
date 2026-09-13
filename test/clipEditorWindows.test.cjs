@@ -168,6 +168,23 @@ test('invalidation reaches live editors and project replacement closes orphan wi
     'the replacement renderer explicitly unlocks editor creation when its canonical model is ready');
 });
 
+test('one editor closes on request, and only the main renderer may ask', async () => {
+  const { handlers, mainEvent, manager } = rig();
+  await handlers.get('clip-editor:open')(mainEvent, 'clip-midi-1');
+  await handlers.get('clip-editor:open')(mainEvent, 'clip-midi-2');
+  const [first, second] = FakeWindow.instances;
+
+  assert.equal(await handlers.get('clip-editor:close')({ sender: second.webContents }, 'clip-midi-1'), false,
+    'an editor window cannot close another one');
+  assert.equal(first.destroyed, false);
+
+  assert.equal(await handlers.get('clip-editor:close')(mainEvent, 'clip-midi-1'), true);
+  assert.equal(first.destroyed, true);
+  assert.equal(second.destroyed, false, 'the other clip keeps its window');
+  assert.deepEqual(manager.openClipIds(), ['clip-midi-2']);
+  assert.equal(await handlers.get('clip-editor:close')(mainEvent, 'clip-midi-1'), false, 'nothing left to close');
+});
+
 test('renderer teardown cannot turn a concurrent editor invalidation into Object has been destroyed', async () => {
   const { handlers, mainEvent, manager } = rig();
   await handlers.get('clip-editor:open')(mainEvent, 'clip-midi-1');
@@ -223,7 +240,7 @@ test('sequential open/close cycles replace WebContents IDs and cannot consume st
   // was forgotten, and `bind()` being called twice must still leave one
   // handler per channel.
   assert.deepEqual([...handlers.keys()].sort(), [
-    'clip-editor:audition', 'clip-editor:close-all', 'clip-editor:get',
+    'clip-editor:audition', 'clip-editor:close', 'clip-editor:close-all', 'clip-editor:get',
     'clip-editor:history', 'clip-editor:invalidate', 'clip-editor:open',
     'clip-editor:ready', 'clip-editor:respond', 'clip-editor:transport',
     'clip-editor:transport-publish', 'clip-editor:update'
