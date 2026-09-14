@@ -14,9 +14,9 @@ const api = window.bindingsBarAPI;
 
 /**
  * How many columns the strip needs before the one holding the help and the
- * Learn toolbar: one per faceplate, one per keyboard name, one for the sentence
- * that says no keyboard is cabled. The grid reads it from `--bar-columns`, set
- * through the CSSOM because the CSP drops a `style` attribute.
+ * Learn toolbar: one per faceplate and one per keyboard name. The grid reads it
+ * from `--bar-columns`, set through the CSSOM because the CSP drops a `style`
+ * attribute.
  */
 function leadingColumns() {
   return [...root.children]

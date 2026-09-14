@@ -92,6 +92,43 @@ test('a click in the bar is carried out here, and the bar is redrawn', async () 
   assert.equal(hub.control.pendingLearn.state, 'cancelling');
 });
 
+test('a knob with no cable is armed from the bar like any other (2026-09-14)', async () => {
+  const { api, hub, node, plugin } = await makeRig();
+  installBindingsBarHost(hub, api);
+  api.want({ chainId: node.id, instanceId: plugin.id });
+  await tick();
+  // K2 has no cable into this node: the rig cables K1 only.
+  assert.equal(hub.control.isConnected(node.id, source('k2').id), false);
+  assert.doesNotMatch(api.renders.at(-1).html, /state-unavailable/, 'no knob greyed out for want of a cable');
+
+  api.act({ chainId: node.id, instanceId: plugin.id, kind: 'select', controlId: source('k2').id });
+  await tick();
+  const toolbar = api.renders.at(-1).html.slice(api.renders.at(-1).html.indexOf('control-learn-toolbar'));
+  assert.match(toolbar, /data-control-action="learn" data-source-control-id="minilab-3:k2"\s*>/,
+    'Arm Learning is enabled on it');
+  assert.doesNotMatch(toolbar, /Patch Bay/, 'and nothing sends the person to cable it first');
+
+  api.act({ chainId: node.id, instanceId: plugin.id, kind: 'learn', controlId: source('k2').id });
+  assert.equal(hub.control.pendingLearn?.sourceControlId, source('k2').id);
+});
+
+test('a learned knob whose cable was pulled out is drawn apart from one that works', async () => {
+  const { api, hub, node, plugin } = await makeRig();
+  const bind = (key, parameterId) => hub.nodes.setControlBinding(node.id, {
+    version: 1, sourceControlId: source(key).id, pluginInstanceId: plugin.id,
+    pluginId: plugin.pluginId, parameterId, pluginName: 'Vital', parameterName: 'Cutoff'
+  });
+  bind('k1', '41'); // the rig cables K1
+  bind('k2', '42'); // and nothing cables K2
+  installBindingsBarHost(hub, api);
+  api.want({ chainId: node.id, instanceId: plugin.id });
+  await tick();
+  const html = api.renders.at(-1).html;
+  assert.match(html, /class="[^"]*state-mapped[^"]*"[^>]*data-minilab-control-id="minilab-3:k1"/);
+  assert.match(html, /class="[^"]*state-unplugged[^"]*"[^>]*data-minilab-control-id="minilab-3:k2"/,
+    'kept, and not drawn as if turning it did something');
+});
+
 test('the bar follows the bindings it shows', async () => {
   const { api, hub, node, plugin } = await makeRig();
   installBindingsBarHost(hub, api);

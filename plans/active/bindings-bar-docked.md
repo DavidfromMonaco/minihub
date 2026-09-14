@@ -5,10 +5,11 @@ the bindings interface sits under the plugin editor and moves with it, and
 `renderControlBindings()` is gone from the VST node's editor.
 **Origin** — ROADMAP item 9, [DECISIONS.md](../../DECISIONS.md) D-021, asked
 2026-09-04, started 2026-09-12, resumed 2026-09-14 on the author's word.
-**Status** — **in progress, 2026-09-14.** Steps 1 to 6 landed: the bar exists and
-has been seen docked under a real plugin window. **Waiting on the author**, and on
-purpose: he tries Learn from the bar on his own plugins before step 7 takes the
-panel out of the VST node's editor, which is the point of no return.
+**Status** — **in progress, 2026-09-14.** Steps 1 to 6 bis landed: the bar exists,
+has been seen docked under a real plugin window, and learns a knob with no cable
+in the Patch Bay. **Waiting on the author**, and on purpose: he tries Learn from
+the bar on his own plugins before step 7 takes the panel out of the VST node's
+editor, which is the point of no return.
 
 ## Context
 
@@ -66,10 +67,10 @@ Read before touching anything:
 ## Out of scope
 
 - **D-018 itself.** No Learn arbiter, no per-instance arming. This plan moves an
-  interface; it does not change what that interface asks of
-  `ControlBindingManager`. Consequence, unchanged from the panel: with two
-  editors of the SAME node open, Arm Learning is refused
-  (`multiple-plugin-editors-open`) and the bar shows nothing about it.
+  interface; the one change to what it asks of `ControlBindingManager` is the
+  author's of 2026-09-14 — Learn plugs its own cable (step 6 bis). Consequence,
+  unchanged from the panel: with two editors of the SAME node open, Arm Learning
+  is refused (`multiple-plugin-editors-open`) and the bar shows nothing about it.
 - **Drawing more than one keyboard's surface.** `renderControlBindings` draws
   one faceplate per cabled keyboard since 2026-09-05; the bar gives each one a
   column. Nothing more.
@@ -116,6 +117,13 @@ Read before touching anything:
       manager.
       Check: `npm test` (1030) + `npm run check` (15 rules) + `npm run sync:dist`
       + seen live — **green 2026-09-14**
+- [x] 6 bis. Learn needs no cable (asked 2026-09-14): `armLearn` refuses only a
+      control with no socket; the capture plugs the cable the binding needs, in
+      the same history step; Clear unplugs it. The panel draws every keyboard on
+      the desk in loading order, greys nothing out, and a binding whose cable was
+      pulled out is drawn `unplugged`.
+      Check: `npm test` (1038) + `npm run check` + `npm run sync:dist` + live —
+      **green 2026-09-14**
 - [ ] 7. The panel leaves the VST node's editor. This is the step that makes it
       one place instead of two. **Waits for the author's go**, after he has
       learned knobs from the bar on his own plugins.
@@ -149,6 +157,50 @@ building rather than in advance:
   **seen 2026-09-14**; the first not met (see the log).
 
 ## Log
+
+2026-09-14 — Learn stops asking for a cable. The author, before trying the bar:
+"make the step where the controls are cabled in the Patch Bay optional — open a
+VST window, arm and learn a control from there."
+
+What that met: a knob reaches a plugin only by a CTRL IN cable. The controller
+node emits CONTROL into its cables and nowhere else, so a binding learned with no
+cable reads as learned and does nothing. Two ways out were put to him in those
+words: route bound knobs around the network, which leaves a Patch Bay that no
+longer shows what drives what and cables that stop nothing when pulled out; or
+let Learn plug the cable. He chose the second, with the cable plugged at the
+capture rather than at the arming.
+
+- **Plugged at the capture.** A Learn cancelled, superseded or ended by a closed
+  editor leaves nothing. Plugged before the binding is written, so both are one
+  history step: `test/controlRouting.test.mjs` undoes a capture and finds
+  neither.
+- **Clear unplugs it.** A CONTROL cable with no binding carries a knob to
+  nothing. Only when a binding was actually cleared: a hand-placed cable with no
+  binding is not Clear's to remove.
+- **Every keyboard is drawn, in loading order.** The panel drew only cabled
+  keyboards, and neither of two when none was cabled. Following the cables now
+  would hide the keyboard the person is about to learn from, and reorder the
+  faceplates the moment a capture plugs one. Three tests in
+  `test/twoControllers.test.mjs` locked the old drawing and were rewritten.
+- **`unavailable` is gone; `unplugged` replaces it** for a binding whose cable
+  was pulled out by hand. The binding stays (it is the person's work), does
+  nothing, and is drawn with a dashed ring rather than as working.
+- **Refused**: arming a control with no socket on any loaded keyboard
+  (`unknown-source`), and a capture whose cable the network refuses
+  (`cable-refused`), which ends the Learn without a binding.
+
+Seen live with Dexed, in an untitled project discarded after: nothing cabled,
+every knob drawn at full strength; K2 selected and armed from the bar with no
+cable; Cancel left no cable; Clear on a cabled binding (set through the channel)
+removed the binding and its cable and left the other binding alone. **Not seen**:
+the capture plugging a cable. A mouse drag posted to Dexed's JUCE window did not
+move its knob, and a real one takes the person's mouse, which is refused. The
+capture is covered by the tests only.
+
+Found while checking, not fixed, not this plan's: the agent channel's
+`set-binding` writes the binding straight to the node, so it plugs no cable, and
+emits nothing, so an open bar or panel does not redraw until something else
+changes.
 
 2026-09-14 — Resumed. Steps 5 and 6 landed, and so did a second native pass: the
 plan said nothing had gone stale, and read against the code before writing

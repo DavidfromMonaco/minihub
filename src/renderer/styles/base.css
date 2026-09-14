@@ -1327,7 +1327,9 @@ body {
 .ml-surface-knob:hover,.ml-surface-knob.selected { color:var(--text); background:rgba(79,140,255,.12); }
 .ml-surface-knob.selected .ml-knob-cap { border-color:var(--accent); box-shadow:0 0 8px rgba(79,140,255,.65); }
 .ml-surface-knob.state-mapped .ml-knob-cap { border-color:#4ade82; }.ml-surface-knob.state-learn-armed .ml-knob-cap { border-color:#f5c451; box-shadow:0 0 10px #f5c451; }
-.ml-surface-knob.state-unavailable { opacity:.38; cursor:not-allowed; }
+/* Learned, and its cable since pulled out in the Patch Bay: kept, doing nothing.
+   Every control can be learned now, so none is drawn unavailable any more. */
+.ml-surface-knob.state-unplugged .ml-knob-cap { border-color:#4ade82; border-style:dashed; }
 .ml-surface-fader { position:absolute; display:flex; flex-direction:column; align-items:center; gap:4px; font:700 9px var(--mono); opacity:.55; }.ml-surface-fader i { width:7px; height:58px; border-radius:4px; background:#080a0d; border:1px solid #5d6570; }
 /* The cap sits where the profile put the control; the stagger that used to
    offset every other fader was decoration standing in for a coordinate. */
@@ -1356,7 +1358,6 @@ body {
 .ml-surface-fader { border:0; background:transparent; opacity:1; }
 .ml-surface-pad { opacity:1; }
 .ml-surface-fader.selected,.ml-surface-pad.selected,.ml-strip-control.selected,.ml-main-turn.selected,.ml-main-click.selected,.ml-utility-control.selected { filter:drop-shadow(0 0 6px var(--accent)); color:var(--text); }
-.ml-surface-fader.state-unavailable,.ml-surface-pad.state-unavailable,.ml-strip-control.state-unavailable,.ml-main-turn.state-unavailable,.ml-main-click.state-unavailable,.ml-utility-control.state-unavailable { opacity:.4; }
 
 /* The panel shouts, the profile does not. A control's label comes from the file
    as "Shift" or "Oct −"; a device silk-screens it in capitals. Doing that here
@@ -1387,20 +1388,19 @@ body {
 .ml-list-control:hover,.ml-list-control.selected { color:var(--text); border-color:var(--accent); }
 .ml-list-control.state-mapped { border-color:#4ade82; }
 .ml-list-control.state-learn-armed { border-color:#f5c451; box-shadow:0 0 8px #f5c451; }
-.ml-list-control.state-unavailable { opacity:.4; cursor:not-allowed; }
+.ml-list-control.state-unplugged { border-color:#4ade82; border-style:dashed; }
 
 /* A family this drawing has no body for: a breath controller, a pedal. It is
    drawn plainly, but on its own coordinate like everything else -- it used to be
    swept into a strip along the bottom, away from where the control really sits. */
 .ml-surface-control { appearance:none; color:inherit; font:inherit; cursor:pointer; padding:4px 6px; border:1px solid #59616d; border-radius:7px; background:#17191d; }
 .ml-surface-control.selected { filter:drop-shadow(0 0 6px var(--accent)); color:var(--text); }
-.ml-surface-control.state-unavailable { opacity:.4; }
 
 /* The bindings bar: the Learn panel as a strip docked under a plugin editor
    (D-021, src/main/bindingsBarWindows.js). The markup is the VST editor's panel,
-   unchanged; only the layout is the bar's. One column per faceplate, keyboard
-   name or "nothing cabled" sentence -- counted into --bar-columns by the page --
-   then one column holding the help above the Learn toolbar. */
+   unchanged; only the layout is the bar's. One column per faceplate and per
+   keyboard name -- counted into --bar-columns by the page -- then one column
+   holding the help above the Learn toolbar. */
 .bindings-bar-body { display:block; background:var(--bg-raised); }
 .bindings-bar {
   --bar-pad: 10px;
@@ -1426,7 +1426,6 @@ body {
   margin:0; writing-mode:vertical-rl; transform:rotate(180deg); text-align:center;
   font:600 10px var(--mono); letter-spacing:.08em; text-transform:uppercase;
 }
-.bindings-bar > .control-bindings-help:not(:first-child):not(:has(+ [data-minilab-surface])) { margin:0; max-width:300px; align-self:center; }
 .bindings-bar > .control-bindings-help:first-child { grid-column:-2 / -1; grid-row:1; margin:0; font-size:11.5px; line-height:1.4; overflow:hidden; }
 .bindings-bar > .control-bindings-help:first-child .btn { margin-left:6px; }
 .bindings-bar > .control-learn-toolbar { grid-column:-2 / -1; grid-row:2; margin:0; padding:6px 8px; gap:8px; min-width:0; background:var(--bg-panel); }

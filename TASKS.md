@@ -19,13 +19,17 @@ the author tests).
 - Not seen yet: Splice keeping its login across a restart, now that MiniHub
   launches outside Codex.
 - Optional: an MCP wrapper, so Codex calls requests as tools.
+- Gap: `set-binding` plugs no cable (Learn does, since 2026-09-14) and does not
+  redraw an open bindings bar.
 
 **Learning a knob in one window: the bindings bar docked under the plugin
 editor** — 6 of 8 steps. The bar opens under every plugin window, follows it,
-and arms Learn; seen with Dexed. Waiting on the author to learn knobs from it on
-his own plugins. Left after that: removing the panel from the VST node's editor,
-the documents.
-- Not seen yet: a capture from the bar (it needs a gesture in the plugin).
+and arms Learn on any knob, cabled or not: the capture plugs the cable in the
+Patch Bay, Clear unplugs it. Seen with Dexed. Waiting on the author to learn
+knobs from it on his own plugins. Left after that: removing the panel from the
+VST node's editor, the documents.
+- Not seen yet: a capture from the bar, and the cable it plugs (it needs a
+  gesture in the plugin).
 - For the author: the panel's help sentence still says MiniHub "opens and
   foregrounds the target OmniBox", no longer true from the bar.
 Plan: [plans/active/bindings-bar-docked.md](plans/active/bindings-bar-docked.md).

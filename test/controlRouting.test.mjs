@@ -408,6 +408,91 @@ test('a capture and a Cancel leave the windows where the person put them', async
   }
 });
 
+/*
+ * LEARN PLUGS ITS OWN CABLE
+ *
+ * Asked 2026-09-14: open a plugin window and learn any knob from there, with no
+ * trip to the Patch Bay first. The knob still reaches the plugin only by a cable
+ * -- the network routes CONTROL -- so the capture plugs that cable, and Clear
+ * unplugs it.
+ */
+
+test('a knob with no cable can be armed, and the capture plugs its cable', async () => {
+  const { api, hub, node, plugin } = await makeRig();
+  const k1 = source('k1');
+  assert.equal(hub.control.isConnected(node.id, k1.id), false);
+  assert.equal(hub.control.armLearn(node.id, k1.id).ok, true, 'no cable is asked for');
+  ackCurrent(api, hub, true);
+  const pending = hub.control.pendingLearn;
+  api.emitEvent({ type: 'vstParameterTouched', learnId: pending.learnId, chainId: node.id,
+    instanceId: plugin.id, pluginId: plugin.pluginId, generation: 7,
+    parameterId: '42', name: 'Cutoff', normalizedValue: 0.2, capturedByLearn: true });
+
+  assert.equal(hub.control.bindingFor(node.id, k1.id)?.parameterId, '42');
+  assert.deepEqual(hub.network.connectionsTo(node.id, 'ctrl-in').map((c) => [c.from.nodeId, c.from.portId]),
+    [['minilab-3', k1.portId]], 'exactly the cable the binding needs, and no other');
+
+  // And the knob reaches the plugin through it, by the ordinary road.
+  setupControlRouting(hub);
+  api.sent.length = 0;
+  hub.events.emit('midi:message', { type: 'cc', sourceName: 'Minilab3 MIDI', channel: 1,
+    controller: k1.cc, value: 64, raw: [0xb0, k1.cc, 64] });
+  assert.equal(sentOf(api, 'setVstParameter')[0]?.parameterId, '42');
+});
+
+test('a Learn that ends without a capture leaves no cable', async () => {
+  const { api, hub, node } = await makeRig();
+  hub.control.armLearn(node.id, source('k1').id);
+  ackCurrent(api, hub, true);
+  hub.control.cancelLearn();
+  ackCurrent(api, hub, false);
+  assert.equal(hub.network.connectionsTo(node.id, 'ctrl-in').length, 0,
+    'the cable is plugged at the capture, never at the arming');
+});
+
+test('learning a knob that is already cabled does not plug a second cable', async () => {
+  const { api, hub, node, plugin } = await makeRig();
+  connect(hub, node.id, 'k1');
+  capture(api, hub, node, plugin);
+  assert.equal(hub.network.connectionsTo(node.id, 'ctrl-in').length, 1);
+});
+
+test('Clear takes the binding and the cable Learn plugged for it', async () => {
+  const { api, hub, node, plugin } = await makeRig();
+  capture(api, hub, node, plugin, 'k1');
+  capture(api, hub, node, plugin, 'k2', { parameterId: '77' });
+  assert.equal(hub.network.connectionsTo(node.id, 'ctrl-in').length, 2);
+
+  assert.equal(hub.control.clear(node.id, source('k1').id), true);
+  assert.equal(hub.control.bindingFor(node.id, source('k1').id), null);
+  assert.deepEqual(hub.network.connectionsTo(node.id, 'ctrl-in').map((c) => c.from.portId), [source('k2').portId],
+    'the other knob keeps its binding and its cable');
+
+  assert.equal(hub.control.clear(node.id, source('k1').id), false, 'nothing left to clear');
+  assert.equal(hub.network.connectionsTo(node.id, 'ctrl-in').length, 1, 'and no other cable touched');
+});
+
+test('a control with no socket on any keyboard is still refused', async () => {
+  const { hub, node } = await makeRig();
+  assert.equal(hub.control.armLearn(node.id, 'minilab-3:not-a-control').reason, 'unknown-source');
+  assert.equal(hub.control.pendingLearn, null);
+});
+
+test('one Ctrl+Z takes back a capture: the binding and the cable it plugged', async () => {
+  const { setupEditHistory } = await import('../src/renderer/js/core/editHistory.js');
+  const { applyHistorySnapshot } = await import('../src/renderer/js/core/editHistoryApply.js');
+  const { api, hub, node, plugin } = await makeRig();
+  setupEditHistory(hub, { apply: applyHistorySnapshot, quietMs: 5 });
+  hub.history.start();
+  capture(api, hub, node, plugin, 'k1');
+  assert.equal(hub.network.connectionsTo(node.id, 'ctrl-in').length, 1);
+
+  assert.equal(await hub.history.undo(), true);
+  assert.deepEqual(hub.nodes.getControlBindings(node.id), [], 'the binding is gone');
+  assert.equal(hub.network.connectionsTo(node.id, 'ctrl-in').length, 0, 'and so is its cable, in the same step');
+  assert.equal(hub.history.canUndo, false, 'one step, not two');
+});
+
 test('disconnecting the CONTROL cable stops updates without deleting binding', async () => {
   const { api, hub, node, plugin } = await makeRig();
   const k1 = connect(hub, node.id, 'k1');

@@ -319,58 +319,64 @@ test('a CONTROL input takes cables from as many keyboards as the user wants', ()
   assert.equal(network.connectionsTo('vst-001', 'ctrl-in').length, 3);
 });
 
-test('the Learn panel draws one faceplate per cabled keyboard, each named', () => {
+/*
+ * EVERY KEYBOARD ON THE DESK, CABLED OR NOT
+ *
+ * The panel used to draw only the keyboards cabled into this node's CTRL IN,
+ * and with two keyboards and no cable, neither: cabling a knob in the Patch Bay
+ * was the step before learning it. The author asked on 2026-09-14 for that step
+ * to go -- open a plugin window, learn any knob from there -- and Learn now plugs
+ * the cable at the capture. So the panel draws every keyboard, each named, and
+ * never sends anyone to the Patch Bay first.
+ *
+ * The defect the older tests pinned -- a BeatStep faceplate alone on a node the
+ * MiniLab was cabled to, every control greyed out, nothing saying why -- cannot
+ * come back in that form: both faceplates are on the panel, named, and nothing
+ * is greyed out.
+ */
+test('the Learn panel draws one faceplate per keyboard on the desk, each named', () => {
   const network = makeNetwork();
   const hub = { network, control: null, modules: { get: () => null } };
   const instance = { id: 'vst-001', type: 'vst', content: { plugins: [] } };
 
-  network.connect('minilab-3', 'control-k1', 'vst-001', 'ctrl-in');
-  network.connect('vega-49', 'control-dial-one', 'vst-001', 'ctrl-in');
   const html = renderControlBindings(instance, hub);
-
   assert.match(html, /minilab-3:k1/);
-  assert.match(html, /vega-49:dial-one/, 'both keyboards are cabled, so both are on the panel');
+  assert.match(html, /vega-49:dial-one/, 'nothing is cabled, and both keyboards are on the panel');
   assert.equal(html.match(/data-minilab-surface="learn"/g)?.length, 2, 'one faceplate each');
   assert.match(html, /MiniLab 3/);
   assert.match(html, /Vega 49/, 'named, or the second drawing has to be identified by counting knobs');
 
   // One keyboard usually arrives on several cables, one per mapped knob. That
-  // is one faceplate, not four.
+  // is still one faceplate, not four.
+  network.connect('minilab-3', 'control-k1', 'vst-001', 'ctrl-in');
   network.connect('minilab-3', 'control-k2', 'vst-001', 'ctrl-in');
   network.connect('minilab-3', 'control-k3', 'vst-001', 'ctrl-in');
   assert.equal(renderControlBindings(instance, hub).match(/data-minilab-surface="learn"/g)?.length, 2);
 });
 
-test('the Learn panel draws the keyboard that is cabled, not the one that loaded first', () => {
+test('a cable does not move a faceplate: the order is the order the keyboards loaded', () => {
   const network = makeNetwork();
   const hub = { network, control: null, modules: { get: () => null } };
   const instance = { id: 'vst-001', type: 'vst', content: { plugins: [] } };
 
-  // The exact screenshot: the second-loaded keyboard is cabled, and the panel
-  // used to draw the first-loaded one.
+  // The capture plugs a cable while the person is looking at the panel. A
+  // drawing ordered by cables would swap the two faceplates under the mouse.
+  const before = renderControlBindings(instance, hub);
   network.connect('vega-49', 'control-dial-one', 'vst-001', 'ctrl-in');
-  const drawn = renderControlBindings(instance, hub);
-  assert.match(drawn, /vega-49:dial-one/, 'the cabled keyboard is the one on screen');
-  assert.doesNotMatch(drawn, /minilab-3:k1/, 'and a keyboard nothing cables to this node is not');
-  assert.match(drawn, /Vega 49/, 'named after the node the cable comes from');
-
-  network.disconnect('vega-49', 'control-dial-one', 'vst-001', 'ctrl-in');
-  network.connect('minilab-3', 'control-k1', 'vst-001', 'ctrl-in');
-  const swapped = renderControlBindings(instance, hub);
-  assert.match(swapped, /minilab-3:k1/);
-  assert.doesNotMatch(swapped, /vega-49:dial-one/, 'recabling swaps the faceplate, it does not add to it');
+  const after = renderControlBindings(instance, hub);
+  for (const html of [before, after]) {
+    assert.ok(html.indexOf('minilab-3:k1') < html.indexOf('vega-49:dial-one'), 'MiniLab first, as it loaded');
+  }
 });
 
-test('with two keyboards and no cable, the panel draws neither and says why', () => {
+test('nothing on the panel sends the person to the Patch Bay before learning', () => {
   const network = makeNetwork();
   const hub = { network, control: null, modules: { get: () => null } };
   const html = renderControlBindings({ id: 'vst-001', type: 'vst', content: { plugins: [] } }, hub);
 
-  assert.doesNotMatch(html, /minilab-3:k1/);
-  assert.doesNotMatch(html, /vega-49:dial-one/);
-  assert.match(html, /No controller is cabled to this node/,
-    'drawing either one is a guess, and a guess is what put the wrong faceplate here');
-  assert.match(html, /CTRL IN/, 'and it says what to do about it');
+  assert.doesNotMatch(html, /No controller is cabled/);
+  assert.doesNotMatch(html, /CTRL IN/, 'no instruction to cable anything');
+  assert.doesNotMatch(html, /state-unavailable/, 'and no control greyed out for want of a cable');
 });
 
 /*

@@ -94,6 +94,13 @@ export function normalizeControlBindings(values) {
  * specific MiniLab CONTROL source has a cable into the VST node's CTRL IN.
  * Binding identity is node id + stable source id + plugin instance id + exact
  * plugin id + stable VST3 ParamID. Display names are metadata only.
+ *
+ * Learn does not ask for that cable first; it plugs it. Cabling each knob in the
+ * Patch Bay before learning it was a step the author asked to drop (2026-09-14),
+ * and the answer was not to route around the network -- a knob that works with no
+ * cable is a Patch Bay that no longer shows what drives what, and a cable pulled
+ * out that stops nothing. So the capture plugs the cable the binding needs, and
+ * Clear unplugs it.
  */
 export class ControlBindingManager {
   constructor(hub) {
@@ -147,11 +154,26 @@ export class ControlBindingManager {
     ));
   }
 
+  /**
+   * The cable a binding of this source on this node travels by, whether or not
+   * it is plugged in: `{ from, portId }` into the node's CTRL IN, or null when
+   * the source names no socket on a keyboard the network knows.
+   */
+  cableFor(nodeId, sourceControlId) {
+    const source = getMiniLabControlSource(sourceControlId);
+    const owner = controllerNodeOfSource(sourceControlId);
+    const keyboard = owner ? this.hub.network.getNode(owner) : null;
+    if (!source || !keyboard?.outputs?.some((port) => port.id === source.portId)) return null;
+    return { from: owner, portId: source.portId };
+  }
+
   armLearn(nodeId, sourceControlId) {
     const node = this.hub.nodes.get(nodeId);
     if (!node || node.type !== 'vst') return this._armFailure(nodeId, sourceControlId, 'node-not-found');
-    if (!this.isConnected(nodeId, sourceControlId)) {
-      return this._armFailure(nodeId, sourceControlId, 'source-not-connected');
+    // Not "is it cabled": the capture plugs the cable. Only a control with no
+    // socket to plug is refused.
+    if (!this.cableFor(nodeId, sourceControlId)) {
+      return this._armFailure(nodeId, sourceControlId, 'unknown-source');
     }
     if (this.hub.engine.state !== 'running') {
       return this._armFailure(nodeId, sourceControlId, 'engine-not-running');
@@ -261,8 +283,14 @@ export class ControlBindingManager {
   clear(nodeId, sourceControlId) {
     this.cancelLearn(nodeId, sourceControlId);
     const changed = this.hub.nodes.clearControlBinding(nodeId, sourceControlId);
-    if (changed) this._changed(nodeId);
-    return changed;
+    if (!changed) return false;
+    // Learn plugged this cable, so Clear unplugs it. Left in, it would carry the
+    // knob to a node with nothing bound to it: a cable in the Patch Bay that
+    // does nothing, and that the person never placed.
+    const cable = this.cableFor(nodeId, sourceControlId);
+    if (cable) this.hub.network.disconnect(cable.from, cable.portId, nodeId, 'ctrl-in');
+    this._changed(nodeId);
+    return true;
   }
 
   bindingFor(nodeId, sourceControlId) {
@@ -326,7 +354,6 @@ export class ControlBindingManager {
     if (msg.learnId !== pending.learnId) return;
     const node = this.hub.nodes.get(pending.nodeId);
     if (!node || node.type !== 'vst' || msg.chainId !== pending.nodeId) return;
-    if (!this.isConnected(pending.nodeId, pending.sourceControlId)) return;
     if (msg.instanceId !== pending.pluginInstanceId || msg.pluginId !== pending.pluginId
         || msg.generation !== pending.generation) return;
     const plugin = node.content.plugins.find((p) => p.id === pending.pluginInstanceId);
@@ -335,8 +362,7 @@ export class ControlBindingManager {
     const generation = this.hub.engine.getInstanceGeneration(msg.chainId, msg.instanceId);
     if (!Number.isSafeInteger(generation) || msg.generation !== generation) return;
     if (!isStableVstParameterId(msg.parameterId)) return;
-
-    this.hub.nodes.setControlBinding(pending.nodeId, {
+    const binding = normalizeControlBinding({
       version: CONTROL_BINDING_VERSION,
       sourceControlId: pending.sourceControlId,
       pluginInstanceId: plugin.id,
@@ -345,6 +371,28 @@ export class ControlBindingManager {
       pluginName: plugin.name || '',
       parameterName: typeof msg.name === 'string' ? msg.name : ''
     });
+    if (!binding) return;
+
+    // The cable is plugged here, at the capture, and not when Learn is armed: a
+    // Learn cancelled, superseded or left behind a closed editor leaves no cable
+    // in the Patch Bay. Plugged before the binding is written, so the two land
+    // inside one history step and one Ctrl+Z takes both back.
+    if (!this.isConnected(pending.nodeId, pending.sourceControlId)) {
+      const cable = this.cableFor(pending.nodeId, pending.sourceControlId);
+      let plugged = false;
+      try {
+        plugged = !!cable && this.hub.network.connect(cable.from, cable.portId, pending.nodeId, 'ctrl-in');
+      } catch (_) {
+        plugged = false;
+      }
+      // A binding with no cable to bring its knob would read as learned and do
+      // nothing. The Learn ends without one instead.
+      if (!plugged) {
+        this._finishIfCurrent(pending.learnId, 'cable-refused');
+        return;
+      }
+    }
+    this.hub.nodes.setControlBinding(pending.nodeId, binding);
     this._learnFeedback.set(this._feedbackKey(pending.nodeId, pending.sourceControlId), 'captured');
     this._clearPending();
     this._changed(pending.nodeId);
