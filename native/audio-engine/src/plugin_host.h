@@ -196,7 +196,8 @@ public:
     juce::var getState() const;
     bool setState(const juce::var& state, juce::String& error);
     bool takeStateSnapshotIfDue(juce::var& state, bool force = false);
-    juce::var getParameters() const;
+    /** Every parameter, or only those whose stable ParamID string is in `only`. */
+    juce::var getParameters(const std::set<juce::String>* only = nullptr) const;
     bool setParameterNormalized(const juce::String& parameterId,
                                 float normalizedValue,
                                 juce::String& error);

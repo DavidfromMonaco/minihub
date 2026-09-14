@@ -77,6 +77,7 @@ contextBridge.exposeInMainWorld('hubAPI', {
   // Main places the bars; this renderer draws them, because the bindings they
   // show live here. See src/main/bindingsBarWindows.js.
   bindingsBarRender: (chainId, instanceId, html) => ipcRenderer.invoke('bindings-bar:render', { chainId, instanceId, html }),
+  bindingsBarValues: (chainId, instanceId, values, replace) => ipcRenderer.invoke('bindings-bar:values', { chainId, instanceId, values, replace }),
   bindingsBarsOpen: () => ipcRenderer.invoke('bindings-bar:list'),
   onBindingsBarWanted: (callback) => {
     const listener = (_event, bar) => callback(bar);

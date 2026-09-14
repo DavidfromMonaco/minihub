@@ -5,9 +5,9 @@ the bindings interface sits under the plugin editor and moves with it, and
 `renderControlBindings()` is gone from the VST node's editor.
 **Origin** — ROADMAP item 9, [DECISIONS.md](../../DECISIONS.md) D-021, asked
 2026-09-04, started 2026-09-12, resumed 2026-09-14 on the author's word.
-**Status** — **in progress, 2026-09-14.** Steps 1 to 6 bis landed: the bar exists,
-has been seen docked under a real plugin window, and learns a knob with no cable
-in the Patch Bay. **Waiting on the author**, and on purpose: he tries Learn from
+**Status** — **in progress, 2026-09-14.** Steps 1 to 6 ter landed: the bar exists,
+has been seen docked under a real plugin window, learns a knob with no cable in
+the Patch Bay, and its bound knobs move their parameters under the mouse. **Waiting on the author**, and on purpose: he tries Learn from
 the bar on his own plugins before step 7 takes the panel out of the VST node's
 editor, which is the point of no return.
 
@@ -124,6 +124,14 @@ Read before touching anything:
       pulled out is drawn `unplugged`.
       Check: `npm test` (1038) + `npm run check` + `npm run sync:dist` + live —
       **green 2026-09-14**
+- [x] 6 ter. Knobs that move (asked 2026-09-14): in the bar, a knob, fader or
+      strip bound to a parameter shows where it stands and a vertical mouse drag
+      moves it, through `route()`; the plugin moving it under its own mouse, or
+      the keyboard turning it, moves the drawing. `core/controlValues.js`, a
+      `bindings-bar:values` channel apart from the markup, and `parameterIds` on
+      the engine's parameter read.
+      Check: `npm run build:native` 0/0 + the four binaries + `npm test` (1047) +
+      `npm run check` + `npm run sync:dist` + live — **green 2026-09-14**
 - [ ] 7. The panel leaves the VST node's editor. This is the step that makes it
       one place instead of two. **Waits for the author's go**, after he has
       learned knobs from the bar on his own plugins.
@@ -157,6 +165,44 @@ building rather than in advance:
   **seen 2026-09-14**; the first not met (see the log).
 
 ## Log
+
+2026-09-14 — Knobs that move. The author: "when you move a control of the
+controller's panel [with the mouse], it moves the one it is linked to in the
+plugin, and the other way round." Agreed before building: what turns or slides
+moves (knobs, the main encoder, faders, strips), pads do not; only a working
+binding moves anything; the drawing follows what the plugin reports under its
+own mouse, which is exactly what Learn can capture.
+
+- **A drag goes through `route()`**, the knob's own road: binding, cable,
+  plugin. So an unplugged binding moves nothing from the bar either, and no
+  binding rule appears in the bar or its host.
+- **Positions travel apart from the markup** (`bindings-bar:values`). A redraw
+  at the rate a knob turns would replace the element under the dragging mouse;
+  the bar also holds back a redraw until the mouse lets go.
+- **Three sources of a position**, in `core/controlValues.js`: `route()` saying
+  what it wrote (`control:routed` -- the engine does not echo a host write), the
+  plugin's touches (`engine:vstParameterTouched`, 30 per second at most while
+  its window is open), and a read back from the engine when a bar opens, when
+  the bound set changes, and when the plugin's state changes (a preset loaded
+  in it reports no parameter). Every write is numbered and a read never
+  overwrites a later write.
+- **The read is narrowed.** `getVstParameters` takes an optional `parameterIds`
+  now; without it, each read of eight knobs bound to Dexed formatted 2,238
+  display strings. The validation moved out of `main.js` into
+  `vstParameterCommand.js`, beside the other parameter command, and is tested.
+- **The drag**: 160 px sweeps a knob end to end; a fader or strip follows the
+  mouse along its own track. Under 3 px it is still a click, and selects the
+  control for Learn. One message per frame.
+
+Seen live with Dexed, in an untitled project discarded after, with drags posted
+to the bar window: K1 bound to Cutoff went 0 → 0.25 for 40 px up and → 0.15 for
+16 px down; with the bar closed, Cutoff set to 0.6 and the bar reopened, 16 px up
+gave 0.7 — the bar had read 0.6; Cutoff changed to 0.3 behind MiniHub's back,
+and after the plugin's state event 16 px up gave 0.4; F1 bound to Resonance went
+0 → 0.42 for 20 px, its cap drawn at the bottom before and part way up after,
+K1's mark pointing at 11 o'clock for 0.4. **Not seen**: the plugin moving the
+drawn knob, and the keyboard moving it — both need a hand, on the plugin or on
+the MiniLab; both are in `test/bindingsBarHost.test.mjs`.
 
 2026-09-14 — Learn stops asking for a cable. The author, before trying the bar:
 "make the step where the controls are cabled in the Patch Bay optional — open a

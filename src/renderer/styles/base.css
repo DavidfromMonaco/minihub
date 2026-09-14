@@ -1431,6 +1431,25 @@ body {
 .bindings-bar > .control-learn-toolbar { grid-column:-2 / -1; grid-row:2; margin:0; padding:6px 8px; gap:8px; min-width:0; background:var(--bg-panel); }
 .bindings-bar > .control-learn-toolbar strong,
 .bindings-bar > .control-learn-toolbar .btn { white-space:nowrap; }
+
+/* A control bound to a parameter, in the bindings bar: it shows where that
+   parameter stands and a vertical drag moves it. --ml-value (0 to 1) is set by
+   the page through the CSSOM, the one road the CSP leaves for a live value.
+   A knob's mark sweeps 270 degrees, from 7:30 to 4:30 like a real one; a fader's
+   cap and a strip's line travel their own length. */
+.ml-live { cursor:ns-resize; touch-action:none; }
+.ml-surface-knob.ml-live .ml-knob-cap { position:relative; }
+.ml-surface-knob.ml-live .ml-knob-cap::after,
+.ml-main-turn.ml-live::after {
+  content:''; position:absolute; left:50%; top:50%; width:2px; height:42%; margin-left:-1px;
+  border-radius:1px; background:#e6e8eb; transform-origin:50% 0; pointer-events:none;
+  transform:rotate(calc(45deg + var(--ml-value, 0) * 270deg));
+}
+.ml-surface-fader.ml-live::after { top:calc((1 - var(--ml-value, .5)) * 49px); }
+.ml-strip-control.ml-live::after {
+  content:''; position:absolute; left:50%; top:calc((1 - var(--ml-value, .5)) * 61px); width:17px; height:3px; margin-left:-8.5px;
+  border-radius:2px; background:var(--accent); box-shadow:0 0 4px var(--accent); pointer-events:none;
+}
 .home-project-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

@@ -337,13 +337,22 @@ export class ControlBindingManager {
     const status = this.bindingStatus(nodeId, control.sourceControlId);
     if (status.state !== 'active') return { ok: false, reason: status.state };
     const binding = status.binding;
-    return this.hub.engine.setVstParameter(
+    const result = this.hub.engine.setVstParameter(
       nodeId,
       binding.pluginInstanceId,
       binding.pluginId,
       binding.parameterId,
       control.normalizedValue
     );
+    // What the parameter now reads, said once, for whoever draws it. The engine
+    // does not echo a value the host writes, so a drawing that followed only the
+    // engine would never see a knob turned on the keyboard.
+    if (result?.ok) {
+      this.hub.events.emit('control:routed', {
+        nodeId, sourceControlId: control.sourceControlId, normalizedValue: control.normalizedValue
+      });
+    }
+    return result;
   }
 
   _captureLearn(msg) {

@@ -23,7 +23,7 @@ const controllerProfiles = require('./controllerProfiles');
 const { createEngineEventTrace } = require('./engineEventTrace');
 const { EngineProcess } = require('./engine');
 const diagnostics = require('./diagnostics');
-const { isValidSetVstParameterCommand } = require('./vstParameterCommand');
+const { isValidSetVstParameterCommand, isValidGetVstParametersCommand } = require('./vstParameterCommand');
 const { isValidSetVstParameterLearnCommand } = require('./vstParameterLearnCommand');
 const { isValidSelectDeviceCommand } = require('./audioDeviceCommand');
 const { readProject, writeProjectAtomic } = require('./projectFiles');
@@ -680,13 +680,8 @@ ipcMain.handle('engine:command', (_event, msg) => {
     console.log('[engine:command] REJECTED unknown-command:', type);
     return { ok: false, reason: 'unknown-command' };
   }
-  if (type === 'getVstParameters') {
-    if (!msg || msg.v !== 1
-        || !validId(msg.requestId, /^[A-Za-z0-9._:-]+$/, 160)
-        || !validId(msg.chainId, /^[A-Za-z][A-Za-z0-9_-]*$/, 128)
-        || !validId(msg.instanceId, /^plugin-[1-9][0-9]*$/, 64)) {
-      return { ok: false, reason: 'invalid-request' };
-    }
+  if (type === 'getVstParameters' && !isValidGetVstParametersCommand(msg)) {
+    return { ok: false, reason: 'invalid-request' };
   }
   if (type === 'selectDevice' && !isValidSelectDeviceCommand(msg)) {
     return { ok: false, reason: 'invalid-request' };

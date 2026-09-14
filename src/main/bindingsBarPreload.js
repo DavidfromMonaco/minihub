@@ -11,5 +11,10 @@ contextBridge.exposeInMainWorld('bindingsBarAPI', {
     const listener = (_event, html) => callback(html);
     ipcRenderer.on('bindings-bar:render', listener);
     return () => ipcRenderer.removeListener('bindings-bar:render', listener);
+  },
+  onValues: (callback) => {
+    const listener = (_event, message) => callback(message);
+    ipcRenderer.on('bindings-bar:values', listener);
+    return () => ipcRenderer.removeListener('bindings-bar:values', listener);
   }
 });

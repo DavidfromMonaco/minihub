@@ -317,6 +317,21 @@ test('CONTROL IPC validation rejects malformed ids, types, ranges and payloads',
   }
 });
 
+test('a parameter read may be narrowed to a bounded list of stable ParamIDs', () => {
+  const { isValidGetVstParametersCommand } = commandValidation;
+  const valid = { v: 1, type: 'getVstParameters', requestId: 'vst-params-a-1', chainId: 'vst-001', instanceId: 'plugin-1' };
+  assert.equal(isValidGetVstParametersCommand(valid), true, 'the whole list, as it always was');
+  assert.equal(isValidGetVstParametersCommand({ ...valid, parameterIds: ['41', '4294967295'] }), true);
+  assert.equal(isValidGetVstParametersCommand({ ...valid, parameterIds: [] }), true, 'a node with nothing bound asks for nothing');
+  for (const mutation of [
+    { parameterIds: '41' }, { parameterIds: ['param-1'] }, { parameterIds: ['4294967296'] },
+    { parameterIds: [41] }, { parameterIds: Array.from({ length: 257 }, (_, i) => String(i)) },
+    { requestId: '' }, { chainId: '../x' }, { instanceId: 'plugin-0' }, { v: 2 }
+  ]) {
+    assert.equal(isValidGetVstParametersCommand({ ...valid, ...mutation }), false, JSON.stringify(mutation).slice(0, 80));
+  }
+});
+
 test('musical notes and K1 MIDI remain native while K1 is additionally CONTROL', async () => {
   const { api, hub, node, plugin } = await makeRig();
   connect(hub, node.id, 'k1');

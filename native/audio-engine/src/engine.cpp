@@ -2260,10 +2260,23 @@ void Engine::cmdGetVstParameters(const juce::var& msg)
         return;
     }
 
+    // `parameterIds`, when present, narrows the answer to those parameters: the
+    // bindings bar reads the few a keyboard is bound to, and a full answer from a
+    // 2,000-parameter synth each time is a display string formatted for every
+    // one of them. Absent, the answer is every parameter, as it always was.
+    const juce::var requested = msg["parameterIds"];
+    std::set<juce::String> only;
+    if (const auto* ids = requested.getArray())
+    {
+        for (const auto& id : *ids)
+            if (id.isString() && id.toString().length() <= 16 && only.size() < 256)
+                only.insert(id.toString());
+    }
+
     setProp(out, "status", "ok");
     setProp(out, "pluginId", inst->pluginId());
     setProp(out, "name", inst->name());
-    setProp(out, "parameters", inst->getParameters());
+    setProp(out, "parameters", inst->getParameters(requested.isArray() ? &only : nullptr));
     ipc_.send(out);
 }
 

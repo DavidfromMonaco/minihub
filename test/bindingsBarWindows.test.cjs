@@ -9,7 +9,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { BindingsBarWindows, placeBar, validAction, BAR_HEIGHT } = require('../src/main/bindingsBarWindows');
+const { BindingsBarWindows, placeBar, validAction, validValues, BAR_HEIGHT } = require('../src/main/bindingsBarWindows');
 
 let nextWebContentsId = 100;
 class FakeWebContents {
@@ -228,6 +228,36 @@ test('a bar reports clicks as bounded actions, addressed by the bar that sent th
   assert.equal(validAction({ kind: 'set-binding', controlId: 'minilab-3:k1' }), false, 'the bar asks what the panel can ask, nothing more');
   assert.equal(validAction({ kind: 'clear', controlId: '../k1' }), false);
   assert.equal(validAction({ kind: 'clear', controlId: 'minilab-3:k1'.repeat(20) }), false);
+});
+
+test('a drag in the bar crosses as a bounded position, and nothing else', () => {
+  assert.equal(validAction({ kind: 'turn', controlId: 'minilab-3:k1', normalizedValue: 0.5 }), true);
+  assert.equal(validAction({ kind: 'turn', controlId: 'minilab-3:k1', normalizedValue: 0 }), true);
+  assert.equal(validAction({ kind: 'turn', controlId: 'minilab-3:k1', normalizedValue: 1 }), true);
+  assert.equal(validAction({ kind: 'turn', controlId: 'minilab-3:k1', normalizedValue: 1.2 }), false, 'past the end of the knob');
+  assert.equal(validAction({ kind: 'turn', controlId: 'minilab-3:k1', normalizedValue: '0.5' }), false);
+  assert.equal(validAction({ kind: 'turn', controlId: 'minilab-3:k1' }), false, 'a turn with no position');
+  assert.equal(validAction({ kind: 'turn', controlId: 'minilab-3:k1', normalizedValue: 0.5, parameterId: '42' }), false,
+    'a bar names a control, never the parameter behind it');
+});
+
+test('only the main renderer sends positions, bounded, to a live bar', async () => {
+  const context = rig();
+  const window = await drawnBar(context);
+  const send = context.handlers.get('bindings-bar:values');
+  const message = (values, replace = false) => ({ chainId: 'vst-001', instanceId: 'plugin-1', values, replace });
+
+  assert.equal(await send(context.mainEvent, message({ 'minilab-3:k1': 0.25 }, true)), true);
+  assert.deepEqual(window.webContents.sent.at(-1),
+    { channel: 'bindings-bar:values', payload: { values: { 'minilab-3:k1': 0.25 }, replace: true } });
+
+  assert.equal(await send({ sender: window.webContents }, message({ 'minilab-3:k1': 0.3 })), false, 'a bar cannot send itself positions');
+  assert.equal(await send(context.mainEvent, { ...message({ 'minilab-3:k1': 0.3 }), instanceId: 'plugin-2' }), false, 'no such bar');
+  assert.equal(validValues({ 'minilab-3:k1': Number.NaN }), false);
+  assert.equal(validValues({ 'minilab-3:k1': -0.1 }), false);
+  assert.equal(validValues({ '../k1': 0.5 }), false);
+  assert.equal(validValues(Object.fromEntries(Array.from({ length: 257 }, (_, i) => [`minilab-3:k${i}`, 0.5]))), false);
+  assert.equal(validValues({}), true, 'no bound control is a valid answer');
 });
 
 test('a renderer that reloads can ask which bars exist', async () => {

@@ -5,6 +5,7 @@ import { createHub } from '../src/renderer/js/core/hub.js';
 import { MINILAB_CONTROL_SOURCES } from '../src/renderer/js/midi/minilabControls.js';
 import { installBindingsBarHost } from '../src/renderer/js/core/bindingsBarHost.js';
 import { controlBindingActionOf, performControlBindingAction } from '../src/renderer/js/core/controlBindingActions.js';
+import { setupControlRouting } from '../src/renderer/js/core/controlRouting.js';
 
 /*
  * The bindings bar is drawn from the main renderer, where the bindings live, and
@@ -19,8 +20,9 @@ function mockApi() {
   const sent = [];
   const listeners = { event: [], state: [], wanted: [], action: [] };
   const renders = [];
+  const positions = [];
   const api = {
-    sent, renders,
+    sent, renders, positions,
     delivered: true,
     focusCount: 0,
     openBars: [],
@@ -36,6 +38,7 @@ function mockApi() {
     onEngineState: (cb) => { listeners.state.push(cb); return () => {}; },
     focusMainWindow: async () => { api.focusCount += 1; return true; },
     bindingsBarRender: async (chainId, instanceId, html) => { renders.push({ chainId, instanceId, html }); return api.delivered; },
+    bindingsBarValues: async (chainId, instanceId, values, replace) => { positions.push({ chainId, instanceId, values, replace }); return true; },
     bindingsBarsOpen: async () => api.openBars,
     onBindingsBarWanted: (cb) => { listeners.wanted.push(cb); return () => { listeners.wanted.length = 0; }; },
     onBindingsBarAction: (cb) => { listeners.action.push(cb); return () => { listeners.action.length = 0; }; }
@@ -222,4 +225,122 @@ test('the VST node editor reads its clicks through the same module', () => {
   const source = fs.readFileSync(new URL('../src/renderer/js/core/nodeInstances.js', import.meta.url), 'utf8');
   assert.match(source, /performControlBindingAction\(hub, instance\.id, controlBindingActionOf\(e\.target\), bindingsPanel\)/);
   assert.doesNotMatch(source, /hub\.control\.armLearn\(/, 'a second copy of the Learn click is what D-018 would pay twice');
+});
+
+// ---- knobs that move: the mouse on the bar, the plugin, the keyboard ---------
+
+/*
+ * Asked 2026-09-14: a knob dragged with the mouse in the bar moves the parameter
+ * it is bound to, and the parameter moved in the plugin moves the drawn knob. The
+ * positions travel apart from the markup (`bindings-bar:values`), and are what
+ * makes a drawn control movable at all.
+ */
+
+const bindK1 = (hub, node, plugin, parameterId = '41') => hub.nodes.setControlBinding(node.id, {
+  version: 1, sourceControlId: source('k1').id, pluginInstanceId: plugin.id,
+  pluginId: plugin.pluginId, parameterId, pluginName: 'Vital', parameterName: 'Cutoff'
+});
+
+/** The engine's answer to the last parameter read, as `engineClient` expects it. */
+function answerRead(api, parameters) {
+  const request = api.sent.filter((msg) => msg.type === 'getVstParameters').at(-1);
+  api.emitEvent({
+    type: 'vstParameters', requestId: request.requestId, chainId: request.chainId,
+    instanceId: request.instanceId, status: 'ok', pluginId: 'C:/VST3/Vital.vst3', parameters
+  });
+  return request;
+}
+
+const lastPosition = (api, controlId) => {
+  for (let i = api.positions.length - 1; i >= 0; i -= 1) {
+    if (controlId in api.positions[i].values) return api.positions[i].values[controlId];
+  }
+  return undefined;
+};
+
+test('a bar that opens reads where its bound parameters stand, and only those', async () => {
+  const { api, hub, node, plugin } = await makeRig();
+  bindK1(hub, node, plugin);
+  installBindingsBarHost(hub, api);
+  api.want({ chainId: node.id, instanceId: plugin.id });
+  await tick();
+  const request = answerRead(api, [{ parameterId: '41', normalizedValue: 0.7 }]);
+  assert.deepEqual(request.parameterIds, ['41'], 'the bound parameter, not the whole synth');
+  await tick();
+  assert.equal(lastPosition(api, source('k1').id), 0.7);
+});
+
+test('a knob dragged in the bar moves its parameter, by the binding', async () => {
+  const { api, hub, node, plugin } = await makeRig();
+  bindK1(hub, node, plugin);
+  installBindingsBarHost(hub, api);
+  api.want({ chainId: node.id, instanceId: plugin.id });
+  await tick();
+  api.sent.length = 0;
+  api.act({ chainId: node.id, instanceId: plugin.id, kind: 'turn', controlId: source('k1').id, normalizedValue: 0.25 });
+  const write = api.sent.find((msg) => msg.type === 'setVstParameter');
+  assert.deepEqual([write?.instanceId, write?.parameterId, write?.normalizedValue], [plugin.id, '41', 0.25]);
+  assert.equal(lastPosition(api, source('k1').id), 0.25, 'and every bar of the node hears where it went');
+});
+
+test('a drag moves nothing without a working binding', async () => {
+  const { api, hub, node, plugin } = await makeRig();
+  // K2 is bound but has no cable: kept, unplugged, and doing nothing.
+  hub.nodes.setControlBinding(node.id, {
+    version: 1, sourceControlId: source('k2').id, pluginInstanceId: plugin.id,
+    pluginId: plugin.pluginId, parameterId: '42', pluginName: 'Vital', parameterName: 'Reso'
+  });
+  installBindingsBarHost(hub, api);
+  api.want({ chainId: node.id, instanceId: plugin.id });
+  await tick();
+  api.sent.length = 0;
+  for (const key of ['k2', 'k3']) {
+    api.act({ chainId: node.id, instanceId: plugin.id, kind: 'turn', controlId: source(key).id, normalizedValue: 0.9 });
+  }
+  assert.equal(api.sent.filter((msg) => msg.type === 'setVstParameter').length, 0);
+  assert.equal(lastPosition(api, source('k2').id), undefined, 'and an unplugged knob is never given a position to drag');
+});
+
+test('the parameter moved in the plugin moves the drawn knob', async () => {
+  const { api, hub, node, plugin } = await makeRig();
+  bindK1(hub, node, plugin);
+  installBindingsBarHost(hub, api);
+  api.want({ chainId: node.id, instanceId: plugin.id });
+  await tick();
+  api.emitEvent({
+    type: 'vstParameterTouched', chainId: node.id, instanceId: plugin.id, pluginId: plugin.pluginId, generation: 7,
+    parameterId: '41', name: 'Cutoff', normalizedValue: 0.62, gestureAware: true, capturedByLearn: false
+  });
+  assert.equal(lastPosition(api, source('k1').id), 0.62);
+  api.emitEvent({
+    type: 'vstParameterTouched', chainId: node.id, instanceId: plugin.id, pluginId: plugin.pluginId, generation: 7,
+    parameterId: '99', name: 'Other', normalizedValue: 0.1, gestureAware: true, capturedByLearn: false
+  });
+  assert.equal(lastPosition(api, source('k1').id), 0.62, 'a parameter nothing is bound to moves no knob');
+});
+
+test('the knob turned on the keyboard moves the drawn knob', async () => {
+  const { api, hub, node, plugin } = await makeRig();
+  bindK1(hub, node, plugin);
+  installBindingsBarHost(hub, api);
+  api.want({ chainId: node.id, instanceId: plugin.id });
+  await tick();
+  setupControlRouting(hub);
+  const k1 = source('k1');
+  hub.events.emit('midi:message', { type: 'cc', sourceName: 'Minilab3 MIDI', channel: 1,
+    controller: k1.cc, value: 127, raw: [0xb0, k1.cc, 127] });
+  assert.equal(lastPosition(api, k1.id), 1);
+});
+
+test('a read that left before a drag never drags the knob back', async () => {
+  const { api, hub, node, plugin } = await makeRig();
+  bindK1(hub, node, plugin);
+  installBindingsBarHost(hub, api);
+  api.want({ chainId: node.id, instanceId: plugin.id });
+  await tick();
+  // The read is on its way; the person drags meanwhile; the stale answer lands.
+  api.act({ chainId: node.id, instanceId: plugin.id, kind: 'turn', controlId: source('k1').id, normalizedValue: 0.2 });
+  answerRead(api, [{ parameterId: '41', normalizedValue: 0.7 }]);
+  await tick();
+  assert.equal(lastPosition(api, source('k1').id), 0.2);
 });

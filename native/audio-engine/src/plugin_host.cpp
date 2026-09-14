@@ -441,7 +441,8 @@ public:
             ? fromVstString(info.title) : juce::String();
     }
 
-    juce::var parameters() const
+    /** Every parameter, or only those whose stable id is in `only`. */
+    juce::var parameters(const std::set<juce::String>* only = nullptr) const
     {
         juce::Array<juce::var> result;
         if (!controller_)
@@ -452,8 +453,14 @@ public:
             Steinberg::Vst::ParameterInfo info {};
             if (!succeeded(controller_->getParameterInfo(index, info)))
                 continue;
+            const juce::String parameterId(static_cast<juce::int64>(info.id));
+            // Skipped before the display string, which is the costly part: a
+            // bar reading the eight knobs bound to a 2,000-parameter synth asks
+            // the plugin to format eight values, not two thousand.
+            if (only != nullptr && only->count(parameterId) == 0)
+                continue;
             juce::var item = makeObject();
-            setProp(item, "parameterId", juce::String(static_cast<juce::int64>(info.id)));
+            setProp(item, "parameterId", parameterId);
             setProp(item, "idStable", true);
             setProp(item, "name", fromVstString(info.title));
             const auto normalized = controller_->getParamNormalized(info.id);
@@ -2090,9 +2097,9 @@ bool PluginInstance::takeStateSnapshotIfDue(juce::var& state, bool force)
     return !state.isVoid();
 }
 
-juce::var PluginInstance::getParameters() const
+juce::var PluginInstance::getParameters(const std::set<juce::String>* only) const
 {
-    return plugin_ ? plugin_->parameters() : juce::var(juce::Array<juce::var>());
+    return plugin_ ? plugin_->parameters(only) : juce::var(juce::Array<juce::var>());
 }
 
 bool PluginInstance::setParameterNormalized(const juce::String& parameterId,

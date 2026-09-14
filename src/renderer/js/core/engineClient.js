@@ -758,7 +758,11 @@ export class EngineClient {
    * it is the per-plugin record; node-level grouping is done by the
    * discovery helper so future Patch Bay code can ask for a whole node.
    */
-  getVstParameters(chainId, instanceId) {
+  /**
+   * `parameterIds`, when given, narrows the answer to those parameters -- the
+   * few a keyboard is bound to, rather than every one a synth declares.
+   */
+  getVstParameters(chainId, instanceId, parameterIds = null) {
     const requestId = this._nextRequestId('vst-params');
     const generation = this._engineGeneration;
     return new Promise((resolve, reject) => {
@@ -772,7 +776,9 @@ export class EngineClient {
         resolve, reject, timer, generation, chainId, instanceId
       });
 
-      Promise.resolve(this.command({ type: 'getVstParameters', requestId, chainId, instanceId }))
+      const command = { type: 'getVstParameters', requestId, chainId, instanceId };
+      if (Array.isArray(parameterIds)) command.parameterIds = [...parameterIds];
+      Promise.resolve(this.command(command))
         .then((res) => {
           if (res && res.ok) return;
           const pending = this._pendingParams.get(requestId);
