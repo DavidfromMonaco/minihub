@@ -29,6 +29,7 @@ const { isValidSelectDeviceCommand } = require('./audioDeviceCommand');
 const { readProject, writeProjectAtomic } = require('./projectFiles');
 const { ALLOWED_ENGINE_COMMANDS } = require('./engineCommandPolicy');
 const { ClipEditorWindows } = require('./clipEditorWindows');
+const { BindingsBarWindows } = require('./bindingsBarWindows');
 const { installProjectCloseGuard } = require('./projectCloseGuard');
 const { quitOnRequest } = require('./quitRequest');
 const { installAppMenu } = require('./appMenu');
@@ -43,6 +44,7 @@ let launchedInsidePackage = '';
 let engine = null;
 let engineRestartAttempts = 0;
 let clipEditorWindows = null;
+let bindingsBars = null;
 let projectCloseGuard = null;
 const processStartedAt = Date.now() - Math.round(process.uptime() * 1000);
 const startupMark = (name) => diagnostics.log(`startup:${name} elapsedMs=${Date.now() - processStartedAt}`);
@@ -92,6 +94,19 @@ function createWindow() {
   } else {
     clipEditorWindows.setMainWindow(mainWindow);
   }
+  if (!bindingsBars) {
+    bindingsBars = new BindingsBarWindows({
+      // `screen` is read here, after app ready, and not at the top of the file:
+      // Electron refuses the module before then.
+      BrowserWindow, ipcMain, screen: require('electron').screen, mainWindow,
+      preloadPath: path.join(__dirname, 'bindingsBarPreload.js'),
+      htmlPath: path.join(__dirname, '../renderer/bindings-bar.html'),
+      log: (line) => diagnostics.log(`bindings-bar:${line}`)
+    });
+    bindingsBars.bind();
+  } else {
+    bindingsBars.setMainWindow(mainWindow);
+  }
   startupMark('renderer-load-start');
   mainWindow.webContents.once('dom-ready', () => startupMark('dom-ready'));
   mainWindow.webContents.once('did-finish-load', () => startupMark('renderer-load-complete'));
@@ -110,6 +125,9 @@ function createWindow() {
 
   mainWindow.on('closed', () => {
     clipEditorWindows?.closeAll('main-window-closed');
+    // Not owned by this window, so nothing closes them with it -- and a bar left
+    // open would keep `window-all-closed` from ever firing.
+    bindingsBars?.closeAll('main-window-closed');
     projectCloseGuard?.dispose();
     projectCloseGuard = null;
     mainWindow = null;
@@ -147,6 +165,9 @@ function startEngine() {
         console.log('[' + trace + ']');
         diagnostics.log(trace);
       }
+      // Before the renderer: a bar follows its plugin window from here, without
+      // waiting on a renderer that may be busy.
+      bindingsBars?.onEngineEvent(msg);
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('engine:event', msg);
       }
@@ -158,6 +179,7 @@ function startEngine() {
     onStateChange: (state, error) => {
       console.log(`[engine] state: ${state}${error ? ' — ' + error : ''}`);
       diagnostics.log(`engine:state ${state}${error ? ' error=' + error : ''}`);
+      bindingsBars?.onEngineState(state);
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('engine:state', { state, error });
       }

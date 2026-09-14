@@ -370,7 +370,7 @@ The difference in one sentence: MiniHub accepts **requests** from an agent the
 way it already accepts them from its own second window. It does not host the
 agent, does not host its conversation, and never sends it your music.
 
-Workstream: `plans/active/agent-channel.md`. Decision:
+Workstream: `plans/done/agent-channel.md` (standby while the author tests it). Decision:
 [DECISIONS.md](DECISIONS.md) D-038, once the code is written.
 
 ## 9. Trade-offs

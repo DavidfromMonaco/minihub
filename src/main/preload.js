@@ -73,6 +73,22 @@ contextBridge.exposeInMainWorld('hubAPI', {
     return () => ipcRenderer.removeListener('clip-editor:request', listener);
   },
 
+  // --- The bindings bar docked under each plugin editor (D-021) ---
+  // Main places the bars; this renderer draws them, because the bindings they
+  // show live here. See src/main/bindingsBarWindows.js.
+  bindingsBarRender: (chainId, instanceId, html) => ipcRenderer.invoke('bindings-bar:render', { chainId, instanceId, html }),
+  bindingsBarsOpen: () => ipcRenderer.invoke('bindings-bar:list'),
+  onBindingsBarWanted: (callback) => {
+    const listener = (_event, bar) => callback(bar);
+    ipcRenderer.on('bindings-bar:wanted', listener);
+    return () => ipcRenderer.removeListener('bindings-bar:wanted', listener);
+  },
+  onBindingsBarAction: (callback) => {
+    const listener = (_event, action) => callback(action);
+    ipcRenderer.on('bindings-bar:action', listener);
+    return () => ipcRenderer.removeListener('bindings-bar:action', listener);
+  },
+
   // --- Agent channel (INTENT §8 sexies) ---
   // Shaped exactly like the Clip Editor bridge above, because it is the same
   // problem: something outside this renderer asks it to do something the

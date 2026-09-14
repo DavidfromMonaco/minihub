@@ -238,7 +238,6 @@ export class ControlBindingManager {
       if (result?.ok) return;
       this._finishIfCurrent(pending.learnId, reason);
     }).catch(() => this._finishIfCurrent(pending.learnId, reason));
-    this._focusHub();
     return true;
   }
 
@@ -349,7 +348,10 @@ export class ControlBindingManager {
     this._learnFeedback.set(this._feedbackKey(pending.nodeId, pending.sourceControlId), 'captured');
     this._clearPending();
     this._changed(pending.nodeId);
-    this._focusHub();
+    // No window comes forward. MiniHub's used to, after every capture and every
+    // cancel, because Learn was armed in MiniHub and the person had to come back
+    // to it; it is armed from the bar under the plugin now, and bringing MiniHub
+    // over that pair is the head movement the bar exists to remove. D-021, D-040.
   }
 
   _onLearnState(msg) {
@@ -453,11 +455,5 @@ export class ControlBindingManager {
   _clearPending() {
     if (this.pendingLearn?.timer) clearTimeout(this.pendingLearn.timer);
     this.pendingLearn = null;
-  }
-
-  _focusHub() {
-    try {
-      Promise.resolve(globalThis.window?.hubAPI?.focusMainWindow?.()).catch(() => {});
-    } catch (_) {}
   }
 }

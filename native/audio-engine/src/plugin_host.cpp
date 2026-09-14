@@ -19,6 +19,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdint>
 #include <cstring>
 #include <cwchar>
 #include <iostream>
@@ -32,6 +33,7 @@
 #define NOMINMAX
 #endif
 #include <windows.h>
+#include <dwmapi.h>
 #endif
 
 namespace mlh {
@@ -640,11 +642,17 @@ public:
     int editorFrameY() const noexcept { return editor_ ? editor_->frameY() : 0; }
     int editorFrameWidth() const noexcept { return editor_ ? editor_->frameWidth() : 0; }
     int editorFrameHeight() const noexcept { return editor_ ? editor_->frameHeight() : 0; }
+    int editorClientY() const noexcept { return editor_ ? editor_->clientTop() : 0; }
+    bool editorMinimized() const noexcept { return editor_ && editor_->minimized(); }
+    juce::int64 editorWindowHandle() const noexcept { return editor_ ? editor_->handle() : 0; }
 #else
     int editorFrameX() const noexcept { return 0; }
     int editorFrameY() const noexcept { return 0; }
     int editorFrameWidth() const noexcept { return 0; }
     int editorFrameHeight() const noexcept { return 0; }
+    int editorClientY() const noexcept { return 0; }
+    bool editorMinimized() const noexcept { return false; }
+    juce::int64 editorWindowHandle() const noexcept { return 0; }
 #endif
     std::vector<EmbeddedBrowserWindow> editorBrowserWindows() const
     {
@@ -814,6 +822,20 @@ private:
             if (window_) ::ShowWindow(window_, SW_HIDE);
         }
         bool visible() const noexcept { return window_ && ::IsWindowVisible(window_) != FALSE; }
+        bool minimized() const noexcept { return window_ && ::IsIconic(window_) != FALSE; }
+        juce::int64 handle() const noexcept
+        {
+            return static_cast<juce::int64>(reinterpret_cast<std::intptr_t>(window_));
+        }
+        /** Where the caption ends, in physical pixels -- see PhysicalCoordinates. */
+        int clientTop() const noexcept
+        {
+            if (!window_) return 0;
+            const PhysicalCoordinates physical;
+            POINT origin {0, 0};
+            ::ClientToScreen(window_, &origin);
+            return origin.y;
+        }
         int frameX() const noexcept { return frameRect().left; }
         int frameY() const noexcept { return frameRect().top; }
         int frameWidth() const noexcept
@@ -896,6 +918,29 @@ private:
         }
 
     private:
+        /**
+         * While alive, this thread reads screen coordinates in physical pixels.
+         *
+         * The bar docked under the frame is Electron's, and Electron is per-monitor
+         * DPI aware whatever this process declared. A coordinate read here in
+         * scaled pixels would put the bar in the wrong place on any screen not at
+         * 100 %, and by a different amount on each monitor. Physical pixels are
+         * the one unit both processes agree on; main converts them to its own.
+         */
+        class PhysicalCoordinates final {
+        public:
+            PhysicalCoordinates() noexcept
+                : previous_(::SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)) {}
+            ~PhysicalCoordinates()
+            {
+                if (previous_) ::SetThreadDpiAwarenessContext(previous_);
+            }
+            PhysicalCoordinates(const PhysicalCoordinates&) = delete;
+            PhysicalCoordinates& operator=(const PhysicalCoordinates&) = delete;
+        private:
+            DPI_AWARENESS_CONTEXT previous_;
+        };
+
         static const wchar_t* windowClassName() { return L"MiniHubEngine2Vst3Editor"; }
         static void registerClass()
         {
@@ -940,16 +985,31 @@ private:
                 plugin_.owner_.directEditorClosed();
                 return 0;
             }
-            // A drag fires WM_MOVE every frame and WM_SIZE on every pixel of a
-            // resize. Both are reported, both through the same throttle: the
-            // bar docked under this window has to follow it, and an unthrottled
+            // Every change of place, size, stacking or visibility passes through
+            // WM_WINDOWPOSCHANGED once -- WM_MOVE and WM_SIZE are what
+            // DefWindowProc derives from it -- so it is the one place to report
+            // from. A drag fires it every frame, hence the throttle: the bar
+            // docked under this window has to follow it, and an unthrottled
             // report is a synchronous stdout write per frame, on the thread
-            // that is drawing the plugin. WM_EXITSIZEMOVE always reports, so
-            // the position the user let go of is exact rather than 16 ms stale.
-            if (message == WM_MOVE || message == WM_SIZE)
-                reportMoved(false);
+            // that is drawing the plugin. A change in the Z order is never
+            // throttled away: it is rare, and it is the report that puts the bar
+            // back on top of a frame that was just clicked.
+            if (message == WM_WINDOWPOSCHANGED)
+            {
+                const auto* change = reinterpret_cast<const WINDOWPOS*>(lParam);
+                const bool raised = change != nullptr
+                    && ((change->flags & SWP_NOZORDER) == 0 || (change->flags & SWP_SHOWWINDOW) != 0);
+                reportMoved(raised, raised);
+            }
             if (message == WM_EXITSIZEMOVE)
-                reportMoved(true);
+                reportMoved(true, false);
+            if (message == WM_TIMER && wParam == kTrailingReportTimer)
+            {
+                ::KillTimer(window_, kTrailingReportTimer);
+                trailingReportPending_ = false;
+                reportMoved(true, false);
+                return 0;
+            }
             if (message == WM_SIZE && attached_ && view_)
             {
                 Steinberg::ViewRect size {0, 0,
@@ -969,27 +1029,63 @@ private:
             }
             return ::DefWindowProcW(window_, message, wParam, lParam);
         }
-        /** Outer frame in screen coordinates; an empty rect when there is none. */
+        /**
+         * The frame's visible edge, in physical screen pixels; empty when there
+         * is none.
+         *
+         * Not GetWindowRect: on Windows 10 and 11 that rect includes the
+         * invisible resize borders, seven pixels left, right and below, so a
+         * window docked against it hung a gap under the frame and ran wider
+         * than it. DWM's extended frame bounds are the edge a person sees, and
+         * they are never scaled for DPI.
+         */
         RECT frameRect() const noexcept
         {
             RECT rect {0, 0, 0, 0};
-            if (window_) ::GetWindowRect(window_, &rect);
+            if (!window_) return rect;
+            if (FAILED(::DwmGetWindowAttribute(window_, DWMWA_EXTENDED_FRAME_BOUNDS, &rect, sizeof(rect))))
+            {
+                const PhysicalCoordinates physical;
+                ::GetWindowRect(window_, &rect);
+            }
             return rect;
         }
 
         /**
-         * Tell the owner the frame moved, at most once per frame period.
+         * Tell the owner the frame changed, at most once per frame period.
          *
-         * `force` is for the end of a drag: the throttle would otherwise drop
-         * the final position, which is the only one that has to be right.
+         * `force` skips the throttle; `raised` says the Z order changed. A report
+         * the throttle drops is not lost: a timer sends the frame as it stands
+         * once the period is over. A drag ends in WM_EXITSIZEMOVE, which forces
+         * the last report, but a snap to the screen edge or a move from the
+         * keyboard ends in nothing, and the bar stayed where the dropped report
+         * would have moved it. A change of minimised state is always reported:
+         * it decides whether the bar is on screen at all.
          */
-        void reportMoved(bool force) noexcept
+        void reportMoved(bool force, bool raised) noexcept
         {
             if (!window_ || !visible()) return;
+            const bool nowMinimized = minimized();
+            force = force || nowMinimized != lastReportedMinimized_;
+            pendingRaise_ = pendingRaise_ || raised;
             const ULONGLONG now = ::GetTickCount64();
-            if (!force && now - lastMoveReport_ < kMoveReportIntervalMs) return;
+            if (!force && now - lastMoveReport_ < kMoveReportIntervalMs)
+            {
+                if (!trailingReportPending_)
+                    trailingReportPending_ = ::SetTimer(window_, kTrailingReportTimer,
+                        static_cast<UINT>(kMoveReportIntervalMs), nullptr) != 0;
+                return;
+            }
+            if (trailingReportPending_)
+            {
+                ::KillTimer(window_, kTrailingReportTimer);
+                trailingReportPending_ = false;
+            }
             lastMoveReport_ = now;
-            plugin_.owner_.directEditorMoved();
+            lastReportedMinimized_ = nowMinimized;
+            const bool raise = pendingRaise_;
+            pendingRaise_ = false;
+            plugin_.owner_.directEditorMoved(raise);
         }
 
         Steinberg::tresult resizeFromPlugin(Steinberg::IPlugView* view,
@@ -1028,7 +1124,13 @@ private:
         // 60 Hz, the rate the engine already publishes transport at. Slower
         // makes the docked bar lag visibly behind the window it belongs to.
         static constexpr ULONGLONG kMoveReportIntervalMs = 16;
+        // Our own frame's timer, never the plugin's: the view lives in the
+        // STATIC child and sets its timers on its own windows.
+        static constexpr UINT_PTR kTrailingReportTimer = 0x4D48;
         ULONGLONG lastMoveReport_ = 0;
+        bool trailingReportPending_ = false;
+        bool pendingRaise_ = false;
+        bool lastReportedMinimized_ = false;
         HWND window_ = nullptr;
         HWND contentWindow_ = nullptr;
         bool attached_ = false;
@@ -1816,9 +1918,9 @@ void PluginInstance::closeEditor()
     stopTimer();
 }
 
-void PluginInstance::directEditorMoved()
+void PluginInstance::directEditorMoved(bool raised)
 {
-    if (editorMovedCallback_) editorMovedCallback_(*this);
+    if (editorMovedCallback_) editorMovedCallback_(*this, raised);
 }
 
 void PluginInstance::directEditorClosed()
@@ -1861,6 +1963,21 @@ int PluginInstance::editorFrameWidth() const
 int PluginInstance::editorFrameHeight() const
 {
     return plugin_ ? plugin_->editorFrameHeight() : 0;
+}
+
+int PluginInstance::editorClientY() const
+{
+    return plugin_ ? plugin_->editorClientY() : 0;
+}
+
+bool PluginInstance::editorMinimized() const
+{
+    return plugin_ && plugin_->editorMinimized();
+}
+
+juce::int64 PluginInstance::editorWindowHandle() const
+{
+    return plugin_ ? plugin_->editorWindowHandle() : 0;
 }
 
 std::vector<EmbeddedBrowserWindow> PluginInstance::editorBrowserWindows() const

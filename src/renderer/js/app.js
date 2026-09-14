@@ -19,6 +19,7 @@ import { setupEditHistory } from './core/editHistory.js';
 import { applyHistorySnapshot } from './core/editHistoryApply.js';
 import { installHistoryKeys } from './ui/historyKeys.js';
 import { installAgentBridge } from './core/agentBridge.js';
+import { installBindingsBarHost } from './core/bindingsBarHost.js';
 
 async function main() {
   const hub = createHub(window.hubAPI);
@@ -97,6 +98,10 @@ async function main() {
   // MiniLab page happens to be mounted.
   setupMidiRouting(hub);
   setupControlRouting(hub);
+  // The bars docked under plugin editors are drawn from this renderer, where
+  // the bindings are. After the control manager exists, before any editor can
+  // open from a chain replay.
+  installBindingsBarHost(hub);
   // Replay persisted VST chains into the engine once it has a plugin registry
   // (engine restart / renderer reload leaves the engine with no chains).
   setupChainSync(hub, syncRouting);

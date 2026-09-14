@@ -89,13 +89,17 @@ public:
         std::function<void(PluginInstance&, const juce::String&, const juce::String&)>;
     using EditorClosedCallback = std::function<void(PluginInstance&)>;
     /**
-     * The editor frame moved or was resized by the user.
+     * The editor frame moved, was resized, minimised, restored or restacked.
      *
      * Separate from EditorClosedCallback because the two have opposite
      * frequencies: closing happens once and is worth a log line, dragging
      * happens every frame of a drag. ROADMAP item 9 / DECISIONS D-021.
+     *
+     * `raised` is true when the frame changed place in the Z order (clicked,
+     * brought back from the taskbar, shown): the bar docked under it has to go
+     * back on top of it, which a mere move never asks for.
      */
-    using EditorMovedCallback = std::function<void(PluginInstance&)>;
+    using EditorMovedCallback = std::function<void(PluginInstance&, bool raised)>;
 
     PluginInstance();
     ~PluginInstance() override;
@@ -168,7 +172,8 @@ public:
     int editorWidth() const;
     int editorHeight() const;
     /**
-     * The OUTER frame in screen pixels, all zero when the editor is not open.
+     * The frame as it is SEEN, in physical screen pixels, all zero when the
+     * editor is not open.
      *
      * Deliberately not `editorWidth`/`editorHeight` above: those are the client
      * area, the size the VST3 view was given. A window docked under this one
@@ -180,6 +185,11 @@ public:
     int editorFrameY() const;
     int editorFrameWidth() const;
     int editorFrameHeight() const;
+    /** Top of the client area, in physical screen pixels: where the caption ends. */
+    int editorClientY() const;
+    bool editorMinimized() const;
+    /** The frame's HWND as a number, 0 when there is none: what a window stacks against. */
+    juce::int64 editorWindowHandle() const;
     /** Empty when the editor is closed or shows no embedded browser. */
     std::vector<EmbeddedBrowserWindow> editorBrowserWindows() const;
 
@@ -202,7 +212,7 @@ private:
     void directParameterValue(int parameterIndex, float normalizedValue) noexcept;
     void directNonParameterStateChanged() noexcept;
     void directEditorClosed();
-    void directEditorMoved();
+    void directEditorMoved(bool raised);
     void recordVst3BufferProcess(uint64_t blockId, uint32_t processCallInBlock,
                                  int numSamples, bool copiedToPluginInstance,
                                  const Vst3AudioBufferLayoutTrace&) noexcept;

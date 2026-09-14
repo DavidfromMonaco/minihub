@@ -1395,6 +1395,43 @@ body {
 .ml-surface-control { appearance:none; color:inherit; font:inherit; cursor:pointer; padding:4px 6px; border:1px solid #59616d; border-radius:7px; background:#17191d; }
 .ml-surface-control.selected { filter:drop-shadow(0 0 6px var(--accent)); color:var(--text); }
 .ml-surface-control.state-unavailable { opacity:.4; }
+
+/* The bindings bar: the Learn panel as a strip docked under a plugin editor
+   (D-021, src/main/bindingsBarWindows.js). The markup is the VST editor's panel,
+   unchanged; only the layout is the bar's. One column per faceplate, keyboard
+   name or "nothing cabled" sentence -- counted into --bar-columns by the page --
+   then one column holding the help above the Learn toolbar. */
+.bindings-bar-body { display:block; background:var(--bg-raised); }
+.bindings-bar {
+  --bar-pad: 10px;
+  height: 100vh;
+  padding: var(--bar-pad) 14px;
+  display: grid;
+  grid-template-columns: repeat(var(--bar-columns, 1), max-content) minmax(240px, 1fr);
+  grid-template-rows: minmax(0, 1fr) auto;
+  column-gap: 16px;
+  row-gap: 6px;
+  border-top: 1px solid var(--border-strong);
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+.bindings-bar > * { grid-row: 1 / 3; min-height: 0; }
+/* Drawn at the width it was designed for and scaled as a whole. Given less
+   width instead, its knobs, pads and labels kept their pixel sizes and ran into
+   each other; scaled, they shrink together. .82 is what fits the 182 px bar. */
+.bindings-bar > .minilab-control-surface { zoom:.82; width:520px; min-width:0; max-width:none; min-height:0; border-radius:12px; }
+.bindings-bar > .minilab-control-list { width:420px; height:100%; padding:8px 10px; gap:8px; overflow:auto; }
+/* A keyboard's name when several are drawn, read up the side of its faceplate. */
+.bindings-bar > .control-bindings-help:not(:first-child):has(+ [data-minilab-surface]) {
+  margin:0; writing-mode:vertical-rl; transform:rotate(180deg); text-align:center;
+  font:600 10px var(--mono); letter-spacing:.08em; text-transform:uppercase;
+}
+.bindings-bar > .control-bindings-help:not(:first-child):not(:has(+ [data-minilab-surface])) { margin:0; max-width:300px; align-self:center; }
+.bindings-bar > .control-bindings-help:first-child { grid-column:-2 / -1; grid-row:1; margin:0; font-size:11.5px; line-height:1.4; overflow:hidden; }
+.bindings-bar > .control-bindings-help:first-child .btn { margin-left:6px; }
+.bindings-bar > .control-learn-toolbar { grid-column:-2 / -1; grid-row:2; margin:0; padding:6px 8px; gap:8px; min-width:0; background:var(--bg-panel); }
+.bindings-bar > .control-learn-toolbar strong,
+.bindings-bar > .control-learn-toolbar .btn { white-space:nowrap; }
 .home-project-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

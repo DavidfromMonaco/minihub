@@ -42,6 +42,7 @@ import { NetworkLayout } from './networkLayout.js';
 import { VstChain, getVstRole, duplicateVstContent, groupPluginsByFamily } from './vstChain.js';
 import { escapeHtml } from './html.js';
 import { normalizeControlBinding, normalizeControlBindings } from './controlBindings.js';
+import { controlBindingActionOf, performControlBindingAction } from './controlBindingActions.js';
 import { controllerName, controllerModuleId } from './controllerNode.js';
 import { controlSourcesOfNode, surfaceControlsOfNode, surfaceBoxOfNode } from '../midi/minilabControls.js';
 import { CONTROLLER_NODE_IDS } from './systemNodes.js';
@@ -1114,12 +1115,12 @@ export class NodeInstanceManager {
           if (chainEl) chainEl.innerHTML = renderChain(instance.content.plugins, statusMap, editorNotes);
         }
 
-        let selectedControlId = null;
+        const bindingsPanel = { selectedControlId: null };
 
         function rerenderControlBindings() {
           const bindingsEl = container.querySelector('#vst-control-bindings');
           if (!bindingsEl) return;
-          bindingsEl.innerHTML = renderControlBindings(instance, hub, selectedControlId);
+          bindingsEl.innerHTML = renderControlBindings(instance, hub, bindingsPanel.selectedControlId);
           applyMiniLabSurfaceLayout(bindingsEl);
         }
 
@@ -1153,27 +1154,9 @@ export class NodeInstanceManager {
           }
           if (type.id !== 'vst') return;
 
-          const surfaceControl = e.target.closest('[data-minilab-control-id]');
-          if (surfaceControl?.dataset.minilabControlId) {
-            selectedControlId = surfaceControl.dataset.minilabControlId;
-            rerenderControlBindings();
-            return;
-          }
-
-          const controlAction = e.target.dataset.controlAction;
-          const sourceControlId = e.target.dataset.sourceControlId;
-          if (controlAction === 'learn' && sourceControlId) {
-            hub.control.armLearn(instance.id, sourceControlId);
-            rerenderControlBindings();
-            return;
-          }
-          if (controlAction === 'cancel' && sourceControlId) {
-            hub.control.cancelLearn(instance.id, sourceControlId, 'cancelled');
-            rerenderControlBindings();
-            return;
-          }
-          if (controlAction === 'clear' && sourceControlId) {
-            hub.control.clear(instance.id, sourceControlId);
+          // The same reading and the same actions as the bindings bar docked
+          // under the plugin window, from one module, so the two cannot drift.
+          if (performControlBindingAction(hub, instance.id, controlBindingActionOf(e.target), bindingsPanel)) {
             rerenderControlBindings();
             return;
           }

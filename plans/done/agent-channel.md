@@ -7,7 +7,16 @@ default and that changes nothing when it is off.
 **Origin** — asked 2026-09-12 ("lier MiniHub à une IA à la manière de Blender").
 [INTENT.md](../../INTENT.md) §8 sexies, which lifts the §6 refusal of a public
 API and states the bounds this plan must not exceed.
-**Status** — in progress.
+**Status** — **standby, 2026-09-14.** Built and working end to end; in the
+author's hands for testing with Codex, and its commits stay unpushed until he
+says otherwise. It left `plans/active/` because the bindings bar resumed there
+(PLANS.md §2). What waits on the author is listed in `TASKS.md`: a Codex session
+started from the session rules, Splice keeping its login across a restart, and
+the Expression value that reads 0.85 against a saved 1.0. Step 9, the MCP
+wrapper, is optional. **Nothing has gone stale**: the one change since step 14
+that touches this channel's ground is the bindings bar, which adds windows
+`describe.windows` does not list — an agent binds knobs with `set-binding` and
+never works in a bar.
 
 ## Context
 

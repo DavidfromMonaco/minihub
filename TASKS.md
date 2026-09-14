@@ -10,7 +10,8 @@ started.
 **An agent drives MiniHub from outside — in test, not pushed** — works end to
 end (patches, plugins, notes, save, export, Splice's web page, quit). Its
 commits stay local while the author tests it.
-Plan: [plans/active/agent-channel.md](plans/active/agent-channel.md).
+Plan: [plans/done/agent-channel.md](plans/done/agent-channel.md) (standby while
+the author tests).
 - Not seen yet: a Codex session starting from the session rules and the first
   session note in `../minihub-agent/` (applied 2026-09-13).
 - Unexplained: Splice's Expression reads 0.85 through `parameters` while the
@@ -20,15 +21,14 @@ Plan: [plans/active/agent-channel.md](plans/active/agent-channel.md).
 - Optional: an MCP wrapper, so Codex calls requests as tools.
 
 **Learning a knob in one window: the bindings bar docked under the plugin
-editor** — 4 of 8 steps, paused. The engine already reports where the plugin
-window is. Left: the Electron window, its page, removing the panel from the VST
-node's editor, the documents.
-Plan: [plans/done/bindings-bar-docked.md](plans/done/bindings-bar-docked.md).
+editor** — 6 of 8 steps. The bar opens under every plugin window, follows it,
+and arms Learn; seen with Dexed. Waiting on the author to learn knobs from it on
+his own plugins. Left after that: removing the panel from the VST node's editor,
+the documents.
+- Not seen yet: a capture from the bar (it needs a gesture in the plugin).
+- For the author: the panel's help sentence still says MiniHub "opens and
+  foregrounds the target OmniBox", no longer true from the bar.
+Plan: [plans/active/bindings-bar-docked.md](plans/active/bindings-bar-docked.md).
 
 **The Patch Bay's context menus** — still hand-built in `routingModule.js`;
 `ui/contextMenu.js` exists and only the sequencer uses it.
-
-## Built, never seen working
-
-- **Two instruments in series from one track** — native tests green, never
-  heard through speakers.

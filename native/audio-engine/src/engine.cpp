@@ -730,10 +730,14 @@ void Engine::sendParameterTouched(PluginInstance& inst,
  * `src/main/engineEventTrace.js` exactly as `masterMeter` is. ROADMAP item 9,
  * DECISIONS D-021.
  *
- * The rect is the OUTER frame, which is not what `editorStatus` reports:
- * `width`/`height` there are the client area the VST3 view was given.
+ * The rect is the frame's VISIBLE edge in physical pixels, which is not what
+ * `editorStatus` reports: `width`/`height` there are the client area the VST3
+ * view was given. `clientY` is where the caption ends, so a bar with no room
+ * under the frame can climb over it without covering the title bar the person
+ * drags it by. `raised` asks for the bar to be put back on top of the frame;
+ * `windowHandle` is what it is stacked against.
  */
-void Engine::sendEditorBounds(PluginInstance& inst)
+void Engine::sendEditorBounds(PluginInstance& inst, bool raised)
 {
     if (shutdownRequested_
         || !isCurrentInstanceGeneration(inst.chainId(), inst.instanceId(), inst.generation()))
@@ -747,6 +751,10 @@ void Engine::sendEditorBounds(PluginInstance& inst)
     setProp(out, "y", inst.editorFrameY());
     setProp(out, "width", inst.editorFrameWidth());
     setProp(out, "height", inst.editorFrameHeight());
+    setProp(out, "clientY", inst.editorClientY());
+    setProp(out, "minimized", inst.editorMinimized());
+    setProp(out, "raised", raised);
+    setProp(out, "windowHandle", inst.editorWindowHandle());
     ipc_.send(out);
 }
 
@@ -1370,9 +1378,9 @@ void Engine::cmdCreateInstance(const juce::var& msg)
             sendEditorStatus(source, false);
         });
     inst->setEditorMovedCallback(
-        [this](PluginInstance& source)
+        [this](PluginInstance& source, bool raised)
         {
-            sendEditorBounds(source);
+            sendEditorBounds(source, raised);
         });
     auto alive = alive_;
 
@@ -2075,9 +2083,10 @@ void Engine::cmdOpenEditor(const juce::var& msg)
 
     // The frame is on screen now, so say where. Without this the docked bar has
     // nothing to line up with until the user drags the window, which is the one
-    // moment it must already be in place.
+    // moment it must already be in place. Raised, because opening an editor
+    // that was already open brings it to the front.
     if (ok && inst->editorVisible())
-        sendEditorBounds(*inst);
+        sendEditorBounds(*inst, true);
 
     if (!ok)
         sendError("editor-open", "Could not open the editor for '" + inst->name() + "': " + message);

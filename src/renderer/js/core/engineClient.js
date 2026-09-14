@@ -315,9 +315,11 @@ export class EngineClient {
         break;
       }
       case 'editorBounds': {
-        // The frame's OUTER rect, which is not `editorStatus`'s width/height:
-        // those are the client area the VST3 view was given. A window docking
-        // under this one lines up with the frame, borders included.
+        // The frame's visible edge in physical pixels, which is not
+        // `editorStatus`'s width/height: those are the client area the VST3
+        // view was given. The bar docked under the frame is placed by main from
+        // the same message (src/main/bindingsBarWindows.js); this copy is for a
+        // renderer that wants to know where an editor is.
         if (!this._editorBounds.has(msg.chainId)) this._editorBounds.set(msg.chainId, new Map());
         this._editorBounds.get(msg.chainId).set(msg.instanceId, {
           x: Number(msg.x) || 0, y: Number(msg.y) || 0,

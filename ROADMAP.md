@@ -26,11 +26,11 @@ the hardware out of the core — and its Étape A finished on 2026-09-04, so the
 was free for **importing a profile**, finished 2026-09-05 (item 8 below, D-027 to
 D-030).
 
-`plans/active/` is empty. One plan sits in `plans/done/` with the result
-"standby", not blocked on code:
-[bindings-bar-docked.md](plans/done/bindings-bar-docked.md) has four of its eight
-steps landed and waits on nothing but the author's order. PLANS.md §2 holds that
-slot for work in progress, not for intentions.
+`plans/active/` holds [bindings-bar-docked.md](plans/active/bindings-bar-docked.md),
+resumed 2026-09-14 with six of its eight steps landed. The agent channel's plan
+sits in `plans/done/` with the result "standby" while the author tests it
+([agent-channel.md](plans/done/agent-channel.md)). PLANS.md §2 holds the slot
+for work in progress, not for intentions.
 
 ---
 
@@ -753,11 +753,12 @@ while `profile` stays the word of the format: renaming it for real would touch
 specifications, connectors, keybed, and a blueprint generated from the profile
 rather than drawn by hand. Written by the author, after the rest.
 
-### 9. The bindings bar, docked under the plugin window — half done
+### 9. The bindings bar, docked under the plugin window — built, not yet the only way
 
-Decided 2026-09-04 ([DECISIONS.md](DECISIONS.md) D-021), started 2026-09-12.
+Decided 2026-09-04 ([DECISIONS.md](DECISIONS.md) D-021), started 2026-09-12,
+resumed 2026-09-14.
 Plan: [plans/active/bindings-bar-docked.md](plans/active/bindings-bar-docked.md),
-**4 of 8 steps**.
+**6 of 8 steps**.
 
 Learning a knob costs two windows today, and the plugin editor usually covers
 what you were reading. A frameless Electron window carrying the existing
@@ -782,10 +783,17 @@ decided that the decision had left open:
 - **`Ipc::send` writes to stdout under a lock**, so an unthrottled report would
   put a synchronous write on the thread drawing the plugin, once per frame.
 
-**What is left** — the Electron window itself (`src/main/bindingsWindow.js`),
-its page, the removal of the panel from the VST node's editor, and the
-documents. Steps 1 to 4 are additive: the engine says more than it did and
-nothing reads it yet, so the point of no return is step 7.
+**The bar exists** (2026-09-14) — one frameless window under each open plugin
+editor, placed by main from the engine's reports
+(`src/main/bindingsBarWindows.js`) and drawn by the main renderer with the same
+`renderControlBindings()` (`core/bindingsBarHost.js`). Docking it for real took a
+second native pass: the rect is the frame's visible edge in physical pixels now,
+with its minimised state, its restacking, and no report lost to the throttle.
+The plan's log has the detail.
+
+**What is left** — the author learning knobs from the bar on his own plugins,
+then the removal of the panel from the VST node's editor (the point of no
+return, step 7), and the documents.
 
 **Built before D-018, and that is a decision.** D-021 says "after or with D-018,
 never before" — that decision refactors `ControlBindingManager`, which this

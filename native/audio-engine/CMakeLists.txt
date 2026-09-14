@@ -208,7 +208,7 @@ if(BUILD_TESTING)
     )
     target_include_directories(mlh_native_tests PRIVATE src "${VST3_SDK_ROOT}")
     target_link_libraries(mlh_native_tests PRIVATE
-        juce::juce_audio_processors juce::juce_audio_formats sdk_hosting psapi iphlpapi)
+        juce::juce_audio_processors juce::juce_audio_formats sdk_hosting psapi iphlpapi dwmapi)
     target_compile_definitions(mlh_native_tests PRIVATE
         JUCE_PLUGINHOST_VST3=1
         JUCE_USE_OGGVORBIS=1
@@ -248,6 +248,9 @@ target_link_libraries(mlh_audio_engine PRIVATE
     sdk_hosting
     psapi
     iphlpapi
+    # DWM's extended frame bounds: the edge of a plugin window as it is seen,
+    # which is what the bindings bar docks against.
+    dwmapi
 )
 
 # JUCE 9 writes OGG Vorbis in-process. MP3 writing is provided by JUCE's

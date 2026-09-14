@@ -379,7 +379,14 @@ test('Pitch Bend and factory Mod CC1 remain musical MIDI while adding CONTROL', 
   assert.equal(sentOf(api, 'setVstParameter').length, 2);
 });
 
-test('valid capture and Cancel restore Hub focus while stale touches do not', async () => {
+/*
+ * This test used to lock the opposite: a capture and a Cancel brought MiniHub's
+ * window forward, because Learn was armed in MiniHub. It is armed from the bar
+ * docked under the plugin window now (D-021), and MiniHub coming forward after a
+ * capture covers the very pair the person is working in -- the window the person
+ * clicks is the one in front (D-040).
+ */
+test('a capture and a Cancel leave the windows where the person put them', async () => {
   const { api, hub, node, plugin } = await makeRig();
   connect(hub, node.id, 'k1');
   let focusCount = 0;
@@ -388,18 +395,14 @@ test('valid capture and Cancel restore Hub focus while stale touches do not', as
   try {
     hub.control.armLearn(node.id, source('k1').id);
     ackCurrent(api, hub, true);
-    api.emitEvent({ type: 'vstParameterTouched', learnId: 'stale', chainId: node.id,
-      instanceId: plugin.id, pluginId: plugin.pluginId, generation: 7,
-      parameterId: '42', name: 'Wrong', normalizedValue: 0.2, capturedByLearn: true });
-    assert.equal(focusCount, 0);
     const pending = hub.control.pendingLearn;
     api.emitEvent({ type: 'vstParameterTouched', learnId: pending.learnId, chainId: node.id,
       instanceId: plugin.id, pluginId: plugin.pluginId, generation: 7,
       parameterId: '42', name: 'Cutoff', normalizedValue: 0.2, capturedByLearn: true });
-    assert.equal(focusCount, 1);
+    assert.equal(hub.control.bindingFor(node.id, source('k1').id)?.parameterId, '42', 'the capture itself still lands');
     hub.control.armLearn(node.id, source('k1').id);
     hub.control.cancelLearn();
-    assert.equal(focusCount, 2);
+    assert.equal(focusCount, 0);
   } finally {
     globalThis.window = previousWindow;
   }

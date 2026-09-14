@@ -141,7 +141,12 @@ rule('no inline style', () => {
 
 // --- The CSP itself must stay restrictive ---------------------------------
 rule('content security policy', () => {
-  for (const page of ['src/renderer/index.html', 'src/renderer/clip-editor.html']) {
+  // Every page, read from the folder. A list written here had to be remembered
+  // each time a window got a page of its own; the folder cannot be forgotten.
+  const pages = fs.readdirSync(path.join(repo, 'src/renderer'))
+    .filter((name) => name.endsWith('.html'))
+    .map((name) => `src/renderer/${name}`);
+  for (const page of pages) {
     const html = read(page);
     const meta = html.match(/http-equiv="Content-Security-Policy"[\s\S]*?content="([^"]*)"/);
     if (!meta) {
