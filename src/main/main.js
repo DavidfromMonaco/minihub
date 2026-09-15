@@ -26,6 +26,7 @@ const diagnostics = require('./diagnostics');
 const { isValidSetVstParameterCommand, isValidGetVstParametersCommand } = require('./vstParameterCommand');
 const { isValidSetVstParameterLearnCommand } = require('./vstParameterLearnCommand');
 const { isValidSelectDeviceCommand } = require('./audioDeviceCommand');
+const { isValidSetControlRegistryCommand, isValidSetControlStatusCommand } = require('./controlSourceCommand');
 const { readProject, writeProjectAtomic } = require('./projectFiles');
 const { ALLOWED_ENGINE_COMMANDS } = require('./engineCommandPolicy');
 const { ClipEditorWindows } = require('./clipEditorWindows');
@@ -157,7 +158,11 @@ function startEngine() {
           ? ` role=${String(msg.nativeProcess.role || '').slice(0, 16)} pid=${Number(msg.nativeProcess.pid) || '?'} parentPid=${Number(msg.nativeProcess.parentPid) || '?'} createdAt=${String(msg.nativeProcess.createdAt || '').slice(0, 64)} audioDeviceOpen=${msg.nativeProcess.audioDeviceOpen === true} lifetime=${String(msg.nativeProcess.lifetime || '').slice(0, 32)} reason=${String(msg.nativeProcess.reason || '').slice(0, 128)}`
         : (msg.type === 'error'
           ? ` code=${String(msg.code || '').slice(0, 64)} message=${String(msg.message || '').slice(0, 256)}`
-          : (msg.count !== undefined ? ' count=' + msg.count : '')));
+          // A plugin that commands MiniHub took, or refused, the list of what is
+          // cabled to it: the one line that says why its window shows no target.
+          : (msg.type === 'controlRegistryStatus'
+            ? ` chain=${String(msg.chainId || '').slice(0, 128)} instance=${String(msg.instanceId || '').slice(0, 64)} revision=${Number.isSafeInteger(msg.revision) ? msg.revision : '?'} ok=${msg.ok === true}${msg.ok === true ? '' : ` message=${String(msg.message || '').slice(0, 256)}`}`
+            : (msg.count !== undefined ? ' count=' + msg.count : ''))));
       // Periodic telemetry is not written to disk; runtime telemetry only is,
       // and only when the window it describes actually reports a fault.
       const trace = engineEventTrace(msg, eventDetails);
@@ -695,6 +700,12 @@ ipcMain.handle('engine:command', (_event, msg) => {
     if (!isValidSetVstParameterLearnCommand(msg)) {
       return { ok: false, reason: 'invalid-request' };
     }
+  }
+  if (type === 'setControlRegistry' && !isValidSetControlRegistryCommand(msg)) {
+    return { ok: false, reason: 'invalid-request' };
+  }
+  if (type === 'setControlStatus' && !isValidSetControlStatusCommand(msg)) {
+    return { ok: false, reason: 'invalid-request' };
   }
   if (type === 'sequencerQuiesce'
       && !validId(msg.requestId, /^quiesce-[A-Za-z0-9._:-]+$/, 160)) {

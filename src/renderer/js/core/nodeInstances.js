@@ -48,6 +48,7 @@ import { icon } from '../ui/icons.js';
 import { getNodeEditor, registerNodeEditor } from './nodeEditors.js';
 import { createDisposers } from './disposers.js';
 import { midiThruReach } from './midiThru.js';
+import { NODE_COMMANDS } from './nodeCommands.js';
 
 /** Coalescing window for continuous native-value controls (Mixer / Morpher
  *  levels, mutes, master level, Morpher steps). Long enough to collapse a drag
@@ -247,7 +248,11 @@ function buildRoutingNode(instance, hub) {
     id: instance.id,
     name: instance.name,
     type: instance.type,
-    inputs: type.dynamicAudioInputs ? instance.content.inputs.map((p, i) => ({ id: p.id, type: 'audio', label: `AUDIO IN ${i + 1}` })) : ((type.ports && type.ports.inputs) || []),
+    // A node that grows its AUDIO IN rows keeps its declared inputs (CTRL IN)
+    // after them, where a new row cannot land between two of its audio inputs.
+    inputs: type.dynamicAudioInputs
+      ? [...instance.content.inputs.map((p, i) => ({ id: p.id, type: 'audio', label: `AUDIO IN ${i + 1}` })), ...((type.ports && type.ports.inputs) || [])]
+      : ((type.ports && type.ports.inputs) || []),
     outputs: (type.ports && type.ports.outputs) || [],
     onInput: (portId, data) => {
       // The Sequencer owns musical focus. Its controller records the one
@@ -382,7 +387,11 @@ export class NodeInstanceManager {
       if (instance.content.inputs.some((input)=>!connected.has(input.id))) continue;
       const seq=(instance.content.nextInputSeq||0)+1; instance.content.nextInputSeq=seq;
       const input={id:`audio-in-${seq}`,level:1,muted:false}; instance.content.inputs.push(input);
-      networkNode.inputs.push({id:input.id,type:'audio',label:`AUDIO IN ${instance.content.inputs.length}`}); changed=true;
+      // Under the last AUDIO IN, above the CTRL IN that follows them.
+      const port={id:input.id,type:'audio',label:`AUDIO IN ${instance.content.inputs.length}`};
+      const firstDeclared=networkNode.inputs.findIndex((existing)=>existing.type!=='audio');
+      if(firstDeclared<0)networkNode.inputs.push(port);else networkNode.inputs.splice(firstDeclared,0,port);
+      changed=true;
     }
     this._expandingPorts=false;
     // connections(), not serialize(): this event says what is routing, and
@@ -853,11 +862,13 @@ export class NodeInstanceManager {
       if (!hub.network.getNode(instance.id)) hub.network.addNode(buildRoutingNode(instance, hub));
       return;
     }
+    const commands = NODE_COMMANDS[instance.type];
     const module = {
       id: instance.id,
       name: instance.name,
       navEntry: { label: instance.name, icon: type.icon, accent: instance.type, group: 'node' },
       routingNode: buildRoutingNode(instance, hub),
+      ...(commands ? { controlCommands: () => commands(hub, instance.id) } : {}),
       mount(container) {
         // Seed from the engine rather than starting blank: opening this panel
         // for the second time must show what is actually loaded, not "pending"

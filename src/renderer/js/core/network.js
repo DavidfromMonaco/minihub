@@ -17,6 +17,20 @@
  * Routing state is fully independent of UI focus: changing which module is
  * visible never affects the network.
  */
+
+/**
+ * Does a CONTROL output carry what a CONTROL input takes?
+ *
+ * Both kinds travel on `control` cables: a controller's knob values, and the
+ * commands a plugin sends from its node's CTRL OUT (commandBus.js). A VST node's
+ * CTRL IN takes both -- knobs bound to its parameters, commands to its plugins.
+ * A module with nothing to bind (`commandsOnly`) takes commands alone: a knob
+ * cabled into the Arpeggiator would be drawn and would do nothing.
+ */
+export function carriesWhatInputTakes(fromPort, toPort) {
+  return toPort?.commandsOnly !== true || fromPort?.commands === true;
+}
+
 export class Network {
   constructor(events, settings) {
     this.events = events;
@@ -100,6 +114,9 @@ export class Network {
     if (!toPort) throw new Error(`Unknown input port: ${toNodeId}.${toPortId}`);
     if (fromPort.type !== toPort.type) {
       throw new Error(`Incompatible port types: ${fromPort.type} -> ${toPort.type}`);
+    }
+    if (!carriesWhatInputTakes(fromPort, toPort)) {
+      throw new Error(`${toNodeId}.${toPortId} takes commands from a plugin's CTRL OUT, not a controller's knobs`);
     }
     if (this._hasConnection(fromNodeId, fromPortId, toNodeId, toPortId)) {
       throw new Error('Connection already exists');

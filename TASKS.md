@@ -7,6 +7,20 @@ finished, delete its entry**, in the same commit. What was done lives in git and
 
 ## Started, not finished
 
+**A plugin commands MiniHub's modules over a CTRL OUT cable — in the author's
+test** — built 2026-09-15 for One Ring, a VST3 kept outside this repository
+(DECISIONS D-042, ARCHITECTURE §6 *Commands from a plugin*). Seen in the
+application with the installed One Ring: an arpeggiator's rate, a mixer's
+master, a track's mute, the tempo and Stop, each from its own channel; a cable
+pulled stopped the commands and plugged back resumed them.
+- Not seen yet: the author's own sequences, and Record through a cable in the
+  application (the test rig covers it, guards and refusal message included).
+- Left for the author to decide: the Arpeggiator, Mixer and Morpher pages do not
+  redraw when a command changes them; a Sequencer track solo and an arpeggiator
+  hold do not exist to be commanded.
+- One Ring's own documents (`host-extension/README.md`, its `AGENTS.md`) still
+  say the connection is not applied.
+
 **An agent drives MiniHub from outside — in test, not pushed** — works end to
 end (patches, plugins, notes, save, export, Splice's web page, quit). Its
 commits stay local while the author tests it.

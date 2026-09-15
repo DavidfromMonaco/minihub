@@ -3,7 +3,8 @@
  *
  * This is NOT a user-created node. It is a system node that represents the
  * physical audio output owned by the native engine. It appears in the Patch Bay
- * with a single `AUDIO IN` input, is non-deletable and non-copyable, and its
+ * with an `AUDIO IN` input -- and a `CTRL IN` for a plugin that commands its
+ * master gain -- is non-deletable and non-copyable, and its
  * editor exposes the real native-engine audio settings (WASAPI output devices,
  * sample rate, buffer size, engine state).
  *
@@ -12,12 +13,16 @@
  */
 import { icon } from '../../ui/icons.js';
 import {
+  MASTER_GAIN_MAX_DB,
+  MASTER_GAIN_MIN_DB,
   MASTER_OUTPUT_KEY,
   normalizeMasterOutput,
   updateMasterOutput
 } from '../../core/masterOutput.js';
 import { AUDIO_OUTPUT_NODE_ID } from '../../core/systemNodes.js';
 import { uniqueDevices } from '../../core/hardwareConfig.js';
+import { COMMAND_INPUT } from '../../core/nodeTypes.js';
+import { action, number } from '../../core/commandRegistry.js';
 
 const SAMPLE_RATES = [44100, 48000, 88200, 96000];
 const BUFFER_SIZES = [128, 256, 512, 1024];
@@ -396,9 +401,24 @@ export function createAudioOutputModule(hub) {
       id: AUDIO_OUTPUT_NODE_ID,
       name: 'Audio Output',
       type: 'audio-output',
-      inputs: [{ id: 'audio-in', type: 'audio', label: 'AUDIO IN' }],
+      inputs: [{ id: 'audio-in', type: 'audio', label: 'AUDIO IN' }, COMMAND_INPUT],
       outputs: []
     },
+    // What a plugin cabled into CTRL IN may command: the page's fader and its clip reset.
+    controlCommands: () => [{
+      id: AUDIO_OUTPUT_NODE_ID,
+      label: 'Audio Output',
+      commands: [
+        number('GAIN_DB', 'Master gain (dB)', MASTER_GAIN_MIN_DB, MASTER_GAIN_MAX_DB, (gainDb) => {
+          updateMasterOutput(hub, { gainDb });
+          return true;
+        }),
+        action('RESET_CLIP', 'Reset clip', () => {
+          hub.engine.resetMasterClip();
+          return true;
+        })
+      ]
+    }],
     mount,
     unmount
   };

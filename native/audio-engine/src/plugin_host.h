@@ -206,6 +206,16 @@ public:
         return failedParameterIds_.insert(parameterId).second;
     }
 
+    /**
+     * A plugin that commands MiniHub's modules (control_source.h). Message
+     * thread only; false and empty for every other plugin.
+     */
+    bool supportsControlSource() const;
+    bool setControlRegistry(const juce::var& registry, juce::String& error);
+    void setControlStatus(const juce::String& message);
+    /** At most 128 validated packets, as `{ sequence, registryRevision, beat, target, command, valueType, number }`. */
+    juce::var takeControlEvents();
+
 private:
     friend class DirectVst3Plugin;
     void timerCallback() override;

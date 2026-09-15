@@ -2,6 +2,8 @@ import { clamp } from './clamp.js';
 
 export const MASTER_OUTPUT_KEY = 'masterOutput';
 export const DEFAULT_MASTER_OUTPUT = Object.freeze({ gainDb: 0 });
+export const MASTER_GAIN_MIN_DB = -60;
+export const MASTER_GAIN_MAX_DB = 12;
 
 const finite = (value, fallback) => Number.isFinite(Number(value)) ? Number(value) : fallback;
 
@@ -9,7 +11,7 @@ export function normalizeMasterOutput(value) {
   return {
     // Legacy ceiling fields are discarded: they represented hidden dynamic
     // processing, not user-authored mix gain.
-    gainDb: clamp(finite(value?.gainDb, DEFAULT_MASTER_OUTPUT.gainDb), -60, 12)
+    gainDb: clamp(finite(value?.gainDb, DEFAULT_MASTER_OUTPUT.gainDb), MASTER_GAIN_MIN_DB, MASTER_GAIN_MAX_DB)
   };
 }
 

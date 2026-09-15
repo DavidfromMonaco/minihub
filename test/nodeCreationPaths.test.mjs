@@ -133,12 +133,12 @@ test('toolbar and context menu produce equivalent nodes', () => {
 
 test('hierarchical OmniBox menu creates every registered functional family', () => {
   const expected = [
-    ['Arpeggiator','arpeggiator',['midi-in'],['midi-out']],
-    ['Sequencer','sequencer',['midi-in','audio-in'],['midi-out','audio-out']],
+    ['Arpeggiator','arpeggiator',['midi-in','ctrl-in'],['midi-out']],
+    ['Sequencer','sequencer',['midi-in','audio-in','ctrl-in'],['midi-out','audio-out']],
     ['Audio Input','audio-input',[],['audio-out']],
-    ['Mixer','mixer',['audio-in-1'],['audio-out']],
-    ['Morpher','morpher',['audio-in-1'],['audio-out']],
-    ['VST','vst',['midi-in','audio-in','ctrl-in'],['midi-out','audio-out']]
+    ['Mixer','mixer',['audio-in-1','ctrl-in'],['audio-out']],
+    ['Morpher','morpher',['audio-in-1','ctrl-in'],['audio-out']],
+    ['VST','vst',['midi-in','audio-in','ctrl-in'],['midi-out','audio-out','ctrl-out']]
   ];
   for (const [label,type,inputs,outputs] of expected) {
     const hub=setupHub();const {container,svg}=makeContainer();createRoutingModule(hub).mount(container);

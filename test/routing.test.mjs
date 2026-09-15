@@ -471,6 +471,49 @@ test('port elements carry the correct node id for cable drag', () => {
   mod.unmount();
 });
 
+test("a VST node's CTRL OUT has a jack only where a plugin sends commands, or a cable already leaves it", () => {
+  const hub = makeHub();
+  const modules = new ModuleSystem(hub);
+  const nodes = new NodeInstanceManager({ events: hub.events, settings: hub.settings, network: hub.network, modules });
+  hub.modules = modules;
+  hub.nodes = nodes;
+  const senders = new Set();
+  hub.commands = { sendsCommands: (nodeId) => senders.has(nodeId) };
+  const ring = nodes.create('vst');
+  const arp = nodes.create('arpeggiator');
+
+  const { container, svg } = makeContainer();
+  const mod = createRoutingModule(hub);
+  mod.mount(container);
+  const outputsOf = (nodeId) => findClass(svg, 'nodes').children
+    .find((child) => child.dataset.nodeId === nodeId).children
+    .filter((child) => child.dataset.side === 'output').map((child) => child.dataset.portId);
+
+  assert.deepEqual(outputsOf(ring.id), ['midi-out', 'audio-out'],
+    'no plugin that sends commands: a CTRL OUT here would offer a cable that does nothing');
+  senders.add(ring.id);
+  hub.events.emit('commands:sourcesChanged', { nodeId: ring.id });
+  assert.deepEqual(outputsOf(ring.id), ['midi-out', 'audio-out', 'ctrl-out']);
+
+  hub.network.connect(ring.id, 'ctrl-out', arp.id, 'ctrl-in');
+  senders.delete(ring.id);
+  hub.events.emit('commands:sourcesChanged', { nodeId: ring.id });
+  assert.deepEqual(outputsOf(ring.id), ['midi-out', 'audio-out', 'ctrl-out'],
+    'a cable in the jack keeps the jack, even while its plugin is not running');
+  mod.unmount();
+});
+
+test('a knob cannot be dropped on a CTRL IN that takes commands only', () => {
+  const knob = { id: 'control-k1', type: 'control' };
+  const commands = { id: 'ctrl-out', type: 'control', commands: true };
+  const commandsOnly = { id: 'ctrl-in', type: 'control', commandsOnly: true };
+  const vstControl = { id: 'ctrl-in', type: 'control' };
+  assert.equal(canConnect(knob, commandsOnly), false);
+  assert.equal(canConnect(commands, commandsOnly), true);
+  assert.equal(canConnect(knob, vstControl), true);
+  assert.equal(canConnect(commands, vstControl), true);
+});
+
 test('every controller node labels its own Front/Rear switch', () => {
   const hub = makeHub();
   // Two controller profiles means two surface nodes. The switch used to be held

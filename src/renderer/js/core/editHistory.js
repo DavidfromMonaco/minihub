@@ -73,6 +73,21 @@ export const HISTORY_DEPTH = 50;
 const clone = (value) => (value === undefined ? undefined : JSON.parse(JSON.stringify(value)));
 
 /**
+ * A copy that shares no object with the live state, and shares its strings.
+ *
+ * For `absorb`, which runs once per command a plugin sends: `clone` would copy
+ * every plugin's saved state -- megabytes of text -- several times a second.
+ * A string cannot change, so sharing it is as detached as copying it.
+ */
+const detach = (value) => {
+  if (value === null || typeof value !== 'object') return value;
+  if (Array.isArray(value)) return value.map(detach);
+  const copy = {};
+  for (const key of Object.keys(value)) copy[key] = detach(value[key]);
+  return copy;
+};
+
+/**
  * A node's content, minus the one part of it the history cannot put back.
  *
  * That part is a VST node's PLUGIN LIST, and only that. A plugin in a chain is
@@ -337,6 +352,35 @@ export function setupEditHistory(hub, { apply, quietMs = QUIET_MS } = {}) {
       if (history.applying || !AUTHORED_KEYS.includes(key)) return;
       if (timer !== null) clearTimeout(timer);
       timer = setTimeout(settle, quietMs);
+    },
+
+    /**
+     * Take what was just played into the present, without making it a step.
+     *
+     * Called by `hub.perform` with the keys a plugin's command wrote (D-032:
+     * performance is not authorship). Those writes never reach `observe`, but
+     * left out of the present they would be found by the next write that does
+     * -- a knob moved on the keyboard, captured into a plugin's state, is one --
+     * and made part of its step: Ctrl+Z would rewind what the sequence had set,
+     * and seem to do nothing else.
+     *
+     * Not while an edit is waiting to settle: the present would then swallow the
+     * edit, and its step with it. That edit takes the performance along instead,
+     * and undoing it also rewinds a value the sequence sets again on its next
+     * step -- the lesser of the two.
+     */
+    absorb(keys) {
+      if (history.applying || timer !== null || !history.present) return false;
+      const present = { ...history.present };
+      let absorbed = false;
+      for (const key of keys) {
+        if (!AUTHORED_KEYS.includes(key)) continue;
+        const live = key === 'sequencerState' ? hub.sequencer?.model?.snapshot?.() : null;
+        present[key] = live || detach(hub.settings.get(key)) || null;
+        absorbed = true;
+      }
+      if (absorbed) history.present = present;
+      return absorbed;
     },
 
     /** Begin from what is on screen, with nothing behind. */

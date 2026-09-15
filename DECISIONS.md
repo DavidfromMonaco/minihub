@@ -2041,3 +2041,113 @@ than tied to the channel — not for giving the capability up.
 `EditorWindow::browserWindows` in `plugin_host.cpp`; `cmdGetEditorBrowsers` in
 `engine.cpp`. Tests: `test/pluginBrowser.test.cjs`, `test/engineProcess.test.cjs`,
 native `[core] loopback-listener`.
+
+---
+
+## D-042 — A plugin commands the modules it is cabled to, and what it commands is played, not authored
+
+**Status**: in force · 2026-09-15 · **implemented**, in the author's test
+
+**Context** — One Ring is a VST3 control sequencer written outside this
+repository: sixteen channels of steps, probability, conditions, scenes, follow
+actions. It exists to play MiniHub itself — start the Sequencer, arm Record,
+change an arpeggiator's rate, a mixer's levels, a plugin's parameters. Installed
+and scanned, it could only pass audio and MIDI through: nothing in MiniHub asked
+it what it wanted to do. Its workspace carried a proposal for the host side
+(`host-extension/`), written without write access to this repository and never
+run in the application. On 2026-09-15 the author asked for the adjustments, and
+for better options where they existed.
+
+**Decision** — The proposal's architecture, with five changes the application
+needed.
+
+Kept from it:
+
+- **A private VST3 interface**, queried on the plugin's audio processor
+  (`control_source.h`): the host hands the plugin a JSON list of targets and
+  typed commands; the plugin hands back fixed-size packets from its audio
+  callback, drained on the control thread. The ids and the packet layout are
+  One Ring's, byte for byte.
+- **Commands belong to the module that performs them** (`controlCommands()`),
+  so a module added later is commandable with no change to the bus or the
+  plugin, and nothing in the plugin knows what an arpeggiator is.
+- **The cable is the authority** (invariant 2): a plugin is told, and may
+  command, exactly the nodes its node's CTRL OUT is cabled to — checked for
+  every packet, not only when the list is sent.
+- **Held commands are released** when the plugin can no longer release them
+  itself, and never into a project that replaced the one they were sent to.
+
+Changed:
+
+1. **Performance, not authorship.** The proposal wrote through `setContent` and
+   the sequencer controller like an edit. Run in the application, every step of
+   a sequence would have been an undo candidate, marked the project modified —
+   and closing MiniHub saves a modified project, so a performance would have
+   overwritten the pattern it started from — and written the settings file
+   synchronously, in the process that relays live MIDI, once per step.
+   `hub.perform` now keeps those writes out of `observe` and `markDirty`,
+   coalesces their saves, and `EditHistory.absorb` takes them into the present
+   so the next real edit's step does not carry them. Without `absorb`, the test
+   rig shows a plugin's state captured after a performance becoming an undo step
+   of its own.
+2. **The saved sequence before the list.** Published as soon as the plugin
+   loaded, the list reached One Ring before chainSync restored its saved
+   state — and One Ring validates a state against the targets it knows, refusing
+   a whole sequence over one step. In the application, a test sequence with
+   steps the list did not accept came back empty, and MiniHub then saved it
+   empty on quitting. The list now waits for
+   `instanceStatus: ready`, the report the state is restored on.
+3. **A CTRL OUT jack only where it can send.** Every VST node declares the port —
+   cables into it must restore for a plugin that is still loading — but the Patch
+   Bay draws the jack only on a node whose chain holds a plugin that sends
+   commands, or that already has a cable in it.
+4. **A knob cannot be cabled into a command-only CTRL IN.** The Sequencer,
+   Arpeggiator, Mixer, Morpher and Audio Output gained a CTRL IN; a MiniLab knob
+   cabled there would have been drawn and done nothing. Their port is
+   `commandsOnly`, and `connect()` refuses what carries no commands.
+5. **Discovery on demand.** The proposal compiled every module's commands, and
+   asked the engine for every plugin's parameters, whether or not anything was
+   cabled — for every user, One Ring or not. Nothing is compiled or asked now
+   until a cable leads to the node. A mixer's CTRL IN also stays below its AUDIO
+   IN rows as they grow, where the proposal inserted new inputs under it.
+
+Refused:
+
+- **Every module reachable without a cable** — a Patch Bay that no longer shows
+  what drives what.
+- **The agent channel as the plugin's transport** — a socket for a program
+  outside, with a fixed vocabulary and no module-owned discovery.
+- **A fixed MIDI CC map** — no Record, no discovery, and it collides with what a
+  keyboard sends.
+- **A fourth port type, `command`** — a CMD IN on every VST node beside a CTRL
+  IN that already means "what controls this plugin".
+
+**Consequence** —
+
+- A command lands one 60 Hz tick and one IPC round after its step: a Stop
+  programmed on beat 6 stopped the transport at 6.00 to 6.03 in the application.
+  It is not on the audio grid; an offline export executes no command.
+- What was played is what a save writes: the file holds the mixer level the
+  sequence left, if the author saves while it plays.
+- The Arpeggiator's, Mixer's and Morpher's pages do not redraw when a command
+  changes them; the sound does. The Sequencer and Audio Output pages follow.
+- Five node types are one port row taller.
+- Not offered, because the modules do not have them: a Sequencer track solo, an
+  arpeggiator on/off or hold. They are new behaviour to decide, not commands to
+  invent.
+
+**What would justify revisiting** — A use that needs a command on the audio
+grid — a transport start landing on a bar — which calls for a native path for
+that command, not for giving up the module-owned list. A second plugin that
+needs a different interface, which calls for a new interface id beside this one.
+Or the author wanting a performance to be undoable, which would end change 1.
+
+**Proof in the code** — `native/audio-engine/src/control_source.h`;
+`DirectVst3Plugin::setControlRegistry` / `takeControlEvents` in
+`plugin_host.cpp`; `Engine::forwardControlEvents`, `cmdSetControlRegistry` in
+`engine.cpp`; `src/main/controlSourceCommand.js`;
+`src/renderer/js/core/commandBus.js`, `commandRegistry.js`, `nodeCommands.js`,
+`sequencerCommands.js`; `hub.perform` in `hub.js`; `absorb` in `editHistory.js`;
+`coalescingSaves` in `settingsStore.js`; `carriesWhatInputTakes` in `network.js`;
+the CTRL OUT jack in `routingModule.js`. Tests: `test/commandBus.test.mjs`,
+`test/controlSourceCommand.test.cjs`, two in `test/routing.test.mjs`.

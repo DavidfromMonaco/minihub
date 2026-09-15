@@ -32,14 +32,14 @@ test('a Mixer input grown by a cable appears in the description', () => {
   const mixer = hub.nodes.create('mixer');
 
   const born = describeNodes(hub).find((node) => node.id === mixer.id);
-  assert.deepEqual(born.ports.inputs.map((port) => port.id), ['audio-in-1'],
-    'a Mixer is born with one input');
+  assert.deepEqual(born.ports.inputs.map((port) => port.id), ['audio-in-1', 'ctrl-in'],
+    'a Mixer is born with one audio input, and its CTRL IN below it');
 
   // Taking the last free input is what makes the node grow another one.
   hub.network.connect(vst.id, 'audio-out', mixer.id, 'audio-in-1');
 
   const grown = describeNodes(hub).find((node) => node.id === mixer.id);
-  assert.deepEqual(grown.ports.inputs.map((port) => port.id), ['audio-in-1', 'audio-in-2'],
+  assert.deepEqual(grown.ports.inputs.map((port) => port.id), ['audio-in-1', 'audio-in-2', 'ctrl-in'],
     'the description follows the network, not the type registry');
 });
 

@@ -37,10 +37,13 @@ test('VST type uses the centralized orange accent', () => {
   assert.equal(NODE_TYPES.vst.accent, '--accent-vst');
 });
 
-test('VST type declares MIDI IN, AUDIO IN, CTRL IN, MIDI OUT, AUDIO OUT', () => {
+test('VST type declares MIDI IN, AUDIO IN, CTRL IN, MIDI OUT, AUDIO OUT, CTRL OUT', () => {
   const ports = getNodeType('vst').ports;
   assert.deepEqual(ports.inputs.map((p) => p.id), ['midi-in', 'audio-in', 'ctrl-in']);
-  assert.deepEqual(ports.outputs.map((p) => p.id), ['midi-out', 'audio-out']);
+  assert.deepEqual(ports.outputs.map((p) => p.id), ['midi-out', 'audio-out', 'ctrl-out']);
+  // The CTRL IN takes knobs as well as commands; the CTRL OUT sends commands.
+  assert.equal(ports.inputs[2].commandsOnly, undefined);
+  assert.equal(ports.outputs[2].commands, true);
 });
 
 test('video/image placeholders declare no speculative ports', () => {
@@ -109,7 +112,7 @@ test('VST instance registers a routing node with the type ports', () => {
   assert.ok(node);
   assert.equal(node.type, 'vst');
   assert.deepEqual(node.inputs.map((p) => p.id), ['midi-in', 'audio-in', 'ctrl-in']);
-  assert.deepEqual(node.outputs.map((p) => p.id), ['midi-out', 'audio-out']);
+  assert.deepEqual(node.outputs.map((p) => p.id), ['midi-out', 'audio-out', 'ctrl-out']);
 });
 
 // ---- deletion ---------------------------------------------------------------

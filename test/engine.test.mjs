@@ -364,7 +364,7 @@ test('engine client reflects lifecycle state from the main process', async () =>
 });
 
 // ---- Audio Output node protection ------------------------------------------
-test('Audio Output is a native/system node: non-deletable, non-copyable, AUDIO IN only', () => {
+test('Audio Output is a native/system node: non-deletable, non-copyable, AUDIO IN and a command-only CTRL IN', () => {
   const api = mockApi();
   const hub = createHub(api);
   hub.modules.register(createAudioOutputModule(hub));
@@ -375,8 +375,9 @@ test('Audio Output is a native/system node: non-deletable, non-copyable, AUDIO I
 
   const node = hub.network.getNode('audio-output');
   assert.ok(node, 'audio-output must exist in the network');
-  assert.deepEqual(node.inputs.map((p) => p.id), ['audio-in']);
+  assert.deepEqual(node.inputs.map((p) => p.id), ['audio-in', 'ctrl-in']);
   assert.equal(node.inputs[0].type, 'audio');
+  assert.equal(node.inputs[1].commandsOnly, true, 'a knob has nothing to bind on the Audio Output');
   assert.equal(node.outputs.length, 0);
 });
 

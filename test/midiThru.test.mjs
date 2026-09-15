@@ -44,8 +44,8 @@ const sentOf = (api, type) => api.sent.filter((message) => message.type === type
 test('a VST node is born with a MIDI OUT facing its MIDI IN', () => {
   const type = getNodeType('vst');
   assert.deepEqual(type.ports.outputs.map((port) => [port.id, port.type]),
-    [['midi-out', 'midi'], ['audio-out', 'audio']],
-    'MIDI OUT on the MIDI row, AUDIO OUT on the audio row, like the Sequencer node');
+    [['midi-out', 'midi'], ['audio-out', 'audio'], ['ctrl-out', 'control']],
+    'MIDI OUT on the MIDI row, AUDIO OUT on the audio row, CTRL OUT on the control row');
 });
 
 test('the series runs through every VST cabled after the first, and stops where MIDI stops being passed on', () => {

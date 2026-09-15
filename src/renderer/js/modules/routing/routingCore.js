@@ -10,6 +10,8 @@
  * testable in Node without a DOM.
  */
 
+import { carriesWhatInputTakes } from '../../core/network.js';
+
 /**
  * Secondary distinction for each port type (beyond color) so ports are not
  * identified by color alone. `shape` drives the jack glyph, `label` the text.
@@ -27,13 +29,14 @@ export function portTypeInfo(type) {
   }
 }
 
-/** Ports are compatible only when their types match exactly. */
+/** Ports are compatible when their types match exactly, and the input takes what the output carries. */
 export function canConnect(fromPort, toPort) {
   return Boolean(
     fromPort &&
       toPort &&
       fromPort.type &&
-      fromPort.type === toPort.type
+      fromPort.type === toPort.type &&
+      carriesWhatInputTakes(fromPort, toPort)
   );
 }
 

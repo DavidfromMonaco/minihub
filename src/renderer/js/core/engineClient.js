@@ -295,6 +295,14 @@ export class EngineClient {
         this.events.emit('engine:chainChanged', msg);
         break;
       }
+      // A plugin that commands MiniHub's modules: its drained packets, and
+      // whether it took the list of targets it was sent. See commandBus.js.
+      case 'controlEvents':
+        this.events.emit('engine:controlEvents', msg);
+        break;
+      case 'controlRegistryStatus':
+        this.events.emit('engine:controlRegistryStatus', msg);
+        break;
       case 'instanceStatus': {
         if (!this.chains.has(msg.chainId)) this.chains.set(msg.chainId, new Map());
         this.chains.get(msg.chainId).set(msg.instanceId, msg.status);
@@ -746,6 +754,22 @@ export class EngineClient {
       generation,
       learnId,
       armed: armed === true
+    }));
+  }
+
+  /** Hand a plugin that sends commands the targets cabled to its node (commandBus.js). */
+  setControlRegistry({ chainId, instanceId, pluginId, generation }, registry) {
+    if (this.state !== 'running') return Promise.resolve({ ok: false, reason: 'engine-not-running' });
+    return Promise.resolve(this.command({
+      type: 'setControlRegistry', chainId, instanceId, pluginId, generation, registry
+    }));
+  }
+
+  /** Why its last command was refused, shown in that plugin's own window; '' clears it. */
+  setControlStatus({ chainId, instanceId, pluginId, generation }, message) {
+    if (this.state !== 'running') return Promise.resolve({ ok: false, reason: 'engine-not-running' });
+    return Promise.resolve(this.command({
+      type: 'setControlStatus', chainId, instanceId, pluginId, generation, message: String(message)
     }));
   }
 

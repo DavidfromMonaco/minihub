@@ -216,6 +216,7 @@ dédié :
 | `selectDevice` | [audioDeviceCommand.js](src/main/audioDeviceCommand.js) |
 | `setVstParameter` | [vstParameterCommand.js](src/main/vstParameterCommand.js) |
 | `setVstParameterLearn` | [vstParameterLearnCommand.js](src/main/vstParameterLearnCommand.js) |
+| `setControlRegistry`, `setControlStatus` | [controlSourceCommand.js](src/main/controlSourceCommand.js) |
 | `getVstParameters`, `sequencerQuiesce` | inline dans [main.js](src/main/main.js) |
 
 L'intention : la surface IPC exposée est une liste finie et relisible, pas
@@ -275,6 +276,8 @@ automatiques.
 - plugins : `plugins`, `chainChanged`, `instanceStatus`, `editorStatus`,
   `pluginState`, `pluginStateCaptureComplete`
 - paramètres : `vstParameters`, `vstParameterTouched`, `vstParameterLearnState`
+- commands from a plugin (§6, *Commands from a plugin*): `controlEvents` (a
+  stream, never logged), `controlRegistryStatus`
 - transport : `transport`, `metronomeTick`
 - séquenceur : `sequencerMidiRecorded`, `sequencerAudioRecorded`,
   `sequencerAudioInfo`, `sequencerExport`, `sequencerQuiesced`
@@ -311,6 +314,8 @@ transite. Un module ne parle jamais à un autre module directement.
 | `hub.nodes` | `NodeInstanceManager` | instances de nœuds créées par l'utilisateur |
 | `hub.project` | `ProjectManager` | cycle de vie du projet |
 | `hub.sequencer` | `SequencerController` | séquenceur (modèle + transport) |
+| `hub.commands` | `CommandBus` | commands a plugin on a CTRL OUT cable sends the modules (§6) |
+| `hub.perform(fn)` | — | runs writes that are played, not authored: no undo step, no "modified", one coalesced save |
 
 ### Le contrat de module
 
@@ -320,11 +325,19 @@ hub.modules.register({
   name: 'Mon Module',
   navEntry: { label: '…', icon: '…', group: 'node', accent: 'vst' },
   routingNode: { id, name, type, inputs, outputs, onInput },   // optionnel
+  controlCommands() {},                  // optional: what its CTRL IN accepts
   onRegister(hub) {},                    // optionnel, une fois
   mount(container) {},                   // devient actif
   unmount() {}                           // désactivé — doit tout nettoyer
 });
 ```
+
+- `controlCommands()` returns the targets a plugin cabled into the module's
+  routing node may command — typed commands built with the helpers of
+  [commandRegistry.js](src/renderer/js/core/commandRegistry.js). It is asked
+  again whenever what it describes may have changed, and only while a cable
+  leads to the node. There is nothing to register: a module that declares it is
+  commandable, and `unregister` takes its commands away with its node.
 
 - `navEntry` fait apparaître le module dans la barre latérale automatiquement.
   Le groupe (`home`, `system`, `node`) détermine la section ; un groupe vide
@@ -346,11 +359,11 @@ nécessaire. La barre latérale, le graphe et la navigation suivent.
 
 | Type | Catégorie | Entrées | Sorties | Contenu |
 |---|---|---|---|---|
-| `vst` | Plugin | midi, audio, control | midi, audio | chaîne de plugins |
-| `mixer` | Audio | audio ×N (dynamique) | audio | niveaux, mutes, master |
-| `morpher` | Audio | audio ×N (dynamique) | audio | niveaux, pas de morphing |
-| `arpeggiator` | MIDI | midi | midi | motif, gamme, mode, rythme |
-| `sequencer` | MIDI | midi, audio | midi, audio | *(modèle séparé)* |
+| `vst` | Plugin | midi, audio, control | midi, audio, control | chaîne de plugins |
+| `mixer` | Audio | audio ×N (dynamique), control | audio | niveaux, mutes, master |
+| `morpher` | Audio | audio ×N (dynamique), control | audio | niveaux, pas de morphing |
+| `arpeggiator` | MIDI | midi, control | midi | motif, gamme, mode, rythme |
+| `sequencer` | MIDI | midi, audio, control | midi, audio | *(modèle séparé)* |
 | `audio-input` | Audio | — | audio | — |
 | `video`, `image` | — | — | — | réservés |
 
@@ -404,13 +417,17 @@ une connexion relie un port de sortie à un port d'entrée **de même type**.
 |---|---|
 | `midi` | de vrais événements MIDI, via `emitData` vers les cibles connectées |
 | `audio` | **aucun échantillon** — la connexion est néanmoins l'autorité : une chaîne VST n'atteint la sortie physique que tant que son `audio-out` est câblé |
-| `control` | valeurs normalisées sémantiques (K1..K8, pads…) |
+| `control` | valeurs normalisées sémantiques (K1..K8, pads…), and the commands a plugin sends from its node's CTRL OUT |
 
 ### Règles appliquées à la connexion
 
 `connect()` refuse : un nœud inconnu, un port inconnu, des types incompatibles,
 un doublon, et un **cycle** pour les types `midi` et `audio`
-(`_wouldCreateCycle`).
+(`_wouldCreateCycle`) — and a controller's knob into a CTRL IN declared
+`commandsOnly` (`carriesWhatInputTakes`): the Sequencer, the Arpeggiator, the
+Mixer, the Morpher and the Audio Output have nothing a knob could be bound to.
+A VST node's CTRL IN takes both, knobs for its bindings and commands for its
+plugins.
 
 `emitData(nodeId, portId, data)` diffuse à toutes les cibles câblées.
 `emitDataTo(nodeId, portId, targetNodeId, data)` traverse **un seul** câble
@@ -446,6 +463,38 @@ per-cable copy would double it.
 A track's fader and mute cover its whole series (`midiTrackGainForOutput`, second
 pass): lowering a track that lowered one layer would read as broken. A track
 cabled to an instrument directly outranks one that reaches it through a series.
+
+### Commands from a plugin
+
+A plugin can command MiniHub's modules — One Ring, a VST3 built outside this
+repository, is the first. It exposes the private interface of
+[control_source.h](native/audio-engine/src/control_source.h) on its audio
+processor; every other plugin answers `kNoInterface` and never hears of it.
+[DECISIONS.md](DECISIONS.md) D-042 holds the why. The path, end to end:
+
+| Step | Where | What |
+|---|---|---|
+| discovery | `DirectVst3Plugin::create` | `queryInterface` on the processor; `chainChanged` carries `controlSource: true` |
+| the jack | `routingModule.js` | a VST node's CTRL OUT is drawn only when `hub.commands.sendsCommands(nodeId)`, or when a cable already leaves it |
+| the list | `CommandBus.publish` | per plugin instance: the targets of the nodes its node's CTRL OUT is cabled to, compiled from each module's `controlCommands()`, sent as `setControlRegistry` only when it changed |
+| the order | `_acceptInstanceStatus` | nothing is published before `instanceStatus: ready`, the report chainSync restores the saved state on — the plugin validates a state against the targets it knows |
+| the packets | `Engine::forwardControlEvents` | the audio callback queues fixed-size packets inside the plugin; the 60 Hz timer drains at most 128 per instance into `controlEvents` |
+| execution | `CommandBus.dispatch` | per packet: same instance and generation, a growing sequence, a published revision, the cable still in, a known command, the declared value type and range — then `execute` inside `hub.perform` |
+| feedback | `setControlStatus` | why the last refused command was refused, in the plugin's own window, cleared by that command succeeding |
+
+A command with a declared release (PLAY → STOP, RECORD_ON → RECORD_OFF) is
+held by the bus until its release runs, and released once if the plugin cannot
+send it: the cable pulled, the node deleted, the plugin bypassed or removed, the
+engine gone. During a project change a hold is forgotten, never executed.
+
+What a command writes is performance (D-032): `hub.perform` keeps it out of
+`observe` and out of `markDirty`, coalesces its settings saves into one, and
+hands the keys to `hub.history.absorb`, so the next edit's step does not carry
+what was played before it.
+
+Timing is the control thread's, not the audio grid's: a command lands one timer
+tick and one IPC round after its step — a Stop programmed on beat 6 was measured
+stopping the transport at 6.00 to 6.03. An offline export executes no command.
 
 ### Synchronisation vers le moteur
 
@@ -931,7 +980,7 @@ d'une capture forcée à l'extinction.
 | `preload.js` | `contextBridge` → `window.hubAPI` |
 | `engine.js` | superviseur du processus natif (`EngineProcess`) |
 | `engineCommandPolicy.js` | liste blanche des commandes moteur |
-| `audioDeviceCommand.js`, `vstParameterCommand.js`, `vstParameterLearnCommand.js` | validateurs IPC purs |
+| `audioDeviceCommand.js`, `vstParameterCommand.js`, `vstParameterLearnCommand.js`, `controlSourceCommand.js` | validateurs IPC purs |
 | `settings.js` | préférences applicatives, écriture atomique |
 | `recentDirectories.js` | dernier dossier retenu par sélecteur, et son report |
 | `projectFiles.js` | lecture/écriture validée des `.minihub` |
@@ -962,6 +1011,9 @@ d'une capture forcée à l'extinction.
 | `chainSync.js` | reconstruction des chaînes VST après (re)démarrage moteur |
 | `midiRouting.js`, `controlRouting.js` | injection MIDI et CONTROL dans le graphe |
 | `controlBindings.js` | mappages MiniLab → paramètres VST3, Learn |
+| `commandBus.js` | commands a plugin sends over CTRL OUT: sources, publication, dispatch, holds |
+| `commandRegistry.js` | command descriptors, their checks, value decoding |
+| `nodeCommands.js`, `sequencerCommands.js` | what the Arpeggiator, Mixer, Morpher, VST and Sequencer accept |
 | `vstChain.js` | rôles VST et modèle de chaîne interne |
 | `vstParameterDiscovery.js` | découverte des paramètres par nœud |
 | `masterOutput.js` | gain master, normalisation |
@@ -1012,6 +1064,7 @@ persisted in projects.
 | `audio_graph.{h,cpp}` | plan audio compilé, PDC, mixage |
 | `chain.{h,cpp}` | chaîne VST3 série, MIDI sans verrou, panic |
 | `plugin_host.{h,cpp}` | instance VST3, éditeur, paramètres ⚠️ 1 841 lignes |
+| `control_source.h` | the interface a plugin that commands MiniHub exposes — an ABI shared with binaries built elsewhere |
 | `vst3_audio_buffer_bridge.{h,cpp}` | pont de tampons VST3 |
 | `vst3_scanner.{h,cpp}`, `scanner_main.cpp` | scan VST3 en processus séparé |
 | `midi_graph.{h,cpp}` | arpégiateurs, destinations |

@@ -97,8 +97,9 @@ function registerSystemNodes(hub) {
 function exactSequencerPorts(node) {
   assert.deepEqual(node.inputs, [
     { id: 'midi-in', type: 'midi', label: 'MIDI IN' },
-    { id: 'audio-in', type: 'audio', label: 'AUDIO IN' }
-  ], 'Sequencer inputs are exactly MIDI IN then AUDIO IN');
+    { id: 'audio-in', type: 'audio', label: 'AUDIO IN' },
+    { id: 'ctrl-in', type: 'control', label: 'CTRL IN', commandsOnly: true }
+  ], 'Sequencer inputs are exactly MIDI IN, AUDIO IN, then a CTRL IN that takes commands only');
   assert.deepEqual(node.outputs, [
     { id: 'midi-out', type: 'midi', label: 'MIDI OUT' },
     { id: 'audio-out', type: 'audio', label: 'AUDIO OUT' }

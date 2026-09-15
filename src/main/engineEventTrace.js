@@ -24,6 +24,9 @@ const PERIODIC_EVENTS = new Set([
   'recorderState',
   'nodeSafetyTelemetry',
   'metronomeTick',
+  // Commands a plugin sends MiniHub's modules, up to sixty batches a second
+  // while it plays -- a stream, not an event. What they did is not logged here.
+  'controlEvents',
   // Where a plugin editor's frame is. Emitted on every frame of a drag, which
   // is why the engine splits it off `editorStatus`: opening and closing an
   // editor is rare and worth a line, moving it is not. ROADMAP item 9.

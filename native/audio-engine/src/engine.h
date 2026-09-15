@@ -92,6 +92,9 @@ private:
     void cmdGetVstParameters(const juce::var& msg);
     void cmdSetVstParameter(const juce::var& msg);
     void cmdSetVstParameterLearn(const juce::var& msg);
+    void cmdSetControlRegistry(const juce::var& msg);
+    void cmdSetControlStatus(const juce::var& msg);
+    void forwardControlEvents();
     void cmdSetTransport(const juce::var& msg);
     void cmdGetTransport(const juce::var& msg);
     void cmdSyncAudioNetwork(const juce::var& msg);

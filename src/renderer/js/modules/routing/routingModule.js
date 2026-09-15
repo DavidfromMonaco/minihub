@@ -305,8 +305,13 @@ export function createRoutingModule(hub) {
         const y = node.surface ? surfacePortRowY(node.surface) : portY(node, i);
         g.appendChild(buildPort(port, 'input', 0, y, node.id));
       });
-      // Outputs on the right (I/O dock).
+      // Outputs on the right (I/O dock). A CTRL OUT that sends commands has a
+      // jack only where something can send them -- a plugin in the chain that
+      // speaks the control connection -- or where a cable already leaves it.
+      // Every VST node showing one would offer a cable that does nothing.
       if (!node.surface) node.outputs.forEach((port, i) => {
+          if (port.commands && !hub.commands?.sendsCommands(node.id)
+              && !cables.some((cable) => cable.from.nodeId === node.id && cable.from.portId === port.id)) return;
           g.appendChild(buildPort(port, 'output', width, portY(node, i), node.id));
         });
 
@@ -1394,6 +1399,8 @@ export function createRoutingModule(hub) {
 
     subs.push(
       hub.events.on('network:change', onNetworkChange),
+      // A plugin that sends commands finished loading, or left: its node's CTRL OUT jack follows.
+      hub.events.on('commands:sourcesChanged', () => render()),
       // An undo rewrote `networkLayout` under us. The cache below only fills in
       // positions it is MISSING, so without this the nodes stay where they were
       // and the canvas quietly disagrees with the project.

@@ -216,6 +216,7 @@ void Engine::timerCallback()
         setProp(event, "dropped", static_cast<juce::int64>(metronomeTicks_.dropped()));
         ipc_.send(event);
     }
+    forwardControlEvents();
     if (preCountComplete_.exchange(false, std::memory_order_acq_rel))
     {
         // The audio callback owns count-in timing. The takes were opened when
@@ -505,6 +506,8 @@ void Engine::handleCommand(const juce::var& msg)
     else if (type == "getVstParameters") cmdGetVstParameters(msg);
     else if (type == "setVstParameter") cmdSetVstParameter(msg);
     else if (type == "setVstParameterLearn") cmdSetVstParameterLearn(msg);
+    else if (type == "setControlRegistry") cmdSetControlRegistry(msg);
+    else if (type == "setControlStatus") cmdSetControlStatus(msg);
     else if (type == "setTransport") cmdSetTransport(msg);
     else if (type == "getTransport") cmdGetTransport(msg);
     else if (type == "syncAudioNetwork") cmdSyncAudioNetwork(msg);
@@ -676,6 +679,7 @@ void Engine::sendChainChanged(const juce::String& chainId)
         setProp(inst, "role", p->role());
         setProp(inst, "bypassed", p->bypassed());
         setProp(inst, "generation", p->generation());
+        setProp(inst, "controlSource", p->supportsControlSource());
         setProp(inst, "status", p->isReady() ? "ready" : "error");
         instances.add(inst);
     }
@@ -2278,6 +2282,85 @@ void Engine::cmdGetVstParameters(const juce::var& msg)
     setProp(out, "name", inst->name());
     setProp(out, "parameters", inst->getParameters(requested.isArray() ? &only : nullptr));
     ipc_.send(out);
+}
+
+void Engine::forwardControlEvents()
+{
+    if (shutdownRequested_)
+        return;
+    for (const auto& entry : chains_)
+        for (auto* plugin : entry.second->copyPlugins())
+        {
+            if (!plugin->supportsControlSource())
+                continue;
+            // Drained even when nobody will act on them, so a plugin taken out
+            // of bypass or an export that ends does not replay a stale backlog.
+            const auto events = plugin->takeControlEvents();
+            const auto* list = events.getArray();
+            if (list == nullptr || list->isEmpty() || plugin->bypassed() || sequencer_.exporting())
+                continue;
+            juce::var out = makeObject();
+            setProp(out, "type", "controlEvents");
+            setProp(out, "chainId", plugin->chainId());
+            setProp(out, "instanceId", plugin->instanceId());
+            setProp(out, "pluginId", plugin->pluginId());
+            setProp(out, "generation", plugin->generation());
+            setProp(out, "events", events);
+            ipc_.send(out);
+        }
+}
+
+void Engine::cmdSetControlRegistry(const juce::var& msg)
+{
+    const juce::String chainId = msg["chainId"].toString();
+    const juce::String instanceId = msg["instanceId"].toString();
+    const juce::String pluginId = msg["pluginId"].toString();
+    const bool generationIsInteger = msg["generation"].isInt() || msg["generation"].isInt64();
+    const juce::int64 generation = generationIsInteger ? static_cast<juce::int64>(msg["generation"]) : 0;
+    const juce::var revision = msg["registry"]["revision"];
+
+    juce::String code, error;
+    PluginInstance* inst = nullptr;
+    if (!isProtocolChainId(chainId) || !isProtocolInstanceId(instanceId)
+        || pluginId.isEmpty() || pluginId.length() > 2048 || generation <= 0)
+        error = "invalid command source identity";
+    else
+        inst = lookupInstance(chainId, instanceId, code, error);
+    // A registry describes what is cabled to ONE runtime instance. Handed to its
+    // replacement it would name targets the new instance was never told about.
+    const bool current = inst != nullptr && inst->pluginId() == pluginId
+        && inst->generation() == generation
+        && isCurrentInstanceGeneration(chainId, instanceId, generation);
+    if (inst != nullptr && !current)
+        error = "command source was replaced";
+    const bool ok = current && inst->setControlRegistry(msg["registry"], error);
+
+    juce::var out = makeObject();
+    setProp(out, "type", "controlRegistryStatus");
+    setProp(out, "chainId", chainId);
+    setProp(out, "instanceId", instanceId);
+    setProp(out, "generation", generation);
+    setProp(out, "revision", revision.isInt() || revision.isInt64() ? revision : juce::var());
+    setProp(out, "ok", ok);
+    setProp(out, "message", ok ? juce::String() : error);
+    ipc_.send(out);
+}
+
+void Engine::cmdSetControlStatus(const juce::var& msg)
+{
+    const juce::String chainId = msg["chainId"].toString();
+    const juce::String instanceId = msg["instanceId"].toString();
+    const bool generationIsInteger = msg["generation"].isInt() || msg["generation"].isInt64();
+    const juce::int64 generation = generationIsInteger ? static_cast<juce::int64>(msg["generation"]) : 0;
+    if (!isProtocolChainId(chainId) || !isProtocolInstanceId(instanceId) || generation <= 0
+        || !msg["message"].isString() || msg["message"].toString().getNumBytesAsUTF8() > 4096)
+        return;
+    juce::String code, error;
+    PluginInstance* inst = lookupInstance(chainId, instanceId, code, error);
+    if (inst != nullptr && inst->pluginId() == msg["pluginId"].toString()
+        && inst->generation() == generation
+        && isCurrentInstanceGeneration(chainId, instanceId, generation))
+        inst->setControlStatus(msg["message"].toString());
 }
 
 void Engine::cmdSetVstParameter(const juce::var& msg)

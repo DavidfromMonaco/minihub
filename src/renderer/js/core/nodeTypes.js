@@ -12,8 +12,18 @@
  *
  * Audio ports carry no samples in the renderer (the native engine owns audio),
  * but an audio connection is authoritative: it is what routes a VST chain to
- * the physical output. CONTROL ports carry normalized parameter-control data.
+ * the physical output. CONTROL ports carry normalized parameter-control data,
+ * and commands: a plugin that sequences MiniHub (One Ring) sends them from its
+ * node's CTRL OUT (`commands: true`) to what a module accepts on its CTRL IN.
+ * What each module accepts is its own `controlCommands()` -- core/commandBus.js.
  */
+
+/**
+ * The CTRL IN of a module that takes commands and has no parameter a knob could
+ * be bound to. A controller's knob cabled here would do nothing, so the network
+ * refuses that cable rather than drawing one that reads as working.
+ */
+export const COMMAND_INPUT = Object.freeze({ id: 'ctrl-in', type: 'control', label: 'CTRL IN', commandsOnly: true });
 
 export const NODE_TYPES = {
   vst: {
@@ -34,19 +44,24 @@ export const NODE_TYPES = {
       // AUDIO IN, the way the Sequencer node lines its rows up by signal.
       outputs: [
         { id: 'midi-out', type: 'midi', label: 'MIDI OUT' },
-        { id: 'audio-out', type: 'audio', label: 'AUDIO OUT' }
+        { id: 'audio-out', type: 'audio', label: 'AUDIO OUT' },
+        // Facing CTRL IN. The Patch Bay draws its jack only on a node whose chain
+        // holds a plugin that sends commands, or that already has a cable in it.
+        { id: 'ctrl-out', type: 'control', label: 'CTRL OUT', commands: true }
       ]
     }
   },
+  // A mixer's and a morpher's CTRL IN sits below their AUDIO IN rows, which grow
+  // as they are cabled: see `buildRoutingNode` and `_ensureDynamicAudioPorts`.
   mixer: {
     id: 'mixer', label: 'Mixer', omniBoxCategory: 'Audio', accent: '--accent-mixer', icon: 'sliders',
     emptyLabel: 'Connect AUDIO sources in Patch Bay', dynamicAudioInputs: true,
-    ports: { inputs: [], outputs: [{ id: 'audio-out', type: 'audio', label: 'AUDIO OUT' }] }
+    ports: { inputs: [COMMAND_INPUT], outputs: [{ id: 'audio-out', type: 'audio', label: 'AUDIO OUT' }] }
   },
   morpher: {
     id: 'morpher', label: 'Morpher', omniBoxCategory: 'Audio', accent: '--accent-morpher', icon: 'sequencer',
     emptyLabel: 'Connect AUDIO sources in Patch Bay', dynamicAudioInputs: true,
-    ports: { inputs: [], outputs: [{ id: 'audio-out', type: 'audio', label: 'AUDIO OUT' }] }
+    ports: { inputs: [COMMAND_INPUT], outputs: [{ id: 'audio-out', type: 'audio', label: 'AUDIO OUT' }] }
   },
   'audio-input': {
     id: 'audio-input',
@@ -68,7 +83,7 @@ export const NODE_TYPES = {
     id: 'arpeggiator', label: 'Arpeggiator', omniBoxCategory: 'MIDI', accent: '--accent-sequencer', icon: 'sequencer',
     emptyLabel: 'Hold notes and start transport',
     ports: {
-      inputs: [{ id: 'midi-in', type: 'midi', label: 'MIDI IN' }],
+      inputs: [{ id: 'midi-in', type: 'midi', label: 'MIDI IN' }, COMMAND_INPUT],
       outputs: [{ id: 'midi-out', type: 'midi', label: 'MIDI OUT' }]
     }
   },
@@ -90,7 +105,8 @@ export const NODE_TYPES = {
     ports: {
       inputs: [
         { id: 'midi-in', type: 'midi', label: 'MIDI IN' },
-        { id: 'audio-in', type: 'audio', label: 'AUDIO IN' }
+        { id: 'audio-in', type: 'audio', label: 'AUDIO IN' },
+        COMMAND_INPUT
       ],
       outputs: [
         { id: 'midi-out', type: 'midi', label: 'MIDI OUT' },

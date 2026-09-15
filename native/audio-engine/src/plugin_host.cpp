@@ -1,5 +1,6 @@
 #include "plugin_host.h"
 
+#include "control_source.h"
 #include "realtime_drops.h"
 
 #include "var_util.h"
@@ -286,12 +287,98 @@ public:
             return false;
         }
 
+        // Asked of every plugin, answered by almost none: kNoInterface leaves
+        // both pointers empty and the plugin an ordinary one.
+        control::IControlSource* controlSource = nullptr;
+        if (processor_->queryInterface(control::interfaceId,
+                reinterpret_cast<void**>(&controlSource)) == Steinberg::kResultOk && controlSource)
+            controlSource_ = Steinberg::owned(controlSource);
+        control::IControlFeedback* controlFeedback = nullptr;
+        if (controlSource_ && processor_->queryInterface(control::feedbackInterfaceId,
+                reinterpret_cast<void**>(&controlFeedback)) == Steinberg::kResultOk && controlFeedback)
+            controlFeedback_ = Steinberg::owned(controlFeedback);
+
         handler_ = Steinberg::owned(new ComponentHandler(*this));
         controller_->setComponentHandler(handler_);
         midiMapping_ = Steinberg::U::cast<Steinberg::Vst::IMidiMapping>(controller_);
         buildParameterIndex();
         buildMidiAssignments();
         return true;
+    }
+
+    bool supportsControlSource() const { return controlSource_ != nullptr; }
+
+    // No control mutation around these three: the plugin publishes a registry
+    // and drains its packet queue without locking out its audio callback, and
+    // excluding the callback here would drop audio blocks sixty times a second.
+    bool setControlRegistry(const juce::var& registry, juce::String& error)
+    {
+        if (!controlSource_)
+        {
+            error = "plugin does not send commands";
+            return false;
+        }
+        const auto revision = registry["revision"];
+        if (!registry.isObject() || !registry["version"].isInt() || static_cast<int>(registry["version"]) != 1
+            || !registry["modules"].isArray() || !(revision.isInt() || revision.isInt64())
+            || static_cast<juce::int64>(revision) <= 0)
+        {
+            error = "malformed command registry";
+            return false;
+        }
+        const auto json = juce::JSON::toString(registry, true);
+        const auto bytes = json.getNumBytesAsUTF8();
+        if (bytes > 4 * 1024 * 1024)
+        {
+            error = "command registry too large";
+            return false;
+        }
+        if (controlSource_->setRegistry(json.toRawUTF8(), static_cast<std::uint32_t>(bytes))
+            != Steinberg::kResultOk)
+        {
+            error = "plugin refused the command registry";
+            return false;
+        }
+        return true;
+    }
+
+    void setControlStatus(const juce::String& message)
+    {
+        const auto bytes = message.getNumBytesAsUTF8();
+        if (controlFeedback_ && bytes <= 4096)
+            controlFeedback_->setControlStatus(message.toRawUTF8(), static_cast<std::uint32_t>(bytes));
+    }
+
+    juce::var takeControlEvents()
+    {
+        juce::Array<juce::var> events;
+        if (!controlSource_)
+            return events;
+        // Bounded per tick: a plugin that floods its queue delays its own
+        // commands, never the rest of the control thread.
+        for (int i = 0; i < 128; ++i)
+        {
+            control::Packet packet;
+            if (controlSource_->popEvent(&packet) != Steinberg::kResultOk)
+                break;
+            constexpr std::uint64_t maxSafeInteger = 9007199254740991ULL;
+            if (packet.version != control::version || packet.valueType > 4
+                || packet.sequence > maxSafeInteger || packet.registryRevision > maxSafeInteger
+                || !std::isfinite(packet.beat) || !std::isfinite(packet.number)
+                || std::memchr(packet.target, 0, sizeof(packet.target)) == nullptr
+                || std::memchr(packet.command, 0, sizeof(packet.command)) == nullptr)
+                continue;
+            juce::var event = makeObject();
+            setProp(event, "sequence", static_cast<juce::int64>(packet.sequence));
+            setProp(event, "registryRevision", static_cast<juce::int64>(packet.registryRevision));
+            setProp(event, "beat", packet.beat);
+            setProp(event, "target", juce::String::fromUTF8(packet.target));
+            setProp(event, "command", juce::String::fromUTF8(packet.command));
+            setProp(event, "valueType", static_cast<int>(packet.valueType));
+            setProp(event, "number", packet.number);
+            events.add(event);
+        }
+        return events;
     }
 
     bool prepare(double sampleRate, int blockSize, bool offline, std::string& error)
@@ -1344,6 +1431,9 @@ private:
         if (controller_) controller_->setComponentHandler(nullptr);
         handler_.reset();
         midiMapping_.reset();
+        // Both point into the processor, so they go before it.
+        controlFeedback_.reset();
+        controlSource_.reset();
         processor_.reset();
         controller_.reset();
         component_.reset();
@@ -1577,6 +1667,8 @@ private:
     Steinberg::IPtr<Steinberg::Vst::PlugProvider> provider_;
     Steinberg::IPtr<Steinberg::Vst::IComponent> component_;
     Steinberg::IPtr<Steinberg::Vst::IAudioProcessor> processor_;
+    Steinberg::IPtr<control::IControlSource> controlSource_;
+    Steinberg::IPtr<control::IControlFeedback> controlFeedback_;
     Steinberg::OPtr<Steinberg::Vst::IEditController> controller_;
     Steinberg::IPtr<Steinberg::Vst::IMidiMapping> midiMapping_;
     Steinberg::IPtr<ComponentHandler> handler_;
@@ -2100,6 +2192,32 @@ bool PluginInstance::takeStateSnapshotIfDue(juce::var& state, bool force)
 juce::var PluginInstance::getParameters(const std::set<juce::String>* only) const
 {
     return plugin_ ? plugin_->parameters(only) : juce::var(juce::Array<juce::var>());
+}
+
+bool PluginInstance::supportsControlSource() const
+{
+    return plugin_ && isReady_ && plugin_->supportsControlSource();
+}
+
+bool PluginInstance::setControlRegistry(const juce::var& registry, juce::String& error)
+{
+    if (!plugin_ || !isReady_)
+    {
+        error = "plugin is not ready";
+        return false;
+    }
+    return plugin_->setControlRegistry(registry, error);
+}
+
+void PluginInstance::setControlStatus(const juce::String& message)
+{
+    if (plugin_ && isReady_)
+        plugin_->setControlStatus(message);
+}
+
+juce::var PluginInstance::takeControlEvents()
+{
+    return plugin_ && isReady_ ? plugin_->takeControlEvents() : juce::var(juce::Array<juce::var>());
 }
 
 bool PluginInstance::setParameterNormalized(const juce::String& parameterId,

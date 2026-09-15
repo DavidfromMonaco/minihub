@@ -3,6 +3,7 @@ import { SEQUENCER_LIMITS, SNAP_STEPS, ZOOM_MAX, ZOOM_MIN, snapStep } from '../.
 import { bindTempoInput } from '../../core/tempoControl.js';
 import { isCanonicalMidiIngress } from '../../core/sequencerController.js';
 import { closeContextMenu, openContextMenu } from '../../ui/contextMenu.js';
+import { sequencerCommands } from '../../core/sequencerCommands.js';
 
 /**
  * The two numbers that decide how much arrangement fits on a screen.
@@ -1362,6 +1363,8 @@ export function createSequencerModule(hub) {
   return {
     id: 'sequencer', name: 'Sequencer',
     navEntry: { label: 'Sequencer', icon: 'sequencer', group: 'system', fixed: true },
+    // What a plugin cabled into the Sequencer node's CTRL IN may command.
+    controlCommands: () => sequencerCommands(hub),
     mount, unmount
   };
 }
