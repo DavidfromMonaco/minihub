@@ -40,7 +40,7 @@ const MUTATING = new Set([
   'create-node', 'delete-node', 'connect', 'disconnect',
   'add-plugin', 'remove-plugin', 'set-parameter', 'move-plugin', 'set-plugin-bypass',
   'add-track', 'remove-track', 'set-track', 'add-clip',
-  'set-node-content', 'set-binding', 'clear-binding', 'plugin'
+  'set-node-content', 'set-binding', 'clear-binding', 'plugin', 'patch-bay'
 ]);
 
 /**
@@ -200,6 +200,20 @@ export async function handleAgentRequest(hub, request = {}) {
     // typing in. See `window:show-main` in main.js.
     const shown = await Promise.resolve(hub.api?.showMainWindow?.()).catch(() => false);
     return { ok: true, page: hub.modules?.activeId || '', shown: shown === true };
+  }
+
+  if (kind === 'patch-bay') {
+    // The Patch Bay toolbar's buttons, pressed as a person would: they lay out
+    // and frame the canvas on screen, so the Patch Bay must be the page shown.
+    // Undo Align lives with that page, and is gone once the page is left.
+    const operation = String(request.operation || '');
+    const PRESS = { align: 'align', 'undo-align': 'undoAlign', 'reset-view': 'resetView' };
+    if (!Object.hasOwn(PRESS, operation)) return failed('unknown-operation', 'operations: align, undo-align, reset-view');
+    const routing = hub.modules?.activeId === 'routing' ? hub.modules.get?.('routing') : null;
+    const result = typeof routing?.[PRESS[operation]] === 'function' ? routing[PRESS[operation]]() : null;
+    if (!result) return failed('patch-bay-not-shown', 'show-window with page "routing" first');
+    if (operation === 'undo-align' && !result.restored) return failed('nothing-to-undo', 'no Align since the Patch Bay was shown');
+    return { ok: true, operation, ...result };
   }
 
   if (kind === 'open-clip-editor') {

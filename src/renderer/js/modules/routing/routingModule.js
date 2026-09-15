@@ -1543,21 +1543,23 @@ export function createRoutingModule(hub) {
 
   function alignNodes() {
     const boxes = nodeBoxes();
-    if (boxes.length === 0) return;
+    if (boxes.length === 0) return false;
     const edges = hub.network.connections()
       .map((cable) => ({ from: cable.from.nodeId, to: cable.to.nodeId }));
     const before = new Map(boxes.map((box) => [box.id, { x: box.x, y: box.y }]));
-    if (!applyPositions(alignPositions(boxes, edges))) return;
+    if (!applyPositions(alignPositions(boxes, edges))) return false;
     alignUndo = before;
     updateAlignControls();
+    return true;
   }
 
   function undoAlign() {
-    if (!alignUndo) return;
+    if (!alignUndo) return false;
     const restore = alignUndo;
     alignUndo = null;
     applyPositions(restore);
     updateAlignControls();
+    return true;
   }
 
   function updateAlignControls() {
@@ -1684,6 +1686,12 @@ export function createRoutingModule(hub) {
     mount,
     unmount,
     setRearView,
-    isRearView: () => rearView
+    isRearView: () => rearView,
+    // The toolbar's Align, Undo Align and Reset View for the agent channel: the
+    // functions the buttons call, on the canvas on screen. With the page left
+    // there is no canvas to lay out or frame, and null says so.
+    align: () => (container ? { moved: alignNodes() } : null),
+    undoAlign: () => (container ? { restored: undoAlign() } : null),
+    resetView: () => (container ? (resetView(), {}) : null)
   };
 }

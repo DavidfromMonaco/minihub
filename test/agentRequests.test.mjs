@@ -512,6 +512,40 @@ test('show-window brings the page on screen first, then the window, and says whe
     'with no page the window alone is shown, on whatever page it holds');
 });
 
+test('patch-bay presses Align, Undo Align and Reset View on the Patch Bay on screen, and nowhere else', async () => {
+  const hub = rig();
+  const content = { innerHTML: '' };
+  const pressed = [];
+  let shown = false;
+  let aligned = false;
+  hub.modules.register({ id: 'home', navEntry: { label: 'Home' }, mount() {} });
+  hub.modules.register({
+    id: 'routing', navEntry: { label: 'Routing' },
+    mount() { shown = true; },
+    unmount() { shown = false; aligned = false; },
+    align: () => (shown ? (pressed.push('align'), aligned = true, { moved: true }) : null),
+    undoAlign: () => (shown ? (pressed.push('undo-align'), { restored: aligned }) : null),
+    resetView: () => (shown ? (pressed.push('reset-view'), {}) : null)
+  });
+  hub.modules.activate('home', content);
+  const press = (operation) => handleAgentRequest(hub, { kind: 'patch-bay', operation, expectedProjectId: 'project-1' });
+
+  assert.equal((await press('align')).reason, 'patch-bay-not-shown', 'nothing is laid out on a page that is not on screen');
+  assert.equal((await handleAgentRequest(hub, { kind: 'patch-bay', operation: 'align' })).reason, 'stale-project',
+    'Align moves nodes, so it is gated on the project like any other edit');
+
+  hub.modules.activate('routing', content);
+  assert.deepEqual(await press('align'), { ok: true, operation: 'align', moved: true });
+  assert.deepEqual(await press('undo-align'), { ok: true, operation: 'undo-align', restored: true });
+  assert.deepEqual(await press('reset-view'), { ok: true, operation: 'reset-view' });
+  assert.equal((await press('tidy')).reason, 'unknown-operation');
+  assert.deepEqual(pressed, ['align', 'undo-align', 'reset-view'], 'each request is one press of its button');
+
+  hub.modules.activate('home', content);
+  hub.modules.activate('routing', content);
+  assert.equal((await press('undo-align')).reason, 'nothing-to-undo', 'Undo Align does not outlive the page it was pressed on');
+});
+
 test('open-clip-editor opens the window a double-click would, and refuses a clip that is not there', async () => {
   const hub = rig();
   const opened = [];
