@@ -76,9 +76,9 @@ Read before touching anything:
   column. Nothing more.
 - Anything about the plugin editor's own contents. It stays the engine's Win32
   frame with a VST3 view attached.
-- **The panel's help sentence.** It still says MiniHub "opens and foregrounds
-  the target OmniBox", which the bar makes untrue. It is visible text, so it is
-  the author's to change, not this plan's.
+- **The panel's help sentence.** It said MiniHub "opens and foregrounds the
+  target OmniBox", which the bar made untrue. Visible text, so the author's to
+  change: he asked for it to be rewritten on 2026-09-15 (see the log).
 
 ## Steps
 
@@ -173,6 +173,44 @@ building rather than in advance:
   **seen 2026-09-14**; the first not met (see the log).
 
 ## Log
+
+2026-09-15 — Two follow-ups of the removal, asked by the author the same day.
+
+- **Removing a plugin frees its knobs.** A node none of whose plugins can open a
+  window had nowhere left to show or clear its bindings. The three ways to get
+  there are not one case. A plugin removed from its chain leaves an instance id
+  that is never given out again, so its bindings could never work again:
+  `ControlBindingManager.releasePlugin()` clears each of them the way Clear does,
+  cable included, from `NodeInstanceManager.removePlugin()` -- the Remove button
+  and the channel's `remove-plugin` alike. A plugin that failed to load or is
+  missing from this machine stays in its chain, and so do its bindings, which
+  work again the day it loads; removing it is what frees them. Both rules are in
+  `test/controlRouting.test.mjs`, and the first fails without the call.
+- **The help sentence**, rewritten: "Click a control on {keyboard}, press Arm
+  Learning, then move the plugin parameter it should control."
+
+Seen live, in an untitled project discarded after: Dexed and kHs Gain in VST 1,
+K1 bound to Dexed and K3 to kHs Gain through the channel, both cabled. The bar
+under Dexed showed the new sentence, with K1 and K3 drawn bound. `remove-plugin`
+on Dexed left K3's binding and cable and nothing of K1's; `remove-plugin` on kHs
+Gain then left the node with no binding and no cable.
+
+Found while doing it, not changed:
+
+- **Every Ctrl+Z empties the bindings of every VST node**, cables left behind.
+  `restoreContent()` and `restoreInstance()` copy a VST node's content through
+  `duplicateVstContent()`, which drops bindings and renumbers plugins -- right for
+  Duplicate, wrong for a restore. Undoing a node's deletion brings its plugins
+  back under new ids with no bindings. Probed outside the suite: one binding,
+  then a Mixer created and undone, left no binding. A save after that makes the
+  loss permanent. Whoever fixes it must also keep a restore from bringing back a
+  binding whose plugin has since been removed.
+- **A binding whose plugin failed to load is drawn as mapped**: K3 was green
+  under Dexed while kHs Gain was in error.
+- **kHs Gain would not load**: "setProcessing(true) failed", as kHs Filter and
+  kHs Reverb on 2026-09-12. The engine accepts only `kResultOk`/`kResultTrue`
+  from that call; JUCE also accepts `kNotImplemented`. Which code Kilohearts
+  returns is not verified.
 
 2026-09-15 — The panel leaves the VST node's editor. The author: "the next step
 removes the old panel from the VST node's editor."

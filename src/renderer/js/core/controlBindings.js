@@ -280,6 +280,28 @@ export class ControlBindingManager {
     return this._learnFeedback.get(this._feedbackKey(nodeId, sourceControlId)) || '';
   }
 
+  /**
+   * A plugin leaves its chain: every knob bound to it is freed, each the way
+   * Clear frees one -- the binding and the cable Learn plugged for it.
+   *
+   * A plugin instance id is never given out again, so a binding that names a
+   * removed plugin can never work again. Kept, it went on drawing its knob as
+   * mapped under the next plugin opened in the node, beside a cable into CTRL IN
+   * that carried nothing -- and in a node left with no plugin that opens a
+   * window, there was no bar left to clear it from (2026-09-15).
+   *
+   * Not the rule for a plugin that fails to load or is missing from this
+   * machine. That plugin is still in the chain and its bindings work again the
+   * day it loads; removing it is what frees them.
+   */
+  releasePlugin(nodeId, pluginInstanceId) {
+    const bound = this.hub.nodes.getControlBindings(nodeId)
+      .filter((binding) => binding.pluginInstanceId === pluginInstanceId)
+      .map((binding) => binding.sourceControlId);
+    for (const sourceControlId of bound) this.clear(nodeId, sourceControlId);
+    return bound.length;
+  }
+
   clear(nodeId, sourceControlId) {
     this.cancelLearn(nodeId, sourceControlId);
     const changed = this.hub.nodes.clearControlBinding(nodeId, sourceControlId);

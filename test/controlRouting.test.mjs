@@ -487,6 +487,47 @@ test('Clear takes the binding and the cable Learn plugged for it', async () => {
   assert.equal(hub.network.connectionsTo(node.id, 'ctrl-in').length, 1, 'and no other cable touched');
 });
 
+/*
+ * 2026-09-15. A plugin removed from its chain took nothing with it: its knobs
+ * stayed bound to an instance id that is never given out again, drawn as mapped
+ * under the next plugin opened in the node, beside cables that carried nothing --
+ * and a node left with no plugin that opens a window had no bar to clear them
+ * from.
+ */
+test('removing a plugin frees the knobs bound to it, and nothing else', async () => {
+  const { api, hub, node, plugin } = await makeRig();
+  const other = hub.nodes.getChain(node.id).append({ pluginId: 'C:/VST3/Delay.vst3', name: 'Delay', role: 'audio-effect' });
+  capture(api, hub, node, plugin, 'k1');
+  capture(api, hub, node, plugin, 'k2', { parameterId: '77' });
+  // K3 is bound to the plugin that stays; K4 is cabled by hand, bound to nothing.
+  connect(hub, node.id, 'k3');
+  hub.nodes.setControlBinding(node.id, {
+    version: 1, sourceControlId: source('k3').id, pluginInstanceId: other.id,
+    pluginId: other.pluginId, parameterId: '5', pluginName: 'Delay', parameterName: 'Mix'
+  });
+  connect(hub, node.id, 'k4');
+
+  assert.equal(hub.nodes.removePlugin(node.id, plugin.id), true);
+
+  assert.deepEqual(hub.nodes.getControlBindings(node.id).map((binding) => binding.sourceControlId),
+    [source('k3').id], 'the knob bound to the plugin that stays keeps its binding');
+  assert.deepEqual(hub.network.connectionsTo(node.id, 'ctrl-in').map((c) => c.from.portId).sort(),
+    [source('k3').portId, source('k4').portId].sort(),
+    'the cables Learn plugged for the removed plugin go; a cable nothing was bound through stays');
+});
+
+test('a plugin that fails to load keeps its knobs, for the day it loads again', async () => {
+  const { api, hub, node, plugin } = await makeRig();
+  capture(api, hub, node, plugin, 'k1');
+  api.emitEvent({
+    type: 'instanceStatus', chainId: node.id, instanceId: plugin.id,
+    pluginId: plugin.pluginId, generation: 8, status: 'error', error: 'plugin not found'
+  });
+  assert.equal(hub.control.bindingStatus(node.id, source('k1').id).state, 'not-ready');
+  assert.equal(hub.nodes.getControlBindings(node.id).length, 1, 'removing the plugin is what frees them');
+  assert.equal(hub.network.connectionsTo(node.id, 'ctrl-in').length, 1);
+});
+
 test('a control with no socket on any keyboard is still refused', async () => {
   const { hub, node } = await makeRig();
   assert.equal(hub.control.armLearn(node.id, 'minilab-3:not-a-control').reason, 'unknown-source');

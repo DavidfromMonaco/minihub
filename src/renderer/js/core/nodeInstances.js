@@ -445,16 +445,19 @@ export class NodeInstanceManager {
   /**
    * Take a plugin out of a VST node's chain, in the model and in the engine.
    *
-   * `targetInvalidated` is the line that must never be forgotten, and the
-   * reason this is a method: a CONTROL binding pointing at the plugin being
-   * removed outlives it otherwise, and a physical knob then writes to a target
-   * that no longer exists. Nothing throws -- the knob simply stops doing
-   * anything, and the binding still reads as live in the bindings bar.
+   * The two `hub.control` lines are the reason this is a method, and neither may
+   * be forgotten. A Learn armed on the plugin would otherwise capture into a
+   * target that is gone. And a CONTROL binding pointing at it would outlive it:
+   * nothing throws, the knob simply stops doing anything, and the binding went
+   * on reading as live in the bindings bar -- or, in a node with no plugin left
+   * that opens a window, sat where nothing could show or clear it. Both lines
+   * run before the plugin leaves the model.
    */
   removePlugin(instanceId, pluginInstanceId) {
     const chain = this.getChain(instanceId);
     if (!chain || !chain.plugins.some((plugin) => plugin.id === pluginInstanceId)) return false;
     this.hub.control?.targetInvalidated?.(instanceId, pluginInstanceId, 'target-removed');
+    this.hub.control?.releasePlugin?.(instanceId, pluginInstanceId);
     chain.remove(pluginInstanceId);
     this.hub.engine.removeInstance(instanceId, pluginInstanceId);
     return true;

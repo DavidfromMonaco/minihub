@@ -69,7 +69,7 @@ export function renderControlBindings(instance, hub, selectedControlId = null) {
   // MiniHub's word for it.
   return `
     <div class="control-bindings-help muted">
-      Select an observable control on ${device ? escapeHtml(device) : 'the controller'}, then Arm Learning. Native MIDI behavior remains active while MiniHub opens and foregrounds the target OmniBox.
+      Click a control on ${device ? escapeHtml(device) : 'the controller'}, press Arm Learning, then move the plugin parameter it should control.
       <button type="button" class="btn btn-sm" id="control-open-controller">Not your keyboard?</button>
     </div>
     ${drawnNodes.map((nodeId) =>
