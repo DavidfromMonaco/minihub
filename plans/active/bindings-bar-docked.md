@@ -10,7 +10,8 @@ has been seen docked under a real plugin window, learns a knob with no cable in
 the Patch Bay, and its bound knobs move their parameters under the mouse. On the
 author's go, the panel has left the VST node's editor: the bar is the one place a
 knob is learned. A plugin too tall to leave room under it gets the bar beside it
-(see the log). Left: the bar's invisible borders, then step 8, the documents.
+(see the log), and the bar takes no click outside what it draws. Left: step 8,
+the documents.
 
 ## Context
 
@@ -174,6 +175,19 @@ building rather than in advance:
   **seen 2026-09-14**; the first not met (see the log).
 
 ## Log
+
+2026-09-15 — The bar loses its invisible borders, on the author's word: "fix the
+invisible clicks". `thickFrame: false` on the bar's window, and Electron gives the
+frameless window no caption style (0x14000000 where the bar had 0x14C00000), so
+Windows has no border to add around it. The first test of
+`test/bindingsBarWindows.test.cjs` checks the option and fails without it --
+tried. Checks: `npm test` (1059), `npm run check` (15 rules), `npm run sync:dist`.
+
+Seen on two probe windows built with the bar's options and the same bounds: with
+the thick frame, the window (292, 300)-(708, 508) around a client area
+(300, 300) 400 x 200; without it, window and client area both (300, 600)
+400 x 200. **Not seen in MiniHub itself**: another application was in front, and
+opening a plugin window takes the foreground from it.
 
 2026-09-15 — The bar stands beside a plugin that leaves no room under it. The
 author, testing Learn with Analog Lab V: the mouse could not reach the plugin's

@@ -105,6 +105,8 @@ test('an editor that opens gets one bar, which stays hidden until it has been dr
   const window = FakeWindow.instances[0];
   assert.equal(window.options.frame, false);
   assert.equal(window.options.focusable, false, 'a click in the bar must not take the keyboard from the plugin');
+  assert.equal(window.options.thickFrame, false,
+    'no invisible border around the bar: beside a plugin, it would take the clicks on the plugin\'s edge');
   assert.equal(window.options.skipTaskbar, true);
   assert.equal(window.options.webPreferences.contextIsolation, true);
   assert.equal(window.options.webPreferences.nodeIntegration, false);

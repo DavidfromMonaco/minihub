@@ -318,6 +318,12 @@ class BindingsBarWindows {
       // to inactive between the two would read as two windows, not one.
       focusable: false,
       hasShadow: false,
+      // No caption style under the frameless window. With one, Windows adds an
+      // invisible border 8 px wide left, right and below what the bar draws, and
+      // the bar takes the clicks there: beside a plugin, over the plugin's own
+      // edge. Measured 2026-09-15: the window 8 px wider than its client area on
+      // three sides, and the bar answering HTCLIENT in that border.
+      thickFrame: false,
       backgroundColor: '#1f2226',
       title: 'MiniHub Bindings',
       webPreferences: {
