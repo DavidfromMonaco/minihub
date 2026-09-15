@@ -57,7 +57,7 @@ function createWindow() {
     minWidth: 960,
     minHeight: 620,
     backgroundColor: '#191b1e',
-    title: 'MiniLab Hub',
+    title: 'MiniHub',
     // Custom app icon (window + taskbar). On Windows the packaged exe already
     // carries the same icon via rcedit; this also covers dev mode (`npm start`)
     // where no custom exe resource exists.

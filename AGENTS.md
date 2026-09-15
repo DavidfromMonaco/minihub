@@ -37,7 +37,7 @@ build step) — C++17 audio engine (JUCE 9, PortAudio/WASAPI, VST3 SDK).
 | Form | Where it appears | Do not "fix" it |
 |---|---|---|
 | **MiniHub** | product name, `dist/MiniHub`, `MiniHub.exe`, the `.minihub` extension, `Documents/MiniHub/Projects` | this is the canonical name |
-| MiniLab Hub | the main window title | historical, visible to the user |
+| MiniLab Hub | nowhere on screen since 2026-09-15 — the window title and the header say MiniHub. Still the first line of each startup log session and the native engine's internal application name | historical; the leftovers are harmless, but it does not come back on screen |
 | `minilab-hub` | npm name, `%APPDATA%/minilab-hub/`, startup log | **a path that already exists on the user's disk** — renaming it loses their settings |
 | `mlh_` / `mlh-` | native targets and binaries (`mlh_audio_engine`, `mlh-vst3-scanner.exe`) | build prefix, referenced by the scripts |
 
