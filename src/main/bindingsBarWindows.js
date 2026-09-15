@@ -41,6 +41,30 @@ const MAX_VALUES = 256;
  */
 const BAR_HEIGHT = 182;
 
+/**
+ * The bar's width when it stands beside the plugin instead, in DIPs.
+ *
+ * Some plugins leave no room under them at any position: Analog Lab V's frame is
+ * 918 px tall, and 918 + 182 is more than the author's 1080. Under it, the bar
+ * covered the bottom of the plugin -- its knobs -- and took the clicks meant for
+ * them (2026-09-15). Beside it, it covers nothing. 456 is the faceplate at the
+ * bar's own scale, 520 x .82, plus the column's padding and borders.
+ *
+ * A column is narrower when the room is, down to COLUMN_MIN_WIDTH, and the page
+ * scales the faceplate down with it: a small drawing beside the plugin can still
+ * be clicked, a full one over the plugin hides what it is there to learn. Analog
+ * Lab V on 1920 px always leaves at least 319 on one side.
+ */
+const COLUMN_WIDTH = 456;
+const COLUMN_MIN_WIDTH = 300;
+/**
+ * One keyboard, the help and the Learn toolbar, stacked. A column as tall as its
+ * plugin is taller than this; a column beside a short plugin is not, and is
+ * stretched to it. Taller than COLUMN_WIDTH on purpose: the page lays itself out
+ * as a column because its window is taller than wide (`base.css`).
+ */
+const COLUMN_MIN_HEIGHT = 480;
+
 const validId = (value, pattern, maxLength) => typeof value === 'string'
   && value.length > 0 && value.length <= maxLength && pattern.test(value);
 const finite = (value) => typeof value === 'number' && Number.isFinite(value);
@@ -49,25 +73,58 @@ const keyOf = (chainId, instanceId) => `${chainId}/${instanceId}`;
 /**
  * Where the bar goes, in DIPs.
  *
- * Under the frame, as wide as the frame. When the screen ends first, the bar
- * stops at the bottom of the work area and rides over the bottom of the plugin
- * rather than leaving the screen: a bar you cannot see is a Learn you cannot
- * arm. It never climbs over the caption, though -- that is what the person
- * drags the pair back up by.
+ * Under the frame, as wide as the frame, when the screen has room for it there.
+ * Otherwise beside the frame, as a column as tall as the frame: on the right, or
+ * on the left when that is where the room is (`besideFrame`). The bar covers
+ * the plugin only when neither fits: then it stops at the bottom of the work
+ * area and rides over the bottom of the plugin rather than leaving the screen,
+ * because a bar you cannot see is a Learn you cannot arm. It never climbs over
+ * the caption, though -- that is what the person drags the pair back up by.
  *
- * Only the height is held on screen. Dragged half off the left edge, the plugin
- * takes its bar with it, the way one window would.
+ * Under the frame, only the height is held on screen. Dragged half off the left
+ * edge, the plugin takes its bar with it, the way one window would.
  */
 function placeBar(frame, clientTop, workArea, height = BAR_HEIGHT) {
   const under = frame.y + frame.height;
-  const lowest = workArea.y + workArea.height - height;
-  const y = Math.max(Math.min(under, lowest), clientTop);
-  return {
+  const bottom = workArea.y + workArea.height;
+  const strip = (y) => ({
     x: Math.round(frame.x),
     y: Math.round(y),
     width: Math.max(1, Math.round(frame.width)),
     height
-  };
+  });
+  if (under + height <= bottom) return strip(under);
+  return besideFrame(frame, workArea) ?? strip(Math.max(bottom - height, clientTop));
+}
+
+/**
+ * A column beside the frame, or null when neither side has COLUMN_MIN_WIDTH.
+ *
+ * The right side first, where the eye goes after the plugin. Its top is the
+ * frame's top and its bottom the frame's bottom, held inside the work area, so
+ * the two read as one window sharing an edge.
+ */
+function besideFrame(frame, workArea) {
+  const roomRight = workArea.x + workArea.width - (frame.x + frame.width);
+  const roomLeft = frame.x - workArea.x;
+  let side;
+  let width;
+  if (roomRight >= COLUMN_WIDTH) [side, width] = ['right', COLUMN_WIDTH];
+  else if (roomLeft >= COLUMN_WIDTH) [side, width] = ['left', COLUMN_WIDTH];
+  else if (Math.max(roomRight, roomLeft) >= COLUMN_MIN_WIDTH) {
+    [side, width] = roomRight >= roomLeft ? ['right', roomRight] : ['left', roomLeft];
+  } else return null;
+
+  const top = workArea.y;
+  const bottom = workArea.y + workArea.height;
+  const shown = Math.min(frame.y + frame.height, bottom) - Math.max(frame.y, top);
+  const height = Math.min(workArea.height, Math.max(shown, COLUMN_MIN_HEIGHT));
+  const y = Math.max(top, Math.min(frame.y, bottom - height));
+  // Rounded away from the frame: at 150 % its edge falls between two DIPs, and
+  // the column must not take the half pixel on the plugin's side.
+  const columnWidth = Math.floor(width);
+  const x = side === 'right' ? Math.ceil(frame.x + frame.width) : Math.floor(frame.x - columnWidth);
+  return { x, y: Math.round(y), width: columnWidth, height: Math.round(height) };
 }
 
 const normalized = (value) => finite(value) && value >= 0 && value <= 1;
@@ -357,4 +414,7 @@ class BindingsBarWindows {
   }
 }
 
-module.exports = { BindingsBarWindows, placeBar, validAction, validValues, BAR_HEIGHT };
+module.exports = {
+  BindingsBarWindows, placeBar, validAction, validValues,
+  BAR_HEIGHT, COLUMN_WIDTH, COLUMN_MIN_WIDTH, COLUMN_MIN_HEIGHT
+};

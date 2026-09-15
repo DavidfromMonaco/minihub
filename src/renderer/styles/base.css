@@ -1407,6 +1407,9 @@ body {
 .bindings-bar-body { display:block; background:var(--bg-raised); }
 .bindings-bar {
   --bar-pad: 10px;
+  /* Read by bindingsBar.js too, which scales a faceplate to a narrow column. */
+  --faceplate-width: 520px;
+  --faceplate-zoom: .82;
   height: 100vh;
   padding: var(--bar-pad) 14px;
   display: grid;
@@ -1422,7 +1425,7 @@ body {
 /* Drawn at the width it was designed for and scaled as a whole. Given less
    width instead, its knobs, pads and labels kept their pixel sizes and ran into
    each other; scaled, they shrink together. .82 is what fits the 182 px bar. */
-.bindings-bar > .minilab-control-surface { zoom:.82; width:520px; min-width:0; max-width:none; min-height:0; border-radius:12px; }
+.bindings-bar > .minilab-control-surface { zoom:var(--faceplate-zoom); width:var(--faceplate-width); min-width:0; max-width:none; min-height:0; border-radius:12px; }
 .bindings-bar > .minilab-control-list { width:420px; height:100%; padding:8px 10px; gap:8px; overflow:auto; }
 /* A keyboard's name when several are drawn, read up the side of its faceplate. */
 .bindings-bar > .control-bindings-help:not(:first-child):has(+ [data-minilab-surface]) {
@@ -1434,6 +1437,41 @@ body {
 .bindings-bar > .control-learn-toolbar { grid-column:-2 / -1; grid-row:2; margin:0; padding:6px 8px; gap:8px; min-width:0; background:var(--bg-panel); }
 .bindings-bar > .control-learn-toolbar strong,
 .bindings-bar > .control-learn-toolbar .btn { white-space:nowrap; }
+/* Where the drawing is, in the toolbar's "Select a control …": on the left of it
+   in the strip, above it in the column. */
+.bindings-bar .bar-where-column { display:none; }
+
+/* The column: the bar beside the plugin rather than under it, when the screen
+   leaves no room under (bindingsBarWindows.js). Main makes that window taller
+   than wide and nothing else is, so the orientation is the switch -- no message
+   has to say which layout is on. The markup's own order reads down the column:
+   the help, each keyboard, the Learn toolbar. The faceplate takes the column's
+   width, never more than in the strip; --bar-zoom is set by the page. */
+@media (orientation: portrait) {
+  .bindings-bar {
+    --bar-pad: 12px;
+    padding: var(--bar-pad);
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: none;
+    grid-auto-rows: max-content;
+    align-content: start;
+    row-gap: 10px;
+    border-top: 0;
+    border-inline: 1px solid var(--border-strong);
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+  .bindings-bar > * { grid-row: auto; }
+  .bindings-bar > .minilab-control-surface { zoom:var(--bar-zoom, var(--faceplate-zoom)); }
+  .bindings-bar > .minilab-control-list { width:auto; height:auto; }
+  .bindings-bar > .control-bindings-help:not(:first-child):has(+ [data-minilab-surface]) {
+    writing-mode:horizontal-tb; transform:none; text-align:left;
+  }
+  .bindings-bar > .control-bindings-help:first-child { grid-column:1; grid-row:auto; overflow:visible; }
+  .bindings-bar > .control-learn-toolbar { grid-column:1; grid-row:auto; flex-wrap:wrap; }
+  .bindings-bar .bar-where-strip { display:none; }
+  .bindings-bar .bar-where-column { display:inline; }
+}
 
 /* A control bound to a parameter, in the bindings bar: it shows where that
    parameter stands and a vertical drag moves it. --ml-value (0 to 1) is set by

@@ -9,7 +9,8 @@ the bindings interface sits under the plugin editor and moves with it, and
 has been seen docked under a real plugin window, learns a knob with no cable in
 the Patch Bay, and its bound knobs move their parameters under the mouse. On the
 author's go, the panel has left the VST node's editor: the bar is the one place a
-knob is learned. Left: step 8, the documents.
+knob is learned. A plugin too tall to leave room under it gets the bar beside it
+(see the log). Left: the bar's invisible borders, then step 8, the documents.
 
 ## Context
 
@@ -173,6 +174,54 @@ building rather than in advance:
   **seen 2026-09-14**; the first not met (see the log).
 
 ## Log
+
+2026-09-15 — The bar stands beside a plugin that leaves no room under it. The
+author, testing Learn with Analog Lab V: the mouse could not reach the plugin's
+controls, "because the controller window is in front".
+
+- **What it was.** Analog Lab V's view is 1280 x 886, its frame 918 px tall, and
+  the author's screen 1080 px with the taskbar hidden. 918 + 182 is more than
+  1080, so at every position the rule settled on 2026-09-14 -- stop at the bottom
+  of the work area and ride over the plugin -- put the bar over Analog Lab's
+  keyboard and the row of knobs above it, stacked above the frame and taking the
+  clicks. The startup log agreed: in the 42 s Learn was armed on Analog Lab, the
+  plugin reported no parameter touched.
+- **The rule now** (`placeBar`, `besideFrame`): under the frame when the work area
+  has room for it there; otherwise a column beside the frame and as tall as it, on
+  the right, or on the left when that is where the room is. 456 DIPs wide, and
+  narrower down to 300 when neither side has 456, the page scaling the faceplate
+  to fit (`--bar-zoom`). Over the plugin, as before, only when neither side has
+  300. Analog Lab V on 1920 px always leaves 319 on one side.
+- **The page reads its layout from its own window**: taller than wide is a column
+  (`@media (orientation: portrait)` in `base.css`), and main never makes a column
+  shorter than 480 nor wider than 456, so no message has to say which layout is
+  on. The toolbar's "Select a control on the left", the author's wording of the
+  same day, is true only in the strip: both "on the left" and "above" are in the
+  markup, and the stylesheet shows the true one.
+
+Checks: `npm test` (1059), `npm run check` (15 rules), `npm run sync:dist`. Four
+tests in `test/bindingsBarWindows.test.cjs` fail against the previous placement
+-- tried; the words are locked to the stylesheet in `test/bindingsBarHost.test.mjs`.
+
+Seen live, in an untitled project made for it (Analog Lab V in VST 1, Dexed in
+VST 2), the frame moved with `SetWindowPos` and the bar's client area read back:
+with the frame's visible edge at x 267, the column at (1549, 155) 371 x 918,
+against a frame ending at 1549, drawn with the faceplate scaled down, the help,
+and "Select a control above"; at x 107, (1389, 155) 456 x 918; at x 600,
+(144, 155) 456 x 918 on the left; with the frame pushed up to y -30, the strip at
+(107, 888) 1282 x 182. In that strip the author then learned F1 onto Analog
+Lab V's Reverb Volume -- "it works" -- and the channel showed the cable the
+capture plugged, `minilab-3` `control-f1` to `vst-001` `ctrl-in`. **Not seen with
+its contents**: the 456-wide column, right or left. A full-screen window in front
+of MiniHub stopped Chromium repainting it, and those captures came out empty.
+
+Found while checking, not changed yet: the bar's window is 8 px larger than what
+it draws, on its left, right and bottom -- the invisible frame borders Windows
+gives a window with a caption, which Electron keeps on a frameless one unless
+`thickFrame: false` -- and the bar answers `HTCLIENT` there. Under the plugin
+those pixels lie outside the frame; in a column they lie over the plugin's edge
+and take its clicks. A probe window with `thickFrame: false` has a window
+rectangle equal to its client area.
 
 2026-09-15 — The Learn toolbar's text with nothing selected, asked by the
 author. "Choose an observable physical control above" was written for the VST

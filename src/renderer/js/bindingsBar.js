@@ -51,6 +51,22 @@ function draw(html) {
   paintValues();
 }
 
+/**
+ * The faceplate's scale when the bar stands beside the plugin as a column
+ * (base.css reads --bar-zoom only then): the column's width, never more than the
+ * strip's scale. Main narrows a column when the screen has less room beside the
+ * plugin, and a faceplate drawn at the strip's scale would be cut on the right.
+ */
+function fitFaceplates() {
+  const style = globalThis.getComputedStyle?.(root);
+  if (!style) return;
+  const drawnWidth = parseFloat(style.getPropertyValue('--faceplate-width'));
+  const stripZoom = parseFloat(style.getPropertyValue('--faceplate-zoom'));
+  const room = root.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+  const zoom = Math.min(stripZoom, room / drawnWidth);
+  if (Number.isFinite(zoom) && zoom > 0) root.style.setProperty('--bar-zoom', zoom.toFixed(4));
+}
+
 /** Put every known position on its control; a control with none is not movable. */
 function paintValues() {
   for (const control of root.querySelectorAll('[data-minilab-control-id]')) {
@@ -150,5 +166,9 @@ root.addEventListener('click', (event) => {
   const action = controlBindingActionOf(event.target);
   if (action) api.action(action);
 });
+
+// Main resizes the window as the plugin moves: under it, beside it, narrower.
+globalThis.addEventListener?.('resize', fitFaceplates);
+fitFaceplates();
 
 api.ready();

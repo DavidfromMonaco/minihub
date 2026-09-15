@@ -29,9 +29,16 @@ Patch Bay, Clear unplugs it. A bound knob or fader shows where its parameter
 stands and moves it under the mouse; a binding that does nothing for now (cable
 pulled out, plugin not running) is drawn dashed. Since 2026-09-15 the bar is the
 only place a knob is learned: the VST node's page has no bindings panel any more.
-Seen with Dexed. Left: the documents, step 8 of the plan.
-- Not seen yet: a capture from the bar, and the cable it plugs (it needs a
-  gesture in the plugin).
+A plugin too tall to leave room under the bar (Analog Lab V on the author's
+1080-pixel screen) gets it beside the window, as a column, instead of over its
+controls. Seen with Dexed and Analog Lab V: the author learned F1 from the bar
+onto Analog Lab V's Reverb Volume, and the capture plugged its cable. Left: the
+documents, step 8 of the plan.
+- To change: the bar's window takes clicks on 8 invisible pixels left, right and
+  below what it draws; in a column they lie over the plugin's edge. Probed:
+  `thickFrame: false` removes them. Waits for MiniHub to be closed.
+- Not seen yet: the column's contents at its full width, right or left (the
+  captures came out empty behind a full-screen window).
 - Not seen yet: the drawn knob following the plugin's own knob, or the MiniLab's.
 Plan: [plans/active/bindings-bar-docked.md](plans/active/bindings-bar-docked.md).
 

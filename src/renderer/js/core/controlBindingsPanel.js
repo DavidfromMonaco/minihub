@@ -65,6 +65,10 @@ export function renderControlBindings(instance, hub, selectedControlId = null) {
   // With several drawn, none of them is "the" one and the generic word is right.
   const nodeName = (nodeId) => hub.network?.getNode?.(nodeId)?.name || nodeId;
   const device = drawnNodes.length === 1 ? nodeName(drawnNodes[0]) : controllerName(hub.network);
+  // Where to select one, with nothing selected. The drawing is on the left of
+  // the toolbar when the bar lies under the plugin, and above it when the bar
+  // stands beside the plugin; the bar's stylesheet shows the one that is true.
+  const where = '<span class="bar-where-strip">on the left</span><span class="bar-where-column">above</span>';
   // The way out of this panel when the drawing is not the user's keyboard. It
   // used to be a dead end: the controls shown here come from the loaded profile,
   // and nothing on this page said where a profile is chosen. The device's own
@@ -90,7 +94,7 @@ export function renderControlBindings(instance, hub, selectedControlId = null) {
       })).join('')}
     <div class="control-learn-toolbar" data-selected-source-control-id="${selected?.id || ''}">
       <strong>${selected?.label || 'Select a control'}</strong>
-      <span class="control-binding-target">${escapeHtml(selected ? target : 'on the left')}</span>
+      <span class="control-binding-target">${selected ? escapeHtml(target) : where}</span>
       <span class="spacer"></span>
       <button class="btn primary" data-control-action="${isPending ? 'cancel' : 'learn'}" data-source-control-id="${selected?.id || ''}"
         ${selected ? '' : 'disabled'}>${isPending ? 'Cancel Learning' : 'Arm Learning'}</button>

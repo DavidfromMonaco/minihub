@@ -9,7 +9,9 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { BindingsBarWindows, placeBar, validAction, validValues, BAR_HEIGHT } = require('../src/main/bindingsBarWindows');
+const {
+  BindingsBarWindows, placeBar, validAction, validValues, BAR_HEIGHT, COLUMN_WIDTH, COLUMN_MIN_HEIGHT
+} = require('../src/main/bindingsBarWindows');
 
 let nextWebContentsId = 100;
 class FakeWebContents {
@@ -133,17 +135,57 @@ test('physical pixels from the engine are converted before the bar is placed', a
   assert.deepEqual(window.bounds, { x: 200, y: 460, width: 1424, height: BAR_HEIGHT });
 });
 
-test('with no room under the frame the bar stops at the bottom of the screen, never over the caption', () => {
+test('with no room under the frame, the bar stands beside it as a column as tall as the frame', () => {
+  // Analog Lab V on the author's screen, 1920 x 1080 with the taskbar hidden: its
+  // frame is 918 px tall, so there is no position with 182 px under it. Docked
+  // under anyway, the bar covered the plugin's bottom and took its clicks.
+  const work = { x: 0, y: 0, width: 1920, height: 1080 };
+  const analogLab = { x: 107, y: 40, width: 1282, height: 918 };
+  assert.deepEqual(placeBar(analogLab, 71, work), { x: 1389, y: 40, width: COLUMN_WIDTH, height: 918 });
+  // Near the right edge, the left side is where the room is.
+  assert.deepEqual(placeBar({ ...analogLab, x: 600 }, 71, work),
+    { x: 600 - COLUMN_WIDTH, y: 40, width: COLUMN_WIDTH, height: 918 });
+});
+
+test('with less room than a column on either side, the column narrows rather than covering the plugin', () => {
+  const work = { x: 0, y: 0, width: 1920, height: 1080 };
+  // Centred, Analog Lab leaves 319 px on each side: 319 on the right.
+  assert.deepEqual(placeBar({ x: 319, y: 40, width: 1282, height: 918 }, 71, work),
+    { x: 1601, y: 40, width: 319, height: 918 });
+  // 340 on the left and 298 on the right: the left.
+  assert.deepEqual(placeBar({ x: 340, y: 40, width: 1282, height: 918 }, 71, work),
+    { x: 0, y: 40, width: 340, height: 918 });
+});
+
+test('a column beside a short plugin low on the screen is stretched to hold the panel, on screen', () => {
+  const work = { x: 0, y: 0, width: 1920, height: 1080 };
+  // Dexed dragged down to y 800: 280 of its 706 px are on screen.
+  const column = placeBar({ x: 100, y: 800, width: 868, height: 706 }, 831, work);
+  assert.deepEqual(column, { x: 968, y: 600, width: COLUMN_WIDTH, height: COLUMN_MIN_HEIGHT });
+  assert.ok(column.height > column.width, 'taller than wide: the page reads its layout from that');
+});
+
+test('with room neither under nor beside, the bar rides over the bottom of the plugin, never over the caption', () => {
   const work = { x: 0, y: 0, width: 1920, height: 1040 };
   // Room under: directly below.
   assert.equal(placeBar({ x: 0, y: 0, width: 1400, height: 850 }, 31, work).y, 850);
-  // No room: the bar rides over the bottom of the plugin instead of leaving the screen.
-  assert.equal(placeBar({ x: 0, y: 100, width: 1400, height: 893 }, 131, work).y, 1040 - BAR_HEIGHT);
+  // Too wide for a column beside it: the bar rides over the bottom of the plugin
+  // instead of leaving the screen.
+  assert.deepEqual(placeBar({ x: 0, y: 100, width: 1700, height: 893 }, 131, work),
+    { x: 0, y: 1040 - BAR_HEIGHT, width: 1700, height: BAR_HEIGHT });
   // A frame dragged almost off the bottom: the bar stays below the caption, off
   // screen with its plugin, rather than covering the title bar it is dragged back by.
-  assert.equal(placeBar({ x: 0, y: 1000, width: 1400, height: 893 }, 1031, work).y, 1031);
+  assert.equal(placeBar({ x: 0, y: 1000, width: 1700, height: 893 }, 1031, work).y, 1031);
   // Horizontally it follows the frame wherever it goes.
   assert.equal(placeBar({ x: -600, y: 0, width: 1400, height: 400 }, 31, work).x, -600);
+});
+
+test('a column is placed in DIPs too', async () => {
+  // At 150 % the fake work area is 1280 x 680 DIPs. A frame of 1050 x 900
+  // physical pixels at (90, 60) is 700 x 600 DIPs at (60, 40): 182 under it
+  // would end at 822, and there are 520 DIPs on its right.
+  const window = await drawnBar(rig({ scale: 1.5 }), { x: 90, y: 60, width: 1050, height: 900, clientY: 107 });
+  assert.deepEqual(window.bounds, { x: 760, y: 40, width: COLUMN_WIDTH, height: 600 });
 });
 
 test('a frame that moves takes its bar along, and a click on it restacks the bar', async () => {

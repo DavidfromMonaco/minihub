@@ -76,6 +76,28 @@ test('a bar main asks for is drawn with the Learn panel of its node', async () =
   assert.match(drawn.html, /data-control-action="learn"/, 'and the Learn toolbar');
 });
 
+test('with nothing selected, the toolbar says where the drawing is, under the plugin or beside it', async () => {
+  // Under the plugin the faceplate is on the left of the toolbar; beside it, in
+  // a column, it is above. Both words are in the markup and base.css shows the
+  // true one: a class renamed on either side would show both or neither, and
+  // nothing would say so.
+  const { api, hub, node, plugin } = await makeRig();
+  installBindingsBarHost(hub, api);
+  api.want({ chainId: node.id, instanceId: plugin.id });
+  await tick();
+  const html = api.renders.at(-1).html;
+  assert.match(html, /<span class="bar-where-strip">on the left<\/span>/);
+  assert.match(html, /<span class="bar-where-column">above<\/span>/);
+
+  const css = fs.readFileSync(new URL('../src/renderer/styles/base.css', import.meta.url), 'utf8');
+  const start = css.indexOf('@media (orientation: portrait)');
+  assert.ok(start > 0, 'the column layout');
+  const column = css.slice(start, start + css.slice(start).search(/\r?\n\}\r?\n/));
+  assert.match(css.slice(0, start), /\.bindings-bar \.bar-where-column \{ display:none; \}/, 'under the plugin: "on the left"');
+  assert.match(column, /\.bindings-bar \.bar-where-strip \{ display:none; \}/, 'beside it: "above"');
+  assert.match(column, /\.bindings-bar \.bar-where-column \{ display:inline; \}/);
+});
+
 test('a click in the bar is carried out here, and the bar is redrawn', async () => {
   const { api, hub, node, plugin } = await makeRig();
   installBindingsBarHost(hub, api);
