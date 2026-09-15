@@ -174,6 +174,12 @@ building rather than in advance:
 
 ## Log
 
+2026-09-15 — The Learn toolbar's text with nothing selected, asked by the
+author. "Choose an observable physical control above" was written for the VST
+node's page, where the faceplate sat above the toolbar; in the bar the faceplate
+is on the left, and the line was cut to "Choose an o…". It reads "on the left"
+now, after the bold "Select a control". Seen live under Dexed, whole.
+
 2026-09-15 — Ctrl+Z and bindings, fixed on the author's word, with the drawing
 of a binding whose plugin is not running. Both had been found the same day.
 

@@ -90,7 +90,7 @@ export function renderControlBindings(instance, hub, selectedControlId = null) {
       })).join('')}
     <div class="control-learn-toolbar" data-selected-source-control-id="${selected?.id || ''}">
       <strong>${selected?.label || 'Select a control'}</strong>
-      <span class="control-binding-target">${escapeHtml(selected ? target : 'Choose an observable physical control above')}</span>
+      <span class="control-binding-target">${escapeHtml(selected ? target : 'on the left')}</span>
       <span class="spacer"></span>
       <button class="btn primary" data-control-action="${isPending ? 'cancel' : 'learn'}" data-source-control-id="${selected?.id || ''}"
         ${selected ? '' : 'disabled'}>${isPending ? 'Cancel Learning' : 'Arm Learning'}</button>
