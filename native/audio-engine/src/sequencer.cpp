@@ -368,8 +368,9 @@ void SequencerEngine::processMidi(int count,Transport& transport,MidiExecutionPl
 {
     const bool exportContext=&transport==&offlineExportTransport_;auto* plan=acquirePlan(exportContext);if(!plan)return;
     const bool cleanup=(exportContext?exportMidiCleanupPending_:midiCleanupPending_).exchange(false,std::memory_order_acq_rel);
+    const bool released=!exportContext&&midiReleasePending_.exchange(false,std::memory_order_acq_rel);
     const bool playing=transport.processingPlaying()&&transport.playing();
-    if(!playing&&!cleanup){releasePlan(exportContext);return;}
+    if(!playing&&!cleanup&&!released){releasePlan(exportContext);return;}
     const double start=transport.ppqPosition(),qps=transport.quarterNotesPerSample();const bool chase=playing&&(exportContext?needsExportChase_:needsChase_).exchange(false);
     const bool sourceEnded=exportContext&&start>=exportSourceEndPpq();
     const bool sourceStopsThisBlock = playing&&exportContext
@@ -382,7 +383,7 @@ void SequencerEngine::processMidi(int count,Transport& transport,MidiExecutionPl
     for(auto& track:plan->tracks){if(track.type!="midi"||track.outputId.empty())continue;auto& buffer=track.midiScratch;buffer.clear();
         const auto destinationEpoch=track.destination?track.destination->midiEpoch():0;
         for(auto& hop:track.thru)hop.blockEpoch=hop.chain?hop.chain->midiEpoch():0;
-        if(cleanup){for(int channel=1;channel<=16;++channel){for(int pitch=0;pitch<128;++pitch){auto& held=track.activeNotes[(size_t)((channel-1)*128+pitch)];while(held>0){buffer.addEvent(juce::MidiMessage::noteOff(channel,pitch),0);--held;}}buffer.addEvent(juce::MidiMessage::allNotesOff(channel),0);buffer.addEvent(juce::MidiMessage::allSoundOff(channel),0);}}
+        if(cleanup||released){for(int channel=1;channel<=16;++channel){for(int pitch=0;pitch<128;++pitch){auto& held=track.activeNotes[(size_t)((channel-1)*128+pitch)];while(held>0){buffer.addEvent(juce::MidiMessage::noteOff(channel,pitch),0);--held;}}if(cleanup){buffer.addEvent(juce::MidiMessage::allNotesOff(channel),0);buffer.addEvent(juce::MidiMessage::allSoundOff(channel),0);}}}
         const bool muted=track.runtime&&track.runtime->muted.load(std::memory_order_acquire);
         int activeClips=0;
         if(playing&&!muted){for(const auto& clip:track.clips){bool active=false;for(int sample=0;sample<count&&!active;++sample){const double q=transport.ppqAtSample(sample);active=q>=clip.startPpq&&q<clip.startPpq+clip.lengthPpq;}if(active)++activeClips;}
@@ -391,7 +392,7 @@ void SequencerEngine::processMidi(int count,Transport& transport,MidiExecutionPl
         if(track.runtime)track.runtime->activeClips.store(activeClips,std::memory_order_release);
         if(sourceStopsThisBlock)for(int channel=1;channel<=16;++channel){buffer.addEvent(juce::MidiMessage::allNotesOff(channel),sourceStopOffset);buffer.addEvent(juce::MidiMessage::allSoundOff(channel),sourceStopOffset);}
         if(buffer.isEmpty())continue;
-        const bool mayDispatch=cleanup||transport.playing();if(!mayDispatch)continue;
+        const bool mayDispatch=cleanup||released||transport.playing();if(!mayDispatch)continue;
         bool hardwareSent=false;
         if(track.midiOutputKind==Track::MidiOutputKind::physical){if(hardware)hardware->sendBlock(buffer,callbackStartMs,sampleRate_);hardwareSent=true;}else if(track.midiOutputKind==Track::MidiOutputKind::processor){if(midiPlan)midiPlan->pushInputBuffer(track.outputId,buffer);}else if(track.destination)track.destination->pushMidi(buffer,destinationEpoch);
         // The same block, at the same sample offsets, to every node in the
@@ -495,6 +496,11 @@ juce::Array<juce::var> SequencerEngine::finishRecording(Transport& transport)
 void SequencerEngine::panic() noexcept
 {
     needsChase_.store(true);midiCleanupPending_.store(true,std::memory_order_release);auto* plan=activePlan_.load(std::memory_order_acquire);if(!plan)return;for(const auto& track:plan->tracks)panicDestinations(track);
+}
+
+void SequencerEngine::release() noexcept
+{
+    needsChase_.store(true);midiReleasePending_.store(true,std::memory_order_release);
 }
 
 void SequencerEngine::panicExport() noexcept

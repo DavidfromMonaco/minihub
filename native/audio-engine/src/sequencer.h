@@ -60,6 +60,10 @@ public:
                          double offsetMs, Transport&);
     bool recording() const noexcept { return recording_.load(); }
     void panic() noexcept;
+    // A seek: every note this sequencer sounds gets its Note Off and rings out,
+    // and the new position is chased. Unlike panic(), no destination is
+    // silenced and no All Sound Off is sent.
+    void release() noexcept;
     void panicExport() noexcept;
     bool consumeExportCleanupRequest() noexcept
     {
@@ -233,7 +237,7 @@ private:
     std::atomic<Plan*> exportPlan_{nullptr};
     std::unique_ptr<Plan> preparedExportPlan_;
     std::atomic<bool> needsChase_{true}, needsExportChase_{true}, recording_{false},
-                      midiCleanupPending_{false}, exportMidiCleanupPending_{false};
+                      midiCleanupPending_{false}, exportMidiCleanupPending_{false}, midiReleasePending_{false};
     std::vector<MidiTake> midiTakes_;      // message thread only
     std::vector<AudioTake> audioTakes_;    // message thread only
 

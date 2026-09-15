@@ -19,11 +19,11 @@ and the sequence surviving a save and a reload.
 - Not seen yet: the author's own sequences; Codex building Orbites with the
   requests; Record through a cable in the application (the test rig covers it,
   guards and refusal message included).
-- Not heard yet: Orbites' pad no longer cutting while One Ring changes the
-  arpeggiator. A value change used to rebuild the MIDI plan and panic every
-  chain; since 2026-09-15 it reaches the running arpeggiator instead. Seen in
-  the log: 12 changes in 10 s of One Ring, `rebuilt=false` for all, no rebuild.
-  Reported by Codex as still faintly there with One Ring suspended: not looked at.
+- Not heard yet: a seek no longer cutting the sound — One Ring's SEEK 0 at the
+  end of its cycle, as Metamorphose first had it. Since 2026-09-15 a seek
+  releases the sequencer's and the arpeggiators' notes instead of putting All
+  Sound Off on every chain. Seen in the application: play, seek, stop, no error.
+  Heard by the author the same day: the arpeggiator no longer cuts the pad.
 - Left for the author to decide: the Arpeggiator, Mixer and Morpher pages do not
   redraw when a command changes them; a Sequencer track solo and an arpeggiator
   hold do not exist to be commanded.
@@ -43,6 +43,8 @@ the author tests).
 - Optional: an MCP wrapper, so Codex calls requests as tools.
 - Gap: `set-binding` plugs no cable (Learn does, since 2026-09-14) and does not
   redraw an open bindings bar.
+- Gap: the sequencer's Loop, From and To cannot be set through the channel,
+  nor read in `describe` (reported by Codex for Metamorphose).
 
 **Learning a knob in one window: the bindings bar docked under the plugin
 editor** — 7 of 8 steps. The bar opens under every plugin window, follows it,

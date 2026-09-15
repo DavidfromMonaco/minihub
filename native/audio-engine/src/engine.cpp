@@ -1030,6 +1030,16 @@ void Engine::cmdSelectMidiOutput(const juce::var& msg)
     juce::String error;if(!physicalMidiOutput_.selectDevice(identifier,name,error)){sendError("midi-output-open",error);sendMidiOutputState();return;}sendMidiOutputState();
 }
 
+void Engine::releaseAllMidi()
+{
+    // A seek is part of playing: One Ring sends SEEK 0 to start its cycle over.
+    // The notes the sequencer and the arpeggiators sound get their Note Off and
+    // ring out. The panic a seek used to trigger put All Sound Off on every
+    // chain, and cut every voice and every release at the loop point.
+    sequencer_.release();
+    midiReleasePending_.store(true,std::memory_order_release);
+}
+
 void Engine::panicAllMidi()
 {
     sequencer_.panic();
@@ -1680,7 +1690,7 @@ void Engine::cmdSetTransport(const juce::var& msg)
         preCountActive_.store(false,std::memory_order_release);
         preCountComplete_.store(false,std::memory_order_release);
     }
-    if(seeking){if(sequencer_.recording())for(const auto& event:sequencer_.finishRecording(transport_))ipc_.send(event);transport_.seekPpq(std::max(0.0,(double)msg["seekPpq"]));panicAllMidi();}
+    if(seeking){if(sequencer_.recording())for(const auto& event:sequencer_.finishRecording(transport_))ipc_.send(event);transport_.seekPpq(std::max(0.0,(double)msg["seekPpq"]));releaseAllMidi();}
     if (msg["playing"].isBool()) {const bool playing=static_cast<bool>(msg["playing"]);if(!playing&&wasPlaying&&sequencer_.recording())for(const auto& event:sequencer_.finishRecording(transport_))ipc_.send(event);transport_.setPlaying(playing);if(!playing)panicAllMidi();}
     cmdGetTransport(msg);
 }
@@ -2642,6 +2652,7 @@ void Engine::processEngine2Block(const float* const* inputChannelData,
     AudioExecutionPlan* plan=nullptr;
     MidiExecutionPlan* midiPlan=nullptr;
     do { midiPlan=activeMidiPlan_.load(std::memory_order_acquire); midiPlanHazard_.store(midiPlan,std::memory_order_release); } while(midiPlan!=activeMidiPlan_.load(std::memory_order_acquire));
+    if(midiReleasePending_.exchange(false,std::memory_order_acq_rel)&&midiPlan)midiPlan->releaseAll();
     if(midiPanicPending_.exchange(false,std::memory_order_acq_rel)){
         // Mutable MidiExecutionPlan/Arpeggiator state is audio-thread-owned.
         // Hardware was already silenced by the message-thread request above.

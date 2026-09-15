@@ -40,6 +40,9 @@ public:
                  double sampleRate = 48000,
                  const juce::MidiBuffer* scheduledInput = nullptr) noexcept;
     void panic(const std::vector<MidiDestination>&, MidiOutputSink* = nullptr) noexcept;
+    // From the callback, before process(): a seek lets go of the notes this
+    // arpeggiator sounds, and waits for the next step on the new position.
+    void release() noexcept { releasePending_=true; }
     static int degreeToMidi(int root, int scale, int degree, int octave, int baseOctave=4) noexcept;
     static int semitoneOffsetToMidi(int root, int semitoneOffset, int baseOctave=4) noexcept;
     static double stepQuarterNotes(int rate) noexcept;
@@ -59,7 +62,7 @@ private:
     void adoptPendingConfig() noexcept;
     ArpConfig config_; juce::AbstractFifo fifo_{256}; std::array<Input,256> input_{};
     std::array<int,128> held_{}; int heldCount_=0; std::array<Active,64> active_{};
-    int64_t lastStep_=std::numeric_limits<int64_t>::min(); bool wasPlaying_=false; uint32_t random_=0;
+    int64_t lastStep_=std::numeric_limits<int64_t>::min(); bool wasPlaying_=false, releasePending_=false; uint32_t random_=0;
     juce::MidiBuffer output_;
     // Three slots and one index exchanged atomically: the writer never waits,
     // and the callback reads the latest values, never a half-written copy.
@@ -84,6 +87,7 @@ public:
     bool pushInput(const std::string& nodeId, const juce::MidiMessage&) noexcept;
     bool pushInputBuffer(const std::string& nodeId, const juce::MidiBuffer&) noexcept;
     void panicAll(MidiOutputSink* = nullptr) noexcept;
+    void releaseAll() noexcept;
     const std::vector<Node>& nodes() const noexcept { return nodes_; }
 private: std::vector<Node> nodes_;
 };

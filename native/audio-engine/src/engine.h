@@ -153,6 +153,7 @@ private:
     void sendDeviceState();
     void sendMidiOutputState();
     void panicAllMidi();
+    void releaseAllMidi();
     void clearAudioNetwork();
     void publishAudioPlan(std::unique_ptr<AudioExecutionPlan> plan);
     void republishActiveAudioNetwork();
@@ -232,6 +233,7 @@ private:
     // Message-thread commands request panic through this gate. Mutable MIDI
     // plan/Arpeggiator state is consumed exclusively by the audio callback.
     std::atomic<bool> midiPanicPending_ { false };
+    std::atomic<bool> midiReleasePending_ { false };
     int timingDiagnosticTicks_ = 0;
     // Commands in this list describe the state *after* the current bounce.
     // Keeping them off the live native network makes one master export consume

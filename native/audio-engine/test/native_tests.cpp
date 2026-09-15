@@ -866,9 +866,42 @@ void testArpeggiatorTakesValuesWhilePlaying()
     const auto pitched=play(2);
     expect(pitched.size()==4&&std::all_of(pitched.begin(),pitched.end(),[](int note){return note==72;}),"the new mode and step pitch are taken while the notes stay held");
     expect(!panicked&&plan->nodes()[0].arp->heldCountForTesting()==2,"no value change panicked the destination or dropped a held note");
+    // A seek lets go of what the arpeggiator sounds: its Note Off, and no All
+    // Sound Off that would cut every voice and release on the chain.
+    const auto epoch=target.midiEpoch();
+    plan->process(1000,transport);juce::MidiBuffer sounding;target.pullMidi(sounding,1000);transport.advance(1000);transport.beginBlock();
+    plan->releaseAll();plan->process(512,transport);juce::MidiBuffer seeking;target.pullMidi(seeking,512);
+    bool releasedNote=false,silenced=false;for(const auto& e:seeking){const auto m=e.getMessage();releasedNote|=m.isNoteOff();silenced|=m.isAllNotesOff()||m.isAllSoundOff();}
+    expect(releasedNote&&!silenced&&target.midiEpoch()==epoch,"a seek releases the arpeggiator's sounding note without silencing its chain");
     transport.setPlaying(false);transport.beginBlock();plan->process(512,transport);juce::MidiBuffer stopped;target.pullMidi(stopped,512);
     bool released=false;for(const auto& e:stopped)released|=e.getMessage().isNoteOff()||e.getMessage().isAllNotesOff();
     expect(released,"Stop still releases what the arpeggiator played after taking values");
+}
+
+void testSeekReleasesWithoutSilencing()
+{
+    // One Ring's SEEK 0 at the end of its cycle, or a click on the ruler while
+    // playing. The note the sequencer sounds gets its Note Off and rings out,
+    // the new position is chased, and no chain hears All Sound Off. A panic --
+    // Stop -- still silences.
+    mlh::SequencerEngine sequencer;sequencer.prepare(48000,1024);
+    mlh::Chain destination("vst-seek");destination.setMidiEnabled(true);
+    auto track=midiTrack("track-seek","vst-seek");mlh::setProp(track,"outputKind","vst");
+    juce::Array<juce::var> notes;notes.add(midiNote(0,3.5,60));replaceMidiNotes(track,notes);
+    juce::Array<juce::var> tracks;tracks.add(track);juce::Array<juce::var> info;std::string error;
+    expect(sequencer.sync(makeSequencerProject(tracks),[&](const std::string& id){return id=="vst-seek"?&destination:nullptr;},48000,1024,info,error),"a one-note track compiles");
+    mlh::Transport transport;transport.setSampleRate(48000);transport.setLoop(false,0,4);transport.seekPpq(0);transport.setPlaying(true);transport.beginBlock();
+    const auto block=[&](){sequencer.processMidi(1024,transport,nullptr);juce::MidiBuffer midi;destination.pullMidi(midi,1024);std::vector<juce::MidiMessage> messages;for(const auto& e:midi)messages.push_back(e.getMessage());transport.advance(1024);transport.beginBlock();return messages;};
+    block();
+    const auto epoch=destination.midiEpoch();
+    sequencer.release();transport.seekPpq(1);transport.beginBlock();
+    const auto seeked=block();
+    const bool silenced=std::any_of(seeked.begin(),seeked.end(),[](const juce::MidiMessage& m){return m.isAllNotesOff()||m.isAllSoundOff();});
+    expect(seeked.size()==2&&seeked[0].isNoteOff()&&seeked[1].isNoteOn()&&seeked[1].getNoteNumber()==60,"a seek releases the sounding note, then chases it at the new position");
+    expect(!silenced&&destination.midiEpoch()==epoch,"a seek sends no All Sound Off and leaves the chain's epoch alone");
+    sequencer.panic();transport.beginBlock();
+    const auto stopped=block();
+    expect(std::any_of(stopped.begin(),stopped.end(),[](const juce::MidiMessage& m){return m.isAllSoundOff();}),"a panic still sends All Sound Off");
 }
 
 void testSequencerMidiThruPlaysTheSeries()
@@ -1638,6 +1671,8 @@ int main(int argc, char** argv)
     testSequencerMidiThruPlaysTheSeries();
     std::cerr << "[core] arp-values-while-playing\n";
     testArpeggiatorTakesValuesWhilePlaying();
+    std::cerr << "[core] seek-releases\n";
+    testSeekReleasesWithoutSilencing();
     std::cerr << "[core] audio-input-routing\n";
     testSequencerAudioInputRoutingAuthority();
     std::cerr << "[core] sequencer-sum-gain\n";

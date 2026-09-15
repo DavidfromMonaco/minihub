@@ -610,6 +610,12 @@ rejeter un Note On post-Stop déjà en vol.
 explicites sont émis depuis un registre `activeNotes_` **avant** CC123/CC120,
 pour que les instruments qui ignorent l'un ou l'autre CC s'arrêtent quand même.
 
+A seek is not a panic. `Engine::releaseAllMidi` gives the notes the sequencer
+and the arpeggiators sound their Note Off, lets them ring out, and the sequencer
+chases the new position. One Ring's SEEK 0 at the end of its cycle used to put
+All Sound Off on every chain and cut every voice at the loop point. Stop, a
+sequencer sync and a new MIDI wiring still panic.
+
 ### `MidiExecutionPlan` — arpégiateurs et destinations
 
 [midi_graph.h](native/audio-engine/src/midi_graph.h). `ArpeggiatorRuntime`

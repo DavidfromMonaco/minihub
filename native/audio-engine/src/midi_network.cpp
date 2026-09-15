@@ -32,8 +32,9 @@ void ArpeggiatorRuntime::panic(const std::vector<MidiDestination>& dest,MidiOutp
 void ArpeggiatorRuntime::process(int samples,Transport& t,std::vector<MidiDestination>& dest,MidiOutputSink* hardware,double startMs,double sampleRate,const juce::MidiBuffer* scheduledInput) noexcept {
  adoptPendingConfig();for(auto& d:dest)if(d.chain)d.blockEpoch=d.chain->midiEpoch();
  output_.clear();const int available=fifo_.getNumReady();for(int k=0;k<available;++k){int a,b,c,d;fifo_.prepareToRead(1,a,b,c,d);if(b+d==0)break;auto&e=input_[(size_t)(b?a:c)];applyInput(juce::MidiMessage(e.bytes,e.size,0));fifo_.finishedRead(1);}
- if(!t.processingPlaying()||!t.playing()){if(wasPlaying_)panic(dest,hardware);wasPlaying_=false;lastStep_=std::numeric_limits<int64_t>::min();return;} wasPlaying_=true;
+ if(!t.processingPlaying()||!t.playing()){if(wasPlaying_)panic(dest,hardware);wasPlaying_=false;releasePending_=false;lastStep_=std::numeric_limits<int64_t>::min();return;} wasPlaying_=true;
  const double delta=t.quarterNotesPerSample(),dur=stepQuarterNotes(config_.rate);if(samples<=0||delta<=0)return;
+ if(releasePending_){releasePending_=false;for(auto&a:active_)if(a.on){emit(juce::MidiMessage::noteOff(a.channel,a.note),0);a.on=false;}lastStep_=std::numeric_limits<int64_t>::min();}
  // Scheduled input is merged into the per-sample loop below rather than applied
  // up front: an event has to take effect at its own sample, not at the start of
  // the block. juce::MidiBuffer::Iterator is deprecated in JUCE 9 and its
@@ -60,6 +61,7 @@ void MidiExecutionPlan::process(int n,Transport&t,MidiOutputSink* hardware,doubl
 bool MidiExecutionPlan::pushInput(const std::string&id,const juce::MidiMessage&m) noexcept {for(auto&n:nodes_)if(n.id==id){n.arp->pushInput(m);return true;}return false;}
 bool MidiExecutionPlan::pushInputBuffer(const std::string&id,const juce::MidiBuffer&input) noexcept {for(auto&n:nodes_)if(n.id==id){n.scheduledInput.addEvents(input,0,-1,0);return true;}return false;}
 void MidiExecutionPlan::panicAll(MidiOutputSink* hardware) noexcept {for(auto&n:nodes_){n.scheduledInput.clear();n.arp->panic(n.destinations,hardware);}}
+void MidiExecutionPlan::releaseAll() noexcept {for(auto&n:nodes_)n.arp->release();}
 bool MidiExecutionPlan::sameWiring(const MidiNetworkSpec& a,const MidiNetworkSpec& b) noexcept {if(a.nodes.size()!=b.nodes.size())return false;for(size_t i=0;i<a.nodes.size();++i){const auto&x=a.nodes[i];const auto&y=b.nodes[i];if(x.id!=y.id||x.kind!=y.kind||x.destinations!=y.destinations)return false;}return true;}
 void MidiExecutionPlan::setValues(const MidiNetworkSpec& spec) noexcept {for(const auto&s:spec.nodes)for(auto&n:nodes_)if(n.id==s.id){n.arp->setConfig(s.arp);break;}}
 }
