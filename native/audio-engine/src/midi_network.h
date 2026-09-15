@@ -4,6 +4,7 @@
 #include "transport.h"
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cstdint>
 #include <functional>
 #include <limits>
@@ -30,6 +31,9 @@ struct MidiDestination {
 class ArpeggiatorRuntime {
 public:
     explicit ArpeggiatorRuntime(ArpConfig config);
+    // New values from the thread that owns the plan. The callback takes the
+    // newest at its next block and keeps the notes it holds and sounds.
+    void setConfig(const ArpConfig&) noexcept;
     void pushInput(const juce::MidiMessage&) noexcept;
     void process(int numSamples, Transport&, std::vector<MidiDestination>&,
                  MidiOutputSink* = nullptr, double callbackStartMs = 0,
@@ -52,10 +56,14 @@ private:
                double callbackStartMs, double sampleRate) noexcept;
     int presetNote(int64_t step) noexcept;
     int quantize(int note) const noexcept;
+    void adoptPendingConfig() noexcept;
     ArpConfig config_; juce::AbstractFifo fifo_{256}; std::array<Input,256> input_{};
     std::array<int,128> held_{}; int heldCount_=0; std::array<Active,64> active_{};
     int64_t lastStep_=std::numeric_limits<int64_t>::min(); bool wasPlaying_=false; uint32_t random_=0;
     juce::MidiBuffer output_;
+    // Three slots and one index exchanged atomically: the writer never waits,
+    // and the callback reads the latest values, never a half-written copy.
+    std::array<ArpConfig,3> configSlots_{}; std::atomic<uint8_t> configMiddle_{1}; uint8_t configFront_=0, configBack_=2;
 };
 
 class MidiExecutionPlan {
@@ -67,6 +75,10 @@ public:
         juce::MidiBuffer scheduledInput;
     };
     static std::unique_ptr<MidiExecutionPlan> compile(const MidiNetworkSpec&, const std::function<Chain*(const std::string&)>&, std::string&);
+    // Same nodes, same cables: the specs differ only in arpeggiator values,
+    // which the running plan takes through setValues without being rebuilt.
+    static bool sameWiring(const MidiNetworkSpec&, const MidiNetworkSpec&) noexcept;
+    void setValues(const MidiNetworkSpec&) noexcept;
     void process(int numSamples, Transport&, MidiOutputSink* = nullptr,
                  double callbackStartMs = 0, double sampleRate = 48000) noexcept;
     bool pushInput(const std::string& nodeId, const juce::MidiMessage&) noexcept;

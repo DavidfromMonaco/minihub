@@ -838,6 +838,39 @@ void testSequencerPhysicalMidiOutputAndArpeggiatorRoute()
     transport.setLoop(false,0,4);transport.seekPpq(0);transport.setPlaying(true);transport.beginBlock();sequencer.processMidi(12000,transport,midiPlan.get());midiPlan->process(12000,transport);juce::MidiBuffer midi;destination.pullMidi(midi,12000);int arpOnSample=-1;for(const auto& event:midi)if(event.getMessage().isNoteOn())arpOnSample=event.samplePosition;expect(arpOnSample==6000,"Sequencer timestamp enters the existing Arpeggiator before its exact next 1/16 step");
 }
 
+void testArpeggiatorTakesValuesWhilePlaying()
+{
+    // A plugin's sequence changes an arpeggiator's rate or a step's pitch every
+    // beat. The running plan takes the values: the notes it holds keep playing
+    // and no panic reaches its destination. A new cable still means a new plan.
+    mlh::Chain target("vst-values");target.setMidiEnabled(true);
+    mlh::MidiNetworkSpec spec;mlh::MidiNetworkNodeSpec arp;arp.id="arp-values";arp.kind="arpeggiator";arp.arp.mode=0;arp.arp.rate=2;arp.arp.patternLength=8;arp.destinations={"vst-values"};spec.nodes.push_back(arp);
+    std::string error;auto plan=mlh::MidiExecutionPlan::compile(spec,[&](const std::string& id){return id=="vst-values"?&target:nullptr;},error);
+    expect(plan!=nullptr,"a one-arpeggiator network compiles");if(!plan)return;
+    auto faster=spec;faster.nodes[0].arp.rate=3;
+    auto custom=faster;custom.nodes[0].arp.mode=5;custom.nodes[0].arp.patternLength=4;for(auto& step:custom.nodes[0].arp.steps)step.semitoneOffset=12;
+    auto rewired=spec;rewired.nodes[0].destinations={"vst-other"};
+    auto grown=spec;mlh::MidiNetworkNodeSpec controller;controller.id="controller-a";controller.kind="midi-output";grown.nodes.push_back(controller);
+    expect(mlh::MidiExecutionPlan::sameWiring(spec,custom),"a rate, a mode or a step's pitch is a value, not a new wiring");
+    expect(!mlh::MidiExecutionPlan::sameWiring(spec,rewired)&&!mlh::MidiExecutionPlan::sameWiring(spec,grown),"another destination or another node is a new wiring");
+
+    mlh::Transport transport;transport.setSampleRate(48000);transport.setPlaying(true);transport.beginBlock();
+    plan->pushInput("arp-values",juce::MidiMessage::noteOn(1,60,(juce::uint8)100));
+    plan->pushInput("arp-values",juce::MidiMessage::noteOn(1,67,(juce::uint8)100));
+    bool panicked=false;
+    const auto play=[&](int blocks){std::vector<int> notes;for(int block=0;block<blocks;++block){plan->process(6000,transport);juce::MidiBuffer midi;target.pullMidi(midi,6000);for(const auto& e:midi){const auto m=e.getMessage();if(m.isNoteOn())notes.push_back(m.getNoteNumber());panicked|=m.isAllNotesOff()||m.isAllSoundOff();}transport.advance(6000);transport.beginBlock();}return notes;};
+    expect(play(4)==std::vector<int>({60,67,60,67}),"Up at 1/16 plays the two held notes, one step per 6000 samples");
+    plan->setValues(faster);
+    expect(play(4).size()==8,"the new rate is taken at the next block: two steps per 6000 samples");
+    plan->setValues(custom);
+    const auto pitched=play(2);
+    expect(pitched.size()==4&&std::all_of(pitched.begin(),pitched.end(),[](int note){return note==72;}),"the new mode and step pitch are taken while the notes stay held");
+    expect(!panicked&&plan->nodes()[0].arp->heldCountForTesting()==2,"no value change panicked the destination or dropped a held note");
+    transport.setPlaying(false);transport.beginBlock();plan->process(512,transport);juce::MidiBuffer stopped;target.pullMidi(stopped,512);
+    bool released=false;for(const auto& e:stopped)released|=e.getMessage().isNoteOff()||e.getMessage().isAllNotesOff();
+    expect(released,"Stop still releases what the arpeggiator played after taking values");
+}
+
 void testSequencerMidiThruPlaysTheSeries()
 {
     // D-039. A track wired to one VST plays every node that VST's MIDI OUT is
@@ -1603,6 +1636,8 @@ int main(int argc, char** argv)
     testSequencerPhysicalMidiOutputAndArpeggiatorRoute();
     std::cerr << "[core] midi-thru-series\n";
     testSequencerMidiThruPlaysTheSeries();
+    std::cerr << "[core] arp-values-while-playing\n";
+    testArpeggiatorTakesValuesWhilePlaying();
     std::cerr << "[core] audio-input-routing\n";
     testSequencerAudioInputRoutingAuthority();
     std::cerr << "[core] sequencer-sum-gain\n";

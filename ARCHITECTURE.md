@@ -617,6 +617,15 @@ implémente les modes (Up, Down, Up/Down, As Played, Random, Custom), la
 quantification sur gamme, les liaisons (`tie`) et les silences (`rest`). Le
 motif custom fait jusqu'à 32 pas.
 
+A `syncMidiNetwork` with the same nodes and cables as the running plan changes
+values only — a rate, a mode, a step, often sent every beat by a plugin on a
+CTRL OUT cable. The engine hands them to the running arpeggiators
+(`MidiExecutionPlan::setValues`, a three-slot latest-value exchange read at the
+next block): held and sounding notes are kept and nothing is panicked. Only a
+change of nodes or cables compiles a new plan, and its panic silences every
+chain, a pad played by a Sequencer track included. The startup log shows which
+path was taken: `engine:event midiNetworkSynced nodes=N rebuilt=true|false`.
+
 ### `MasterOutput` — gain et mesure
 
 [master_output.h](native/audio-engine/src/master_output.h). Gain lissé sur

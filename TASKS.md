@@ -19,6 +19,11 @@ and the sequence surviving a save and a reload.
 - Not seen yet: the author's own sequences; Codex building Orbites with the
   requests; Record through a cable in the application (the test rig covers it,
   guards and refusal message included).
+- Not heard yet: Orbites' pad no longer cutting while One Ring changes the
+  arpeggiator. A value change used to rebuild the MIDI plan and panic every
+  chain; since 2026-09-15 it reaches the running arpeggiator instead. Seen in
+  the log: 12 changes in 10 s of One Ring, `rebuilt=false` for all, no rebuild.
+  Reported by Codex as still faintly there with One Ring suspended: not looked at.
 - Left for the author to decide: the Arpeggiator, Mixer and Morpher pages do not
   redraw when a command changes them; a Sequencer track solo and an arpeggiator
   hold do not exist to be commanded.

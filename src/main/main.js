@@ -164,7 +164,11 @@ function startEngine() {
           // cabled to it: the one line that says why its window shows no target.
           : (msg.type === 'controlRegistryStatus'
             ? ` chain=${String(msg.chainId || '').slice(0, 128)} instance=${String(msg.instanceId || '').slice(0, 64)} revision=${Number.isSafeInteger(msg.revision) ? msg.revision : '?'} ok=${msg.ok === true}${msg.ok === true ? '' : ` message=${String(msg.message || '').slice(0, 256)}`}`
-            : (msg.count !== undefined ? ' count=' + msg.count : ''))));
+            // A MIDI network change either rebuilt the plan, silencing what it
+            // played, or only handed the running arpeggiators their new values.
+            : (msg.type === 'midiNetworkSynced'
+              ? ` nodes=${Number.isSafeInteger(msg.nodeCount) ? msg.nodeCount : '?'} rebuilt=${msg.rebuilt === true}`
+              : (msg.count !== undefined ? ' count=' + msg.count : '')))));
       // Periodic telemetry is not written to disk; runtime telemetry only is,
       // and only when the window it describes actually reports a fault.
       const trace = engineEventTrace(msg, eventDetails);
