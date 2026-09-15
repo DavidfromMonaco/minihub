@@ -508,6 +508,7 @@ void Engine::handleCommand(const juce::var& msg)
     else if (type == "setVstParameterLearn") cmdSetVstParameterLearn(msg);
     else if (type == "setControlRegistry") cmdSetControlRegistry(msg);
     else if (type == "setControlStatus") cmdSetControlStatus(msg);
+    else if (type == "pluginRequest") cmdPluginRequest(msg);
     else if (type == "setTransport") cmdSetTransport(msg);
     else if (type == "getTransport") cmdGetTransport(msg);
     else if (type == "syncAudioNetwork") cmdSyncAudioNetwork(msg);
@@ -680,6 +681,7 @@ void Engine::sendChainChanged(const juce::String& chainId)
         setProp(inst, "bypassed", p->bypassed());
         setProp(inst, "generation", p->generation());
         setProp(inst, "controlSource", p->supportsControlSource());
+        setProp(inst, "requests", p->supportsRequests());
         setProp(inst, "status", p->isReady() ? "ready" : "error");
         instances.add(inst);
     }
@@ -2344,6 +2346,54 @@ void Engine::cmdSetControlRegistry(const juce::var& msg)
     setProp(out, "ok", ok);
     setProp(out, "message", ok ? juce::String() : error);
     ipc_.send(out);
+}
+
+void Engine::cmdPluginRequest(const juce::var& msg)
+{
+    const juce::String requestId = msg["requestId"].toString();
+    const juce::String chainId = msg["chainId"].toString();
+    const juce::String instanceId = msg["instanceId"].toString();
+    const juce::String pluginId = msg["pluginId"].toString();
+    const bool generationIsInteger = msg["generation"].isInt() || msg["generation"].isInt64();
+    const juce::int64 generation = generationIsInteger ? static_cast<juce::int64>(msg["generation"]) : 0;
+
+    juce::var out = makeObject();
+    setProp(out, "type", "pluginRequestResult");
+    setProp(out, "requestId", requestId);
+    setProp(out, "chainId", chainId);
+    setProp(out, "instanceId", instanceId);
+    const auto answer = [&](const char* status, const juce::String& message)
+    {
+        setProp(out, "status", status);
+        if (message.isNotEmpty()) setProp(out, "message", message);
+        ipc_.send(out);
+    };
+
+    if (requestId.isEmpty() || requestId.length() > 160 || !isProtocolChainId(chainId)
+        || !isProtocolInstanceId(instanceId) || pluginId.isEmpty() || pluginId.length() > 2048
+        || generation <= 0 || msg["request"].getDynamicObject() == nullptr)
+        return answer("invalid-request", {});
+    juce::String code, message;
+    PluginInstance* inst = lookupInstance(chainId, instanceId, code, message);
+    if (inst == nullptr)
+        return answer("instance-not-found", message);
+    // Asked of the instance the agent read, never of one loaded in its place.
+    if (inst->pluginId() != pluginId || inst->generation() != generation
+        || !isCurrentInstanceGeneration(chainId, instanceId, generation))
+        return answer("stale-instance", {});
+    if (!inst->isReady())
+        return answer("plugin-not-ready", {});
+    if (!inst->supportsRequests())
+        return answer("requests-not-supported", {});
+
+    juce::String reply, error;
+    if (!inst->request(juce::JSON::toString(msg["request"], true), reply, error))
+        return answer("plugin-failed", error);
+    const juce::var parsed = juce::JSON::parse(reply);
+    if (parsed.getDynamicObject() == nullptr)
+        return answer("invalid-reply", "the plugin did not answer with a JSON object");
+    setProp(out, "reply", parsed);
+    answer("ok", {});
 }
 
 void Engine::cmdSetControlStatus(const juce::var& msg)

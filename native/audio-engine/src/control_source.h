@@ -53,4 +53,18 @@ public:
     virtual Steinberg::tresult PLUGIN_API setControlStatus(const char* utf8, std::uint32_t bytes) = 0;
 };
 
+// Optional: requests the host forwards to the plugin -- an agent reading and
+// programming what the plugin keeps in its own state, which no parameter shows.
+// A JSON object in, a JSON object out, in the plugin's own vocabulary. `request`
+// runs one and keeps its reply, reporting the reply's size; `readReply` copies
+// that reply, without a terminator, into a buffer at least that large. A request
+// the plugin refuses still answers kResultOk, with `"ok": false` in the reply.
+inline const Steinberg::FUID requestsInterfaceId(0x580593A8, 0x17D4E4F0, 0x73201D50, 0x05F593E8);
+
+class IControlRequests : public Steinberg::FUnknown {
+public:
+    virtual Steinberg::tresult PLUGIN_API request(const char* json, std::uint32_t bytes, std::uint32_t* replyBytes) = 0;
+    virtual Steinberg::tresult PLUGIN_API readReply(char* buffer, std::uint32_t capacity) = 0;
+};
+
 } // namespace mlh::control

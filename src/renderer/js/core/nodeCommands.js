@@ -116,7 +116,10 @@ function morpherCommands(hub, nodeId) {
 // is kept per running instance and asked for again when the instance changes.
 const discoveries = new WeakMap(); // hub -> Map(`${nodeId}\u001f${pluginInstanceId}` -> entry)
 
-const isWritableParameter = (parameter) => parameter && parameter.readOnly !== true
+// Automatable, as well as writable: a JUCE plugin declares 2,080 "MIDI CC n|m"
+// parameters its host is told not to automate -- One Ring does -- and a
+// sequence moving a parameter is automation.
+const isWritableParameter = (parameter) => parameter && parameter.readOnly !== true && parameter.automatable !== false
   && typeof parameter.parameterId === 'string' && /^(0|[1-9][0-9]{0,9})$/.test(parameter.parameterId);
 
 function knownParameters(hub, nodeId, plugin, generation) {

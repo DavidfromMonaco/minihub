@@ -40,7 +40,7 @@ const MUTATING = new Set([
   'create-node', 'delete-node', 'connect', 'disconnect',
   'add-plugin', 'remove-plugin', 'set-parameter', 'move-plugin', 'set-plugin-bypass',
   'add-track', 'remove-track', 'set-track', 'add-clip',
-  'set-node-content', 'set-binding', 'clear-binding'
+  'set-node-content', 'set-binding', 'clear-binding', 'plugin'
 ]);
 
 /**
@@ -285,6 +285,33 @@ export async function handleAgentRequest(hub, request = {}) {
   if (kind === 'parameters') {
     const result = await getVstParametersForNode(hub, String(request.nodeId || ''));
     return result.status === 'ok' ? { ok: true, ...result } : failed(result.status);
+  }
+
+  if (kind === 'plugin') {
+    // Handed through whole, like `sequencer`: a plugin that takes requests
+    // (One Ring) keeps what matters in its own state -- channels, steps, scenes
+    // -- where no parameter reaches, and its vocabulary is its own. Restated
+    // here it would be a second copy of One Ring inside MiniHub. What is checked
+    // is only who is asked: a plugin of this project, loaded, that says it takes
+    // requests. Gated on the project id because a request can reprogram it.
+    const nodeId = String(request.nodeId || '');
+    const pluginInstanceId = String(request.pluginInstanceId || '');
+    const plugin = hub.nodes?.get?.(nodeId)?.content?.plugins?.find?.((entry) => entry.id === pluginInstanceId);
+    if (!plugin) return failed('plugin-not-found');
+    const body = request.request;
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      return failed('invalid-request', 'request must be an object, such as {"kind": "describe"}');
+    }
+    const status = hub.engine.getInstanceStatus?.(nodeId, pluginInstanceId);
+    if (status !== 'ready') return failed(status === 'error' ? 'plugin-failed' : 'plugin-not-ready');
+    if (!hub.engine.acceptsRequests?.(nodeId, pluginInstanceId)) {
+      return failed('requests-not-supported', `${plugin.name || 'this plugin'} takes no requests: use parameters`);
+    }
+    const answer = await Promise.resolve(hub.engine.pluginRequest(nodeId, pluginInstanceId, plugin.pluginId, body))
+      .catch((error) => ({ status: 'engine-unavailable', message: String(error?.message || error) }));
+    if (answer?.status !== 'ok') return failed(answer?.status || 'failed', answer?.message);
+    const reply = answer.reply && typeof answer.reply === 'object' ? answer.reply : null;
+    return reply ? { ...reply, ok: reply.ok === true } : failed('invalid-reply');
   }
 
   if (kind === 'set-parameter') {

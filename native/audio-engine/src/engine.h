@@ -94,6 +94,7 @@ private:
     void cmdSetVstParameterLearn(const juce::var& msg);
     void cmdSetControlRegistry(const juce::var& msg);
     void cmdSetControlStatus(const juce::var& msg);
+    void cmdPluginRequest(const juce::var& msg);
     void forwardControlEvents();
     void cmdSetTransport(const juce::var& msg);
     void cmdGetTransport(const juce::var& msg);

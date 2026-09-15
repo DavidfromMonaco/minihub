@@ -297,6 +297,10 @@ public:
         if (controlSource_ && processor_->queryInterface(control::feedbackInterfaceId,
                 reinterpret_cast<void**>(&controlFeedback)) == Steinberg::kResultOk && controlFeedback)
             controlFeedback_ = Steinberg::owned(controlFeedback);
+        control::IControlRequests* controlRequests = nullptr;
+        if (processor_->queryInterface(control::requestsInterfaceId,
+                reinterpret_cast<void**>(&controlRequests)) == Steinberg::kResultOk && controlRequests)
+            controlRequests_ = Steinberg::owned(controlRequests);
 
         handler_ = Steinberg::owned(new ComponentHandler(*this));
         controller_->setComponentHandler(handler_);
@@ -307,6 +311,40 @@ public:
     }
 
     bool supportsControlSource() const { return controlSource_ != nullptr; }
+    bool supportsRequests() const { return controlRequests_ != nullptr; }
+
+    // The plugin answers on this thread, from its own model; nothing here
+    // reaches its audio callback, which it keeps running meanwhile.
+    bool request(const juce::String& json, juce::String& reply, juce::String& error)
+    {
+        if (!controlRequests_)
+        {
+            error = "plugin takes no requests";
+            return false;
+        }
+        const auto bytes = json.getNumBytesAsUTF8();
+        std::uint32_t replyBytes = 0;
+        if (bytes > 1024 * 1024
+            || controlRequests_->request(json.toRawUTF8(), static_cast<std::uint32_t>(bytes), &replyBytes)
+                   != Steinberg::kResultOk)
+        {
+            error = "plugin refused the request";
+            return false;
+        }
+        if (replyBytes > 4 * 1024 * 1024)
+        {
+            error = "plugin reply too large";
+            return false;
+        }
+        std::vector<char> buffer(replyBytes);
+        if (replyBytes > 0 && controlRequests_->readReply(buffer.data(), replyBytes) != Steinberg::kResultOk)
+        {
+            error = "plugin reply unreadable";
+            return false;
+        }
+        reply = juce::String::fromUTF8(buffer.data(), static_cast<int>(replyBytes));
+        return true;
+    }
 
     // No control mutation around these three: the plugin publishes a registry
     // and drains its packet queue without locking out its audio callback, and
@@ -1431,7 +1469,8 @@ private:
         if (controller_) controller_->setComponentHandler(nullptr);
         handler_.reset();
         midiMapping_.reset();
-        // Both point into the processor, so they go before it.
+        // All three point into the processor, so they go before it.
+        controlRequests_.reset();
         controlFeedback_.reset();
         controlSource_.reset();
         processor_.reset();
@@ -1669,6 +1708,7 @@ private:
     Steinberg::IPtr<Steinberg::Vst::IAudioProcessor> processor_;
     Steinberg::IPtr<control::IControlSource> controlSource_;
     Steinberg::IPtr<control::IControlFeedback> controlFeedback_;
+    Steinberg::IPtr<control::IControlRequests> controlRequests_;
     Steinberg::OPtr<Steinberg::Vst::IEditController> controller_;
     Steinberg::IPtr<Steinberg::Vst::IMidiMapping> midiMapping_;
     Steinberg::IPtr<ComponentHandler> handler_;
@@ -2218,6 +2258,21 @@ void PluginInstance::setControlStatus(const juce::String& message)
 juce::var PluginInstance::takeControlEvents()
 {
     return plugin_ && isReady_ ? plugin_->takeControlEvents() : juce::var(juce::Array<juce::var>());
+}
+
+bool PluginInstance::supportsRequests() const
+{
+    return plugin_ && isReady_ && plugin_->supportsRequests();
+}
+
+bool PluginInstance::request(const juce::String& json, juce::String& reply, juce::String& error)
+{
+    if (!plugin_ || !isReady_)
+    {
+        error = "plugin is not ready";
+        return false;
+    }
+    return plugin_->request(json, reply, error);
 }
 
 bool PluginInstance::setParameterNormalized(const juce::String& parameterId,

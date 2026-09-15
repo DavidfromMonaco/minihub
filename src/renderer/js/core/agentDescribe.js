@@ -36,11 +36,18 @@ const strip = (ports) => (Array.isArray(ports) ? ports : [])
  * wrote it, so carrying it here would cost the whole budget of the description
  * and buy nothing.
  */
-function contentOf(instance) {
+function contentOf(instance, hub) {
   const content = instance?.content;
   if (!content || typeof content !== 'object') return null;
   const copy = JSON.parse(JSON.stringify(content));
-  if (Array.isArray(copy.plugins)) for (const plugin of copy.plugins) delete plugin.state;
+  if (Array.isArray(copy.plugins)) {
+    for (const plugin of copy.plugins) {
+      delete plugin.state;
+      // What that state holds is still reachable when the plugin says so: the
+      // `plugin` request hands it one in its own vocabulary.
+      if (hub?.engine?.acceptsRequests?.(instance.id, plugin.id)) plugin.requests = true;
+    }
+  }
   return copy;
 }
 
@@ -74,7 +81,7 @@ export function describeNodes(hub) {
       label: type?.label || node.name || node.id,
       system: !instance,
       ports: { inputs: strip(node.inputs), outputs: strip(node.outputs) },
-      content: contentOf(instance)
+      content: contentOf(instance, hub)
     };
   });
 }

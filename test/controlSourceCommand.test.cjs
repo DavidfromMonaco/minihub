@@ -4,7 +4,8 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
   isValidSetControlRegistryCommand,
-  isValidSetControlStatusCommand
+  isValidSetControlStatusCommand,
+  isValidPluginRequestCommand
 } = require('../src/main/controlSourceCommand');
 const { ALLOWED_ENGINE_COMMANDS } = require('../src/main/engineCommandPolicy');
 const { createEngineEventTrace } = require('../src/main/engineEventTrace');
@@ -45,6 +46,26 @@ test("a status line is a bounded string, for the plugin's own window", () => {
   assert.equal(isValidSetControlStatusCommand({ ...source, type: 'setControlStatus', message: 42 }), false);
   assert.equal(isValidSetControlStatusCommand({ ...source, type: 'setControlStatus', message: 'é'.repeat(2049) }), false,
     'bounded in bytes, as the plugin receives it');
+});
+
+test('a request for a plugin is one object, addressed to one instance, and bounded', () => {
+  assert.equal(ALLOWED_ENGINE_COMMANDS.has('pluginRequest'), true);
+  const request = { ...source, type: 'pluginRequest', requestId: 'plugin-request-abc-1-7', request: { kind: 'get' } };
+  assert.equal(isValidPluginRequestCommand(request), true);
+  for (const broken of [
+    { ...request, request: 'get' },
+    { ...request, request: [] },
+    { ...request, request: null },
+    { ...request, requestId: '' },
+    { ...request, requestId: 'has spaces' },
+    { ...request, generation: 1.5 },
+    { ...request, instanceId: 'plugin-0' },
+    { ...request, type: 'setControlStatus' }
+  ]) {
+    assert.equal(isValidPluginRequestCommand(broken), false, JSON.stringify(broken));
+  }
+  assert.equal(isValidPluginRequestCommand({ ...request, request: { kind: 'set', blob: 'x'.repeat(1024 * 1024) } }), false,
+    'the engine hands a plugin at most a megabyte');
 });
 
 test('the packets a plugin sends are a stream and stay out of the startup log; its registry answer does not', () => {

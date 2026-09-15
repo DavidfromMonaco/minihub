@@ -55,6 +55,7 @@ export class EngineClient {
     // drops queued touches from an object after it has been replaced.
     this._instanceGenerations = new Map(); // chainId -> Map(instanceId -> generation)
     this._editorStatuses = new Map(); // chainId -> Map(instanceId -> last native editorStatus)
+    this._requestInstances = new Map(); // chainId -> Set(instanceId) of plugins that take requests
     this._editorBounds = new Map();   // chainId -> Map(instanceId -> last native editorBounds)
     this._instanceErrors = new Map();
     // Master export owns cloned processors and immutable network/arrangement
@@ -283,6 +284,8 @@ export class EngineClient {
         }
         this.chains.set(msg.chainId, statuses);
         this._instanceGenerations.set(msg.chainId, generations);
+        this._requestInstances.set(msg.chainId, new Set((msg.instances || [])
+          .filter((inst) => inst.requests === true).map((inst) => inst.instanceId)));
         const editors = this._editorStatuses.get(msg.chainId);
         if (editors) {
           for (const [instanceId, editor] of editors) {
@@ -303,6 +306,16 @@ export class EngineClient {
       case 'controlRegistryStatus':
         this.events.emit('engine:controlRegistryStatus', msg);
         break;
+      case 'pluginRequestResult': {
+        const pending = this._pendingParams.get(msg.requestId);
+        if (!pending || pending.kind !== 'plugin-request') break;
+        if (pending.generation !== this._engineGeneration
+            || msg.chainId !== pending.chainId || msg.instanceId !== pending.instanceId) break;
+        this._pendingParams.delete(msg.requestId);
+        clearTimeout(pending.timer);
+        pending.resolve(msg);
+        break;
+      }
       case 'instanceStatus': {
         if (!this.chains.has(msg.chainId)) this.chains.set(msg.chainId, new Map());
         this.chains.get(msg.chainId).set(msg.instanceId, msg.status);
@@ -763,6 +776,47 @@ export class EngineClient {
     return Promise.resolve(this.command({
       type: 'setControlRegistry', chainId, instanceId, pluginId, generation, registry
     }));
+  }
+
+  /** Does this running instance take JSON requests (control_source.h)? As its last chain report said. */
+  acceptsRequests(chainId, instanceId) {
+    return this._requestInstances.get(chainId)?.has(instanceId) === true;
+  }
+
+  /**
+   * Hand a plugin a JSON request in its own vocabulary, and answer with the
+   * engine's `pluginRequestResult`: `{ status, reply?, message? }`.
+   *
+   * Addressed to the instance of `generation`, the one the caller looked at: a
+   * plugin reloaded meanwhile answers `stale-instance` rather than taking a
+   * request meant for its predecessor.
+   */
+  pluginRequest(chainId, instanceId, pluginId, request) {
+    if (this.state !== 'running') return Promise.resolve({ status: 'engine-not-running' });
+    const generation = this.getInstanceGeneration(chainId, instanceId);
+    if (!Number.isSafeInteger(generation)) return Promise.resolve({ status: 'instance-not-found' });
+    const requestId = this._nextRequestId('plugin-request');
+    const engineGeneration = this._engineGeneration;
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        if (!this._pendingParams.delete(requestId)) return;
+        resolve({ status: 'timeout' });
+      }, this._parameterRequestTimeoutMs);
+      this._pendingParams.set(requestId, {
+        kind: 'plugin-request', resolve, reject, timer, generation: engineGeneration, chainId, instanceId
+      });
+      Promise.resolve(this.command({ type: 'pluginRequest', requestId, chainId, instanceId, pluginId, generation, request }))
+        .then((res) => {
+          if (res?.ok || !this._pendingParams.delete(requestId)) return;
+          clearTimeout(timer);
+          resolve({ status: res?.reason || 'engine-unavailable' });
+        })
+        .catch((error) => {
+          if (!this._pendingParams.delete(requestId)) return;
+          clearTimeout(timer);
+          resolve({ status: 'engine-unavailable', message: String(error?.message || error) });
+        });
+    });
   }
 
   /** Why its last command was refused, shown in that plugin's own window; '' clears it. */

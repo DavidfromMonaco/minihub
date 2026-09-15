@@ -216,7 +216,7 @@ dédié :
 | `selectDevice` | [audioDeviceCommand.js](src/main/audioDeviceCommand.js) |
 | `setVstParameter` | [vstParameterCommand.js](src/main/vstParameterCommand.js) |
 | `setVstParameterLearn` | [vstParameterLearnCommand.js](src/main/vstParameterLearnCommand.js) |
-| `setControlRegistry`, `setControlStatus` | [controlSourceCommand.js](src/main/controlSourceCommand.js) |
+| `setControlRegistry`, `setControlStatus`, `pluginRequest` | [controlSourceCommand.js](src/main/controlSourceCommand.js) |
 | `getVstParameters`, `sequencerQuiesce` | inline dans [main.js](src/main/main.js) |
 
 L'intention : la surface IPC exposée est une liste finie et relisible, pas
@@ -277,7 +277,7 @@ automatiques.
   `pluginState`, `pluginStateCaptureComplete`
 - paramètres : `vstParameters`, `vstParameterTouched`, `vstParameterLearnState`
 - commands from a plugin (§6, *Commands from a plugin*): `controlEvents` (a
-  stream, never logged), `controlRegistryStatus`
+  stream, never logged), `controlRegistryStatus`, `pluginRequestResult`
 - transport : `transport`, `metronomeTick`
 - séquenceur : `sequencerMidiRecorded`, `sequencerAudioRecorded`,
   `sequencerAudioInfo`, `sequencerExport`, `sequencerQuiesced`
@@ -495,6 +495,25 @@ what was played before it.
 Timing is the control thread's, not the audio grid's: a command lands one timer
 tick and one IPC round after its step — a Stop programmed on beat 6 was measured
 stopping the transport at 6.00 to 6.03. An offline export executes no command.
+
+#### Requests to a plugin
+
+What such a plugin keeps in its own state — One Ring's channels, steps, scenes —
+no parameter shows and no host can click. The same header declares a third
+optional interface, `IControlRequests`: a JSON object in, a JSON object out, in
+the plugin's own vocabulary ([DECISIONS.md](DECISIONS.md) D-043).
+
+| Step | Where | What |
+|---|---|---|
+| discovery | `DirectVst3Plugin::create` | `queryInterface`; `chainChanged` carries `requests: true`, `describe` shows it on the plugin |
+| the agent | `agentRequests.js`, kind `plugin` | who is asked: a plugin of this project, ready, that takes requests; gated on the project id — the body is not read |
+| the engine | `Engine::cmdPluginRequest` | the instance of the generation the renderer knew; request at most 1 MB, reply at most 4 MB and a JSON object; answers `pluginRequestResult` |
+| the plugin | `request` then `readReply` | runs the request on the engine's message thread and keeps the reply, read back at its size |
+
+The reply reaches the agent unchanged, `ok: false` included: a plugin's refusal
+is an answer, not a failure of the channel. A plugin that changes what it will
+save announces it (`restartComponent`), MiniHub captures its state, and the
+project is marked modified like any edit.
 
 ### Synchronisation vers le moteur
 
@@ -1064,7 +1083,7 @@ persisted in projects.
 | `audio_graph.{h,cpp}` | plan audio compilé, PDC, mixage |
 | `chain.{h,cpp}` | chaîne VST3 série, MIDI sans verrou, panic |
 | `plugin_host.{h,cpp}` | instance VST3, éditeur, paramètres ⚠️ 1 841 lignes |
-| `control_source.h` | the interface a plugin that commands MiniHub exposes — an ABI shared with binaries built elsewhere |
+| `control_source.h` | the interfaces a plugin that commands MiniHub exposes, and the one that takes an agent's requests — an ABI shared with binaries built elsewhere |
 | `vst3_audio_buffer_bridge.{h,cpp}` | pont de tampons VST3 |
 | `vst3_scanner.{h,cpp}`, `scanner_main.cpp` | scan VST3 en processus séparé |
 | `midi_graph.{h,cpp}` | arpégiateurs, destinations |

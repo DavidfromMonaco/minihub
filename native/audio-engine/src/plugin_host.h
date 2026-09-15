@@ -215,6 +215,9 @@ public:
     void setControlStatus(const juce::String& message);
     /** At most 128 validated packets, as `{ sequence, registryRevision, beat, target, command, valueType, number }`. */
     juce::var takeControlEvents();
+    /** A plugin that takes JSON requests (control_source.h). Message thread only. */
+    bool supportsRequests() const;
+    bool request(const juce::String& json, juce::String& reply, juce::String& error);
 
 private:
     friend class DirectVst3Plugin;

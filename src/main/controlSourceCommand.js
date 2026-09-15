@@ -14,6 +14,8 @@
 // one across two process boundaries to hear it.
 const MAX_REGISTRY_CHARS = 4 * 1024 * 1024;
 const MAX_STATUS_BYTES = 4096;
+// The engine hands a plugin at most a megabyte of request.
+const MAX_REQUEST_CHARS = 1024 * 1024;
 
 function validId(value, pattern, maxLength) {
   return typeof value === 'string'
@@ -48,4 +50,23 @@ function isValidSetControlStatusCommand(msg) {
     && Buffer.byteLength(msg.message, 'utf8') <= MAX_STATUS_BYTES;
 }
 
-module.exports = { isValidSetControlRegistryCommand, isValidSetControlStatusCommand };
+/**
+ * A request an agent hands a plugin in the plugin's own vocabulary.
+ *
+ * What it says is the plugin's to judge; what is checked here is that it is one
+ * object addressed to one instance, and small enough that the plugin's refusal
+ * is the only thing standing between the agent and a plugin's memory.
+ */
+function isValidPluginRequestCommand(msg) {
+  if (!msg || msg.v !== 1 || msg.type !== 'pluginRequest' || !validSource(msg)
+      || !validId(msg.requestId, /^[A-Za-z0-9._:-]+$/, 160)) return false;
+  const request = msg.request;
+  if (!request || typeof request !== 'object' || Array.isArray(request)) return false;
+  try {
+    return JSON.stringify(request).length <= MAX_REQUEST_CHARS;
+  } catch (_) {
+    return false;
+  }
+}
+
+module.exports = { isValidSetControlRegistryCommand, isValidSetControlStatusCommand, isValidPluginRequestCommand };

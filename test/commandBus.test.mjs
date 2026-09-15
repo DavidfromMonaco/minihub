@@ -443,7 +443,7 @@ test("a mixer's CTRL IN stays below its audio inputs as they grow", async () => 
   assert.equal(hub.network.connectionsTo(mixer.id, 'ctrl-in').length, 1, 'the command cable follows its port');
 });
 
-test("a VST node's parameters are asked for only once something is cabled to it, and read-only ones are left out", async () => {
+test("a VST node's parameters are asked for only once something is cabled to it, and read-only or non-automatable ones are left out", async () => {
   const { api, hub, cable, send } = await rig();
   const synth = hub.nodes.create('vst');
   const entry = hub.nodes.getChain(synth.id).append({ pluginId: 'C:\\VST3\\Synth.vst3', name: 'Synth', role: 'instrument' });
@@ -460,12 +460,15 @@ test("a VST node's parameters are asked for only once something is cabled to it,
     pluginId: 'C:\\VST3\\Synth.vst3', parameters: [
       { parameterId: '7', name: 'Cutoff', stepCount: 0, readOnly: false },
       { parameterId: '8', name: 'Meter', stepCount: 0, readOnly: true },
-      { parameterId: '9', name: 'Wave', stepCount: 3, readOnly: false }
+      { parameterId: '9', name: 'Wave', stepCount: 3, readOnly: false },
+      // What a JUCE plugin declares 2,080 of, for its host's MIDI mapping.
+      { parameterId: '1835232512', name: 'MIDI CC 0|0', stepCount: 0, readOnly: false, automatable: false }
     ] });
   await settle();
   const target = `${synth.id}:${entry.id}`;
   assert.equal(send(target, 'PARAM:7', VALUE_TYPE.number, 0.42).ok, true);
   assert.equal(send(target, 'PARAM:8', VALUE_TYPE.number, 0.42).reason, 'unknown-command');
+  assert.equal(send(target, 'PARAM:1835232512', VALUE_TYPE.number, 0.42).reason, 'unknown-command');
   assert.equal(send(target, 'PARAM:9', VALUE_TYPE.integer, 3).ok, true);
   const writes = api.sent.filter((msg) => msg.type === 'setVstParameter');
   assert.deepEqual(writes.map((msg) => [msg.parameterId, msg.normalizedValue]), [['7', 0.42], ['9', 1]]);

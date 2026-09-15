@@ -26,7 +26,9 @@ const diagnostics = require('./diagnostics');
 const { isValidSetVstParameterCommand, isValidGetVstParametersCommand } = require('./vstParameterCommand');
 const { isValidSetVstParameterLearnCommand } = require('./vstParameterLearnCommand');
 const { isValidSelectDeviceCommand } = require('./audioDeviceCommand');
-const { isValidSetControlRegistryCommand, isValidSetControlStatusCommand } = require('./controlSourceCommand');
+const {
+  isValidSetControlRegistryCommand, isValidSetControlStatusCommand, isValidPluginRequestCommand
+} = require('./controlSourceCommand');
 const { readProject, writeProjectAtomic } = require('./projectFiles');
 const { ALLOWED_ENGINE_COMMANDS } = require('./engineCommandPolicy');
 const { ClipEditorWindows } = require('./clipEditorWindows');
@@ -705,6 +707,9 @@ ipcMain.handle('engine:command', (_event, msg) => {
     return { ok: false, reason: 'invalid-request' };
   }
   if (type === 'setControlStatus' && !isValidSetControlStatusCommand(msg)) {
+    return { ok: false, reason: 'invalid-request' };
+  }
+  if (type === 'pluginRequest' && !isValidPluginRequestCommand(msg)) {
     return { ok: false, reason: 'invalid-request' };
   }
   if (type === 'sequencerQuiesce'

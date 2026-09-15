@@ -13,13 +13,16 @@ test** — built 2026-09-15 for One Ring, a VST3 kept outside this repository
 application with the installed One Ring: an arpeggiator's rate, a mixer's
 master, a track's mute, the tempo and Stop, each from its own channel; a cable
 pulled stopped the commands and plugged back resumed them.
-- Not seen yet: the author's own sequences, and Record through a cable in the
-  application (the test rig covers it, guards and refusal message included).
+Since the same evening an agent programs One Ring (0.4.0) through the `plugin`
+request (D-043): seen setting channels, running, reading the clock, stopping,
+and the sequence surviving a save and a reload.
+- Not seen yet: the author's own sequences; Codex building Orbites with the
+  requests; Record through a cable in the application (the test rig covers it,
+  guards and refusal message included).
 - Left for the author to decide: the Arpeggiator, Mixer and Morpher pages do not
   redraw when a command changes them; a Sequencer track solo and an arpeggiator
   hold do not exist to be commanded.
-- One Ring's own documents (`host-extension/README.md`, its `AGENTS.md`) still
-  say the connection is not applied.
+- One Ring's `AGENTS.md` still says the connection is not applied.
 
 **An agent drives MiniHub from outside — in test, not pushed** — works end to
 end (patches, plugins, notes, save, export, Splice's web page, quit). Its

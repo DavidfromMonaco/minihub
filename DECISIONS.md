@@ -2151,3 +2151,85 @@ Or the author wanting a performance to be undoable, which would end change 1.
 `coalescingSaves` in `settingsStore.js`; `carriesWhatInputTakes` in `network.js`;
 the CTRL OUT jack in `routingModule.js`. Tests: `test/commandBus.test.mjs`,
 `test/controlSourceCommand.test.cjs`, two in `test/routing.test.mjs`.
+
+---
+
+## D-043 — An agent programs a plugin through requests in the plugin's own vocabulary
+
+**Status**: in force · 2026-09-15 · **implemented**, in the author's test
+
+**Context** — One Ring was written for Codex to play MiniHub with. Loaded and
+cabled, it still could not be programmed by an agent: its `parameters` are
+Bypass and 2,080 "MIDI CC n|m" entries JUCE declares for host MIDI mapping; its
+window is drawn natively, so the `browser` request answers `no-web-page`; and
+what matters — sixteen channels of sixty-four steps, conditions, follow actions,
+four scenes — is one document inside the plugin's saved state, which a host
+sees as an opaque block. Reported by Codex on 2026-09-15; the author asked for it
+to be fixed.
+
+**Decision** — A third optional interface beside the command source,
+`IControlRequests` in `control_source.h`: a JSON object in, a JSON object out.
+`request` runs one request and keeps the reply, `readReply` copies it at the
+size `request` reported. MiniHub hands a request through whole — agent kind
+`plugin`, engine command `pluginRequest` — and checks only who is asked: a
+plugin of this project, loaded, of the generation the renderer knows, that says
+it takes requests. The vocabulary is the plugin's. One Ring 0.4.0 answers
+`describe`, `status`, `targets`, `get` (only programmed steps), `set` (applied
+whole or not at all, a refusal naming the field), `run`, `stop`, `channel`,
+`scene`, `copy-scene`, `mutate`, `new-seed`.
+
+Two fixes the requests needed, both in One Ring:
+
+- **An edit is announced.** One Ring published its changes without telling its
+  host, so MiniHub never captured the new state: a sequence programmed in its
+  window — by a person as much as by a request — was not a modification of the
+  project, and closing MiniHub kept the one the project was opened with. `edit`
+  now reports a non-parameter state change; restoring a saved state does not.
+- **The runtime is the latest block's.** The editor read its playheads from a
+  64-entry queue that keeps its oldest entries once full. Nobody drains it
+  without the window open, and `status` answered "stopped, beat 0" about a One
+  Ring that was running. It is a latest-value channel now.
+
+One fix in MiniHub, found reading One Ring's parameters: a VST node offered every
+writable parameter as a command, and a JUCE plugin's 2,080 non-automatable MIDI
+CC entries with them. Only automatable parameters are offered.
+
+Refused:
+
+- **Decoding the plugin's saved state**, in MiniHub or in the client. It ties
+  both to JUCE's state wrapper and to One Ring's file format, and a state the
+  plugin does not accept is dropped silently — in the application, a test
+  sequence came back empty and was saved empty (D-042).
+- **Channels as VST parameters** — thousands of numbers with no structure, and
+  nothing for conditions, follow actions or scenes.
+- **Driving the native window** — the screen, refused since D-041.
+- **The vocabulary in MiniHub** — a second copy of One Ring inside its host, out
+  of date the day the plugin changes.
+
+**Consequence** —
+
+- A plugin becomes programmable by an agent by implementing the interface;
+  MiniHub changes for none of them.
+- A request runs on the engine's message thread and must answer at once:
+  bounded to 1 MB in, 4 MB out.
+- `plugin` is gated on the project id, like any edit, and the client outside
+  this repository stamps it.
+- Measured in the application: a `set` programmed an arpeggiator's rate and the
+  tempo, `run` played them, `status` read the running clock, `stop` stopped it,
+  and the sequence survived a save and a reload; a `set` marked the project
+  modified.
+
+**What would justify revisiting** — A plugin whose requests take time — a
+download, an analysis — which would block the engine's message thread and call
+for a queued request with a later answer, not for giving the door up.
+
+**Proof in the code** — `IControlRequests` in
+`native/audio-engine/src/control_source.h`; `DirectVst3Plugin::request` in
+`plugin_host.cpp`; `Engine::cmdPluginRequest` in `engine.cpp`;
+`isValidPluginRequestCommand` in `src/main/controlSourceCommand.js`;
+`EngineClient.pluginRequest` / `acceptsRequests`; kind `plugin` in
+`agentRequests.js`; `requests: true` in `agentDescribe.js`; `isWritableParameter`
+in `nodeCommands.js`. One Ring (outside this repository): `src/plugin/Requests.cpp`,
+`Processor::request`, `Processor::edit`, `Latest<UiSnapshot>`. Tests:
+`test/pluginRequests.test.mjs`, `test/controlSourceCommand.test.cjs`,
+`test/commandBus.test.mjs`; One Ring's `tests/plugin_tests.cpp`.
