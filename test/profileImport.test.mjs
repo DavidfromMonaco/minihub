@@ -393,7 +393,7 @@ test('removing a profile redraws the list instead of restarting the window', asy
  * is also where the section above lives, so there is one place and not two.
  */
 test('the Learn panel offers a way to the controller page', async () => {
-  const { renderControlBindings } = await import('../src/renderer/js/core/nodeInstances.js');
+  const { renderControlBindings } = await import('../src/renderer/js/core/controlBindingsPanel.js');
   const hub = { control: null, network: { listNodes: () => [] } };
   const html = renderControlBindings({ id: 'vst-001', content: { controlBindings: [] } }, hub);
   assert.match(html, /id="control-open-controller"/,
@@ -436,19 +436,10 @@ test('the shell finds the controller page by asking, and finds the right one', a
   assert.equal(controllerModuleId(undefined), null);
 });
 
-test('the Learn panel opens the page it was told, and nothing when there is none', async () => {
-  const source = fs.readFileSync(
-    new URL('../src/renderer/js/core/nodeInstances.js', import.meta.url), 'utf8'
-  );
-  // Read from the source deliberately: the navigation lives in a delegated click
-  // handler built inside `mount()`, and reaching it means standing up the whole
-  // VST editor against a shim that does not parse HTML. What broke was one
-  // identifier, and this is what pins it.
-  const branch = /control-open-controller[\s\S]{0,260}?activate\(\s*([^,\s]+)/.exec(source)?.[1];
-  assert.equal(branch, 'page',
-    'the panel must navigate to what controllerModuleId() answered, not to a name it knows');
-  assert.match(source, /const page = controllerModuleId\(hub\.modules\)/);
-});
+// The button's other end -- the page actually opened, a page id that is not the
+// node id -- is joined in test/bindingsBarHost.test.mjs, in the one window the
+// Learn panel is drawn in since 2026-09-15. It used to be pinned here by reading
+// the VST node editor's source, which no longer holds the panel.
 
 // ------------------------------------------------------------ leaving MiniHub ---
 

@@ -23,17 +23,21 @@ the author tests).
   redraw an open bindings bar.
 
 **Learning a knob in one window: the bindings bar docked under the plugin
-editor** — 6 of 8 steps. The bar opens under every plugin window, follows it,
+editor** — 7 of 8 steps. The bar opens under every plugin window, follows it,
 and arms Learn on any knob, cabled or not: the capture plugs the cable in the
 Patch Bay, Clear unplugs it. A bound knob or fader shows where its parameter
-stands and moves it under the mouse. Seen with Dexed. Waiting on the author to
-try it on his own plugins. Left after that: removing the panel from the VST
-node's editor, the documents.
+stands and moves it under the mouse. Since 2026-09-15 it is the only place a
+knob is learned: the VST node's page has no bindings panel any more. Seen with
+Dexed. Left: the documents.
 - Not seen yet: a capture from the bar, and the cable it plugs (it needs a
   gesture in the plugin).
 - Not seen yet: the drawn knob following the plugin's own knob, or the MiniLab's.
 - For the author: the panel's help sentence still says MiniHub "opens and
-  foregrounds the target OmniBox", no longer true from the bar.
+  foregrounds the target OmniBox", no longer true from the bar — and the bar is
+  now the only place it is shown.
+- Noticed, not changed: a node none of whose plugins can open a window
+  (removed, missing, failed to load) keeps its bindings with nowhere left to see
+  or clear them. They do nothing; a new Learn on the same knob replaces one.
 Plan: [plans/active/bindings-bar-docked.md](plans/active/bindings-bar-docked.md).
 
 **The Patch Bay's context menus** — still hand-built in `routingModule.js`;

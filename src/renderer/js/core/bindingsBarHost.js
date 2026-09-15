@@ -4,10 +4,11 @@
  * Main creates one bar per open plugin editor and keeps it under its frame
  * (src/main/bindingsBarWindows.js). What a bar shows is the Learn panel, and the
  * state that panel reads -- bindings, the armed Learn, the cables -- lives here,
- * so it is drawn here, by the same `renderControlBindings()` the VST node editor
- * uses, and sent across as markup. A click in a bar comes back as an action and
- * is carried out by the same module the node editor's clicks go through.
- * Nothing about a binding is decided in the bar. DECISIONS D-021.
+ * so it is drawn here, by `renderControlBindings()`, and sent across as markup. A
+ * click in a bar comes back as an action and is carried out by
+ * `core/controlBindingActions.js`. Nothing about a binding is decided in the bar.
+ * Since 2026-09-15 the bar is the panel's only host: the VST node's editor no
+ * longer draws it. DECISIONS D-021.
  *
  * Since 2026-09-14 a bar also shows where each bound parameter stands, and a
  * knob dragged in it moves that parameter. The positions travel on their own
@@ -15,7 +16,7 @@
  * turns would replace the very element the mouse is dragging. See
  * `core/controlValues.js`.
  */
-import { renderControlBindings } from './nodeInstances.js';
+import { renderControlBindings } from './controlBindingsPanel.js';
 import { performControlBindingAction } from './controlBindingActions.js';
 import { controllerModuleId } from './controllerNode.js';
 import { ControlValues } from './controlValues.js';

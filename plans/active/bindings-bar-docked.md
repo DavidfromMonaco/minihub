@@ -5,11 +5,11 @@ the bindings interface sits under the plugin editor and moves with it, and
 `renderControlBindings()` is gone from the VST node's editor.
 **Origin** — ROADMAP item 9, [DECISIONS.md](../../DECISIONS.md) D-021, asked
 2026-09-04, started 2026-09-12, resumed 2026-09-14 on the author's word.
-**Status** — **in progress, 2026-09-14.** Steps 1 to 6 ter landed: the bar exists,
+**Status** — **in progress, 2026-09-15.** Steps 1 to 7 landed: the bar exists,
 has been seen docked under a real plugin window, learns a knob with no cable in
-the Patch Bay, and its bound knobs move their parameters under the mouse. **Waiting on the author**, and on purpose: he tries Learn from
-the bar on his own plugins before step 7 takes the panel out of the VST node's
-editor, which is the point of no return.
+the Patch Bay, and its bound knobs move their parameters under the mouse. On the
+author's go, the panel has left the VST node's editor: the bar is the one place a
+knob is learned. Left: step 8, the documents.
 
 ## Context
 
@@ -132,12 +132,17 @@ Read before touching anything:
       the engine's parameter read.
       Check: `npm run build:native` 0/0 + the four binaries + `npm test` (1047) +
       `npm run check` + `npm run sync:dist` + live — **green 2026-09-14**
-- [ ] 7. The panel leaves the VST node's editor. This is the step that makes it
-      one place instead of two. **Waits for the author's go**, after he has
-      learned knobs from the bar on his own plugins.
-      Check: `npm test`
+- [x] 7. The panel leaves the VST node's editor. This is the step that makes it
+      one place instead of two. Given the go by the author on 2026-09-15.
+      `renderControlBindings()` moved, unchanged, into
+      `core/controlBindingsPanel.js`; the node editor lost the panel, its
+      subscription, its selection and its click branches.
+      Check: `npm test` (1046) + `npm run check` (15 rules) + `npm run sync:dist`
+      + seen live — **green 2026-09-15**
 - [ ] 8. Documents: D-021 marked implemented with what was settled while
-      building, ROADMAP item 9 to Done, ARCHITECTURE §4 and §10.
+      building (its "Proof in the code" still names `nodeInstances.js` for
+      `renderControlBindings()`), ROADMAP item 9 to Done, ARCHITECTURE §4 and
+      §10 (its `core/` table lists none of the bar's files).
       Check: `npm test` + `npm run check` + `npm run sync:dist`
 
 ## Fallback point
@@ -149,6 +154,9 @@ Steps 1 to 6 are **additive**: the bar is a second place to learn a knob, and th
 VST node's editor still has the first. The point of no return is **step 7**, when
 the panel leaves the VST node's editor: before it, the docked window is an
 addition; after it, it is the only way to reach a binding.
+
+`ddc4ce1` — the last commit with the panel still in the VST node's editor.
+Step 7 is one commit on top of it and reverts on its own.
 
 ## Done when
 
@@ -165,6 +173,47 @@ building rather than in advance:
   **seen 2026-09-14**; the first not met (see the log).
 
 ## Log
+
+2026-09-15 — The panel leaves the VST node's editor. The author: "the next step
+removes the old panel from the VST node's editor."
+
+- **What the page lost**: the "Control Bindings" panel, its
+  `control:bindingsChanged` subscription, the selection it kept, the Learn and
+  "Not your keyboard?" branches of its click handler, and the surface layout run
+  after every paint, which no other node editor needs. `nodeInstances.js` is 118
+  lines shorter.
+- **`renderControlBindings()` moved, not rewritten**, into
+  `core/controlBindingsPanel.js`, byte for byte (diffed against `ddc4ce1`). Left
+  in `nodeInstances.js`, it would have been the one thing there no node instance
+  uses, and the bar host would have kept importing the node manager to draw a
+  panel.
+- **The tests that locked the panel in the page now lock its absence.**
+  `test/controlRouting.test.mjs` mounts the VST editor and finds no faceplate, no
+  Learn toolbar, no "Not your keyboard?", and a click shaped like the old Arm
+  Learning arms nothing. `test/bindingsBarHost.test.mjs` reads the renderer's
+  sources: only the bar host imports the panel and its actions, and
+  `hub.control.armLearn(` is written once. Both fail against `ddc4ce1`'s
+  `nodeInstances.js` -- tried. `test/profileImport.test.mjs` lost the test that
+  read the node editor's source for the controller page id: the bar host's test
+  already opens that page by its page id, which is not the node id. 1047 tests
+  become 1046.
+
+Seen live, with Dexed in an untitled project discarded after: VST 1's page shows
+its plugin chain and Delete Node, and nothing else; Dexed's window, opened
+through the channel, came up with its bar under it -- the faceplate, the help,
+"Not your keyboard?" and the Learn toolbar, drawn by the moved function. **Not
+exercised live**: a click in the bar. That path did not change and is in
+`test/bindingsBarHost.test.mjs`.
+
+Found while doing it, not changed:
+
+- **A node none of whose plugins can open a window** -- removed, missing, failed
+  to load -- keeps its bindings with nowhere left to see or clear them. They do
+  nothing; a new Learn on the same knob replaces one, and the channel's
+  `clear-binding` removes one. D-021 settled learning such a plugin, not
+  clearing it; the page's panel was the way to do that until today.
+- The help sentence is now drawn only in the bar, where it is untrue. Still the
+  author's to change.
 
 2026-09-14 — Knobs that move. The author: "when you move a control of the
 controller's panel [with the mouse], it moves the one it is linked to in the

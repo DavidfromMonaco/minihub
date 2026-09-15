@@ -1397,10 +1397,10 @@ body {
 .ml-surface-control.selected { filter:drop-shadow(0 0 6px var(--accent)); color:var(--text); }
 
 /* The bindings bar: the Learn panel as a strip docked under a plugin editor
-   (D-021, src/main/bindingsBarWindows.js). The markup is the VST editor's panel,
-   unchanged; only the layout is the bar's. One column per faceplate and per
-   keyboard name -- counted into --bar-columns by the page -- then one column
-   holding the help above the Learn toolbar. */
+   (D-021, src/main/bindingsBarWindows.js). The markup is the panel's own
+   (core/controlBindingsPanel.js); only the layout is the bar's. One column per
+   faceplate and per keyboard name -- counted into --bar-columns by the page --
+   then one column holding the help above the Learn toolbar. */
 .bindings-bar-body { display:block; background:var(--bg-raised); }
 .bindings-bar {
   --bar-pad: 10px;

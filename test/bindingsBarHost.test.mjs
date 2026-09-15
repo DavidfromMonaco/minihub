@@ -194,7 +194,7 @@ test('a hub without main\'s bars installs nothing', () => {
   assert.equal(installBindingsBarHost(hub, hub.api), null);
 });
 
-// ---- one reading of a click, for both the node editor and the bar ------------
+// ---- one reading of a click, one host for the panel --------------------------
 
 test('a click is read from the panel markup and nothing else', () => {
   const element = (attributes) => ({
@@ -221,10 +221,24 @@ test('a click is read from the panel markup and nothing else', () => {
     'where the controller page opens depends on the window, so the caller does it');
 });
 
-test('the VST node editor reads its clicks through the same module', () => {
-  const source = fs.readFileSync(new URL('../src/renderer/js/core/nodeInstances.js', import.meta.url), 'utf8');
-  assert.match(source, /performControlBindingAction\(hub, instance\.id, controlBindingActionOf\(e\.target\), bindingsPanel\)/);
-  assert.doesNotMatch(source, /hub\.control\.armLearn\(/, 'a second copy of the Learn click is what D-018 would pay twice');
+/*
+ * The bar replaced the panel in the VST node's editor rather than sitting beside
+ * it (D-021, 2026-09-15). Read from the sources, because a second host would not
+ * break anything a test can run: it would draw, and arm, and quietly be a second
+ * selection and a second redraw to keep in step with this one.
+ */
+test('the Learn panel is drawn and clicked in the bar and nowhere else', () => {
+  const root = new URL('../src/renderer/js/', import.meta.url);
+  const sources = fs.readdirSync(root, { recursive: true })
+    .map((name) => String(name).replaceAll('\\', '/'))
+    .filter((name) => name.endsWith('.js'))
+    .map((name) => ({ name, text: fs.readFileSync(new URL(name, root), 'utf8') }));
+  const where = (pattern) => sources.filter((file) => pattern.test(file.text)).map((file) => file.name);
+
+  assert.deepEqual(where(/import\s*\{[^}]*\brenderControlBindings\b/), ['core/bindingsBarHost.js']);
+  assert.deepEqual(where(/import\s*\{[^}]*\bperformControlBindingAction\b/), ['core/bindingsBarHost.js']);
+  assert.deepEqual(where(/hub\.control\.armLearn\(/), ['core/controlBindingActions.js'],
+    'a second copy of the Learn click is what D-018 would pay twice');
 });
 
 // ---- knobs that move: the mouse on the bar, the plugin, the keyboard ---------

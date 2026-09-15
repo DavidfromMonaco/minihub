@@ -569,7 +569,13 @@ test('duplicating a VST node copies plugins with fresh ids but no bindings', asy
   assert.equal(hub.network.connectionsTo(duplicate.id, 'ctrl-in').length, 0);
 });
 
-test('VST editor exposes the shared MiniLab surface and guided Learn toolbar', async () => {
+/*
+ * The Learn panel left the VST node's editor on 2026-09-15: a knob is learned
+ * from the bindings bar docked under the plugin window, and from nowhere else
+ * (DECISIONS D-021). The bar is test/bindingsBarHost.test.mjs. What this pins is
+ * the other half -- that the node's page did not keep a second way in.
+ */
+test('the VST node editor draws no Learn panel and arms nothing', async () => {
   const { api, hub, node } = await makeRig();
   connect(hub, node.id, 'k1');
   const handlers = [];
@@ -584,21 +590,21 @@ test('VST editor exposes the shared MiniLab surface and guided Learn toolbar', a
     }
   };
   hub.modules.get(node.id).mount(container);
-  assert.match(container.innerHTML, /Control Bindings/);
-  assert.match(container.innerHTML, /K1/);
-  assert.match(container.innerHTML, /K8/);
-  assert.match(container.innerHTML, /data-minilab-surface="learn"/);
-  assert.match(container.innerHTML, /opens and foregrounds the target OmniBox/);
+  assert.match(container.innerHTML, /Plugin Chain/, 'the page still draws its chain');
+  assert.doesNotMatch(container.innerHTML, /Control Bindings/);
+  assert.doesNotMatch(container.innerHTML, /data-minilab-surface/, 'no faceplate');
+  assert.doesNotMatch(container.innerHTML, /data-control-action/, 'no Learn toolbar');
+  assert.doesNotMatch(container.innerHTML, /control-open-controller/);
+
+  // The click the old toolbar's Arm Learning made.
   const target = {
     dataset: { controlAction: 'learn', sourceControlId: 'minilab-3:k1' },
     closest: () => null
   };
   handlers[0]({ target });
-  assert.equal(hub.control.pendingLearn.nodeId, node.id);
-  assert.equal(hub.control.pendingLearn.sourceControlId, 'minilab-3:k1');
-  assert.equal(hub.control.pendingLearn.pluginInstanceId, 'plugin-1');
-  hub.control.cancelLearn();
-  ackCurrent(api, hub, false);
+  assert.equal(hub.control.pendingLearn, null);
+  assert.equal(sentOf(api, 'setVstParameterLearn').length, 0);
+
   hub.modules.get(node.id).unmount();
   assert.equal(handlers.length, 0);
 });

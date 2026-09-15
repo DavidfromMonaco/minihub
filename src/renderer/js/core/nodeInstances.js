@@ -42,11 +42,6 @@ import { NetworkLayout } from './networkLayout.js';
 import { VstChain, getVstRole, duplicateVstContent, groupPluginsByFamily } from './vstChain.js';
 import { escapeHtml } from './html.js';
 import { normalizeControlBinding, normalizeControlBindings } from './controlBindings.js';
-import { controlBindingActionOf, performControlBindingAction } from './controlBindingActions.js';
-import { controllerName, controllerModuleId } from './controllerNode.js';
-import { controlSourcesOfNode, surfaceControlsOfNode, surfaceBoxOfNode } from '../midi/minilabControls.js';
-import { CONTROLLER_NODE_IDS } from './systemNodes.js';
-import { miniLabControlSurfaceHtml, applyMiniLabSurfaceLayout } from '../ui/miniLabControlSurface.js';
 import { defaultArpeggiatorContent, normalizeArpeggiatorContent } from './arpeggiatorState.js';
 import { currentArpeggiatorStep, moveCustomNote, removeCustomNote, renderArpControlStrip, renderCustomPatternEditor, setCustomGateDuration, setCustomNote, syncArpControlStrip, velocityFromPointer } from './arpeggiatorEditor.js';
 import { icon } from '../ui/icons.js';
@@ -203,83 +198,6 @@ function renderAddVst(hub, scan = {}) {
     ${scanNote ? `<div class="row mt-6">${scanNote}</div>` : ''}`;
 }
 
-export function renderControlBindings(instance, hub, selectedControlId = null) {
-  const pending = hub.control?.pendingLearn;
-  // Every keyboard on the desk, cabled to this node or not, in the order they
-  // loaded. The panel used to draw only the keyboards cabled to CTRL IN, and
-  // greyed out every control without its own cable: cabling a knob in the Patch
-  // Bay was the step before learning it. Learn plugs that cable now (see
-  // ControlBindingManager), so any control of any keyboard can be learned from
-  // here -- and a drawing that followed the cables would hide the very keyboard
-  // the person is about to learn from. Loading order, not cable order, so that
-  // the capture plugging a cable does not reshuffle the faceplates under the
-  // mouse. Asked 2026-09-14.
-  const drawnNodes = [...CONTROLLER_NODE_IDS];
-  const sources = drawnNodes.flatMap((nodeId) => controlSourcesOfNode(nodeId));
-  const states = {};
-  sources.forEach((source) => {
-    const status = hub.control?.bindingStatus(instance.id, source.id)
-      || { state: 'unbound', binding: null };
-    const isPending = pending?.nodeId === instance.id && pending.sourceControlId === source.id;
-    // `unplugged`: learned, and its cable since pulled out in the Patch Bay. The
-    // binding is kept (it is the person's work) and does nothing until a cable
-    // or a new Learn brings the knob back; drawn as mapped, it would read as
-    // working.
-    states[source.id] = isPending ? 'learn-armed'
-      : (!status.binding ? 'unmapped' : (status.state === 'disconnected' ? 'unplugged' : 'mapped'));
-  });
-  const selected = sources.find((source) => source.id === selectedControlId) || null;
-  const selectedStatus = selected ? hub.control?.bindingStatus(instance.id, selected.id) : null;
-  const isPending = selected && pending?.nodeId === instance.id && pending.sourceControlId === selected.id;
-  const binding = selectedStatus?.binding;
-  const target = binding
-    ? `${binding.pluginName || binding.pluginInstanceId} · ${binding.parameterName || `ParamID ${binding.parameterId}`}`
-    : 'Unmapped';
-  // Named from its Patch Bay node, like the header and the sequencer's
-  // messages: this sentence points at hardware the user has to touch, and it
-  // used to point at a MiniLab whoever else's keyboard is on the desk. Escaped
-  // because the name reaches innerHTML and now comes from a profile file.
-  //
-  // The node that is DRAWN, not "the controller": with two keyboards on the desk
-  // `controllerName` answers null by design (D-022), and the sentence would send
-  // the user to look at "the controller" while a named faceplate sat under it.
-  // With several drawn, none of them is "the" one and the generic word is right.
-  const nodeName = (nodeId) => hub.network?.getNode?.(nodeId)?.name || nodeId;
-  const device = drawnNodes.length === 1 ? nodeName(drawnNodes[0]) : controllerName(hub.network);
-  // The way out of this panel when the drawing is not the user's keyboard. It
-  // used to be a dead end: the controls shown here come from the loaded profile,
-  // and nothing on this page said where a profile is chosen. The device's own
-  // page is that place, and it is named after the device rather than after
-  // MiniHub's word for it.
-  return `
-    <div class="control-bindings-help muted">
-      Select an observable control on ${device ? escapeHtml(device) : 'the controller'}, then Arm Learning. Native MIDI behavior remains active while MiniHub opens and foregrounds the target OmniBox.
-      <button type="button" class="btn btn-sm" id="control-open-controller">Not your keyboard?</button>
-    </div>
-    ${drawnNodes.map((nodeId) =>
-      // One faceplate per keyboard, each named when there is more than one — an
-      // unlabelled second panel is a drawing the user has to identify by
-      // counting its knobs.
-      (drawnNodes.length > 1
-        ? `<div class="control-bindings-help muted">${escapeHtml(nodeName(nodeId))}</div>`
-        : '')
-      + miniLabControlSurfaceHtml({
-        states,
-        selectedId: selected?.id || null,
-        controls: surfaceControlsOfNode(nodeId),
-        box: surfaceBoxOfNode(nodeId)
-      })).join('')}
-    <div class="control-learn-toolbar" data-selected-source-control-id="${selected?.id || ''}">
-      <strong>${selected?.label || 'Select a control'}</strong>
-      <span class="control-binding-target">${escapeHtml(selected ? target : 'Choose an observable physical control above')}</span>
-      <span class="spacer"></span>
-      <button class="btn primary" data-control-action="${isPending ? 'cancel' : 'learn'}" data-source-control-id="${selected?.id || ''}"
-        ${selected ? '' : 'disabled'}>${isPending ? 'Cancel Learning' : 'Arm Learning'}</button>
-      <button class="btn" data-control-action="clear" data-source-control-id="${selected?.id || ''}"
-        ${binding && !isPending ? '' : 'disabled'}>Clear</button>
-    </div>`;
-}
-
 function renderVstEditor(instance, type, hub, statusMap, editorNotes) {
   const plugins = (instance.content && Array.isArray(instance.content.plugins)) ? instance.content.plugins : [];
   const engineDown = hub.engine.state === 'error' || hub.engine.state === 'stopped';
@@ -295,10 +213,6 @@ function renderVstEditor(instance, type, hub, statusMap, editorNotes) {
         <h2 class="panel-title">Plugin Chain</h2>
         <div id="vst-chain">${renderChain(plugins, statusMap, editorNotes)}</div>
         <div id="vst-add-section">${renderAddVst(hub)}</div>
-      </div>
-      <div class="panel mt-16">
-        <h2 class="panel-title">Control Bindings</h2>
-        <div id="vst-control-bindings">${renderControlBindings(instance, hub)}</div>
       </div>
       <div class="row mt-16">
         <span class="spacer"></span>
@@ -993,10 +907,6 @@ export class NodeInstanceManager {
          */
         function paintEditor(center = false) {
           container.innerHTML = editor ? editor.render(editorContext) : renderGenericShell(instance, type);
-          // The control surface carries its coordinates on `data-*` because the
-          // CSP drops an inline style attribute in silence; this is what turns
-          // them into a position, and it has to run after every innerHTML.
-          applyMiniLabSurfaceLayout(container);
           afterArpRender(center);
         }
         paintEditor(true);
@@ -1075,10 +985,6 @@ export class NodeInstanceManager {
                 pill.textContent = down ? 'Engine unavailable' : 'Engine ready';
                 pill.className = 'pill ' + (down ? 'off' : 'ok');
               }
-            }),
-            hub.events.on('control:bindingsChanged', (change) => {
-              if (change.nodeId && change.nodeId !== instance.id) return;
-              rerenderControlBindings();
             })
           );
         }
@@ -1095,15 +1001,6 @@ export class NodeInstanceManager {
           if (chainEl) chainEl.innerHTML = renderChain(instance.content.plugins, statusMap, editorNotes);
         }
 
-        const bindingsPanel = { selectedControlId: null };
-
-        function rerenderControlBindings() {
-          const bindingsEl = container.querySelector('#vst-control-bindings');
-          if (!bindingsEl) return;
-          bindingsEl.innerHTML = renderControlBindings(instance, hub, bindingsPanel.selectedControlId);
-          applyMiniLabSurfaceLayout(bindingsEl);
-        }
-
         // One handler per mount, removed on unmount. It used to be attached to
         // the shared `#content` element and never removed, so every module
         // visit left another live handler on it: clicking a plugin action then
@@ -1113,14 +1010,6 @@ export class NodeInstanceManager {
           if (e.target.closest('#node-delete')) {
             manager.delete(instance.id);
             hub.modules.activate('home', container);
-            return;
-          }
-          // The controller's PAGE, not its node: those are two different
-          // strings, and activate() fails silently on the wrong one. Asked of
-          // the module system rather than spelled -- see controllerNode.js.
-          if (e.target.closest('#control-open-controller')) {
-            const page = controllerModuleId(hub.modules);
-            if (page) hub.modules.activate(page, container);
             return;
           }
           if (type.id === 'arpeggiator') {
@@ -1133,13 +1022,6 @@ export class NodeInstanceManager {
             return;
           }
           if (type.id !== 'vst') return;
-
-          // The same reading and the same actions as the bindings bar docked
-          // under the plugin window, from one module, so the two cannot drift.
-          if (performControlBindingAction(hub, instance.id, controlBindingActionOf(e.target), bindingsPanel)) {
-            rerenderControlBindings();
-            return;
-          }
 
           if (e.target.closest('#vst-scan')) {
             scanState.error = '';

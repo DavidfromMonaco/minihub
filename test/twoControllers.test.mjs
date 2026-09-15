@@ -281,7 +281,7 @@ test('each keyboard is armed on its own cable, and an unclaimed choice arms noth
 // ---------------------------------------------------------------------------
 
 const { Network } = await import('../src/renderer/js/core/network.js');
-const { renderControlBindings } = await import('../src/renderer/js/core/nodeInstances.js');
+const { renderControlBindings } = await import('../src/renderer/js/core/controlBindingsPanel.js');
 
 function makeNetwork() {
   const network = new Network({ emit() {}, on() { return () => {}; } }, { get: () => null, set() {} });
