@@ -42,3 +42,10 @@ Plan: [plans/active/bindings-bar-docked.md](plans/active/bindings-bar-docked.md)
 
 **The Patch Bay's context menus** — still hand-built in `routingModule.js`;
 `ui/contextMenu.js` exists and only the sequencer uses it.
+
+**Kilohearts plugins do not load** — added on the author's request, 2026-09-15,
+not started. kHs Gain, kHs Filter and kHs Reverb end in error: "setProcessing(true)
+failed". `start()` in `native/audio-engine/src/plugin_host.cpp` accepts only
+`kResultOk` or `kResultTrue` from that call; JUCE's own VST3 host also accepts
+`kNotImplemented`. Which code these plugins return is not verified. A native
+change: `npm run build:native` 0 errors 0 warnings, and the four test binaries.
