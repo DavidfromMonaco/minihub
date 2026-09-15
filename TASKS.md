@@ -47,6 +47,18 @@ or `kResultTrue` from that call; JUCE's own VST3 host also accepts
 `kNotImplemented`. Which code these plugins return is not verified. A native
 change: `npm run build:native` 0 errors 0 warnings, and the four test binaries.
 
+**Massive X moves a parameter by itself, and Learn takes it** — added on the
+author's request, 2026-09-15. In the author's session that morning, for the 36 s
+after its window opened, Massive X reported a parameter moving about 23 times a
+second with nobody touching it (`vstParameterTouched` in the startup log, at the
+engine's cap of 30 per second), until a change of plugin state stopped it. Two
+Learns armed during that stream ended after 50 ms and 30 ms, most likely on that
+parameter; the third, armed once the stream had stopped, took the author's
+gesture. The engine records a value only inside a gesture
+(`native/audio-engine/src/gesture_learn_state.h`), so Massive X was opening
+gestures of its own. Which parameter it was, and what starts the stream, is
+neither logged nor verified.
+
 **MiniHub.exe still names itself Electron** — raised 2026-09-15, the author's to
 decide. The executable's version resource says "Electron" for the product and
 the file description, "GitHub, Inc." for the company: `scripts/sync-dist.mjs`
