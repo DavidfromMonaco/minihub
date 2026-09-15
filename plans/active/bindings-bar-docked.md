@@ -186,8 +186,19 @@ tried. Checks: `npm test` (1059), `npm run check` (15 rules), `npm run sync:dist
 Seen on two probe windows built with the bar's options and the same bounds: with
 the thick frame, the window (292, 300)-(708, 508) around a client area
 (300, 300) 400 x 200; without it, window and client area both (300, 600)
-400 x 200. **Not seen in MiniHub itself**: another application was in front, and
-opening a plugin window takes the foreground from it.
+400 x 200.
+
+Then seen in MiniHub, on the author's go, in an untitled project made for it:
+Analog Lab V's window brought forward through the channel, moved with
+`SetWindowPos`, and Windows asked which window a click reaches
+(`WindowFromPoint`). Bar on the right: its window and client area both
+(1315, 26) 456 x 918; x 1311 and 1314 reach the plugin, 1315 the bar, and nothing
+of the bar is 3 px below it or 3 px to its right. On the left: (144, 26)
+456 x 918; 599 reaches the bar, 600 the plugin, 140 not the bar. Under the frame
+pushed up: (33, 888) 1282 x 182; 887 reaches the plugin, 888 the bar, and 1071
+and both sides are outside it. The 456-wide columns, right and left, were drawn
+whole this time: the help, the faceplate, "Select a control above", and both
+buttons on one line.
 
 2026-09-15 — The bar stands beside a plugin that leaves no room under it. The
 author, testing Learn with Analog Lab V: the mouse could not reach the plugin's

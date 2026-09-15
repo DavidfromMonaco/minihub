@@ -34,11 +34,6 @@ A plugin too tall to leave room under the bar (Analog Lab V on the author's
 controls. Seen with Dexed and Analog Lab V: the author learned F1 from the bar
 onto Analog Lab V's Reverb Volume, and the capture plugged its cable. Left: the
 documents, step 8 of the plan.
-- Not seen yet in MiniHub: the bar without the 8 invisible pixels that took clicks
-  left, right and below what it draws (`thickFrame: false`, seen on a probe
-  window with the bar's options).
-- Not seen yet: the column's contents at its full width, right or left (the
-  captures came out empty behind a full-screen window).
 - Not seen yet: the drawn knob following the plugin's own knob, or the MiniLab's.
 Plan: [plans/active/bindings-bar-docked.md](plans/active/bindings-bar-docked.md).
 
