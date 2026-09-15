@@ -1,9 +1,9 @@
 # Tasks in progress
 
-Only work that has started and is not finished. **When a task is finished,
-delete its entry**, in the same commit. Nothing else belongs here: what was
-done lives in git and [ROADMAP.md](ROADMAP.md), and so does what has never been
-started.
+Only work that has started and is not finished — plus, listed apart, the problems
+the author has asked to keep here until he takes them up. **When a task is
+finished, delete its entry**, in the same commit. What was done lives in git and
+[ROADMAP.md](ROADMAP.md), and so does the rest of what has never been started.
 
 ## Started, not finished
 
@@ -26,9 +26,10 @@ the author tests).
 editor** — 7 of 8 steps. The bar opens under every plugin window, follows it,
 and arms Learn on any knob, cabled or not: the capture plugs the cable in the
 Patch Bay, Clear unplugs it. A bound knob or fader shows where its parameter
-stands and moves it under the mouse. Since 2026-09-15 it is the only place a
-knob is learned: the VST node's page has no bindings panel any more. Seen with
-Dexed. Left: the documents.
+stands and moves it under the mouse; a binding that does nothing for now (cable
+pulled out, plugin not running) is drawn dashed. Since 2026-09-15 the bar is the
+only place a knob is learned: the VST node's page has no bindings panel any more.
+Seen with Dexed. Left: the documents, step 8 of the plan.
 - Not seen yet: a capture from the bar, and the cable it plugs (it needs a
   gesture in the plugin).
 - Not seen yet: the drawn knob following the plugin's own knob, or the MiniLab's.
@@ -37,9 +38,17 @@ Plan: [plans/active/bindings-bar-docked.md](plans/active/bindings-bar-docked.md)
 **The Patch Bay's context menus** — still hand-built in `routingModule.js`;
 `ui/contextMenu.js` exists and only the sequencer uses it.
 
-**Kilohearts plugins do not load** — added on the author's request, 2026-09-15,
-not started. kHs Gain, kHs Filter and kHs Reverb end in error: "setProcessing(true)
-failed". `start()` in `native/audio-engine/src/plugin_host.cpp` accepts only
-`kResultOk` or `kResultTrue` from that call; JUCE's own VST3 host also accepts
+## Kept for the author, not started
+
+**Kilohearts plugins do not load** — added on the author's request, 2026-09-15.
+kHs Gain, kHs Filter and kHs Reverb end in error: "setProcessing(true) failed".
+`start()` in `native/audio-engine/src/plugin_host.cpp` accepts only `kResultOk`
+or `kResultTrue` from that call; JUCE's own VST3 host also accepts
 `kNotImplemented`. Which code these plugins return is not verified. A native
 change: `npm run build:native` 0 errors 0 warnings, and the four test binaries.
+
+**MiniHub.exe still names itself Electron** — raised 2026-09-15, the author's to
+decide. The executable's version resource says "Electron" for the product and
+the file description, "GitHub, Inc." for the company: `scripts/sync-dist.mjs`
+stamps only the icon onto it with `rcedit`. Windows likely shows that name, in
+Task Manager for one — not verified.
