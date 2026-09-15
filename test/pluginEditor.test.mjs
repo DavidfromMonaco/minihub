@@ -265,6 +265,43 @@ test('node deleted while native create is pending is never restored on late READ
   assert.deepEqual(sentOf(api, 'setBypass'), []);
 });
 
+/*
+ * 2026-09-15. Deleting a VST node takes its plugins out of the engine, and a
+ * Ctrl+Z brought the node back listing plugins that were never created again:
+ * no sound, and "still loading" on Open Plugin, until the next engine start.
+ */
+test('a VST node Ctrl+Z brings back has its plugins created in the engine again', async () => {
+  const { setupEditHistory } = await import('../src/renderer/js/core/editHistory.js');
+  const { applyHistorySnapshot } = await import('../src/renderer/js/core/editHistoryApply.js');
+  const api = mockApi();
+  const hub = createHub(api);
+  await hub.settings.load();
+  const node = hub.nodes.create('vst');
+  const plugin = hub.nodes.getChain(node.id).append({
+    pluginId: 'A', name: 'Vital', role: 'instrument', state: 'saved-state'
+  });
+  plugin.bypassed = true;
+  setupChainSync(hub, () => {});
+  await hub.engine.init();
+  setupEditHistory(hub, { apply: applyHistorySnapshot, quietMs: 5 });
+  hub.history.start();
+
+  hub.nodes.delete(node.id);
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  api.sent.length = 0;
+  assert.equal(await hub.history.undo(), true);
+
+  const created = sentOf(api, 'createInstance');
+  assert.deepEqual(created.map((c) => [c.chainId, c.instanceId, c.pluginId, c.index]), [[node.id, plugin.id, 'A', 0]],
+    'the same plugin, under the instance id its bindings name');
+  api.emitEvent({
+    type: 'instanceStatus', status: 'ready', requestId: created[0].requestId,
+    chainId: node.id, instanceId: plugin.id, pluginId: 'A', generation: 3
+  });
+  assert.deepEqual(sentOf(api, 'setState').map((m) => m.instanceId), [plugin.id], 'with its state');
+  assert.deepEqual(sentOf(api, 'setBypass').map((m) => m.instanceId), [plugin.id], 'and its bypass');
+});
+
 test('the rebuild happens once per engine run, and again after a restart', async () => {
   const api = mockApi();
   const hub = createHub(api);

@@ -549,6 +549,75 @@ test('one Ctrl+Z takes back a capture: the binding and the cable it plugged', as
   assert.equal(hub.history.canUndo, false, 'one step, not two');
 });
 
+/*
+ * 2026-09-15. Every Ctrl+Z emptied the bindings of every VST node and left their
+ * cables behind: a restore copied each node's content the way Duplicate does,
+ * which drops bindings on purpose. A save after the undo made the loss permanent.
+ */
+const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
+
+async function makeHistoryRig() {
+  const { setupEditHistory } = await import('../src/renderer/js/core/editHistory.js');
+  const { applyHistorySnapshot } = await import('../src/renderer/js/core/editHistoryApply.js');
+  const rig = await makeRig();
+  setupEditHistory(rig.hub, { apply: applyHistorySnapshot, quietMs: 5 });
+  rig.hub.history.start();
+  return rig;
+}
+
+test('an undo leaves the bindings of the VST nodes it does not change', async () => {
+  const { api, hub, node, plugin } = await makeHistoryRig();
+  capture(api, hub, node, plugin, 'k1');
+  await settle();
+  hub.nodes.create('mixer');
+  await settle();
+
+  assert.equal(await hub.history.undo(), true);
+  assert.equal(hub.nodes.list().some((instance) => instance.type === 'mixer'), false, 'the Mixer is undone');
+  assert.deepEqual(hub.nodes.getControlBindings(node.id).map((binding) => binding.sourceControlId),
+    [source('k1').id], 'and the knob learned before it is still learned');
+  assert.equal(hub.control.bindingStatus(node.id, source('k1').id).state, 'active');
+});
+
+test('undoing Clear brings the binding back with its cable', async () => {
+  const { api, hub, node, plugin } = await makeHistoryRig();
+  capture(api, hub, node, plugin, 'k1');
+  await settle();
+  hub.control.clear(node.id, source('k1').id);
+  await settle();
+
+  assert.equal(await hub.history.undo(), true);
+  assert.equal(hub.control.bindingFor(node.id, source('k1').id)?.parameterId, '123456789');
+  assert.equal(hub.control.isConnected(node.id, source('k1').id), true);
+});
+
+test('an undo never brings back a binding whose plugin was removed since', async () => {
+  const { api, hub, node, plugin } = await makeHistoryRig();
+  capture(api, hub, node, plugin, 'k1');
+  await settle();
+  hub.nodes.removePlugin(node.id, plugin.id);
+  await settle();
+
+  assert.equal(await hub.history.undo(), true);
+  assert.deepEqual(hub.nodes.getControlBindings(node.id), [],
+    'the plugin list is not in the history, so what named a removed plugin cannot come back');
+});
+
+test('a VST node deleted and brought back keeps its plugin ids and its bindings', async () => {
+  const { api, hub, node, plugin } = await makeHistoryRig();
+  capture(api, hub, node, plugin, 'k1');
+  await settle();
+  hub.nodes.delete(node.id);
+  await settle();
+
+  assert.equal(await hub.history.undo(), true);
+  const back = hub.nodes.get(node.id);
+  assert.deepEqual(back.content.plugins.map((entry) => entry.id), [plugin.id], 'under the id its binding names');
+  assert.deepEqual(back.content.controlBindings.map((binding) => [binding.sourceControlId, binding.pluginInstanceId]),
+    [[source('k1').id, plugin.id]]);
+  assert.equal(hub.control.isConnected(node.id, source('k1').id), true);
+});
+
 test('disconnecting the CONTROL cable stops updates without deleting binding', async () => {
   const { api, hub, node, plugin } = await makeRig();
   const k1 = connect(hub, node.id, 'k1');

@@ -54,30 +54,46 @@ export function setupChainSync(hub, syncRouting) {
     if (live.bypassed) hub.engine.setBypass(pending.chainId, live.id, true);
   });
 
+  /** Create one VST node's plugins in the engine; READY restores their state. */
+  const createChain = (instance, engineGeneration) => {
+    const plugins = (instance.content && Array.isArray(instance.content.plugins))
+      ? instance.content.plugins
+      : [];
+    plugins.forEach((plugin, index) => {
+      if (!plugin.pluginId) return;
+      const creation = hub.engine.createInstanceTracked(
+        instance.id, plugin.pluginId, plugin.id, index
+      );
+      pendingRestore.set(creation.requestId, { chainId: instance.id, plugin, engineGeneration });
+      creation.accepted.then((res) => {
+        if (!res || !res.ok) pendingRestore.delete(creation.requestId);
+      }).catch(() => pendingRestore.delete(creation.requestId));
+    });
+  };
+
   const rebuild = () => {
     if (!hub.engine || !hub.nodes) return;
     hub.diagnostics?.log(`startup:vst-chain-rebuild count=${hub.nodes.list().filter((node) => node.type === 'vst').length}`);
     const engineGeneration = hub.engine.runtimeGeneration;
     for (const instance of hub.nodes.list()) {
-      if (instance.type !== 'vst') continue;
-      const plugins = (instance.content && Array.isArray(instance.content.plugins))
-        ? instance.content.plugins
-        : [];
-      plugins.forEach((plugin, index) => {
-        if (!plugin.pluginId) return;
-        const creation = hub.engine.createInstanceTracked(
-          instance.id, plugin.pluginId, plugin.id, index
-        );
-        pendingRestore.set(creation.requestId, { chainId: instance.id, plugin, engineGeneration });
-        creation.accepted.then((res) => {
-          if (!res || !res.ok) pendingRestore.delete(creation.requestId);
-        }).catch(() => pendingRestore.delete(creation.requestId));
-      });
+      if (instance.type === 'vst') createChain(instance, engineGeneration);
     }
     // Chain MIDI/output gating lives in the engine too and is equally lost on
     // restart, so re-publish the routing topology right after the rebuild.
     if (typeof syncRouting === 'function') syncRouting();
   };
+
+  // A VST node Ctrl+Z brought back. Deleting it took its plugins out of the
+  // engine, and nothing created them again before the next engine start: the
+  // node came back listing plugins that made no sound and could not be opened
+  // (2026-09-15). With a rebuild still to come -- the engine not running yet --
+  // that rebuild already covers the node, so nothing is created twice.
+  hub.events.on('nodes:restored', (msg) => {
+    const instance = hub.nodes?.get(msg?.nodeId);
+    if (instance?.type !== 'vst' || needsRebuild || hub.engine?.state !== 'running') return;
+    createChain(instance, hub.engine.runtimeGeneration);
+    if (typeof syncRouting === 'function') syncRouting();
+  });
 
   const maybeRebuild = () => {
     if (!needsRebuild) return;

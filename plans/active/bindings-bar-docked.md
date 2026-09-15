@@ -174,6 +174,41 @@ building rather than in advance:
 
 ## Log
 
+2026-09-15 — Ctrl+Z and bindings, fixed on the author's word, with the drawing
+of a binding whose plugin is not running. Both had been found the same day.
+
+- **A restore is not a copy.** `restoreContent()` and `restoreInstance()` now
+  take a snapshot's content exactly (`restoredContentFor()`), where they went
+  through `cloneContentFor()`, which is Duplicate's and Paste's. An undo keeps
+  every VST node's bindings; an undone Clear brings its binding back; a deleted
+  VST node comes back with its plugins under their own instance ids and its
+  bindings.
+- **A binding is restored only while its plugin is in the chain.**
+  `_writeContent()` drops one naming a plugin removed since the snapshot. The
+  plugin list is not the history's to restore, so that binding could never work
+  again. Its cable, part of the network, does come back with the snapshot.
+- **A VST node brought back plays again.** Deleting it took its plugins out of
+  the engine, and nothing created them before the next engine start. The
+  restore emits `nodes:restored`, and `chainSync` creates that node's plugins
+  the way its rebuild does, state and bypass restored on READY.
+- **Only a binding that routes is drawn mapped.** One whose plugin is loading,
+  failed to load or is gone is `inactive`, dashed like `unplugged`.
+- Suspected and ruled out by a probe: the MIDI gate of a restored node. The
+  restore adds the node before its cables, so the routing sync closes then reopens
+  the gate by itself.
+
+Six tests: four in `test/controlRouting.test.mjs`, one in
+`test/pluginEditor.test.mjs`, one in `test/bindingsBarHost.test.mjs`. Five fail
+against the previous code. The sixth -- no binding of a removed plugin comes back
+-- passed there only because every binding went; it fails without the filter.
+
+Seen live, in an untitled project discarded after, through the channel: K1 bound
+to Dexed and K3 to kHs Gain (which fails to load), both cabled. A Mixer created
+and undone left both bindings and both cables. VST 1 deleted and undone came back
+with `plugin-1` Dexed and `plugin-2` kHs Gain, both bindings and both cables;
+the engine read 2,238 parameters from Dexed and its window opened. Under it, the
+bar drew K1 solid with its value mark, and K3 dashed.
+
 2026-09-15 — Two follow-ups of the removal, asked by the author the same day.
 
 - **Removing a plugin frees its knobs.** A node none of whose plugins can open a

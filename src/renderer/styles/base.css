@@ -1327,9 +1327,11 @@ body {
 .ml-surface-knob:hover,.ml-surface-knob.selected { color:var(--text); background:rgba(79,140,255,.12); }
 .ml-surface-knob.selected .ml-knob-cap { border-color:var(--accent); box-shadow:0 0 8px rgba(79,140,255,.65); }
 .ml-surface-knob.state-mapped .ml-knob-cap { border-color:#4ade82; }.ml-surface-knob.state-learn-armed .ml-knob-cap { border-color:#f5c451; box-shadow:0 0 10px #f5c451; }
-/* Learned, and its cable since pulled out in the Patch Bay: kept, doing nothing.
-   Every control can be learned now, so none is drawn unavailable any more. */
-.ml-surface-knob.state-unplugged .ml-knob-cap { border-color:#4ade82; border-style:dashed; }
+/* Learned, and doing nothing for now: its cable pulled out in the Patch Bay
+   (unplugged), or its plugin not running (inactive). Kept, and not drawn as if it
+   worked. Every control can be learned now, so none is drawn unavailable. */
+.ml-surface-knob.state-unplugged .ml-knob-cap,
+.ml-surface-knob.state-inactive .ml-knob-cap { border-color:#4ade82; border-style:dashed; }
 .ml-surface-fader { position:absolute; display:flex; flex-direction:column; align-items:center; gap:4px; font:700 9px var(--mono); opacity:.55; }.ml-surface-fader i { width:7px; height:58px; border-radius:4px; background:#080a0d; border:1px solid #5d6570; }
 /* The cap sits where the profile put the control; the stagger that used to
    offset every other fader was decoration standing in for a coordinate. */
@@ -1388,7 +1390,8 @@ body {
 .ml-list-control:hover,.ml-list-control.selected { color:var(--text); border-color:var(--accent); }
 .ml-list-control.state-mapped { border-color:#4ade82; }
 .ml-list-control.state-learn-armed { border-color:#f5c451; box-shadow:0 0 8px #f5c451; }
-.ml-list-control.state-unplugged { border-color:#4ade82; border-style:dashed; }
+.ml-list-control.state-unplugged,
+.ml-list-control.state-inactive { border-color:#4ade82; border-style:dashed; }
 
 /* A family this drawing has no body for: a breath controller, a pedal. It is
    drawn plainly, but on its own coordinate like everything else -- it used to be

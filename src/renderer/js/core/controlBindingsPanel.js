@@ -37,12 +37,15 @@ export function renderControlBindings(instance, hub, selectedControlId = null) {
     const status = hub.control?.bindingStatus(instance.id, source.id)
       || { state: 'unbound', binding: null };
     const isPending = pending?.nodeId === instance.id && pending.sourceControlId === source.id;
-    // `unplugged`: learned, and its cable since pulled out in the Patch Bay. The
-    // binding is kept (it is the person's work) and does nothing until a cable
-    // or a new Learn brings the knob back; drawn as mapped, it would read as
-    // working.
+    // Only a binding that routes is drawn mapped. `unplugged`: learned, and its
+    // cable since pulled out in the Patch Bay. `inactive`: learned, and its
+    // plugin not running -- still loading, failed to load, or gone from the
+    // chain. Either binding is kept (it is the person's work) and does nothing
+    // for now; drawn as mapped, it read as working, and a plugin in error showed
+    // its knobs green (2026-09-15).
+    const drawn = { active: 'mapped', disconnected: 'unplugged' };
     states[source.id] = isPending ? 'learn-armed'
-      : (!status.binding ? 'unmapped' : (status.state === 'disconnected' ? 'unplugged' : 'mapped'));
+      : (!status.binding ? 'unmapped' : (drawn[status.state] || 'inactive'));
   });
   const selected = sources.find((source) => source.id === selectedControlId) || null;
   const selectedStatus = selected ? hub.control?.bindingStatus(instance.id, selected.id) : null;

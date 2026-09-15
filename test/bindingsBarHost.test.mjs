@@ -132,6 +132,27 @@ test('a learned knob whose cable was pulled out is drawn apart from one that wor
     'kept, and not drawn as if turning it did something');
 });
 
+// 2026-09-15: a knob bound to a plugin in error was drawn green.
+test('a knob bound to a plugin that failed to load is not drawn as working', async () => {
+  const { api, hub, node, plugin } = await makeRig();
+  const failed = hub.nodes.getChain(node.id).append({ pluginId: 'C:/VST3/Broken.vst3', name: 'Broken', role: 'audio-effect' });
+  api.emitEvent({
+    type: 'instanceStatus', chainId: node.id, instanceId: failed.id, pluginId: failed.pluginId,
+    generation: 8, status: 'error', error: 'plugin not found'
+  });
+  hub.nodes.setControlBinding(node.id, {
+    version: 1, sourceControlId: source('k1').id, pluginInstanceId: failed.id,
+    pluginId: failed.pluginId, parameterId: '5', pluginName: 'Broken', parameterName: 'Mix'
+  });
+  installBindingsBarHost(hub, api);
+  // The bar under the plugin that did load: the only place the other one's knobs show.
+  api.want({ chainId: node.id, instanceId: plugin.id });
+  await tick();
+  const html = api.renders.at(-1).html;
+  assert.match(html, /class="[^"]*state-inactive[^"]*"[^>]*data-minilab-control-id="minilab-3:k1"/);
+  assert.doesNotMatch(html, /state-mapped/, 'nothing on this bar routes, so nothing is drawn as if it did');
+});
+
 test('the bar follows the bindings it shows', async () => {
   const { api, hub, node, plugin } = await makeRig();
   installBindingsBarHost(hub, api);

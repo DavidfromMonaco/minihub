@@ -32,12 +32,6 @@ Dexed. Left: the documents.
 - Not seen yet: a capture from the bar, and the cable it plugs (it needs a
   gesture in the plugin).
 - Not seen yet: the drawn knob following the plugin's own knob, or the MiniLab's.
-- Found, not fixed: every Ctrl+Z empties the bindings of every VST node (their
-  cables stay), and undoing a VST node's deletion brings its plugins back under
-  new ids with no bindings. The restore copies a node's content the way
-  Duplicate does.
-- Found, not fixed: a binding whose plugin failed to load is drawn as mapped, as
-  if it worked.
 Plan: [plans/active/bindings-bar-docked.md](plans/active/bindings-bar-docked.md).
 
 **The Patch Bay's context menus** — still hand-built in `routingModule.js`;

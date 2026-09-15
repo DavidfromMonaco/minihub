@@ -302,6 +302,20 @@ function cloneContentFor(typeId, content) {
 }
 
 /**
+ * A node's content exactly as a history snapshot holds it.
+ *
+ * Not `cloneContentFor`, which is right for Duplicate and Paste and wrong here:
+ * it gives a VST chain's plugins new instance ids and drops its bindings, so that
+ * a copy never inherits the knobs of the node it came from. A restore is the
+ * same node coming back. Every Ctrl+Z went through the copy, which emptied the
+ * bindings of every VST node on screen and brought a deleted one back with
+ * renumbered plugins and no bindings (2026-09-15).
+ */
+function restoredContentFor(content) {
+  return content ? JSON.parse(JSON.stringify(content)) : null;
+}
+
+/**
  * A node's content, made safe to trust, by type.
  *
  * WHY THIS IS A FUNCTION AND NOT A TERNARY INSIDE `load()`
@@ -714,7 +728,7 @@ export class NodeInstanceManager {
   restoreContent(id, content) {
     const instance = this.instances.get(id);
     if (!instance) return false;
-    return this._writeContent(instance, cloneContentFor(instance.type, content));
+    return this._writeContent(instance, restoredContentFor(content));
   }
 
   /**
@@ -737,21 +751,36 @@ export class NodeInstanceManager {
 
   /** Compare, keep what is not the caller's to write, persist, and signal. */
   _writeContent(instance, next) {
+    const plugins = instance.content?.plugins || [];
+    // A binding is kept only while its plugin is in the live chain. The plugin
+    // list is not the caller's to write, so a binding naming a plugin removed
+    // since the snapshot was taken can never work again -- and bringing it back
+    // would put it where `releasePlugin()` took it from, drawn under the next
+    // plugin opened in the node and cleared from nowhere once none is left.
+    const livePlugins = new Set(plugins.map((plugin) => plugin.id));
     const kept = instance.type === 'vst'
       ? { ...(next || {}),
-          plugins: instance.content?.plugins || [],
+          plugins,
+          controlBindings: (Array.isArray(next?.controlBindings) ? next.controlBindings : [])
+            .filter((binding) => livePlugins.has(binding?.pluginInstanceId)),
           ...(Number.isSafeInteger(instance.content?.nextPluginInstanceSeq)
             ? { nextPluginInstanceSeq: instance.content.nextPluginInstanceSeq } : {}) }
       : next;
     if (JSON.stringify(kept) === JSON.stringify(instance.content)) return false;
+    const bindingsMoved = instance.type === 'vst'
+      && JSON.stringify(kept.controlBindings) !== JSON.stringify(instance.content?.controlBindings || []);
     instance.content = kept;
     this._persist();
-    // The same two signals an ordinary edit of this node sends. `engineSync`
-    // listens to both and republishes the whole plan, so the engine follows the
-    // model rather than being handed a reverse command (D-032).
+    // The same signals an ordinary edit of this node sends. `engineSync` listens
+    // to the first two and republishes the whole plan, so the engine follows the
+    // model rather than being handed a reverse command (D-032). A binding is
+    // announced the way Learn and Clear announce one, so an open bindings bar
+    // reads again where its knobs stand.
     if (instance.type === 'arpeggiator') this.hub.events.emit('nativeMidi:stateChanged', { nodeId: instance.id });
     else if (instance.type === 'mixer' || instance.type === 'morpher') {
       this.hub.events.emit('nativeAudio:stateChanged', { nodeId: instance.id });
+    } else if (bindingsMoved) {
+      this.hub.events.emit('control:bindingsChanged', { nodeId: instance.id });
     }
     return true;
   }
@@ -761,14 +790,21 @@ export class NodeInstanceManager {
    *
    * Goes through `_add`, which is the single creation path, so naming, module
    * registration and network registration cannot drift from the ordinary one.
+   *
+   * A VST node's plugins keep their instance ids, which is what its bindings
+   * name. Deleting the node took those plugins out of the engine, and `_add`
+   * creates nothing there: `nodes:restored` is what `chainSync` answers by
+   * creating them again, with their state and their bypass.
    */
   restoreInstance(entry) {
     if (!entry || typeof entry !== 'object' || typeof entry.id !== 'string') return null;
     if (this.instances.has(entry.id)) return this.instances.get(entry.id);
     const type = getNodeType(entry.type);
     if (!type) return null;
-    return this._add(entry.type, cloneContentFor(entry.type, entry.content),
+    const instance = this._add(entry.type, restoredContentFor(entry.content),
       { id: entry.id, ordinal: entry.ordinal });
+    if (instance) this.hub.events.emit('nodes:restored', { nodeId: instance.id });
+    return instance;
   }
 
   /** Delete a user-created instance (native/system nodes are never deletable). */
