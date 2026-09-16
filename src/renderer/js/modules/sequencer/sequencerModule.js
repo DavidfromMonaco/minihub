@@ -698,12 +698,7 @@ export function createSequencerModule(hub) {
           <button class="btn primary" data-action="export" ${controller.exporting ? 'disabled' : ''}>Export ${exportFormat.toUpperCase()}</button>
         </div>
         <div class="seq-record-status ${status.tone}" role="status">${escapeHtml(status.text)}</div>
-        ${inspectorMarkup(hub, focusedTrack, sequencerNode.id)}
-        <div class="row mt-12 seq-tools"><label>Snap <select data-control="snap">${Object.keys(SNAP_STEPS).map((value) => `<option ${value === state.snap ? 'selected' : ''}>${value}</option>`).join('')}</select></label>
-          <label class="seq-zoom-control">Zoom <input data-control="zoom" type="range" min="0" max="100" value="${zoomToSlider(zoom)}" aria-label="Timeline zoom"><button class="btn seq-zoom-btn" data-action="zoom-fit" title="Frame the whole arrangement (Ctrl+wheel zooms under the cursor)">Fit</button><button class="btn seq-zoom-btn" data-action="zoom-focus" title="Frame the selected clips, or the loop range">Focus</button></label>
-          <label><input data-control="loop-enabled" type="checkbox" ${state.loop.enabled ? 'checked' : ''}> Loop</label>
-          <label>From <input data-control="loop-start" type="number" min="0" step="0.125" value="${state.loop.startPpq}"></label>
-          <label>To <input data-control="loop-end" type="number" min="0.125" step="0.125" value="${state.loop.endPpq}"></label>
+        <div class="row mt-12 seq-tools">
           <div class="seq-export-panel" aria-label="Sequencer export options">
             <label>Format <select data-control="export-format"><option value="wav" ${exportFormat === 'wav' ? 'selected' : ''}>WAV</option><option value="mp3" ${exportFormat === 'mp3' ? 'selected' : ''} ${capabilities.mp3Available === false ? 'disabled' : ''}>MP3</option><option value="ogg" ${exportFormat === 'ogg' ? 'selected' : ''}>OGG Vorbis</option></select></label>
             ${exportFormat === 'wav' ? `<label>Bit depth <select data-control="wav-bits">${[16,24,32].map((bits) => `<option value="${bits}" ${Number(exportOptions.bits) === bits ? 'selected' : ''}>${bits}-bit</option>`).join('')}</select></label>` : ''}
@@ -715,6 +710,13 @@ export function createSequencerModule(hub) {
             <span class="seq-export-state" data-export-state>${escapeHtml(exportStateText || '')}</span>
           </div>
         </div>
+        <div class="row mt-12 seq-tools"><label>Snap <select data-control="snap">${Object.keys(SNAP_STEPS).map((value) => `<option ${value === state.snap ? 'selected' : ''}>${value}</option>`).join('')}</select></label>
+          <label class="seq-zoom-control">Zoom <input data-control="zoom" type="range" min="0" max="100" value="${zoomToSlider(zoom)}" aria-label="Timeline zoom"><button class="btn seq-zoom-btn" data-action="zoom-fit" title="Frame the whole arrangement (Ctrl+wheel zooms under the cursor)">Fit</button><button class="btn seq-zoom-btn" data-action="zoom-focus" title="Frame the selected clips, or the loop range">Focus</button></label>
+          <label><input data-control="loop-enabled" type="checkbox" ${state.loop.enabled ? 'checked' : ''}> Loop</label>
+          <label>From <input data-control="loop-start" type="number" min="0" step="0.125" value="${state.loop.startPpq}"></label>
+          <label>To <input data-control="loop-end" type="number" min="0.125" step="0.125" value="${state.loop.endPpq}"></label>
+        </div>
+        ${inspectorMarkup(hub, focusedTrack, sequencerNode.id)}
       </section>
       <section class="panel seq-arrangement">
         <div class="seq-scroll" data-timeline-scroll>

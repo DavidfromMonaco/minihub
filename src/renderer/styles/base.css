@@ -376,6 +376,16 @@ body {
   background: var(--accent);
 }
 
+/* ---------- Fields no rule dresses ----------
+   Chromium paints them plain white, which glared against this dark shell: the
+   sequencer's Snap, Format, From and To, the Morpher's step count. Light gray
+   is their default. `:where` keeps the rule at zero specificity, so a field
+   that a rule does dress -- `.select`, the track inspector, the clip editor,
+   the faceplate -- keeps its own look. */
+:where(select, textarea, input:not([type]), input[type="text"], input[type="number"], input[type="search"]) {
+  background-color: #c8cdd4;
+}
+
 /* ---------- Selects ---------- */
 .select {
   width: 100%;
