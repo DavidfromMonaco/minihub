@@ -7,6 +7,8 @@
  * this boundary — only CONTROL and MIDI messages.
  */
 
+import { oneEntryPerPlugin, pluginLookup } from './pluginCatalog.js';
+
 const PROTOCOL_VERSION = 1;
 const PARAMETER_REQUEST_TIMEOUT_MS = 15000;
 const SEQUENCER_QUIESCE_TIMEOUT_MS = 5000;
@@ -35,7 +37,7 @@ export class EngineClient {
     // A module opened later must be able to ask what is actually loaded rather
     // than infer it from events it happened to witness.
     this.chains = new Map();
-    this._registry = new Map(); // pluginId -> record
+    this._findPlugin = pluginLookup([]); // pluginId -> record
     this._unsubs = [];
     this._ready = null;
     this._refreshed = false;
@@ -131,7 +133,12 @@ export class EngineClient {
     this.command({ type: 'hello' });
     this.listDevices();
     this.getDeviceState();
-    const cachedCatalog = this.settings.get('vstCatalog') || [];
+    const storedCatalog = this.settings.get('vstCatalog') || [];
+    const cachedCatalog = oneEntryPerPlugin(storedCatalog);
+    // Saved by a scanner that walked into plugin folders, a list holds some
+    // plugins twice. It is written back merged once, not left for the user to
+    // clear with a rescan they have no reason to think of.
+    if (cachedCatalog.length !== storedCatalog.length) this.settings.set('vstCatalog', cachedCatalog);
     this._setPlugins(cachedCatalog);
     this.events.emit('engine:plugins', this.plugins);
     if (cachedCatalog.length === 0 || this._engineGeneration > 0) this.scanVst3();
@@ -261,7 +268,7 @@ export class EngineClient {
         break;
       case 'plugins': {
         this.diag(`startup:vst-catalog-event rendererMs=${Math.round(performance.now())}`);
-        const incoming = msg.plugins || [];
+        const incoming = oneEntryPerPlugin(msg.plugins || []);
         const userScan = this._userScanPending;
         this._userScanPending = false;
         this._setScanning(false);
@@ -450,12 +457,12 @@ export class EngineClient {
 
   _setPlugins(plugins) {
     this.plugins = plugins;
-    this._registry.clear();
-    for (const p of plugins) this._registry.set(p.pluginId, p);
+    this._findPlugin = pluginLookup(plugins);
   }
 
+  /** Also found by the other path into its `.vst3` folder: projects name either. */
   getPlugin(pluginId) {
-    return this._registry.get(pluginId) || null;
+    return this._findPlugin(pluginId);
   }
 
   // ---- commands (all go through the main process to the engine) ----
@@ -562,14 +569,16 @@ export class EngineClient {
   }
 
   /**
-   * A catalog never shrinks by itself.
+   * A catalog never loses a plugin by itself.
    *
    * An interrupted or degraded scan reports a handful of plugins - or one -
    * and the old code cached that as the whole catalog. It happened: a 48-plugin
    * catalog was overwritten by a 1-plugin scan result, and since a non-empty
    * cache suppresses the automatic rescan, the list stayed at one plugin
    * across every later launch. Automatic results may only grow the catalog;
-   * removals go through an explicit rescan, which always wins.
+   * removals go through an explicit rescan, which always wins. Both sides are
+   * counted after `oneEntryPerPlugin`, so a second path to a plugin is never
+   * mistaken for one.
    */
   _acceptsCatalog(incoming, userInitiated) {
     if (incoming.length === 0) return false; // an empty scan proves nothing

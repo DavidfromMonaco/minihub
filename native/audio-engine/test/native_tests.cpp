@@ -133,6 +133,64 @@ int runNoisyScanHelper(int argc, char** argv)
     return written ? 0 : 2;
 }
 
+void testVst3SearchStopsAtAPluginFolder()
+{
+    // A plugin shipped as a folder holds its module under the same `*.vst3`
+    // name. Listing that inner file is what showed Splice INSTRUMENT twice and
+    // started it inside the scanner (DECISIONS D-044).
+    const auto root = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                          .getNonexistentChildFile("MiniHub-vst3-search", "", false);
+    const auto make = [&root](const char* relativePath)
+    {
+        const auto file = root.getChildFile(relativePath);
+        return file.getParentDirectory().createDirectory().wasOk()
+            && file.replaceWithText("not a real module");
+    };
+    const bool made = make("Folder.vst3/Contents/x86_64-win/Folder.vst3")
+        && make("Folder.vst3/Contents/Resources/moduleinfo.json")
+        && make("Bare.vst3")
+        && make("Vendor/Nested.vst3/Contents/x86_64-win/Nested.vst3")
+        && make("Vendor/Loose.vst3")
+        && make("Vendor/readme.txt");
+    expect(made, "the fake plugin tree is written");
+
+    auto found = mlh::Vst3Scanner::findVst3Files(juce::FileSearchPath(root.getFullPathName()));
+    found.sort(true);
+    juce::StringArray expected;
+    for (const auto* relativePath : { "Bare.vst3", "Folder.vst3", "Vendor/Loose.vst3", "Vendor/Nested.vst3" })
+        expected.add(root.getChildFile(relativePath).getFullPathName());
+    expected.sort(true);
+    expect(found == expected,
+           "a plugin folder is listed once, and the module inside it never: got "
+               + found.joinIntoString(" | "));
+    root.deleteRecursively();
+}
+
+void testRoleFromCategoryWhenNoBusIsKnown()
+{
+    const auto roleOf = [](const char* category, bool isInstrument, int inputs, int outputs)
+    {
+        juce::PluginDescription description;
+        description.category = category;
+        description.isInstrument = isInstrument;
+        description.numInputChannels = inputs;
+        description.numOutputChannels = outputs;
+        return mlh::Vst3Scanner::roleFor(description);
+    };
+    expect(roleOf("Instrument|Synth", true, 0, 0) == "instrument",
+           "an instrument described without buses stays an instrument");
+    expect(roleOf("Fx", false, 2, 2) == "audio-effect",
+           "measured audio inputs make an effect");
+    expect(roleOf("Fx", false, 0, 0) == "audio-effect",
+           "an effect folder described from moduleinfo.json, which names no bus, is filed by its category");
+    expect(roleOf("Fx|Delay", false, 0, 0) == "audio-effect",
+           "a sub-category does not hide Fx");
+    expect(roleOf("Spatial", false, 0, 0) == "unknown",
+           "a category that does not say Fx decides nothing");
+    expect(roleOf("Fx|Generator", false, 0, 2) == "unknown",
+           "measured buses without an input keep deciding: the category speaks only when no bus is known");
+}
+
 void testGestureRequired()
 {
     mlh::GestureLearnState state;
@@ -1152,6 +1210,11 @@ void testRealVst3SequencerPlaybackArpAndMasterExport()
     std::cerr << "[vst3-e2e] scan\n";
     const auto records=mlh::Vst3Scanner::scanFile(vst3.getFullPathName());expect(records.size()==1&&records[0].isInstrument,"real VST3 scanner discovers deterministic test instrument");if(records.empty())return;
     const auto effectPath=deterministicEffectVst3();expect(effectPath.isDirectory(),"deterministic validation effect VST3 bundle was built");if(!effectPath.isDirectory())return;const auto effectRecords=mlh::Vst3Scanner::scanFile(effectPath.getFullPathName());expect(effectRecords.size()==1&&!effectRecords[0].isInstrument,"real VST3 scanner distinguishes the deterministic effect");if(effectRecords.empty())return;
+    // Both bundles ship moduleinfo.json, so JUCE describes them without a bus.
+    expect(records[0].role=="instrument"&&effectRecords[0].role=="audio-effect",
+           "a real plugin folder described from moduleinfo.json is filed by its VST3 category, got "+effectRecords[0].role);
+    expect(records[0].pluginId==vst3.getFullPathName()&&effectRecords[0].pluginId==effectPath.getFullPathName(),
+           "a plugin folder is named by the folder, the path a project keeps");
     testDirectMiniHubVst3PlanarCapture(records[0],effectRecords[0]);
     testVariableFrameNetworkBoundary(records[0]);
     if(!testDirectJuceVst3(records[0]))return;
@@ -1621,6 +1684,10 @@ int main(int argc, char** argv)
     if (runCore) {
     std::cerr << "[core] noisy-plugin-isolation\n";
     testNoisyPluginHelperResultIsolation();
+    std::cerr << "[core] vst3-search-folders\n";
+    testVst3SearchStopsAtAPluginFolder();
+    std::cerr << "[core] vst3-role\n";
+    testRoleFromCategoryWhenNoBusIsKnown();
     std::cerr << "[core] gesture-required\n";
     testGestureRequired();
     std::cerr << "[core] learn-arm-cancel\n";

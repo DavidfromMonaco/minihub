@@ -38,13 +38,34 @@ the author tests).
   session note in `../minihub-agent/` (applied 2026-09-13).
 - Unexplained: Splice's Expression reads 0.85 through `parameters` while the
   saved plugin state holds 1.0.
-- Not seen yet: Splice keeping its login across a restart, now that MiniHub
-  launches outside Codex.
+- Seen 2026-09-16: Splice kept its login across four restarts of the author's
+  MiniHub, two of them with a fresh Splice — the login lives in Splice's own
+  folder, not in the project. A MiniHub Codex opens with `start` uses that
+  same folder (its logs, 2026-09-13).
 - Optional: an MCP wrapper, so Codex calls requests as tools.
 - Gap: `set-binding` plugs no cable (Learn does, since 2026-09-14) and does not
   redraw an open bindings bar.
 - Gap: the sequencer's Loop, From and To cannot be set through the channel,
   nor read in `describe` (reported by Codex for Metamorphose).
+
+**Splice asks to log in again** — diagnosed 2026-09-16. Splice keeps its login
+in its own folder under AppData, and Windows files that folder inside a
+packaged app's storage when that app launched MiniHub. The author's machine
+holds three copies: the author's own, Codex's (2026-09-12), and the Claude
+app's (2026-09-13) — a MiniHub launched from Claude Code is redirected too,
+without the package identity `launchedInsidePackage` looks for. Separately, the
+scan of 2026-09-15 started Splice for 0.2 s through a second list entry, and
+the login was refused the next day: the likely cause, not proven.
+- Done, in the author's test: one list entry per plugin (D-044). Seen in the
+  application: 56 plugins instead of 59, and a rescan that leaves Splice's
+  folder untouched.
+- Next, on the author's go: MiniHub checks where Windows really files a new
+  AppData folder (a probe read back with `fs.realpathSync.native`) and, when it
+  lands in another app's package, relaunches itself through the shell —
+  whoever opened it, `npm start` included. That revisits the launch part of
+  D-041.
+- Left alone on purpose: the old Splice copies in Codex's and the Claude app's
+  storage.
 
 **Learning a knob in one window: the bindings bar docked under the plugin
 editor** — 7 of 8 steps. The bar opens under every plugin window, follows it,

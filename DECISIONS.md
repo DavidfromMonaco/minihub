@@ -2233,3 +2233,72 @@ in `nodeCommands.js`. One Ring (outside this repository): `src/plugin/Requests.c
 `Processor::request`, `Processor::edit`, `Latest<UiSnapshot>`. Tests:
 `test/pluginRequests.test.mjs`, `test/controlSourceCommand.test.cjs`,
 `test/commandBus.test.mjs`; One Ring's `tests/plugin_tests.cpp`.
+
+---
+
+## D-044 — A plugin shipped as a folder is one plugin, named by its folder
+
+**Status**: in force · 2026-09-16 · **implemented**, in the author's test
+
+**Context** — A VST3 plugin can ship as a folder, `X.vst3\`, that holds its
+module at `X.vst3\Contents\x86_64-win\X.vst3`. The scanner listed every
+`*.vst3` a recursive walk met, so it listed both: Splice INSTRUMENT, ONE RING
+and Airwindows Consolidated each appeared twice, and the author asked which one
+to use. The two copies disagreed. JUCE describes a folder from its
+`moduleinfo.json`, which names the plugin's kind and not its buses, so the
+folder of an effect read "unknown": Orbites, Metamorphose and Bois et braises
+name ONE RING by its module, while test and Brume de verre name Splice by its
+folder. And the module inside cannot be described from `moduleinfo.json`:
+scanning it loads the plugin and starts it. On 2026-09-15 at 15:04, Splice
+INSTRUMENT, started that way inside the scanner, began refreshing its login
+and was closed 0.2 s later; the next day, the login it had kept was refused.
+That the scan caused the refusal is likely, not proven: Splice may also let a
+login expire after three days unused.
+
+**Decision** — The scanner lists plugins with JUCE's own search, which stops at
+a `.vst3` folder: a folder is one plugin, named by the folder. A plugin
+described without any bus is filed by its VST3 category (`Fx` → effect). On
+load, the renderer merges a saved list — two entries in one folder under one
+name are one plugin; the folder's entry is kept, completed with what the module
+scan measured — and writes it back. A lookup by either path finds the entry
+that remains. Invariant 12 now reads "never loses a plugin on its own": a
+second path to the same plugin is not a plugin.
+
+Three alternatives were weighed and refused:
+
+- **Naming a folder by its module**, the path JUCE reports for a folder without
+  `moduleinfo.json`. For a folder that has one, describing the module means
+  starting the plugin at every scan and at every load: what started Splice.
+- **Leaving the second entries to a rescan.** Nothing on screen tells the
+  person a rescan would help, and the program knows which entries are one
+  plugin.
+- **Measuring a folder's buses.** That means starting the plugin, the very
+  thing avoided.
+
+**Consequence** —
+
+- One entry per plugin: 56 on the author's machine, where there were 59.
+  ValhallaDelay, which reports no bus when asked, is an effect now too.
+- After a scan, a folder described from `moduleinfo.json` shows 0 inputs and
+  0 outputs in the catalogue. The role is display only (`vstChain.js`); the
+  engine negotiates buses when it loads the plugin.
+- A project that names a module still opens: the engine loads any absolute
+  path, and a chain keeps its own name and role.
+- A folder holding plugins under several names stays several entries, and a
+  path inside it resolves to none of them rather than to the wrong one.
+- Seen in the application on 2026-09-16: 56 plugins at startup, before any
+  scan; a rescan through the channel came back with 56 from the engine and left
+  Splice's folder untouched; a copy of Orbites loaded ONE RING by its module,
+  ready.
+
+**What would justify revisiting** — A plugin folder this names wrongly — a shell
+that holds several plugins, which a catalogue keyed on paths cannot list anyway —
+or a plugin whose VST3 category states the wrong kind.
+
+**Proof in the code** — `findVst3Files` and `roleFor` in
+`native/audio-engine/src/vst3_scanner.cpp`; `oneEntryPerPlugin` and
+`pluginLookup` in `src/renderer/js/core/pluginCatalog.js`; `refresh`, the
+`plugins` event and `getPlugin` in `engineClient.js`. Tests: native
+`[core] vst3-search-folders` and `[core] vst3-role`, and the role and identity
+checks in `--vst3-e2e`; `test/pluginCatalog.test.mjs`, `test/engine.test.mjs`,
+`test/agentRequests.test.mjs`.

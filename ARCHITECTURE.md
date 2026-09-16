@@ -1040,6 +1040,7 @@ d'une capture forcée à l'extinction.
 | `nodeInstances.js` | instances, identité/ordinal, éditeurs de nœuds ⚠️ 1 143 lignes |
 | `nodeGeometry.js`, `graphLayout.js`, `graphViewport.js`, `viewportMath.js`, `grid.js` | géométrie et état visuel du Patch Bay |
 | `engineClient.js` | client du moteur, cache d'état, corrélation des requêtes |
+| `pluginCatalog.js` | one entry per plugin, whichever path the scanner reached it by (D-044) |
 | `engineSync.js` | graphe → plan natif, séparation topologie/valeurs |
 | `midiThru.js` | what a VST node's MIDI OUT reaches — the one walk every consumer of a series reads |
 | `chainSync.js` | reconstruction des chaînes VST après (re)démarrage moteur |
@@ -1144,8 +1145,10 @@ l'application réelle par CDP.
 10. **Pas de style inline** — la CSP les rejette.
 11. **`dist/` doit correspondre à `src/`.** Le test de provenance échoue sinon ;
     lancer `npm run sync:dist` après toute modification des sources.
-12. **Le catalogue VST ne rétrécit jamais tout seul.** Seul un scan explicitement
-    demandé par l'utilisateur peut le réduire (`_acceptsCatalog`).
+12. **Le catalogue VST ne perd jamais un plugin tout seul.** Seul un scan
+    explicitement demandé par l'utilisateur peut en retirer (`_acceptsCatalog`).
+    Un second chemin vers le même plugin n'en est pas un (`oneEntryPerPlugin`,
+    D-044).
 
 ---
 

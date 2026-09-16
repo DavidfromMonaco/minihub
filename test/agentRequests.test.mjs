@@ -7,6 +7,7 @@ import { ModuleSystem } from '../src/renderer/js/core/moduleSystem.js';
 import { NodeInstanceManager } from '../src/renderer/js/core/nodeInstances.js';
 import { handleAgentRequest } from '../src/renderer/js/core/agentRequests.js';
 import { SequencerModel } from '../src/renderer/js/core/sequencerModel.js';
+import { pluginLookup } from '../src/renderer/js/core/pluginCatalog.js';
 
 /**
  * Contract: what an outside agent may ask for, and how it is refused.
@@ -144,6 +145,24 @@ test('a plugin added through the channel reaches the model and the engine togeth
   assert.deepEqual(hub.nodes.get(node.id).content.plugins.map((plugin) => plugin.pluginId), [DEXED.pluginId]);
   assert.equal(hub.engine.created.length, 1, 'the engine was told, not only the model');
   assert.equal(hub.engine.created[0].index, 0);
+});
+
+test('a plugin named by the module inside its folder is added under the folder', async () => {
+  // Orbites and Metamorphose were saved while the catalogue listed ONE RING
+  // twice, and name it by its module (DECISIONS D-044). An agent working from
+  // them asks for that path.
+  const folder = 'C:/VST3/ONE RING.vst3';
+  const hub = rig();
+  hub.engine.getPlugin = pluginLookup([{ pluginId: folder, name: 'ONE RING', role: 'audio-effect' }]);
+  const node = (await ask(hub, { kind: 'create-node', typeId: 'vst' })).node;
+
+  const answer = await ask(hub, {
+    kind: 'add-plugin', nodeId: node.id, pluginId: `${folder}/Contents/x86_64-win/ONE RING.vst3`
+  });
+  assert.equal(answer.ok, true);
+  assert.equal(answer.plugin.pluginId, folder);
+  assert.deepEqual(hub.nodes.get(node.id).content.plugins.map((plugin) => plugin.pluginId), [folder]);
+  assert.equal(hub.engine.created[0].pluginId, folder, 'and the engine is told the folder too');
 });
 
 test('a wrong plugin name and a wrong target are told apart', async () => {

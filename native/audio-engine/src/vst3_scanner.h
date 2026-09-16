@@ -89,8 +89,14 @@ public:
     static bool deserializeScanResult(const juce::String& json,
                                       std::vector<PluginRecord>& records);
 
-    /** Enumerate `.vst3` files under the given search paths (no plugin loading). */
+    /** Enumerate the `.vst3` plugins under the given search paths, a plugin
+     *  folder counting once (no plugin loading). */
     static juce::StringArray findVst3Files(const juce::FileSearchPath& paths);
+
+    /** The role a scanned plugin is filed under: 'instrument' |
+     *  'audio-effect' | 'unknown'. Public so the native regression helper can
+     *  check the rule without loading a plugin. */
+    static juce::String roleFor(const juce::PluginDescription& description);
 
     const std::vector<PluginRecord>& records() const { return records_; }
     const PluginRecord* find(const juce::String& pluginId) const;

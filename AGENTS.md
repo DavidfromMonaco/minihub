@@ -77,7 +77,8 @@ Breaking one is a failure, not a trade-off.
 9. **Every external value is escaped** (`core/html.js`) before it reaches `innerHTML`.
 10. **No inline styles** — the CSP (`style-src 'self'`) rejects them silently.
 11. **`dist/` must match `src/`** — run `npm run sync:dist` after any change.
-12. **The VST catalogue never shrinks on its own.**
+12. **The VST catalogue never loses a plugin on its own.** A second path to the
+    same plugin is not a plugin (D-044).
 
 ## 5. Design prohibitions
 

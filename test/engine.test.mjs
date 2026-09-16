@@ -111,6 +111,37 @@ test('a catalog persisted before class UIDs existed survives and upgrades in pla
   assert.equal(hub.settings.get('vstCatalog')[0].classId.length, 32);
 });
 
+test('a catalog that lists a plugin twice is merged and saved back on load, with no rescan', async () => {
+  // What the author's settings held on 2026-09-16: the scanner had walked into
+  // ONE RING's folder and listed the module inside it as a second plugin.
+  const dexed = 'C:\\VST3\\Dexed.vst3';
+  const folder = 'C:\\VST3\\ONE RING.vst3';
+  const module = `${folder}\\Contents\\x86_64-win\\ONE RING.vst3`;
+  const stored = [
+    { pluginId: dexed, name: 'Dexed', role: 'instrument' },
+    { pluginId: folder, name: 'ONE RING', role: 'unknown', numInputChannels: 0, numOutputChannels: 0 },
+    { pluginId: module, name: 'ONE RING', role: 'audio-effect', numInputChannels: 2, numOutputChannels: 2 }
+  ];
+  const api = mockApi({ vstCatalog: stored });
+  const hub = createHub(api);
+  await hub.settings.load();
+  await hub.engine.init();
+
+  assert.deepEqual(hub.engine.plugins.map((plugin) => plugin.pluginId), [dexed, folder]);
+  assert.equal(hub.engine.getPlugin(folder).role, 'audio-effect');
+  assert.deepEqual(hub.settings.get('vstCatalog').map((plugin) => plugin.pluginId), [dexed, folder],
+    'describe and the next launch read the merged list');
+  assert.equal(hub.engine.getPlugin(module).pluginId, folder, 'a project naming the module still finds ONE RING');
+  assert.equal(sentOf(api, 'scanVst3').length, 0, 'merging asks for no scan');
+
+  // The fixed engine lists the folder only: the same count, accepted.
+  api.emitEvent({ type: 'plugins', plugins: [stored[0], { ...stored[1], role: 'audio-effect' }] });
+  assert.equal(hub.engine.plugins.length, 2);
+  // An engine that still walks into folders cannot bring the second entry back.
+  api.emitEvent({ type: 'plugins', plugins: stored });
+  assert.deepEqual(hub.settings.get('vstCatalog').map((plugin) => plugin.pluginId), [dexed, folder]);
+});
+
 test('a plugin whose class UID could not be read stays in the catalog', async () => {
   // Reading a UID opens the module a second time; a plugin that refuses gives
   // an empty classId. It must remain fully usable: manufacturer + name still

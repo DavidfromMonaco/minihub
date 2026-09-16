@@ -23,16 +23,6 @@ constexpr juce::int64 kMaxScanResultBytes = 8 * 1024 * 1024;
 constexpr const char* kScanResultProtocol = "minihub-vst3-scan-result";
 constexpr int kScanResultVersion = 1;
 
-/** Map real plugin capability to our role model. Falls back to 'unknown'. */
-juce::String classifyRole(const juce::PluginDescription& d)
-{
-    if (d.isInstrument)
-        return "instrument";
-    if (d.numInputChannels > 0)
-        return "audio-effect";
-    return "unknown";
-}
-
 /**
  * Component class UIDs of one VST3 module, keyed by class name.
  *
@@ -47,19 +37,22 @@ juce::String classifyRole(const juce::PluginDescription& d)
  * four real bundles ships it. Coverage would have been one plugin in 54.
  *
  * Cost, stated plainly: this opens the module a SECOND time, after JUCE has
- * already opened it. A module that merely refuses to load is handled here and
- * yields a record without a classId. A module that *faults* is not: an access
- * violation is a structured exception, which `catch (...)` does not stop under
- * MSVC, so the helper process dies and this file contributes nothing to the
- * scan.
+ * already opened it -- or the first time, for a plugin folder JUCE described
+ * from its moduleinfo.json. A module that merely refuses to load is handled
+ * here and yields a record without a classId. A module that *faults* is not:
+ * an access violation is a structured exception, which `catch (...)` does not
+ * stop under MSVC, so the helper process dies and this file contributes
+ * nothing to the scan.
  *
  * That residual exposure is bounded and deliberate. JUCE's
  * `findAllTypesForFile` has already loaded the module and walked its factory
  * moments earlier -- strictly more work than this -- so a plugin surviving
- * phase one and faulting in phase two is a narrow case. And when it happens,
- * the scan comes back one plugin short, which `_acceptsCatalog` in
- * engineClient.js refuses for any scan the user did not ask for: the previous
- * catalog stands, so invariant 12 holds where it is stated.
+ * phase one and faulting in phase two is a narrow case. (A folder described
+ * from moduleinfo.json has no phase-one load: for it, this is the ordinary
+ * risk of opening a module.) And when it happens, the scan comes back one
+ * plugin short, which `_acceptsCatalog` in engineClient.js refuses for any
+ * scan the user did not ask for: the previous catalog stands, so invariant 12
+ * holds where it is stated.
  *
  * Writing the result before this step would not help. `scanFileIsolated`
  * discards the result file whenever the child exits non-zero, and relaxing
@@ -99,7 +92,7 @@ PluginRecord recordFromDescription(const juce::PluginDescription& d)
     rec.isInstrument = d.isInstrument;
     rec.numInputChannels = d.numInputChannels;
     rec.numOutputChannels = d.numOutputChannels;
-    rec.role = classifyRole(d);
+    rec.role = Vst3Scanner::roleFor(d);
     rec.description = d;
     return rec;
 }
@@ -204,21 +197,33 @@ bool Vst3Scanner::deserializeScanResult(
     return true;
 }
 
+juce::String Vst3Scanner::roleFor(const juce::PluginDescription& d)
+{
+    if (d.isInstrument)
+        return "instrument";
+    if (d.numInputChannels > 0)
+        return "audio-effect";
+    // No bus at all is what JUCE reports for every plugin it described from a
+    // folder's moduleinfo.json, which names the plugin's kind but not its
+    // buses -- and what a few plugins answer when theirs are queried
+    // (ValhallaDelay). The VST3 category, the plugin's own word, then decides.
+    if (d.numOutputChannels == 0
+        && juce::StringArray::fromTokens(d.category, "|", "").contains("Fx", true))
+        return "audio-effect";
+    return "unknown";
+}
+
 juce::StringArray Vst3Scanner::findVst3Files(const juce::FileSearchPath& paths)
 {
-    juce::StringArray out;
-    for (int i = 0; i < paths.getNumPaths(); ++i)
-    {
-        const juce::File dir = paths[i];
-        if (!dir.isDirectory())
-            continue;
-
-        juce::RangedDirectoryIterator it(dir, true, "*.vst3",
-                                        juce::File::findFilesAndDirectories);
-        for (auto& entry : it)
-            out.add(entry.getFile().getFullPathName());
-    }
-    return out;
+    // A `.vst3` folder is ONE plugin, and JUCE's search stops there. The
+    // recursive walk this replaced went on inside, found the module -- also
+    // named `*.vst3`, at Contents/x86_64-win -- and listed it as a second
+    // plugin. Scanning that inner file cannot use the folder's moduleinfo.json,
+    // so it loaded and started the plugin: on 2026-09-15 Splice INSTRUMENT
+    // began refreshing its login inside the scanner, which closed it 0.2 s
+    // later.
+    juce::VST3PluginFormat format;
+    return format.searchPathsForPlugins(paths, true, false);
 }
 
 std::vector<PluginRecord> Vst3Scanner::scanFile(const juce::String& path)
