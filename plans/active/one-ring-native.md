@@ -9,7 +9,7 @@ page of its own in a new hardware-style design.
 "commence à travailler sur l'intégration de One Ring en natif". His direction
 for the look: every function kept, the whole design redone after hardware
 sequencers — the Korg SQ-64, the Roland P-6, the Cre8audio Programm.
-**Status** — **in progress, 2026-09-16.** Steps 0 to 2 done; step 3 next.
+**Status** — **in progress, 2026-09-16.** Steps 0 to 3 done; step 4 next.
 
 ## Context
 
@@ -67,9 +67,9 @@ to D-018 (written for the Matrix), D-032 (a command is performance), D-042
 ## Constraints
 
 - A One Ring VST state (version 1) converts to the node's content and back
-  without loss. The content keeps only what differs from an empty cell: the
-  VST writes all 4 × 16 × 64 cells, about 700 KB, which an undo step and a
-  settings save must not carry.
+  without loss. The content keeps, per channel, a `blank` cell and only the
+  cells that differ from it: the VST writes all 4 × 16 × 64 cells, about
+  700 KB, which an undo step and a settings save must not carry.
 - The random draws are part of that format. `mix` and `Random` are ported bit
   for bit, in C++ and in JS, and both are checked against the same fixed values.
 - Invariant 2: the node commands only what its CTRL OUT is cabled to, through
@@ -128,7 +128,7 @@ to D-018 (written for the Matrix), D-032 (a command is performance), D-042
       (99), `--cross-track-isolation` (27), `mlh_realtime_output_tests` (2535);
       `npm test` (1125); `npm run check`; `npm run sync:dist` —
       **green 2026-09-16**
-- [ ] 3. Renderer model, `core/oneRingRandom.js` and `core/oneRingSequence.js`
+- [x] 3. Renderer model, `core/oneRingRandom.js` and `core/oneRingSequence.js`
       (flat, like `arpeggiatorState.js`): defaults, the VST state to content and
       back (a sparse content, with each channel's `blank`), validation with
       `model.cpp`'s rules against the compiled targets plus One Ring's own
@@ -137,6 +137,8 @@ to D-018 (written for the Matrix), D-032 (a command is performance), D-042
       editor does them. MUTATE's results checked in C++ too, with the values the
       JS draws.
       Check: `npm test` + build + `--core`
+      Done: `npm test` (1140, 15 new), `--core` (1523 checks, MUTATE's values
+      among them), `npm run check`, `npm run sync:dist` — **green 2026-09-16**
 - [ ] 4. The node: type `one-ring` (MIDI category, CTRL OUT), its content the
       sequence; `engineSync` sends it on change and after an engine restart;
       `CommandBus` takes a native source beside plugin sources — targets
@@ -236,3 +238,14 @@ Messages: `oneRingSynced` (created, generation), `oneRingTargetsStatus`,
 `generation`, which CommandBus ignores until step 4 since it has no `chainId`;
 `oneRingStatus` on any change, and every 100 ms while playing, kept out of the
 startup log.
+
+2026-09-16 — Step 3. `oneRingSequence.js` reads a state the way the engine
+does, down to what a missing field reads as (0), so the two sides refuse the
+same states; its errors name the field. Every function returns a new content.
+MUTATE was the part worth proving twice: the channel in `[core]
+one-ring-mutation fixed values` was mutated in JS first, and C++ drew the same
+active states, probabilities, integer and float ranges and choice rotation.
+`withCells` picks the blank as the cell most cells share, the empty one on a
+tie, so the same cells always give the same content — an undo step compares
+equal to what it restores. A VST state with two programmed cells on a typed
+channel comes out more than ten times smaller.

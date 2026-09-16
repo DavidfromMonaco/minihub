@@ -2153,6 +2153,48 @@ void testOneRingMutation()
         expect(inside, "one-ring: a mutated range stays inside the original one");
         expect(changed, "one-ring: MUTATE varies the ranges");
     });
+    oneRingChecks("one-ring mutation fixed values", [] {
+        // MUTATE runs in the renderer (core/oneRingSequence.js). These are the
+        // values its copy of the algorithm drew for this very channel.
+        oring::Channel ch;
+        ch.length = 8;
+        ch.steps[1].value.mode = oring::ValueMode::Range;
+        ch.steps[1].value.minimum = std::int32_t(50);
+        ch.steps[1].value.maximum = std::int32_t(90);
+        ch.steps[2].value.mode = oring::ValueMode::Choice;
+        ch.steps[2].value.choices = {std::int32_t(20), std::int32_t(70), std::int32_t(90)};
+        ch.steps[3].value.mode = oring::ValueMode::Range;
+        ch.steps[3].value.minimum = 0.1;
+        ch.steps[3].value.maximum = 0.9;
+        ch.steps[4].locked = true;
+        ch.steps[4].enabled = true;
+        ch.steps[4].probability = 30;
+        ch.steps[5].lockedFields = oring::MutateProbability;
+        ch.steps[5].probability = 35;
+        ch.steps[6].value.mode = oring::ValueMode::Range;
+        ch.steps[6].value.minimum = std::int32_t(10);
+        ch.steps[6].value.maximum = std::int32_t(20);
+        ch.steps[6].lockedFields = oring::MutateValue;
+        oring::mutate(ch, 123456789, 2, 5);
+        const std::array<bool, 8> enabled{true, true, true, false, true, false, true, true};
+        const std::array<double, 8> probability{19, 8, 84, 85, 30, 35, 75, 34};
+        bool same = true;
+        for (std::size_t i = 0; i < 8; ++i)
+            same = same && ch.steps[i].enabled == enabled[i] && ch.steps[i].probability == probability[i];
+        expect(same, "one-ring: MUTATE's active states and probabilities are the renderer's");
+        expect(std::get<std::int32_t>(ch.steps[1].value.minimum) == 62 && std::get<std::int32_t>(ch.steps[1].value.maximum) == 88,
+               "one-ring: MUTATE's integer range is the renderer's");
+        const auto& choices = ch.steps[2].value.choices;
+        expect(std::get<std::int32_t>(choices[0]) == 70 && std::get<std::int32_t>(choices[1]) == 90
+                   && std::get<std::int32_t>(choices[2]) == 20,
+               "one-ring: MUTATE's choice rotation is the renderer's");
+        expect(std::get<double>(ch.steps[3].value.minimum) == 0.37355332308359285
+                   && std::get<double>(ch.steps[3].value.maximum) == 0.67537876894130189,
+               "one-ring: MUTATE's float range is the renderer's");
+        expect(std::get<std::int32_t>(ch.steps[6].value.minimum) == 10 && std::get<std::int32_t>(ch.steps[6].value.maximum) == 20,
+               "one-ring: a locked value keeps its range");
+        expect(!ch.steps[8].enabled && ch.steps[8].probability == 100, "one-ring: MUTATE stops at the channel's length");
+    });
 }
 
 // ---------- One Ring as a node: its state, its runtime ----------
