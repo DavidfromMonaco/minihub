@@ -195,10 +195,13 @@ MINIHUB_AGENT_CHANNEL=1 "dist/MiniHub/MiniHub.exe"
 ```
 
 Where the channel is already turned on in the settings (`agentChannel: true`),
-open MiniHub with the client instead. It launches through the Windows shell, the
-way a double-click does: an agent running inside a packaged app (Codex Desktop)
-would otherwise hand MiniHub that app's identity, and every plugin would keep
-its login and downloads in that app's private storage (DECISIONS D-041).
+open MiniHub with the client instead: it launches through the Windows shell, the
+way a double-click does, and waits until the channel answers. A MiniHub started
+from inside a packaged app (Codex Desktop, the Claude app) would have Windows
+file every plugin's login and downloads in that app's private storage. MiniHub
+notices it at startup and starts itself again through the shell (DECISIONS
+D-045), so a direct launch or `npm start` returns at once while MiniHub keeps
+running.
 
 ```bash
 node ../minihub-agent/minihub.mjs start

@@ -1964,7 +1964,7 @@ window; `window:show-main`, `window:state`); `native/audio-engine/src/engine.cpp
 
 ## D-041 — An agent works in a plugin's web page through its DevTools port, never through the screen
 
-**Status**: in force · 2026-09-13 · **implemented**
+**Status**: in force · 2026-09-13 · **implemented** · its launch context is superseded by D-045
 
 **Context** — Some plugins draw their interface as a web page. Splice
 INSTRUMENT's library — find a pack, download it, load a preset — is a JUCE
@@ -2302,3 +2302,85 @@ or a plugin whose VST3 category states the wrong kind.
 `[core] vst3-search-folders` and `[core] vst3-role`, and the role and identity
 checks in `--vst3-e2e`; `test/pluginCatalog.test.mjs`, `test/engine.test.mjs`,
 `test/agentRequests.test.mjs`.
+
+---
+
+## D-045 — MiniHub leaves another application's package on its own
+
+**Status**: in force · 2026-09-16 · **implemented**, in the author's test
+
+**Context** — D-041 left the launch to the client: `node minihub.mjs start`
+hands it to the Windows shell, and the engine reports a package identity
+(`launchedInsidePackage`) so that an agent can warn. On 2026-09-16 that fell
+short twice. The Claude app starts its tools without a package identity, and
+Windows files their new AppData folders in its storage all the same: a folder
+created from Claude Code landed in
+`Packages\Claude_pzs8sxrjxfjjc\LocalCache\Roaming` while
+`GetCurrentPackageFullName` answered 15700, no package. A MiniHub launched that
+way on 2026-09-13 had put Splice's login of 02:16 there, and
+`launchedInsidePackage` said nothing. And the rule held only for launchers that
+knew it: `npm start`, the documented way to try a change, starts MiniHub as its
+own child. The author asked for MiniHub to correct this itself.
+
+**Decision** — At startup, once it holds the single-instance lock and before any
+window or engine exists, MiniHub creates a folder at the top of AppData, where a
+plugin creates its own, and reads back where it really is
+(`fs.realpathSync.native`, which asks Windows for the final path). When it lies
+under `...\Packages\<family>\LocalCache\`, MiniHub writes a note in the temp
+folder -- the agent channel switch and its command-line switches, which the
+shell does not pass on -- releases the lock, starts itself through
+`explorer.exe`, and exits. The MiniHub the shell starts reads the note once,
+puts back what it carried, and checks again. Still redirected, it stays and
+names the package in `describe` rather than loop. An unpackaged run is never
+relaunched. `launchedInsidePackage` now names the storage as well as the
+identity.
+
+Five alternatives were weighed and refused:
+
+- **The report and the rule alone** — they missed the Claude app, and they
+  hold only for launchers that know them.
+- **Package identity as the test** — it is absent in exactly the case that was
+  missed.
+- **The probe inside MiniHub's own AppData folder** — Windows writes a new
+  folder in place there, because that folder already exists. Only a new
+  top-level folder, which is what a plugin creates, shows the redirection.
+- **Pointing plugins' storage elsewhere** — refused in D-041 for WebView2, for
+  the same reason: every plugin keeps its state where it chose.
+- **Relaunching through WMI or a scheduled task**, which would carry the whole
+  command line — WMI from Electron means starting PowerShell, and a task is
+  persistent configuration left on the machine.
+
+**Consequence** —
+
+- Whoever opens MiniHub -- the person, Codex, Claude Code, `npm start`, any
+  program started inside a package -- it runs with the person's AppData, and a
+  plugin's login and downloads are the person's.
+- A redirected launch costs one more start, about 0.3 s measured, and whatever
+  started it sees it exit at once with code 0: `npm start` returns while
+  MiniHub keeps running.
+- The note carries `MINIHUB_AGENT_CHANNEL` and the `--switches`; any other
+  environment variable is lost in the relaunch. It lives 20 s, is read once,
+  and only by the executable that wrote it. It sits in the person's temp
+  folder: a program of theirs could write one, and could as well start
+  MiniHub with those switches itself.
+- Every startup creates and removes one empty folder at the top of AppData,
+  `minihub-launch-check-<pid>-<time>`.
+- The client's `start` remains the way to open MiniHub: it waits for the
+  channel to answer.
+- Seen in the application on 2026-09-16: launched from Claude Code, and inside
+  Codex's package with `Invoke-CommandInDesktopPackage`, MiniHub started again
+  through the shell and the new one found its AppData at home, Codex's storage
+  unchanged. In the Codex case its parent was an `explorer.exe` Windows started
+  (svchost), with no package identity, like MiniHub and its engine.
+  `--remote-debugging-port=9333` survived the relaunch; a launch through the
+  client did not relaunch.
+
+**What would justify revisiting** — A Windows version whose shell no longer
+hands `explorer.exe <program>` to the person's session; MiniHub shipped as a
+package itself, whose own storage would then be the right one; or a launcher
+that needs more carried than the channel switch and the command-line switches.
+
+**Proof in the code** — `probeAppData`, `settleLaunchPlace`, `takeHandoff` and
+`applyHandoff` in `src/main/launchContext.js`; `launchPlace`,
+`recordLaunchContext` and the startup in `src/main/main.js`. Tests:
+`test/launchContext.test.cjs`.

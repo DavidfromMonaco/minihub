@@ -15,6 +15,15 @@ if (process.platform === 'win32') {
 }
 const path = require('path');
 const fs = require('fs');
+const { spawn } = require('child_process');
+const { takeHandoff, applyHandoff, settleLaunchPlace } = require('./launchContext');
+// A MiniHub the shell has just started in place of one that ran inside another
+// application's package: what the shell does not pass on comes back before
+// Chromium reads its switches. DECISIONS D-045.
+const relaunchedFrom = takeHandoff({
+  fs, path, tempDir: app.getPath('temp'), now: Date.now(), execPath: process.execPath
+});
+applyHandoff({ note: relaunchedFrom, app, env: process.env });
 const { FORMATS: AUDIO_EXPORT_FORMATS, audioExportFormat, audioExportFilePath } = require('./audioExportPath');
 const { loadSettings, saveSettings, rememberDirectory, rememberDirectoryOfFile, persistPluginStateChunk } = require('./settings');
 const { PURPOSES: DIRECTORY_PURPOSES, isKnownPurpose, rememberedDirectory } = require('./recentDirectories');
@@ -42,8 +51,10 @@ const { PluginBrowser, withWebViewDebugging } = require('./pluginBrowser');
 let mainWindow = null;
 let agentChannel = null;
 let pluginBrowser = null;
-// Empty unless a packaged application launched MiniHub; the engine reports it.
+// Empty unless MiniHub runs inside another application's package: the engine
+// names the package identity, the AppData check the storage (D-041, D-045).
 let launchedInsidePackage = '';
+let redirectedInto = '';
 let engine = null;
 let engineRestartAttempts = 0;
 let clipEditorWindows = null;
@@ -231,6 +242,41 @@ else app.on('second-instance', () => {
   mainWindow.show(); mainWindow.focus();
 });
 
+// Before any window or engine exists. A MiniHub whose new AppData folders
+// Windows files inside another application's package hands its launch to the
+// shell and leaves; the lock goes first, so the MiniHub the shell starts can
+// take it. DECISIONS D-045.
+//
+// What the check found is written under this session's startup header, which
+// only exists once Electron is ready -- except by a MiniHub that leaves.
+const launchLines = [];
+const writeLaunchLines = () => launchLines.splice(0).forEach((line) => diagnostics.log(line));
+const launchPlace = hasSingleInstanceLock
+  ? settleLaunchPlace({
+    app, fs, path, spawn,
+    env: process.env,
+    argv: process.argv.slice(1),
+    execPath: process.execPath,
+    packaged: app.isPackaged,
+    tag: `${process.pid}-${Date.now()}`,
+    now: Date.now(),
+    relaunched: relaunchedFrom,
+    log: (line) => launchLines.push(line)
+  }).then((place) => {
+    if (place.leave) {
+      writeLaunchLines();
+      console.log(`[launch] AppData is redirected into ${place.redirectedTo}: MiniHub starts again through the Windows shell.`);
+      app.releaseSingleInstanceLock();
+      app.exit(0);
+    }
+    return place;
+  }).catch((error) => {
+    // A check that breaks must not keep MiniHub from starting at all.
+    launchLines.push(`launch:check-error ${String(error?.message || error).slice(0, 256)}`);
+    return { leave: false, redirectedTo: '' };
+  })
+  : Promise.resolve({ leave: false, redirectedTo: '' });
+
 /**
  * Open the agent channel, if it was asked for. INTENT §8 sexies.
  *
@@ -249,15 +295,17 @@ function agentChannelEnabled() {
 /**
  * Remember whether MiniHub runs under another application's package.
  *
- * Only the engine can tell (Electron has no reliable answer), and the question
- * matters for one reason the person would never guess: a packaged launcher --
- * Codex Desktop -- makes Windows file every folder a plugin creates in AppData
- * inside that launcher's private storage. A plugin logged in under one launch is
- * then logged out under the other. The agent sees this in `describe` and the
- * log keeps it, because nothing on screen will.
+ * It matters for one reason the person would never guess: a packaged launcher
+ * -- Codex Desktop, the Claude app -- makes Windows file every folder a plugin
+ * creates in AppData inside that launcher's private storage. A plugin logged
+ * in under one launch is then logged out under the other. MiniHub leaves such
+ * a package at startup (D-045); this is what remains when it could not. The
+ * engine names the package identity, which the Claude app does not give; the
+ * AppData check names the storage either way. The agent sees it in `describe`
+ * and the log keeps it, because nothing on screen will.
  */
 function recordLaunchContext(nativeProcess) {
-  const name = String(nativeProcess?.packageFamilyName || '').slice(0, 256);
+  const name = String(nativeProcess?.packageFamilyName || '').slice(0, 256) || redirectedInto;
   if (name !== launchedInsidePackage && name) diagnostics.log(`launch:inside-package name=${name}`);
   launchedInsidePackage = name;
 }
@@ -293,9 +341,13 @@ function startAgentChannel() {
   agentChannel.start();
 }
 
-if (hasSingleInstanceLock) app.whenReady().then(() => {
+if (hasSingleInstanceLock) Promise.all([launchPlace, app.whenReady()]).then(([place]) => {
+  if (place.leave) return;
+  redirectedInto = place.redirectedTo;
+  if (redirectedInto) launchedInsidePackage = redirectedInto;
   startupMark('electron-ready');
   diagnostics.logStartupInfo();
+  writeLaunchLines();
   createWindow();
   startEngine();
   startAgentChannel();

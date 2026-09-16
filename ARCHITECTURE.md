@@ -1011,6 +1011,7 @@ d'une capture forcée à l'extinction.
 | Fichier | Responsabilité |
 |---|---|
 | `main.js` | fenêtre, IPC, cycle de vie du moteur, dialogues |
+| `launchContext.js` | where Windows really files AppData; a MiniHub inside another app's package starts again through the shell (D-045) |
 | `preload.js` | `contextBridge` → `window.hubAPI` |
 | `engine.js` | superviseur du processus natif (`EngineProcess`) |
 | `engineCommandPolicy.js` | liste blanche des commandes moteur |
