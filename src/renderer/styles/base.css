@@ -1697,11 +1697,20 @@ body ::-webkit-scrollbar-corner { background:transparent; }
 .seq-ruler-mark i { position:absolute; bottom:0; height:6px; border-left:1px solid #333840; }
 .seq-ruler-mark i:nth-of-type(1){left:25%}.seq-ruler-mark i:nth-of-type(2){left:50%}.seq-ruler-mark i:nth-of-type(3){left:75%}
 .seq-track { position:absolute; left:0; right:0; border-bottom:1px solid #30343a; }
-.seq-track.focused .seq-track-head { box-shadow:inset 3px 0 0 var(--accent-sequencer); background:#262832; }
+.seq-track.focused .seq-track-head { background:#262832; }
 /* Two rows, performance controls only. Input, Destination and the route
    sentences live in .seq-inspector -- they are what made this five rows tall. */
-.seq-track-head { position:sticky; left:0; z-index:7; height:100%; box-sizing:border-box; display:grid; grid-template-columns:26px 26px minmax(0,1fr) 26px 22px; grid-template-rows:26px minmax(0,1fr); gap:3px 4px; padding:5px 8px; background:#22262b; border-right:1px solid #3a3f46; }
+.seq-track-head { position:sticky; left:0; z-index:7; height:100%; box-sizing:border-box; display:grid; grid-template-columns:26px 26px minmax(0,1fr) 26px 22px; grid-template-rows:26px minmax(0,1fr); gap:3px 4px; padding:5px 8px 5px 32px; background:#22262b; border-right:1px solid #3a3f46; }
 .seq-track-head button { padding:0; border:1px solid var(--border); border-radius:4px; color:var(--text-dim); background:#191c20; font:600 10px var(--font); cursor:pointer; }
+/* The track's select button, on its left edge: the rest of a 64 px head is
+   controls, and a click meant to select the track kept landing on one of them.
+   A thin strip there went unseen, so it is a full-height button with a mark,
+   filled in the sequencer's violet on the selected track. */
+.seq-track-head .seq-track-select { position:absolute; left:5px; top:5px; bottom:5px; width:20px; border-color:#6b7380; background:#353a42; }
+.seq-track-head .seq-track-select::after { content:""; position:absolute; left:50%; top:50%; width:10px; height:10px; margin:-5px 0 0 -5px; box-sizing:border-box; border:2px solid #9aa2ae; border-radius:50%; }
+.seq-track-head .seq-track-select:hover { background:#4a505a; }
+.seq-track.focused .seq-track-head .seq-track-select { border-color:var(--accent-sequencer); background:var(--accent-sequencer); }
+.seq-track.focused .seq-track-head .seq-track-select::after { border-color:#17191d; background:#17191d; }
 .seq-track-level { grid-column:1 / 5; grid-row:2; display:grid; grid-template-columns:minmax(0,1fr) 50px; align-items:center; gap:6px; }
 .seq-track-level input[type="range"] { width:100%; height:14px; margin:0; }
 .seq-track-level output { color:var(--text-faint); font:9px var(--mono); text-align:right; }
@@ -1723,6 +1732,12 @@ body ::-webkit-scrollbar-corner { background:transparent; }
 .seq-inspector-hint { color:var(--text-dim); }
 .seq-inspector-field { display:grid; grid-template-columns:max-content minmax(110px,210px); align-items:center; gap:6px; color:var(--text-faint); font:9px var(--mono); text-transform:uppercase; letter-spacing:.06em; }
 .seq-inspector-field select { width:100%; height:24px; padding:0 5px; color:var(--text-dim); background:#15171a; border:1px solid var(--border); border-radius:5px; font-size:11px; text-transform:none; letter-spacing:normal; }
+/* Where the notes go, in the VST node's own orange: the most read field here.
+   A long chain of plugin names is cut, not wrapped. */
+.seq-inspector-destination > span { color:var(--accent-vst); font-weight:700; }
+.seq-inspector-destination select { overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+.seq-inspector-destination select.routed { color:var(--accent-vst); font-weight:600; }
+.seq-inspector-destination select.routed option { color:var(--text); font-weight:400; }
 .seq-inspector .seq-route-summary { margin-left:auto; }
 .seq-mute.active { color:#17191d!important; background:#f5c451!important; }
 .seq-track-delete:hover { color:#ef6a5b; }

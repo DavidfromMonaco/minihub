@@ -261,10 +261,22 @@ function trackSources(hub, track) {
     }));
 }
 
+/**
+ * What a VST node plays, by name: "VST 4 — Splice INSTRUMENT". Every node
+ * used to read "VST 4 — VST chain", so picking the right one meant knowing the
+ * Patch Bay by heart. A chain of several plugins names them in order; the
+ * field's width cuts what does not fit.
+ */
+function chainLabel(hub, nodeId) {
+  const plugins = hub.nodes?.get?.(nodeId)?.content?.plugins;
+  const names = (Array.isArray(plugins) ? plugins : []).map((plugin) => String(plugin?.name || '').trim()).filter(Boolean);
+  return names.length ? names.join(' + ') : 'no plugin';
+}
+
 function trackDestinations(hub, track) {
   if (track.type === 'midi') return hub.network.listNodes().filter((node) => ['vst', 'arpeggiator'].includes(node.type)).map((node) => ({
     id: node.id,
-    name: node.type === 'vst' ? `${node.name} — VST chain`
+    name: node.type === 'vst' ? `${node.name} — ${chainLabel(hub, node.id)}`
       : `${node.name} — Arpeggiator`
   }));
   return hub.network.listNodes().filter((node) => ['mixer', 'morpher', 'audio-output', 'vst'].includes(node.type)
@@ -349,10 +361,14 @@ function inspectorMarkup(hub, track, sequencerId) {
     return `<div class="seq-inspector empty" data-track-inspector><span class="seq-inspector-label">Track</span><span class="seq-inspector-hint">Click a track to route its input and destination.</span></div>`;
   }
   const states = routeStates(hub, track, sequencerId);
+  const destinations = trackDestinations(hub, track);
+  // Where the notes go is what is read most often here, so it stands out --
+  // once there is somewhere they go.
+  const routed = destinations.some((item) => item.id === track.outputId);
   return `<div class="seq-inspector" data-track-inspector>
     <span class="seq-inspector-label">Track</span><strong class="seq-inspector-name">${escapeHtml(track.name)}</strong>
     <label class="seq-inspector-field"><span>Input</span><select data-inspector-control="input" aria-label="${escapeHtml(track.name)} input">${options(trackSources(hub, track), track.inputId, inputPlaceholder(hub, track))}</select></label>
-    <label class="seq-inspector-field"><span>Destination</span><select data-inspector-control="output" aria-label="${escapeHtml(track.name)} destination">${options(trackDestinations(hub, track), track.outputId, destinationPlaceholder(hub, track))}</select></label>
+    <label class="seq-inspector-field seq-inspector-destination"><span>Destination</span><select data-inspector-control="output"${routed ? ' class="routed"' : ''} aria-label="${escapeHtml(track.name)} destination">${options(destinations, track.outputId, destinationPlaceholder(hub, track))}</select></label>
     ${routeSummary(states)}
   </div>`;
 }
@@ -725,6 +741,7 @@ export function createSequencerModule(hub) {
             <div class="seq-loop-range ${state.loop.enabled ? 'enabled' : ''}" data-seq-left="${TRACK_HEADER + state.loop.startPpq * zoom}" data-seq-width="${(state.loop.endPpq - state.loop.startPpq) * zoom}" data-seq-height="${RULER_HEIGHT + Math.max(1, state.tracks.length) * TRACK_HEIGHT}"></div>
             ${state.tracks.length ? state.tracks.map((track, index) => `<div class="seq-track ${state.focusedTrackId === track.id ? 'focused' : ''}" data-track-id="${track.id}" data-seq-top="${RULER_HEIGHT + index * TRACK_HEIGHT}" data-seq-height="${TRACK_HEIGHT}">
               <div class="seq-track-head" data-seq-width="${TRACK_HEADER}">
+                <button class="seq-track-select" data-track-action="select" title="Select ${escapeHtml(track.name)}" aria-label="Select ${escapeHtml(track.name)}" aria-pressed="${state.focusedTrackId === track.id}"></button>
                 <button class="seq-arm ${track.armed ? 'active' : ''}" data-track-action="arm" title="Arm">R</button>
                 <button class="seq-monitor ${track.monitored ? 'active' : ''}" data-track-action="monitor" title="Input monitor">I</button>
                 <input class="seq-track-name" data-track-control="name" value="${escapeHtml(track.name)}">
@@ -881,6 +898,11 @@ export function createSequencerModule(hub) {
   function bindTrack(element) {
     const trackId = element.dataset.trackId;
     const track = controller.model.state.tracks.find((item) => item.id === trackId);
+    // A 64 px head is almost all controls, so a click meant to select the track
+    // kept landing on one of them: the button on its left edge is for that alone.
+    element.querySelector('[data-track-action="select"]')?.addEventListener('click', (event) => {
+      event.stopPropagation(); controller.focusTrack(trackId);
+    });
     element.querySelector('[data-track-action="arm"]')?.addEventListener('click', (event) => {
       event.stopPropagation();
       controller.setTrackArmed(trackId, !track.armed, { additive: event.ctrlKey || event.metaKey || event.shiftKey });

@@ -133,7 +133,7 @@ test('Sequencer renders actionable Record/Stop guidance and explicit per-track r
   assert.match(view.markup(), /data-metronome-light/);
   assert.match(view.markup(), /seq-record-status blocked[^>]*>No MIDI input is detected or selected/);
   assert.match(view.markup(), /<span>Input<\/span><select[^>]*>\s*<option value="">No MIDI input detected<\/option>/);
-  assert.match(view.markup(), /<span>Destination<\/span><select[^>]*>[\s\S]*VST 1 — VST chain[\s\S]*VST 2 — VST chain/);
+  assert.match(view.markup(), /<span>Destination<\/span><select[^>]*>[\s\S]*VST 1 — no plugin[\s\S]*VST 2 — no plugin/);
   assert.match(view.markup(), /data-track-inspector/);
   assert.doesNotMatch(view.markup(), /<div class="seq-track-head"[^>]*>[\s\S]*?<select/,
     'a 64px track head carries no select: Input and Destination live in the inspector');
@@ -297,9 +297,71 @@ test('MIDI destinations include VST and Arpeggiator but never MiniLab hardware',
   hub.modules.activate('sequencer', view.container);
 
   const destination = /<select data-inspector-control="output"[^>]*>([\s\S]*?)<\/select>/.exec(view.markup())?.[1] || '';
-  assert.match(destination, /VST 1 — VST chain/);
+  assert.match(destination, /VST 1 — no plugin/);
   assert.match(destination, /Arpeggiator 1 — Arpeggiator/);
   assert.doesNotMatch(destination, /MiniLab|hardware MIDI output|minilab-3/);
+});
+
+test('a VST destination is named by the plugins it plays, and stands out once chosen', async () => {
+  const { hub } = await runtime();
+  hub.nodes.create('sequencer');
+  const splice = hub.nodes.create('vst');
+  const layered = hub.nodes.create('vst');
+  hub.nodes.create('vst');
+  hub.nodes.getChain(splice.id).append({ pluginId: 'C:/VST3/Splice INSTRUMENT.vst3', name: 'Splice INSTRUMENT', role: 'instrument' });
+  const chain = hub.nodes.getChain(layered.id);
+  chain.append({ pluginId: 'C:/VST3/Vital.vst3', name: 'Vital', role: 'instrument' });
+  chain.append({ pluginId: 'C:/VST3/ValhallaSupermassive.vst3', name: 'ValhallaSupermassive', role: 'audio-effect' });
+  const track = hub.sequencer.model.addTrack('midi');
+  hub.modules.register(createSequencerModule(hub));
+  const view = captureContainer();
+  hub.modules.activate('sequencer', view.container);
+
+  const destination = () => /<select data-inspector-control="output"([^>]*)>([\s\S]*?)<\/select>/.exec(view.markup());
+  assert.match(destination()[2], />VST 1 — Splice INSTRUMENT</, 'every node used to read "VST chain"');
+  assert.match(destination()[2], />VST 2 — Vital \+ ValhallaSupermassive</, 'a chain names its plugins in order');
+  assert.match(destination()[2], />VST 3 — no plugin</);
+  assert.match(view.markup(), /class="seq-inspector-field seq-inspector-destination"><span>Destination<\/span>/);
+  assert.doesNotMatch(destination()[1], /routed/, 'a placeholder is not dressed as a destination');
+
+  hub.sequencer.setTrack(track.id, { outputId: splice.id });
+  assert.match(destination()[1], /class="routed"/, 'the chosen destination is the one dressed to stand out');
+});
+
+test('a button on each track selects it, and selecting a track arms nothing', async () => {
+  const { hub } = await runtime();
+  hub.nodes.create('sequencer');
+  const first = hub.sequencer.model.addTrack('midi');
+  const second = hub.sequencer.model.addTrack('midi');
+  hub.sequencer.setTrackArmed(first.id, true);
+  hub.modules.register(createSequencerModule(hub));
+  const view = captureContainer();
+  // The shared capture binds no track; these stand for the rendered rows, each
+  // with the one control this case clicks.
+  const buttons = new Map();
+  view.container.querySelectorAll = (selector) => selector !== '.seq-track' ? [] : [
+    ...view.markup().matchAll(/<div class="seq-track[^"]*" data-track-id="([^"]+)"/g)
+  ].map(([, trackId]) => {
+    const row = makeEl('div');
+    row.dataset.trackId = trackId;
+    const button = makeEl('button');
+    row.querySelector = (inner) => inner === '[data-track-action="select"]' ? button : null;
+    buttons.set(trackId, button);
+    return row;
+  });
+  hub.modules.activate('sequencer', view.container);
+
+  assert.deepEqual(
+    [...view.markup().matchAll(/<button class="seq-track-select" data-track-action="select"[^>]*aria-pressed="(true|false)"/g)].map((match) => match[1]),
+    ['true', 'false'],
+    'one button per track, pressed on the selected one');
+
+  const click = fire(buttons.get(second.id), 'click');
+  assert.equal(click.propagationStopped, true, 'the row under the button does not select a second time');
+  assert.equal(hub.sequencer.model.state.focusedTrackId, second.id);
+  assert.deepEqual(hub.sequencer.model.state.tracks.map((track) => track.armed), [true, false],
+    'the armed track stays armed, and the selected one is not armed');
+  assert.match(view.markup(), /aria-label="Select MIDI 2" aria-pressed="true"/, 'the page redraws the selection');
 });
 
 test('MIDI clips remain visible in the timeline without rendering a Piano Roll panel', async () => {

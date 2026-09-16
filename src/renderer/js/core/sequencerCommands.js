@@ -63,8 +63,8 @@ export function sequencerCommands(hub) {
       id: `${SEQUENCER_NODE_ID}:track:${track.id}`,
       label: `Sequencer / ${track.name}`,
       commands: [
-        // What a click on the track does: it takes the focus, and a MIDI track
-        // becomes the one the keyboard plays.
+        // What a click on the track does: it takes the focus. Which tracks the
+        // keyboard plays is ARM's to say, below.
         action('SELECT', 'Select', () => controller.focusTrack(track.id)),
         toggle('MUTE', 'Mute', (muted) => controller.setTrackControl(track.id, { muted })),
         number('VOLUME', 'Volume', 0, 2, (volume) => controller.setTrackControl(track.id, { volume })),

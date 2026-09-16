@@ -386,12 +386,12 @@ export class SequencerController {
     return true;
   }
 
-  focusTrack(trackId, { preserveArmed = false } = {}) {
-    const current = this.model.state.focusedTrackId;
-    if (current !== trackId && this._activeInputNotes.size) this._panicLiveDestinations();
-    const track = this.model.focusTrack(trackId, { preserveArmed });
+  focusTrack(trackId) {
+    const track = this.model.focusTrack(trackId);
     if (!track) return null;
-    this.changed();
+    // What is played goes where it went: focus no longer arms, so neither the
+    // live destinations nor the native plan change, and a held note rings on.
+    this.changed({ syncNative: false, invalidateEditors: false });
     return track;
   }
 
@@ -1058,7 +1058,7 @@ export class SequencerController {
    * reads two different explanations of a single missing cable.
    *
    * The sentences say "armed" because arming is the gesture that puts a MIDI
-   * track live -- `focusTrack` does it on a click. A track that is monitored
+   * track live -- its R button does it. A track that is monitored
    * and not armed reads the word as slightly off, and points at the right
    * field anyway.
    */

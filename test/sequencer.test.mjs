@@ -228,7 +228,7 @@ test('track fader and mute update live DSP without rebuilding or panicking the a
   ]);
 });
 
-test('focused exclusive arm and intentional multi-arm route live MIDI to exact track destinations', () => {
+test('exclusive arm, a selection that leaves it alone, and intentional multi-arm route live MIDI exactly', async () => {
   const { controller, hub, commands } = rig();
   hub.network.addNode({
     id: 'vst-002', name: 'VST 2', type: 'vst',
@@ -253,8 +253,25 @@ test('focused exclusive arm and intentional multi-arm route live MIDI to exact t
   assert.deepEqual(commands.filter((item) => item.type === 'liveMidi').slice(-1).map((item) => item.chainId), ['vst-001'],
     'the held Note Off remains immediate while export owns its private network');
 
+  // Selecting a track to look at its routing leaves the keyboard where it is.
+  const settled = () => new Promise((resolve) => queueMicrotask(resolve));
+  controller.receiveMidiInput({ sourceId: 'minilab-port', raw: [0x90, 61, 100] });
+  await settled();
+  commands.length = 0;
   controller.focusTrack(second.id);
-  assert.deepEqual([first.armed, second.armed], [false, true], 'normal focus is exclusive by default');
+  await settled();
+  assert.equal(controller.model.state.focusedTrackId, second.id);
+  assert.deepEqual([first.armed, second.armed], [true, false], 'focus neither arms nor disarms');
+  assert.deepEqual(commands, [], 'a selection cuts no held note and rebuilds no native plan');
+  controller.receiveMidiInput({ sourceId: 'minilab-port', raw: [0x80, 61, 0] });
+  commands.length = 0;
+  controller.receiveMidiInput({ sourceId: 'minilab-port', raw: [0x90, 60, 100] });
+  assert.deepEqual(commands.filter((item) => item.type === 'liveMidi').map((item) => item.chainId), ['vst-001'],
+    'the armed track still plays after another one is selected');
+  controller.receiveMidiInput({ sourceId: 'minilab-port', raw: [0x80, 60, 0] });
+
+  controller.setTrackArmed(second.id, true);
+  assert.deepEqual([first.armed, second.armed], [false, true], 'the R button is exclusive by default');
   commands.length = 0;
   controller.receiveMidiInput({ sourceId: 'minilab-port', raw: [0x90, 62, 100] });
   assert.deepEqual(commands.filter((item) => item.type === 'liveMidi').map((item) => item.chainId), ['vst-002']);

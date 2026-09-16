@@ -280,13 +280,18 @@ export class SequencerModel {
     return ids.length;
   }
 
-  focusTrack(trackId, { preserveArmed = false } = {}) {
+  /**
+   * Select a track: the inspector shows its routing. Arming is left alone.
+   *
+   * Focus used to arm the track and disarm every other MIDI track, so picking
+   * a track only to change its Destination moved the keyboard onto it,
+   * silenced the track being played, and armed a new one for the next take.
+   * Arming is the R button's, and the ARM command's.
+   */
+  focusTrack(trackId) {
     const track = this._track(trackId);
     if (!track) return null;
     this.state.focusedTrackId = track.id;
-    if (track.type === 'midi' && !preserveArmed) {
-      for (const item of this.state.tracks) if (item.type === 'midi') item.armed = item.id === track.id;
-    }
     return track;
   }
 
@@ -309,9 +314,8 @@ export class SequencerModel {
     const track = normalizeTrack({ id: uid('track'), type: normalizedType, name: `${normalizedType === 'midi' ? 'MIDI' : 'Audio'} ${family}`, volume: 1 }, this.state.tracks.length);
     this.state.tracks.push(track);
     // A track is created to be worked on, so it takes the focus and the
-    // toolbar inspector opens on its routing. Arming is deliberately left
-    // alone: adding a track must not disarm the one a take is running on,
-    // which is what `focusTrack` would do for a MIDI track.
+    // toolbar inspector opens on its routing. Arming is left alone: adding a
+    // track must not disarm the one a take is running on.
     this.state.focusedTrackId = track.id;
     return track;
   }
