@@ -9,7 +9,7 @@ page of its own in a new hardware-style design.
 "commence à travailler sur l'intégration de One Ring en natif". His direction
 for the look: every function kept, the whole design redone after hardware
 sequencers — the Korg SQ-64, the Roland P-6, the Cre8audio Programm.
-**Status** — **in progress, 2026-09-16.** Steps 0 to 3 done; step 4 next.
+**Status** — **in progress, 2026-09-17.** Steps 0 to 4 done; step 5 next.
 
 ## Context
 
@@ -139,7 +139,7 @@ to D-018 (written for the Matrix), D-032 (a command is performance), D-042
       Check: `npm test` + build + `--core`
       Done: `npm test` (1140, 15 new), `--core` (1523 checks, MUTATE's values
       among them), `npm run check`, `npm run sync:dist` — **green 2026-09-16**
-- [ ] 4. The node: type `one-ring` (MIDI category, CTRL OUT), its content the
+- [x] 4. The node: type `one-ring` (MIDI category, CTRL OUT), its content the
       sequence; `engineSync` sends it on change and after an engine restart;
       `CommandBus` takes a native source beside plugin sources — targets
       published with `setOneRingTargets`, events dispatched, holds released as a
@@ -148,6 +148,14 @@ to D-018 (written for the Matrix), D-032 (a command is performance), D-042
       master; a pulled cable stops it.
       Check: `npm test` + `npm run check` + `npm run sync:dist` + seen in
       MiniHub: a sequence stepping a mixer's master
+      Done: `npm test` (1151), `npm run check`, `npm run sync:dist` —
+      **green 2026-09-17**. The engine was driven over its real stdio protocol
+      (`dist`'s `mlh-audio-engine.exe`, a script speaking what the renderer
+      speaks): sequence and targets taken, RUN giving a MASTER command every
+      quarter beat with the cells' values, a channel STOP, STOP, a stale
+      generation refused, the node removed. **Not yet seen: renderer and engine
+      together in MiniHub** — it touches a project, so it moves to step 5, with
+      the author.
 - [ ] 5. From the VST: a VST node holding One Ring offers to copy its sequence
       into a new One Ring node, and its CTRL OUT cables move to it.
       Check: `npm test` + seen in MiniHub with one of the author's sequences.
@@ -249,3 +257,25 @@ active states, probabilities, integer and float ranges and choice rotation.
 tie, so the same cells always give the same content — an undo step compares
 equal to what it restores. A VST state with two programmed cells on a typed
 channel comes out more than ten times smaller.
+
+2026-09-17 — Step 4. `core/oneRingNodes.js` (on `hub.oneRing`) keeps the
+engine's runtimes in step with the nodes; CommandBus takes a native source keyed
+`native<sep>nodeId`, told its targets by `setOneRingTargets`, its refusals sent
+to the node's page as `oneRing:refusal` instead of a plugin window; the node's
+page is a plain panel in `modules/oneRing/oneRingPanel.js` (base.css), the one
+steps 6 to 8 replace. Two things the tests found:
+
+- A renderer opened while the engine already runs never sees it start —
+  `engineClient.init` learns it from a query and emits nothing, and the
+  project's nodes load before that. The sequences would never have been sent.
+  The device state the client then asks for is the signal, as `engineSync`
+  already uses it.
+- A refused packet still uses its sequence number, so the next packet needs a
+  higher one — the bus's rule, which a test had wrong, not the bus.
+
+Settled while building: a scene the engine reports is written into the
+content as performance and not sent back, because a new plan releases what
+Legato holds. Real One Ring states read: the three test projects on disk that
+hold the VST each decode (JSON at byte 0, JUCE's private data after it), and
+Orbites comes out at 55 KB for an 850 KB state, round trip exact. That reader
+is step 5's.

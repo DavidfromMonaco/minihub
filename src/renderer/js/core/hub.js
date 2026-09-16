@@ -11,6 +11,7 @@ import { HardwareConfigManager } from './hardwareConfig.js';
 import { ProjectManager, PROJECT_KEYS } from './projectManager.js';
 import { SequencerController } from './sequencerController.js';
 import { CommandBus } from './commandBus.js';
+import { OneRingNodes } from './oneRingNodes.js';
 
 /**
  * Central Hub: the single seam through which modules interact with the app.
@@ -23,6 +24,7 @@ import { CommandBus } from './commandBus.js';
  *   engine   - native audio engine client (VST3 + audio device)
  *   nodes    - node instance manager
  *   commands - what a plugin on a CTRL OUT cable may command (commandBus.js)
+ *   oneRing  - the One Ring nodes' runtimes in the engine (oneRingNodes.js)
  *   perform  - run writes that are played rather than authored
  */
 export function createHub(api) {
@@ -64,6 +66,8 @@ export function createHub(api) {
       }
     }
   };
+  // The One Ring nodes' runtimes: what CommandBus takes as native sources.
+  hub.oneRing = new OneRingNodes(hub);
   hub.commands = new CommandBus(hub);
 
   // One hook, two readers. `onSet` is the only place that sees every write, so

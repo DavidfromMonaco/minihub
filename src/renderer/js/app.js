@@ -20,6 +20,7 @@ import { applyHistorySnapshot } from './core/editHistoryApply.js';
 import { installHistoryKeys } from './ui/historyKeys.js';
 import { installAgentBridge } from './core/agentBridge.js';
 import { installBindingsBarHost } from './core/bindingsBarHost.js';
+import { registerOneRingPanel } from './modules/oneRing/oneRingPanel.js';
 
 async function main() {
   const hub = createHub(window.hubAPI);
@@ -47,6 +48,10 @@ async function main() {
   hub.modules.register(createAudioOutputModule(hub));
   hub.sequencer.load();
   hub.modules.register(createSequencerModule(hub));
+
+  // A node type with its own folder brings its page (nodeEditors.js). Before
+  // the instances load, so none can open without it.
+  registerOneRingPanel();
 
   // Restore persisted dynamic node instances (registers their modules +
   // routing nodes). Must run before restoring connections so nodes exist.

@@ -313,6 +313,14 @@ export class EngineClient {
       case 'controlRegistryStatus':
         this.events.emit('engine:controlRegistryStatus', msg);
         break;
+      // A native One Ring node's runtime (oneRingNodes.js, commandBus.js).
+      case 'oneRingSynced':
+      case 'oneRingTargetsStatus':
+      case 'oneRingStatus':
+      case 'oneRingCommandResult':
+      case 'oneRingRemoved':
+        this.events.emit(`engine:${msg.type}`, msg);
+        break;
       case 'pluginRequestResult': {
         const pending = this._pendingParams.get(msg.requestId);
         if (!pending || pending.kind !== 'plugin-request') break;
@@ -826,6 +834,31 @@ export class EngineClient {
           resolve({ status: 'engine-unavailable', message: String(error?.message || error) });
         });
     });
+  }
+
+  /** A One Ring node's sequence for the engine to run; `restore` takes its saved scene (oneRingNodes.js). */
+  syncOneRing(nodeId, state, restore) {
+    if (this.state !== 'running') return Promise.resolve({ ok: false, reason: 'engine-not-running' });
+    return Promise.resolve(this.command({ type: 'syncOneRing', nodeId, restore: restore === true, state }));
+  }
+
+  /** What a One Ring node's CTRL OUT is cabled to, for its runtime of `generation` (commandBus.js). */
+  setOneRingTargets(nodeId, generation, registry) {
+    if (this.state !== 'running') return Promise.resolve({ ok: false, reason: 'engine-not-running' });
+    return Promise.resolve(this.command({ type: 'setOneRingTargets', nodeId, generation, registry }));
+  }
+
+  /** RUN, STOP, a channel command or a scene recall for a One Ring node's runtime. */
+  oneRingCommand(nodeId, generation, command, { channel, name, scene } = {}) {
+    if (this.state !== 'running') return Promise.resolve({ ok: false, reason: 'engine-not-running' });
+    const fields = command === 'channel' ? { channel, name } : command === 'scene' ? { scene } : {};
+    return Promise.resolve(this.command({ type: 'oneRingCommand', nodeId, generation, command, ...fields }));
+  }
+
+  /** A One Ring node is gone: its runtime goes with it. */
+  removeOneRing(nodeId) {
+    if (this.state !== 'running') return Promise.resolve({ ok: false, reason: 'engine-not-running' });
+    return Promise.resolve(this.command({ type: 'removeOneRing', nodeId }));
   }
 
   /** Why its last command was refused, shown in that plugin's own window; '' clears it. */

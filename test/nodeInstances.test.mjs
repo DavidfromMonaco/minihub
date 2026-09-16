@@ -27,7 +27,7 @@ function makeFullHub(settingsData = {}) {
 // ---- Node Type Registry -----------------------------------------------------
 test('registry exposes all user-creatable routing types', () => {
   const ids = listNodeTypes().map((t) => t.id).sort();
-  assert.deepEqual(ids, ['arpeggiator', 'audio-input', 'image', 'mixer', 'morpher', 'sequencer', 'video', 'vst']);
+  assert.deepEqual(ids, ['arpeggiator', 'audio-input', 'image', 'mixer', 'morpher', 'one-ring', 'sequencer', 'video', 'vst']);
   assert.ok(getNodeType('vst'));
   assert.equal(getNodeType('nope'), null);
 });

@@ -34,6 +34,15 @@ import { SEQUENCER_NODE_ID } from './systemNodes.js';
  * its node deleted, the plugin bypassed or removed. So the bus remembers what
  * was started and releases it then -- once, only through the very target that
  * accepted it, and never into a project that replaced the one it was sent to.
+ *
+ * A NATIVE SOURCE
+ * ---------------
+ * A One Ring node runs in the engine itself (oneRingNodes.js) and its commands
+ * arrive the same way, as `controlEvents` -- carrying the node and its runtime
+ * generation where a plugin's carry a chain, an instance and a plugin id. Past
+ * that identity it is the same source: cabled the same way, checked the same
+ * way, held and released the same way. What it is told goes by
+ * `setOneRingTargets`, and why a command was refused goes to the node's page.
  */
 
 /** The cable a command travels: a node's CTRL OUT into a node's CTRL IN. */
@@ -59,6 +68,8 @@ const REFUSALS = Object.freeze({
 });
 
 const sourceKey = (chainId, instanceId) => `${chainId}\u001f${instanceId}`;
+// A node id never contains the separator, so a native key cannot be a plugin's.
+const nativeKey = (nodeId) => `native\u001f${nodeId}`;
 
 export class CommandBus {
   constructor(hub) {
@@ -80,6 +91,9 @@ export class CommandBus {
       hub.events.on('engine:instanceStatus', (msg) => this._acceptInstanceStatus(msg)),
       hub.events.on('engine:controlEvents', (msg) => this.dispatch(msg)),
       hub.events.on('engine:controlRegistryStatus', (msg) => this._acceptRegistryStatus(msg)),
+      hub.events.on('engine:oneRingTargetsStatus', (msg) => this._acceptRegistryStatus(msg)),
+      hub.events.on('oneRing:ready', (msg) => this._acceptNative(msg)),
+      hub.events.on('oneRing:gone', (msg) => this._dropNative(msg?.nodeId)),
       hub.events.on('engine:state', (state) => this._onEngineState(state)),
       hub.events.on('network:change', (change) => this._onNetworkChange(change)),
       hub.events.on('sequencer:changed', () => this._invalidate(SEQUENCER_NODE_ID)),
@@ -93,7 +107,7 @@ export class CommandBus {
 
   /** True when this node's CTRL OUT has something to send: the Patch Bay draws the jack. */
   sendsCommands(nodeId) {
-    return this._commandChains.has(nodeId);
+    return this._commandChains.has(nodeId) || this.hub.oneRing?.isOneRing?.(nodeId) === true;
   }
 
   /**
@@ -117,11 +131,14 @@ export class CommandBus {
     return targets;
   }
 
-  /** Execute a batch of packets drained from one plugin instance. */
+  /** Execute a batch of packets drained from one plugin instance, or from a One Ring node. */
   dispatch(message) {
-    const source = this.sources.get(sourceKey(message?.chainId, message?.instanceId));
-    if (!source || message.pluginId !== source.pluginId || message.generation !== source.generation
-        || !this._live(source)) return;
+    const native = typeof message?.nodeId === 'string';
+    const source = native
+      ? this.sources.get(nativeKey(message.nodeId))
+      : this.sources.get(sourceKey(message?.chainId, message?.instanceId));
+    if (!source || (!native && message.pluginId !== source.pluginId)
+        || message.generation !== source.generation || !this._live(source)) return;
     const events = Array.isArray(message.events) ? message.events.slice(0, EVENTS_PER_BATCH) : [];
     for (const event of events) {
       // Sequence numbers only grow; a replayed or reordered packet is dropped.
@@ -179,7 +196,7 @@ export class CommandBus {
       });
     }
     for (const [key, source] of this.sources) {
-      if (source.chainId !== chainId || keep.has(key)) continue;
+      if (source.kind === 'native' || source.chainId !== chainId || keep.has(key)) continue;
       this._releaseHeld(source, { all: true });
       this.sources.delete(key);
     }
@@ -252,7 +269,46 @@ export class CommandBus {
     this._schedule();
   }
 
+  /** A One Ring node's runtime of `generation` is running: it is a source like a plugin. */
+  _acceptNative(message) {
+    const nodeId = message?.nodeId;
+    if (typeof nodeId !== 'string' || !Number.isSafeInteger(message.generation)) return;
+    const key = nativeKey(nodeId);
+    const previous = this.sources.get(key);
+    if (previous?.generation === message.generation) return;
+    if (previous) this._releaseHeld(previous, { all: true });
+    this.sources.set(key, {
+      kind: 'native',
+      chainId: nodeId,
+      instanceId: null,
+      pluginId: null,
+      generation: message.generation,
+      // The engine held the sequence before it announced this generation.
+      restored: true,
+      revision: 0,
+      signature: null,
+      sequence: 0,
+      held: new Map(),
+      status: '',
+      failed: null
+    });
+    this._schedule();
+  }
+
+  _dropNative(nodeId) {
+    const key = nativeKey(nodeId);
+    const source = this.sources.get(key);
+    if (!source) return;
+    this._releaseHeld(source, { all: true });
+    this.sources.delete(key);
+  }
+
   _live(source) {
+    if (source.kind === 'native') {
+      return this.hub.engine?.state === 'running'
+        && this.hub.oneRing?.isOneRing?.(source.chainId) === true
+        && this.hub.oneRing.generationOf(source.chainId) === source.generation;
+    }
     const node = this.hub.nodes?.get?.(source.chainId);
     const plugin = node?.content?.plugins?.find?.((item) => item.id === source.instanceId);
     return !!plugin && plugin.pluginId === source.pluginId && plugin.bypassed !== true
@@ -339,20 +395,26 @@ export class CommandBus {
         // Not accepted: publish again at the next change instead of believing it landed.
         if (source.revision === revision) source.signature = null;
       };
-      Promise.resolve(this.hub.engine?.setControlRegistry?.(source, { version: 1, revision, modules }))
+      const registry = { version: 1, revision, modules };
+      const sent = source.kind === 'native'
+        ? this.hub.engine?.setOneRingTargets?.(source.chainId, source.generation, registry)
+        : this.hub.engine?.setControlRegistry?.(source, registry);
+      Promise.resolve(sent)
         .then((result) => { if (result?.ok === false) forget(); })
         .catch(forget);
     }
   }
 
   _acceptRegistryStatus(message) {
-    const source = this.sources.get(sourceKey(message?.chainId, message?.instanceId));
+    const native = typeof message?.nodeId === 'string';
+    const source = native
+      ? this.sources.get(nativeKey(message.nodeId))
+      : this.sources.get(sourceKey(message?.chainId, message?.instanceId));
     if (!source || message.generation !== source.generation || message.revision !== source.revision) return;
     if (message.ok === true) return;
     source.signature = null;
-    this.hub.diagnostics?.log?.(
-      `commands: ${source.chainId}/${source.instanceId} refused its targets -- ${message.message || 'no reason'}`
-    );
+    const who = native ? source.chainId : `${source.chainId}/${source.instanceId}`;
+    this.hub.diagnostics?.log?.(`commands: ${who} refused its targets -- ${message.message || 'no reason'}`);
   }
 
   // ---------- execution ----------
@@ -446,6 +508,10 @@ export class CommandBus {
     const status = result.ok ? '' : `${event.command}: ${reason}`.slice(0, STATUS_CHARS);
     if (status === source.status) return;
     source.status = status;
+    if (source.kind === 'native') {
+      this.hub.events.emit('oneRing:refusal', { nodeId: source.chainId, message: status });
+      return;
+    }
     Promise.resolve(this.hub.engine?.setControlStatus?.(source, status)).catch(() => {});
   }
 }

@@ -43,6 +43,7 @@ import { VstChain, getVstRole, duplicateVstContent, groupPluginsByFamily } from 
 import { escapeHtml } from './html.js';
 import { normalizeControlBinding, normalizeControlBindings } from './controlBindings.js';
 import { defaultArpeggiatorContent, normalizeArpeggiatorContent } from './arpeggiatorState.js';
+import { createSequence, readSequence } from './oneRingSequence.js';
 import { currentArpeggiatorStep, moveCustomNote, removeCustomNote, renderArpControlStrip, renderCustomPatternEditor, setCustomGateDuration, setCustomNote, syncArpControlStrip, velocityFromPointer } from './arpeggiatorEditor.js';
 import { icon } from '../ui/icons.js';
 import { getNodeEditor, registerNodeEditor } from './nodeEditors.js';
@@ -297,6 +298,7 @@ function defaultContentFor(typeId) {
   if (typeId === 'mixer') return { inputs: [{ id: 'audio-in-1', level: 1, muted: false }], masterLevel: 1, nextInputSeq: 1 };
   if (typeId === 'morpher') return { inputs: [{ id: 'audio-in-1', level: 1, muted: false }], stepCount: 4, steps: Array(32).fill(0).map((_,i)=>i/31), nextInputSeq: 1 };
   if (typeId === 'arpeggiator') return defaultArpeggiatorContent();
+  if (typeId === 'one-ring') return createSequence();
   return null;
 }
 
@@ -347,6 +349,15 @@ export function normalizeContentFor(typeId, content) {
   }
   if (typeId === 'mixer' || typeId === 'morpher') return normalizeNativeAudioContent(typeId, content);
   if (typeId === 'arpeggiator') return normalizeArpeggiatorContent(content);
+  if (typeId === 'one-ring') {
+    // A sequence that cannot be read is not guessed at: the node starts empty,
+    // as the VST did with a state it refused.
+    try {
+      return readSequence(content);
+    } catch (_) {
+      return createSequence();
+    }
+  }
   return content ?? null;
 }
 
@@ -788,6 +799,8 @@ export class NodeInstanceManager {
     if (instance.type === 'arpeggiator') this.hub.events.emit('nativeMidi:stateChanged', { nodeId: instance.id });
     else if (instance.type === 'mixer' || instance.type === 'morpher') {
       this.hub.events.emit('nativeAudio:stateChanged', { nodeId: instance.id });
+    } else if (instance.type === 'one-ring') {
+      this.hub.events.emit('oneRing:contentChanged', { nodeId: instance.id });
     } else if (bindingsMoved) {
       this.hub.events.emit('control:bindingsChanged', { nodeId: instance.id });
     }
