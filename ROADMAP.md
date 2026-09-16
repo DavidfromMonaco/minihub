@@ -526,40 +526,39 @@ dedicated cosmetic pass.
 
 ---
 
-### 7. The Matrix node — replacing the Morpher as product direction
+### 7. One Ring, made native — in place of the Matrix node
 
-**Specification**: `SPECIFICATION_MATRIX_MINIHUB.md` (the full functional
-target, revised 2026-09-03 against the real code).
+**Decided 2026-09-16 by the author**: One Ring, a control sequencer that runs
+today as a VST3 built outside this repository, becomes a function of MiniHub
+itself, and it takes the place the Matrix node held in this item. The Matrix
+node will not be built. Nothing is designed yet — no specification, no plan, no
+decision entry. Whether One Ring also takes the Morpher's place, as the Matrix
+was to, is not decided either; the Morpher stays as it is.
 
-A single control node per project, governing the nodes it is wired to by a
-`control` link: scenes, target states, ramps, and output rules with a
-reproducible seed. It produces no sound; it governs the setup that does.
+**What One Ring is today** — a VST3 that keeps its own channels, steps and
+scenes, runs its own clock, and commands the modules its VST node's CTRL OUT is
+cabled to: an arpeggiator's rate, a mixer's master, a track's mute, the tempo
+and the transport. The path is ARCHITECTURE §6 *Commands from a plugin* and
+[DECISIONS.md](DECISIONS.md) D-042; what it keeps is reached through requests in
+its own vocabulary (D-043). It is in the author's test ([TASKS.md](TASKS.md)).
 
-Three decisions were taken before any code, because each one would have made the
-workstream impossible or wrong had it been discovered halfway through:
+**What the Matrix leaves, to be read again when this starts** — all of it was
+written for the Matrix, and none of it is decided for One Ring:
 
-- **D-016** — `automation` leaves the "out of scope" list in
-  [INTENT.md](INTENT.md) §6, in the precise form of a Matrix node. The DAW
-  automation lane stays refused. See [INTENT.md](INTENT.md) §8 bis;
-- **D-017** — the Matrix counts its own musical time, at the global tempo.
-  Clocking it on the Transport **position** froze it as soon as a scene stopped
-  the sequencer, and rewound it on every `Restart`;
-- **D-018** — one armed Learn in the application, with a named owner. Two
-  independent Learn systems cancelled each other silently.
-
-Three mechanisms the specification assumed existed and that are **still to be
-built**: the post-chain gain stage of a VST node (§7.2 — `masterLevel` is only
-applied on `mixer` nodes), the visibility of a `ctrl-in` on a node with dynamic
-inputs (§4.3 — `nodeInstances.js:289`), and a dual-context live/export runtime
-(§9.1).
-
-**Execution plan**: [plans/done/noeud-matrix.md](plans/done/noeud-matrix.md) — 23
-steps across four phases, each with its verification command. **On standby**, not
-started: it left `plans/active/` to free the single slot for item 8 below, and two
-of its points are already stale. The note at its head says which.
-
-The Morpher is not removed — it leaves the add menu and stays functional as
-`legacy` (§12). Removing it for good is a separate workstream.
+- **D-016** and [INTENT.md](INTENT.md) §8 bis admit automation in the precise
+  form of a Matrix node, one that governs nodes and makes no sound; the DAW
+  automation lane stays refused. The wording names the Matrix;
+- **D-017** gives the Matrix its own musical time at the global tempo, so that a
+  scene stopping the sequencer does not freeze it;
+- **D-018** — one armed Learn in the application, with a named owner — matters
+  only if the native version learns controls;
+- `SPECIFICATION_MATRIX_MINIHUB.md` and
+  [plans/done/noeud-matrix.md](plans/done/noeud-matrix.md) stay as reference,
+  no longer as targets. Three mechanisms they found missing may still be
+  needed: the post-chain gain stage of a VST node (§7.2 — `masterLevel` is only
+  applied on `mixer` nodes), a `ctrl-in` on a node with dynamic inputs (§4.3),
+  and a dual-context live/export runtime (§9.1) — an offline export executes no
+  command today.
 
 ### 8. The controller platform — A done, D-022's half of B done; the plural refused
 
@@ -649,8 +648,8 @@ A  →  (the gate of §2)  →  B  →  C  →  D
 | C | the site and the Builder | separate codebase; A's decoder is copied, not rewritten |
 | D | shared profiles | a folder, a README, pull requests |
 
-**A before phase 2 of the Matrix** (item 7 above, spec §6.8), or the
-`ControlBindingManager` refactor is paid twice.
+**A before phase 2 of the Matrix** (spec §6.8) no longer binds anything: A is
+done, and the Matrix gave way to a native One Ring on 2026-09-16 (item 7 above).
 
 **Where a `layout` comes from, decided 2026-09-05** —
 [DECISIONS.md](DECISIONS.md) D-023, **specification only, no code**. The
@@ -818,7 +817,8 @@ No commitment, no priority — written down so they are not forgotten.
   **Sends, sidechains, minimap, automatic network layout and node groups remain
   so**, and INTENT §6 is the authority on that list, not this line. Three have
   moved since: **automation** was lifted 2026-09-03 as the Matrix node
-  ([INTENT.md](INTENT.md) §8 bis, D-016, item 7 above), **undo/redo** was lifted
+  ([INTENT.md](INTENT.md) §8 bis, D-016), which has since given way to One Ring
+  made native (item 7 above), **undo/redo** was lifted
   2026-09-07 as a bounded edit history (§8 quinquies, D-032, item 13 above), and
   **preset management** was the exception from 2026-09-02 to 2026-09-03 — the
   workstream reached step 8 of 9, was withdrawn, and the refusal is upheld

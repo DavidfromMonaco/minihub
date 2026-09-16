@@ -16,6 +16,9 @@ pulled stopped the commands and plugged back resumed them.
 Since the same evening an agent programs One Ring (0.4.0) through the `plugin`
 request (D-043): seen setting channels, running, reading the clock, stopping,
 and the sequence surviving a save and a reload.
+- Ahead: One Ring is to become a function of MiniHub itself, in place of the
+  Matrix node — decided 2026-09-16, not started ([ROADMAP.md](ROADMAP.md)
+  item 7). What this cable path is for once One Ring is native is not decided.
 - Not seen yet: the author's own sequences; Codex building Orbites with the
   requests; Record through a cable in the application (the test rig covers it,
   guards and refusal message included).
@@ -30,8 +33,9 @@ and the sequence surviving a save and a reload.
 - One Ring's `AGENTS.md` still says the connection is not applied.
 
 **An agent drives MiniHub from outside — in test** — works end to
-end (patches, plugins, notes, save, export, Splice's web page, quit). Its
-commits stay local while the author tests it.
+end (patches, plugins, notes, save, export, Splice's web page, quit). On GitHub
+since 2026-09-16; while the author tests it, neither the release notes nor the
+site mention it.
 Plan: [plans/done/agent-channel.md](plans/done/agent-channel.md) (standby while
 the author tests).
 - Not seen yet: a Codex session starting from the session rules and the first
