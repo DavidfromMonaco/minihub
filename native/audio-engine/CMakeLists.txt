@@ -128,6 +128,14 @@ add_executable(mlh_audio_engine
     src/midi_network.cpp
     src/midi_output.h
     src/midi_output.cpp
+    src/one_ring/commands.h
+    src/one_ring/commands.cpp
+    src/one_ring/generative.h
+    src/one_ring/generative.cpp
+    src/one_ring/model.h
+    src/one_ring/model.cpp
+    src/one_ring/scheduler.h
+    src/one_ring/scheduler.cpp
     src/engine2/audio_engine.h
     src/engine2/audio_engine.cpp
     src/engine2/realtime_output_buffer.h
@@ -195,6 +203,14 @@ if(BUILD_TESTING)
         src/sequencer.cpp
         src/midi_network.h
         src/midi_network.cpp
+        src/one_ring/commands.h
+        src/one_ring/commands.cpp
+        src/one_ring/generative.h
+        src/one_ring/generative.cpp
+        src/one_ring/model.h
+        src/one_ring/model.cpp
+        src/one_ring/scheduler.h
+        src/one_ring/scheduler.cpp
         src/chain.h
         src/chain.cpp
         src/plugin_host.h

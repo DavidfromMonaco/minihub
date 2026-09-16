@@ -9,7 +9,7 @@ page of its own in a new hardware-style design.
 "commence à travailler sur l'intégration de One Ring en natif". His direction
 for the look: every function kept, the whole design redone after hardware
 sequencers — the Korg SQ-64, the Roland P-6, the Cre8audio Programm.
-**Status** — **in progress, 2026-09-16.** Step 0 done; step 1 next.
+**Status** — **in progress, 2026-09-16.** Steps 0 and 1 done; step 2 next.
 
 ## Context
 
@@ -103,12 +103,13 @@ to D-018 (written for the Matrix), D-032 (a command is performance), D-042
       left); this plan in `plans/active/`; TASKS.md and ROADMAP item 7 say the
       work has started.
       Check: `npm test` (1119) + `npm run check` (15 rules) — **green 2026-09-16**
-- [ ] 1. Native core: One Ring's `src/core/` into
+- [x] 1. Native core: One Ring's `src/core/` into
       `native/audio-engine/src/one_ring/`, namespace `mlh::one_ring`, behaviour
       unchanged; `tests/core_tests.cpp` into `native_tests.cpp` as
       `[core] one-ring-*`, plus fixed `Random` values that step 3 checks again.
       Check: `npm run build:native` 0 errors 0 warnings +
-      `mlh_native_tests.exe --core`
+      `mlh_native_tests.exe --core` (1463 checks) + `npm test` (1119) +
+      `npm run sync:dist` — **green 2026-09-16**
 - [ ] 2. Native runtime: `OneRingRuntime` does the `Processor`'s work without a
       plugin — plan published and swapped at a block boundary; `advance` in the
       callback on the live `Transport` (Play starts it, a seek shifts its
@@ -188,3 +189,14 @@ cheap: MiniHub already compiles the registry (`CommandBus`) and already carries
 the packets (`controlEvents`). What changes is who produces them. The VST state
 is kept as the reference format and made sparse for the node, since a full state
 is about 700 KB.
+
+2026-09-16 — Step 1. The core compiles in the engine and in the native tests
+with no warning at /W3; One Ring built it at /W4 /WX already. A normalised diff
+against the four source files shows two differences, both deliberate:
+`Engine` is `Scheduler` here, since this engine already has an `Engine`, and
+`Project::sceneTiming` and `scenePosition` start as Immediate and Restart
+instead of indeterminate (the VST always set them itself). The fixed `Random`
+values were computed with a BigInt copy of the algorithm in Node and pass in
+C++ unchanged, so step 3's port has its reference already. A scheduler carries
+about 250 KB of fixed event storage: the tests allocate each one rather than
+stack two.

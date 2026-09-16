@@ -9,13 +9,16 @@
 #include "sequencer.h"
 #include "var_util.h"
 #include "vst3_scanner.h"
+#include "one_ring/scheduler.h"
 
 #include <algorithm>
 #include <cmath>
 #include <cstring>
 #include <cstdlib>
+#include <functional>
 #include <iostream>
 #include <limits>
+#include <memory>
 #if JUCE_WINDOWS
 #ifndef NOMINMAX
 #define NOMINMAX 1
@@ -1658,6 +1661,499 @@ void crossTrackLevelIsolation()
     std::cerr<<"[cross-track] crossTrackLevelIsolation\n";testInternalSineCrossTrackIsolation(true);testInternalSineCrossTrackIsolation(false);testAudioClipCrossTrackIsolation();testDeterministicVstCrossTrackIsolation();if(const char* commercial=std::getenv("MLH_RUN_COMMERCIAL_ISOLATION");commercial&&std::string(commercial)=="1")testCommercialVstCrossTrackIsolation();
 }
 
+// ---------- One Ring's core ----------
+//
+// One Ring 0.4's own core tests, carried over with the code they check. A
+// scheduler holds about 250 KB of fixed storage, so each test allocates its own
+// rather than putting two on the stack.
+
+namespace oring = mlh::one_ring;
+
+struct OneRingSink : oring::EventSink {
+    std::vector<oring::Event> events = std::vector<oring::Event>(8192);
+    std::size_t count = 0;
+    bool send(const oring::Event& event) noexcept override
+    {
+        if (count >= events.size()) return false;
+        events[count++] = event;
+        return true;
+    }
+};
+
+oring::CommandRegistry oneRingTestRegistry()
+{
+    oring::CommandRegistry registry;
+    oring::CommandDescriptor fire;
+    fire.id = fire.label = "FIRE";
+    oring::CommandDescriptor on;
+    on.id = on.label = "ON";
+    on.releaseCommand = "OFF";
+    oring::CommandDescriptor off;
+    off.id = off.label = "OFF";
+    oring::CommandDescriptor velocity;
+    velocity.id = velocity.label = "VELOCITY";
+    velocity.type = oring::ValueType::Integer;
+    velocity.minimum = 0;
+    velocity.maximum = 127;
+    registry.registerModule({"test:target", "Test target", {fire, on, off, velocity}});
+    return registry;
+}
+
+oring::Project oneRingEmptyProject()
+{
+    auto project = oring::makeProject(oring::SceneTiming::Immediate, oring::ScenePosition::Restart);
+    for (auto& scene : project.scenes)
+        for (auto& channel : scene.channels) {
+            channel.enabled = false;
+            channel.target.target = "test:target";
+            channel.target.command = "FIRE";
+        }
+    return project;
+}
+
+// A throw from the code under test is one failed check, not the end of the run.
+void oneRingChecks(const char* name, const std::function<void()>& body)
+{
+    try { body(); }
+    catch (const std::exception& error) { expect(false, juce::String(name) + " threw: " + error.what()); }
+}
+
+struct OneRingRun {
+    oring::Project project;
+    oring::CommandRegistry registry;
+    std::unique_ptr<oring::Scheduler> scheduler = std::make_unique<oring::Scheduler>();
+    OneRingSink sink;
+    explicit OneRingRun(oring::Project p)
+        : project(std::move(p)), registry(oring::withInternalCommands(oneRingTestRegistry(), project))
+    {
+        scheduler->bind(project, registry, sink);
+    }
+};
+
+void testOneRingRegistryAndValues()
+{
+    oneRingChecks("one-ring registry", [] {
+        auto registry = oneRingTestRegistry();
+        expect(registry.validate("test:target", "VELOCITY", std::int32_t(70)) == oring::Validation::Ok, "one-ring: integer accepted");
+        expect(registry.validate("test:target", "VELOCITY", 70.0) == oring::Validation::WrongType, "one-ring: no float-to-int coercion");
+        expect(registry.validate("test:target", "VELOCITY", std::int32_t(128)) == oring::Validation::OutOfRange, "one-ring: range checked");
+        expect(registry.validate("missing", "FIRE", {}) == oring::Validation::UnknownModule, "one-ring: missing module reported");
+        expect(registry.unregisterModule("test:target"), "one-ring: unregister succeeds");
+        expect(registry.modules().empty(), "one-ring: unregister is symmetric");
+    });
+    oneRingChecks("one-ring registry refusals", [] {
+        auto registry = oneRingTestRegistry();
+        bool duplicate = false, invalid = false;
+        try { registry.registerModule({"test:target", "Duplicate", {}}); } catch (...) { duplicate = true; }
+        oring::CommandDescriptor command;
+        command.id = command.label = "PLAY";
+        command.releaseCommand = "MISSING";
+        try { registry.registerModule({"bad", "Bad", {command}}); } catch (...) { invalid = true; }
+        expect(duplicate && invalid, "one-ring: a duplicate id and a release to nowhere are refused");
+    });
+    oneRingChecks("one-ring value types", [] {
+        oring::CommandDescriptor command;
+        command.type = oring::ValueType::Boolean;
+        expect(oring::validate(command, oring::Value(true)) == oring::Validation::Ok, "one-ring: bool");
+        command.type = oring::ValueType::Float;
+        command.minimum = -1;
+        command.maximum = 1;
+        expect(oring::validate(command, oring::Value(0.5)) == oring::Validation::Ok, "one-ring: float");
+        expect(oring::validate(command, oring::Value(std::numeric_limits<double>::quiet_NaN())) == oring::Validation::NonFinite, "one-ring: NaN");
+        command.type = oring::ValueType::Enumeration;
+        command.choices = {{oring::EnumValue{17}, "B"}, {oring::EnumValue{3}, "A"}};
+        expect(oring::validate(command, oring::Value(oring::EnumValue{3})) == oring::Validation::Ok, "one-ring: stable enum id");
+        expect(oring::validate(command, oring::Value(oring::EnumValue{0})) == oring::Validation::UnknownChoice, "one-ring: an enum id is not a menu index");
+    });
+}
+
+void testOneRingRandomAndConditions()
+{
+    oneRingChecks("one-ring random", [] {
+        oring::Random a({42, 1, 3, 2, 12}, oring::RandomStream::Probability), b({42, 1, 3, 2, 12}, oring::RandomStream::Probability);
+        bool same = true;
+        for (int i = 0; i < 1000; ++i) same = same && a.next() == b.next();
+        expect(same, "one-ring: the same key draws the same sequence");
+        oring::Random c({42, 1, 3, 2, 12}, oring::RandomStream::Value), d({42, 1, 3, 2, 12}, oring::RandomStream::Probability);
+        expect(c.next() != d.next(), "one-ring: streams do not overlap");
+        expect(!a.probability(0) && a.probability(100), "one-ring: probability endpoints");
+        oring::Random e({42, 1, 3, 12, 2}, oring::RandomStream::Value), f({42, 1, 3, 2, 12}, oring::RandomStream::Value);
+        expect(e.next() != f.next(), "one-ring: channel and step do not collide");
+    });
+    oneRingChecks("one-ring random fixed values", [] {
+        // The same values are checked by the renderer's copy of the algorithm:
+        // a seed saved in a project replays one sequence, whichever side draws.
+        oring::Random probability({42, 1, 3, 2, 12}, oring::RandomStream::Probability);
+        const auto p1 = probability.next(), p2 = probability.next(), p3 = probability.next();
+        expect(p1 == UINT64_C(0x346263f5bb0808f3) && p2 == UINT64_C(0xe895a41e11708f92)
+                   && p3 == UINT64_C(0xea10d451f0cdc0be), "one-ring: fixed probability draws");
+        oring::Random value({123}, oring::RandomStream::Value);
+        const auto v1 = value.next(), v2 = value.next(), v3 = value.next();
+        expect(v1 == UINT64_C(0x03377d64b3650c92) && v2 == UINT64_C(0x0ad518c59166bfb5)
+                   && v3 == UINT64_C(0x15c660c09fec3fac), "one-ring: fixed value draws");
+        oring::Random humanize({0}, oring::RandomStream::Humanize);
+        const auto u1 = humanize.unit(), u2 = humanize.unit(), u3 = humanize.unit();
+        expect(u1 == 0.068585551244810583 && u2 == 0.78030197182278149 && u3 == 0.19742007130653372,
+               "one-ring: fixed unit draws");
+        oring::Random mutation({7, 2, 5, 15, 63}, oring::RandomStream::Mutation);
+        const auto b1 = mutation.below(101), b2 = mutation.below(101), b3 = mutation.below(101);
+        expect(b1 == 79 && b2 == 57 && b3 == 17, "one-ring: fixed bounded draws");
+        const auto most = std::numeric_limits<std::uint64_t>::max();
+        const auto mostSmall = std::numeric_limits<std::uint32_t>::max();
+        oring::Random extremes({most, most, most, mostSmall, mostSmall}, oring::RandomStream::Humanize);
+        expect(extremes.next() == UINT64_C(0x47ea9131a4086e02), "one-ring: a key at its limits wraps as the renderer does");
+    });
+    oneRingChecks("one-ring conditions", [] {
+        oring::ConditionContext context;
+        context.loop = 3;
+        context.repeats = 3;
+        context.active[4] = true;
+        std::vector<oring::Condition> conditions{{oring::ConditionKind::EveryNthLoop, 3, 0}, {oring::ConditionKind::ChannelActive, 2, 4}};
+        expect(oring::evaluate(conditions, context), "one-ring: conditions combine");
+        expect(oring::evaluate(oring::Condition{oring::ConditionKind::LastLoop}, context), "one-ring: last loop of a finite channel");
+        context.repeats = 0;
+        expect(!oring::evaluate(oring::Condition{oring::ConditionKind::LastLoop}, context), "one-ring: an endless channel has no last loop");
+        expect(!oring::evaluate(oring::Condition{oring::ConditionKind::ChannelInactive, 2, 16}, context), "one-ring: a channel past CH16 fails");
+    });
+    oneRingChecks("one-ring value sources", [] {
+        auto registry = oneRingTestRegistry();
+        const auto* command = registry.find("test:target", "VELOCITY");
+        oring::ValueSource source;
+        source.mode = oring::ValueMode::Range;
+        source.minimum = std::int32_t(50);
+        source.maximum = std::int32_t(90);
+        expect(oring::validate(*command, source) == oring::Validation::Ok, "one-ring: valid range");
+        oring::Random random({123}, oring::RandomStream::Value);
+        bool low = false, high = false, inside = true;
+        for (int i = 0; i < 5000; ++i) {
+            const auto n = std::get<std::int32_t>(oring::sample(source, random));
+            inside = inside && n >= 50 && n <= 90;
+            low |= n == 50;
+            high |= n == 90;
+        }
+        expect(inside, "one-ring: a range draw stays inside");
+        expect(low && high, "one-ring: a range reaches both ends");
+        source.minimum = std::int32_t(91);
+        expect(oring::validate(*command, source) == oring::Validation::OutOfRange, "one-ring: a reversed range is refused");
+        source.mode = oring::ValueMode::Choice;
+        source.choices = {std::int32_t(20), std::int32_t(70)};
+        bool chosen = true;
+        for (int i = 0; i < 100; ++i) {
+            const auto n = std::get<std::int32_t>(oring::sample(source, random));
+            chosen = chosen && (n == 20 || n == 70);
+        }
+        expect(chosen, "one-ring: a choice draw stays in its list");
+    });
+}
+
+void testOneRingSchedulerTiming()
+{
+    oneRingChecks("one-ring discovery", [] {
+        auto p = oneRingEmptyProject();
+        auto& ch = p.scenes[0].channels[0];
+        ch.enabled = true;
+        ch.length = 4;
+        ch.mode = oring::StepMode::Legato;
+        ch.target.command = "ON";
+        ch.steps[0].enabled = ch.steps[1].enabled = true;
+        const auto first = oring::withInternalCommands(oneRingTestRegistry(), p);
+        auto scheduler = std::make_unique<oring::Scheduler>();
+        OneRingSink sink;
+        scheduler->bind(p, first, sink);
+        scheduler->play(0);
+        scheduler->advance(0, .1);
+        expect(sink.count == 1 && scheduler->states()[0].held, "one-ring: initial hold");
+        auto discovered = oneRingTestRegistry();
+        oring::CommandDescriptor fire;
+        fire.id = fire.label = "FIRE";
+        discovered.registerModule({"future", "Future", {fire}});
+        const auto second = oring::withInternalCommands(discovered, p);
+        scheduler->bind(p, second, sink, true);
+        expect(sink.count == 1 && scheduler->states()[0].ordinal == 1, "one-ring: discovery keeps the channel where it was");
+        scheduler->advance(.1, .4);
+        expect(sink.count == 1, "one-ring: a held step is not retriggered after discovery");
+        scheduler->advance(.4, .6);
+        expect(sink.count == 2 && sink.events[1].release, "one-ring: a gap releases through the refreshed descriptor");
+        scheduler->scene(2, .6);
+        scheduler->bind(p, first, sink, true);
+        expect(scheduler->currentScene() == 2, "one-ring: discovery keeps the live scene");
+    });
+    oneRingChecks("one-ring polymeter", [] {
+        auto p = oneRingEmptyProject();
+        auto& channels = p.scenes[0].channels;
+        for (std::size_t i = 0; i < 16; ++i) {
+            channels[i].enabled = true;
+            channels[i].length = i == 0 ? 4 : i == 1 ? 8 : 16;
+            channels[i].steps[0].enabled = true;
+        }
+        OneRingRun run(p);
+        run.scheduler->play(0);
+        run.scheduler->advance(0, 4);
+        std::array<int, 16> counts{};
+        for (std::size_t i = 0; i < run.sink.count; ++i) ++counts[run.sink.events[i].source];
+        expect(counts[0] == 4 && counts[1] == 2 && counts[2] == 1 && counts[15] == 1, "one-ring: 16 channels keep their own periods");
+    });
+    oneRingChecks("one-ring empty playhead", [] {
+        auto p = oneRingEmptyProject();
+        p.scenes[0].channels[0].enabled = true;
+        OneRingRun run(p);
+        run.scheduler->play(0);
+        run.scheduler->advance(0, 0.76);
+        expect(run.scheduler->states()[0].playhead == 3 && run.sink.count == 0, "one-ring: the playhead walks through empty cells");
+    });
+    oneRingChecks("one-ring repeats", [] {
+        for (auto repeats : {1u, 2u, 3u, 4u, 8u}) {
+            auto p = oneRingEmptyProject();
+            auto& ch = p.scenes[0].channels[0];
+            ch.enabled = true;
+            ch.length = 4;
+            ch.repeats = repeats;
+            ch.steps[0].enabled = true;
+            OneRingRun run(p);
+            run.scheduler->play(0);
+            run.scheduler->advance(0, double(repeats) + 0.01);
+            expect(run.sink.count == repeats && !run.scheduler->states()[0].active && run.scheduler->states()[0].ordinal == 0,
+                   "one-ring: a finite channel ends on its loop boundary, ready at step one");
+        }
+    });
+    oneRingChecks("one-ring immediate restart", [] {
+        auto p = oneRingEmptyProject();
+        auto& a = p.scenes[0].channels[0];
+        a.enabled = true;
+        a.length = 4;
+        a.repeats = 1;
+        a.steps[0].enabled = true;
+        auto& b = p.scenes[0].channels[1];
+        b.enabled = true;
+        b.target = {"one-ring:channel:1", "RESTART", {}};
+        b.steps[11].enabled = true;
+        OneRingRun run(p);
+        run.scheduler->play(0);
+        run.scheduler->advance(0, 3.0);
+        expect(run.sink.count == 2 && std::abs(run.sink.events[1].beat - 2.75) < 1e-9, "one-ring: CH2 restarts a finished CH1 at once");
+    });
+    oneRingChecks("one-ring block partitioning", [] {
+        auto p = oneRingEmptyProject();
+        p.seed = 456;
+        auto& ch = p.scenes[0].channels[0];
+        ch.enabled = true;
+        ch.swing = .6;
+        ch.humanize = .2;
+        for (auto& step : ch.steps) {
+            step.enabled = true;
+            step.probability = 35;
+        }
+        OneRingRun whole(p), sliced(p);
+        whole.scheduler->play(0);
+        sliced.scheduler->play(0);
+        whole.scheduler->advance(0, 32);
+        for (int i = 0; i < 320; ++i) sliced.scheduler->advance(i * .1, (i + 1) * .1);
+        expect(whole.sink.count == sliced.sink.count, "one-ring: the block size does not change how many steps fire");
+        bool sameBeats = whole.sink.count == sliced.sink.count;
+        for (std::size_t i = 0; sameBeats && i < whole.sink.count; ++i)
+            sameBeats = std::abs(whole.sink.events[i].beat - sliced.sink.events[i].beat) < 1e-9;
+        expect(sameBeats, "one-ring: the block size does not change when steps fire");
+    });
+    oneRingChecks("one-ring phase", [] {
+        for (auto length : {4u, 8u, 16u, 32u, 64u})
+            for (auto denominator : {4u, 8u, 16u, 32u}) {
+                auto p = oneRingEmptyProject();
+                auto& ch = p.scenes[0].channels[0];
+                ch.enabled = true;
+                ch.length = length;
+                ch.resolution = {1, denominator};
+                ch.steps[0].enabled = true;
+                ch.swing = .7;
+                ch.humanize = .2;
+                OneRingRun run(p);
+                run.scheduler->play(0);
+                const auto period = length * ch.resolution.beats();
+                for (int loop = 0; loop < 100; ++loop) run.scheduler->advance(loop * period, (loop + 1) * period);
+                bool onGrid = run.sink.count == 100;
+                for (std::size_t i = 0; onGrid && i < run.sink.count; ++i)
+                    onGrid = std::abs(run.sink.events[i].beat - i * period) < 1e-8;
+                expect(onGrid, "one-ring: loop boundaries stay on the grid under swing and humanize");
+            }
+        for (const auto offset : {2.0, -1.0}) {
+            auto p = oneRingEmptyProject();
+            auto& ch = p.scenes[0].channels[0];
+            ch.enabled = true;
+            ch.length = 4;
+            ch.offsetSteps = offset;
+            for (auto& step : ch.steps) step.enabled = true;
+            OneRingRun run(p);
+            run.scheduler->play(0);
+            run.scheduler->advance(0, 2);
+            expect(run.sink.count > 1 && run.sink.events[0].beat == (offset > 0 ? .5 : .75), "one-ring: offset phase");
+            bool even = true;
+            for (std::size_t i = 1; i < run.sink.count; ++i) even = even && run.sink.events[i].beat - run.sink.events[i - 1].beat == .25;
+            expect(even, "one-ring: an offset never compresses steps");
+        }
+    });
+}
+
+void testOneRingSchedulerContracts()
+{
+    oneRingChecks("one-ring restart cycle", [] {
+        auto p = oneRingEmptyProject();
+        auto& a = p.scenes[0].channels[0];
+        auto& b = p.scenes[0].channels[1];
+        a.enabled = b.enabled = true;
+        a.target = {"one-ring:channel:2", "RESTART", {}};
+        b.target = {"one-ring:channel:1", "RESTART", {}};
+        a.steps[0].enabled = b.steps[0].enabled = true;
+        OneRingRun run(p);
+        run.scheduler->play(0);
+        run.scheduler->advance(0, 1);
+        expect(run.scheduler->cycleGuards() > 0 && run.scheduler->playing(), "one-ring: two channels restarting each other end in the same tick");
+    });
+    oneRingChecks("one-ring legato", [] {
+        auto p = oneRingEmptyProject();
+        auto& ch = p.scenes[0].channels[0];
+        ch.enabled = true;
+        ch.mode = oring::StepMode::Legato;
+        ch.target.command = "ON";
+        ch.steps[0].enabled = ch.steps[1].enabled = ch.steps[3].enabled = true;
+        OneRingRun run(p);
+        run.scheduler->play(0);
+        run.scheduler->advance(0, 0.8);
+        run.scheduler->stop(0.8);
+        const auto& e = run.sink.events;
+        expect(run.sink.count == 4 && !e[0].release && e[1].release && !e[2].release && e[3].release,
+               "one-ring: legato holds across steps, releases on a gap and on stop");
+    });
+    oneRingChecks("one-ring follow actions", [] {
+        auto p = oneRingEmptyProject();
+        auto& a = p.scenes[0].channels[0];
+        a.enabled = true;
+        a.length = 4;
+        a.repeats = 1;
+        a.follow.push_back({"test:target", "FIRE", {}});
+        a.follow.push_back({"one-ring:channel:2", "START", {}});
+        auto& b = p.scenes[0].channels[1];
+        b.enabled = true;
+        b.steps[0].enabled = true;
+        OneRingRun run(p);
+        run.scheduler->play(0);
+        run.scheduler->command(1, "STOP", 0);
+        run.scheduler->advance(0, 1.01);
+        expect(run.sink.count == 2 && run.sink.events[0].beat == 1 && run.sink.events[1].beat == 1,
+               "one-ring: follow actions run in order when a channel completes");
+    });
+    oneRingChecks("one-ring scene release", [] {
+        auto p = oneRingEmptyProject();
+        auto& a = p.scenes[0].channels[0];
+        a.enabled = true;
+        a.target.command = "ON";
+        a.mode = oring::StepMode::Legato;
+        a.steps[0].enabled = true;
+        OneRingRun run(p);
+        run.scheduler->play(0);
+        run.scheduler->advance(0, .1);
+        run.scheduler->scene(1, .1);
+        run.scheduler->advance(.1, .2);
+        expect(run.scheduler->currentScene() == 1, "one-ring: scene switched");
+        run.scheduler->stop(.2);
+        expect(run.sink.count == 2 && run.sink.events[1].release, "one-ring: a scene change releases what was held");
+    });
+    oneRingChecks("one-ring channel commands", [] {
+        auto p = oneRingEmptyProject();
+        p.scenes[0].channels[0].enabled = true;
+        OneRingRun run(p);
+        auto& s = *run.scheduler;
+        s.play(0);
+        s.advance(0, .5);
+        s.command(0, "DISABLE", .5);
+        s.command(0, "START", .6);
+        expect(!s.states()[0].active, "one-ring: a disabled channel does not start");
+        s.command(0, "ENABLE", .7);
+        expect(!s.states()[0].active, "one-ring: ENABLE does not start");
+        s.command(0, "START", .8);
+        s.advance(.8, .9);
+        expect(s.states()[0].playhead == 0, "one-ring: START begins at step one");
+        s.command(0, "RESET", .9);
+        s.advance(.9, 1);
+        expect(s.states()[0].active && s.states()[0].playhead == 0, "one-ring: RESET keeps an active channel active");
+        s.command(0, "TOGGLE", 1);
+        expect(!s.states()[0].active, "one-ring: TOGGLE stops");
+        s.command(0, "RESET", 1.1);
+        expect(!s.states()[0].active, "one-ring: RESET does not start a stopped channel");
+        s.command(0, "TOGGLE", 1.2);
+        expect(s.states()[0].active, "one-ring: TOGGLE starts");
+    });
+    oneRingChecks("one-ring scene timing", [] {
+        auto p = oneRingEmptyProject();
+        p.sceneTiming = oring::SceneTiming::NextBar;
+        p.scenes[0].channels[0].enabled = true;
+        p.scenes[1].channels[0].enabled = true;
+        OneRingRun run(p);
+        auto& s = *run.scheduler;
+        s.setBarLength(3);
+        s.play(0);
+        s.advance(0, .4);
+        s.scene(1, .4);
+        s.advance(.4, 2.99);
+        expect(s.currentScene() == 0, "one-ring: Next bar does not recall early");
+        s.advance(2.99, 3.01);
+        expect(s.currentScene() == 1 && s.states()[0].playhead == 0, "one-ring: Next bar recalls on a 3/4 bar line");
+
+        auto keep = p;
+        keep.sceneTiming = oring::SceneTiming::Immediate;
+        keep.scenePosition = oring::ScenePosition::Preserve;
+        keep.scenes[1].channels[0].resolution = {1, 8};
+        const auto registry = oring::withInternalCommands(oneRingTestRegistry(), keep);
+        auto preserved = std::make_unique<oring::Scheduler>();
+        OneRingSink sink;
+        preserved->bind(keep, registry, sink);
+        preserved->play(0);
+        preserved->advance(0, .4);
+        preserved->scene(1, .4);
+        expect(std::abs(preserved->states()[0].due - .6) < 1e-8, "one-ring: Keep positions keeps the fraction across a resolution change");
+        preserved->shiftTimeline(100);
+        expect(std::abs(preserved->states()[0].due - 100.6) < 1e-8, "one-ring: a seek keeps the sequence's phase");
+    });
+}
+
+void testOneRingMutation()
+{
+    oneRingChecks("one-ring mutation locks", [] {
+        oring::Channel a;
+        a.steps[0].locked = true;
+        a.steps[1].lockedFields = oring::MutateProbability;
+        a.steps[1].probability = 35;
+        auto b = a;
+        oring::mutate(a, 123, 1, 0);
+        oring::mutate(b, 123, 1, 0);
+        expect(!a.steps[0].enabled && a.steps[0].probability == 100 && a.steps[1].probability == 35, "one-ring: locks hold under MUTATE");
+        bool same = true;
+        for (std::size_t i = 0; i < 64; ++i)
+            same = same && a.steps[i].enabled == b.steps[i].enabled && a.steps[i].probability == b.steps[i].probability;
+        expect(same, "one-ring: MUTATE is reproducible");
+    });
+    oneRingChecks("one-ring mutation ranges", [] {
+        oring::Channel ch;
+        ch.mutableFields = oring::MutateValue;
+        for (auto& step : ch.steps) {
+            step.value.mode = oring::ValueMode::Range;
+            step.value.minimum = std::int32_t(50);
+            step.value.maximum = std::int32_t(90);
+        }
+        ch.steps[0].lockedFields = oring::MutateValue;
+        oring::mutate(ch, 123, 1, 0);
+        expect(std::get<std::int32_t>(ch.steps[0].value.minimum) == 50 && std::get<std::int32_t>(ch.steps[0].value.maximum) == 90,
+               "one-ring: a value lock holds");
+        bool inside = true, changed = false;
+        for (std::size_t i = 1; i < ch.length; ++i) {
+            const auto low = std::get<std::int32_t>(ch.steps[i].value.minimum);
+            const auto high = std::get<std::int32_t>(ch.steps[i].value.maximum);
+            inside = inside && low >= 50 && high <= 90 && low <= high;
+            changed |= low != 50 || high != 90;
+        }
+        expect(inside, "one-ring: a mutated range stays inside the original one");
+        expect(changed, "one-ring: MUTATE varies the ranges");
+    });
+}
+
 } // namespace
 
 int main(int argc, char** argv)
@@ -1746,6 +2242,16 @@ int main(int argc, char** argv)
     testSequencerTrackSumGainAndTrace();
     std::cerr << "[core] audio-record-export\n";
     testSequencerAudioRecordingAndMasterExport();
+    std::cerr << "[core] one-ring-registry\n";
+    testOneRingRegistryAndValues();
+    std::cerr << "[core] one-ring-random\n";
+    testOneRingRandomAndConditions();
+    std::cerr << "[core] one-ring-timing\n";
+    testOneRingSchedulerTiming();
+    std::cerr << "[core] one-ring-contracts\n";
+    testOneRingSchedulerContracts();
+    std::cerr << "[core] one-ring-mutation\n";
+    testOneRingMutation();
     }
     if (runVst3) testRealVst3SequencerPlaybackArpAndMasterExport();
     if (runCrossTrack) crossTrackLevelIsolation();
