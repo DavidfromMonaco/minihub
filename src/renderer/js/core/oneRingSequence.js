@@ -254,6 +254,35 @@ export function readSequence(raw) {
 /** A VST's saved state as a node's content. */
 export const fromVstState = readSequence;
 
+/**
+ * A One Ring VST's sequence, from the component stream of its saved state
+ * (juceState.js, `readVst3State`).
+ *
+ * The VST writes its state as JSON, and JUCE's wrapper adds its own data after
+ * it -- and, when the plugin may replace a VST2, a header before it. So the
+ * sequence is the first JSON object in the stream that reads as a One Ring
+ * state, ending where JUCE's data starts: at a zero byte, which a JSON text
+ * never holds. Throws when there is none, or when the one found is malformed.
+ */
+export function sequenceFromComponentState(bytes) {
+  if (!(bytes instanceof Uint8Array)) fail('no plugin state to read');
+  const decoder = new TextDecoder();
+  let from = bytes.indexOf(0x7b);
+  for (let attempt = 0; from >= 0 && attempt < 64; attempt += 1) {
+    const zero = bytes.indexOf(0, from);
+    const text = decoder.decode(bytes.subarray(from, zero < 0 ? bytes.length : zero));
+    let parsed = null;
+    try {
+      parsed = JSON.parse(text);
+    } catch (_) {
+      parsed = null;
+    }
+    if (isObject(parsed) && Array.isArray(parsed.scenes)) return readSequence(parsed);
+    from = bytes.indexOf(0x7b, from + 1);
+  }
+  return fail('not a One Ring state');
+}
+
 /** A node's content as the VST writes its state: every cell, in the VST's key order. */
 export function toVstState(content) {
   return {

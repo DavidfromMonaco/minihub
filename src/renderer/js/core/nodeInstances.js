@@ -44,6 +44,7 @@ import { escapeHtml } from './html.js';
 import { normalizeControlBinding, normalizeControlBindings } from './controlBindings.js';
 import { defaultArpeggiatorContent, normalizeArpeggiatorContent } from './arpeggiatorState.js';
 import { createSequence, readSequence } from './oneRingSequence.js';
+import { copyOneRingToNode, isOneRingPlugin } from './oneRingImport.js';
 import { currentArpeggiatorStep, moveCustomNote, removeCustomNote, renderArpControlStrip, renderCustomPatternEditor, setCustomGateDuration, setCustomNote, syncArpControlStrip, velocityFromPointer } from './arpeggiatorEditor.js';
 import { icon } from '../ui/icons.js';
 import { getNodeEditor, registerNodeEditor } from './nodeEditors.js';
@@ -138,6 +139,7 @@ function renderPluginCard(plugin, status, editorNote) {
         <button class="btn btn-sm plugin-action" data-action="up" title="Move up">↑</button>
         <button class="btn btn-sm plugin-action" data-action="down" title="Move down">↓</button>
         <button class="btn btn-sm plugin-action" data-action="remove">Remove</button>
+        ${isOneRingPlugin(plugin) ? '<button class="btn btn-sm plugin-action" data-action="one-ring" title="Copy its sequence into a new One Ring node, and move this node\'s CTRL OUT cables there">Copy to One Ring node</button>' : ''}
       </span>
     </div>`;
 }
@@ -1140,6 +1142,16 @@ export class NodeInstanceManager {
             if (idx > 0 && manager.movePlugin(instance.id, id, idx - 1)) rerenderChain();
           } else if (action === 'down') {
             if (idx < chain.plugins.length - 1 && manager.movePlugin(instance.id, id, idx + 1)) rerenderChain();
+          } else if (action === 'one-ring') {
+            editorNotes.set(id, 'copying its sequence…');
+            rerenderChain();
+            copyOneRingToNode(hub, instance.id, id).then((result) => {
+              const moved = result.moved ? `, ${result.moved} cable${result.moved === 1 ? '' : 's'} moved` : '';
+              editorNotes.set(id, result.ok
+                ? `copied to ${hub.nodes.get(result.nodeId)?.name || 'a One Ring node'}${moved}`
+                : `not copied: ${result.message || result.reason}`);
+              if (container.isConnected !== false) rerenderChain();
+            });
           }
         };
 

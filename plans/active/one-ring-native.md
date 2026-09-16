@@ -9,7 +9,7 @@ page of its own in a new hardware-style design.
 "commence à travailler sur l'intégration de One Ring en natif". His direction
 for the look: every function kept, the whole design redone after hardware
 sequencers — the Korg SQ-64, the Roland P-6, the Cre8audio Programm.
-**Status** — **in progress, 2026-09-17.** Steps 0 to 4 done; step 5 next.
+**Status** — **in progress, 2026-09-17.** Steps 0 to 4 done; step 5 built, waiting for the author's trial in MiniHub.
 
 ## Context
 
@@ -160,6 +160,13 @@ to D-018 (written for the Matrix), D-032 (a command is performance), D-042
       into a new One Ring node, and its CTRL OUT cables move to it.
       Check: `npm test` + seen in MiniHub with one of the author's sequences.
       **The author tries the native One Ring here.**
+      Built 2026-09-17: `core/juceState.js` reads a plugin state as
+      plugin_host.cpp writes it, `core/oneRingImport.js` copies (the live state
+      when the plugin runs), a "Copy to One Ring node" button on a One Ring card
+      of the VST node's page. `npm test` (1158), `--core` (1528, JUCE's base64
+      and state layout among them), `npm run check`, `npm run sync:dist` — green.
+      **Waiting for the author's trial**, which is also step 4's first sighting
+      of renderer and engine together.
 - [ ] 6. The design, before the page: a still of the faceplate after the
       author's references — transport and scenes, the 16 channels, the 64-cell
       grid as lit pads, the channel's settings, the cell's settings — drawn with
@@ -279,3 +286,15 @@ Legato holds. Real One Ring states read: the three test projects on disk that
 hold the VST each decode (JSON at byte 0, JUCE's private data after it), and
 Orbites comes out at 55 KB for an 850 KB state, round trip exact. That reader
 is step 5's.
+
+2026-09-17 — Step 5, built. A saved plugin state is JUCE's base64 of
+`copyXmlToBinary` of a `VST3PluginState` element holding each stream in JUCE's
+base64 again; the One Ring component stream is its JSON, then JUCE's private
+data (8 zero bytes ... `JUCEPrivateData`). The reader takes the first JSON
+object that reads as a One Ring state, so a VST2-compatible header in front
+would not stop it. Checked against JUCE twice: the fixture encoder's strings
+are JUCE's own (`[core] juce-state`), and the three real One Ring states on
+disk decode. The copy moves the VST node's CTRL OUT cables to the new node and
+leaves the VST in its chain; its commands are refused from then on, as not
+cabled. Not decided, and not done: placing the new node next to the VST node
+in the Patch Bay, and bypassing the VST.

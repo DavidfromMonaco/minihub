@@ -2197,6 +2197,34 @@ void testOneRingMutation()
     });
 }
 
+// ---------- A plugin state, as the renderer reads it ----------
+
+// core/juceState.js decodes what plugin_host.cpp writes, and test/juceFixture.mjs
+// encodes like JUCE: these are that encoder's outputs, checked against JUCE.
+void testJuceStateMatchesTheRenderer()
+{
+    const unsigned char bytes[] = {0x7b, 0x22, 0x61, 0x22, 0x3a, 0x31, 0x7d, 0x00, 0xff, 0x80};
+    expect(juce::MemoryBlock(bytes, sizeof(bytes)).toBase64Encoding() == "10.6IRXhnSL8Av+.B",
+           "juce base64: the renderer's encoding of ten bytes is JUCE's");
+    expect(juce::MemoryBlock("One Ring", 8).toBase64Encoding() == "8.O4VYfHUZtcF",
+           "juce base64: the renderer's encoding of a text is JUCE's");
+    juce::XmlElement root("VST3PluginState");
+    root.createNewChildElement("IComponent")->addTextElement(juce::MemoryBlock(bytes, sizeof(bytes)).toBase64Encoding());
+    juce::MemoryBlock binary;
+    juce::AudioProcessor::copyXmlToBinary(root, binary);
+    const auto* data = static_cast<const unsigned char*>(binary.getData());
+    const auto size = binary.getSize();
+    const auto length = static_cast<juce::uint32>(data[4]) | (static_cast<juce::uint32>(data[5]) << 8)
+        | (static_cast<juce::uint32>(data[6]) << 16) | (static_cast<juce::uint32>(data[7]) << 24);
+    expect(size > 9 && data[0] == 0x56 && data[1] == 0x43 && data[2] == 0x32 && data[3] == 0x21,
+           "juce state: the block starts with the magic the renderer checks");
+    expect(length == size - 9 && data[size - 1] == 0 && data[8] == '<',
+           "juce state: a length, the XML, then a zero, where the renderer looks for them");
+    const juce::String xml(juce::CharPointer_UTF8(static_cast<const char*>(binary.getData()) + 8), length);
+    expect(xml.contains("<IComponent>10.6IRXhnSL8Av+.B</IComponent>"),
+           "juce state: each stream is an element holding its JUCE base64, as the renderer reads it");
+}
+
 // ---------- One Ring as a node: its state, its runtime ----------
 
 juce::var oneRingValueVar(int type, double value = 0)
@@ -2662,6 +2690,8 @@ int main(int argc, char** argv)
     testOneRingSchedulerContracts();
     std::cerr << "[core] one-ring-mutation\n";
     testOneRingMutation();
+    std::cerr << "[core] juce-state\n";
+    testJuceStateMatchesTheRenderer();
     std::cerr << "[core] one-ring-state-json\n";
     testOneRingStateJson();
     std::cerr << "[core] one-ring-runtime\n";
