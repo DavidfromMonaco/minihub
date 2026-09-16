@@ -121,10 +121,14 @@ if (!isZip()) fail(`${zip} is not a zip archive. Refusing to publish it.`);
 // something a user should be able to check, and there is no certificate here to
 // check it for them.
 
-const artefacts = fs
-  .readdirSync(output)
-  .filter((name) => name.endsWith('.exe') || name.endsWith('.zip'))
-  .sort();
+// Named, not listed: dist/release keeps the versions before this one, and a
+// listing hashed them too -- 0.3.0's sums first named 0.2.0's downloads, which
+// that release does not carry. The installer's name is OutputBaseFilename in
+// installer/MiniHub.iss.
+const artefacts = [`MiniHub-${version}-Setup.exe`, path.basename(zip)];
+for (const name of artefacts) {
+  if (!fs.existsSync(path.join(output, name))) fail(`${name} was not built. Refusing to write checksums without it.`);
+}
 
 const lines = artefacts.map((name) => {
   const bytes = fs.readFileSync(path.join(output, name));
