@@ -9,7 +9,8 @@
 #include "sequencer.h"
 #include "var_util.h"
 #include "vst3_scanner.h"
-#include "one_ring/scheduler.h"
+#include "one_ring/runtime.h"
+#include "one_ring/state_json.h"
 
 #include <algorithm>
 #include <cmath>
@@ -2154,6 +2155,373 @@ void testOneRingMutation()
     });
 }
 
+// ---------- One Ring as a node: its state, its runtime ----------
+
+juce::var oneRingValueVar(int type, double value = 0)
+{
+    auto out = mlh::makeObject();
+    mlh::setProp(out, "type", type);
+    if (type == 1) mlh::setProp(out, "value", value != 0);
+    else if (type == 2 || type == 4) mlh::setProp(out, "value", static_cast<int>(value));
+    else if (type == 3) mlh::setProp(out, "value", value);
+    return out;
+}
+
+juce::var oneRingSourceVar(const juce::var& fixed)
+{
+    auto out = mlh::makeObject();
+    mlh::setProp(out, "mode", 0);
+    mlh::setProp(out, "fixed", fixed);
+    mlh::setProp(out, "min", oneRingValueVar(0));
+    mlh::setProp(out, "max", oneRingValueVar(0));
+    mlh::setProp(out, "choices", juce::Array<juce::var>());
+    return out;
+}
+
+// A cell written out whole, as the VST writes all 64 of them.
+juce::var oneRingCellVar(bool enabled, double probability, const juce::var& fixed)
+{
+    auto out = mlh::makeObject();
+    mlh::setProp(out, "enabled", enabled);
+    mlh::setProp(out, "probability", probability);
+    mlh::setProp(out, "value", oneRingSourceVar(fixed));
+    mlh::setProp(out, "locked", false);
+    mlh::setProp(out, "lockedFields", 0);
+    juce::Array<juce::var> conditions;
+    if (enabled) {
+        auto condition = mlh::makeObject();
+        mlh::setProp(condition, "kind", 1);
+        mlh::setProp(condition, "interval", 3);
+        mlh::setProp(condition, "channel", 0);
+        conditions.add(condition);
+    }
+    mlh::setProp(out, "conditions", conditions);
+    return out;
+}
+
+// Scene A's CH4 has cell 6 programmed; everything else is empty. `sparse`
+// lists only that cell, with its index, as the renderer keeps it.
+juce::var oneRingStateVar(bool sparse)
+{
+    auto state = mlh::makeObject();
+    mlh::setProp(state, "version", 1);
+    mlh::setProp(state, "seed", "18446744073709551615");
+    mlh::setProp(state, "mutation", "3");
+    mlh::setProp(state, "selectedScene", 1);
+    mlh::setProp(state, "sceneTiming", 1);
+    mlh::setProp(state, "scenePosition", 1);
+    juce::Array<juce::var> scenes;
+    for (const auto* id : {"A", "B", "C", "D"}) {
+        auto scene = mlh::makeObject();
+        mlh::setProp(scene, "id", id);
+        mlh::setProp(scene, "name", juce::String("Scene ") + id);
+        juce::Array<juce::var> channels;
+        for (int c = 0; c < 16; ++c) {
+            auto channel = mlh::makeObject();
+            auto action = mlh::makeObject();
+            mlh::setProp(action, "target", "mixer-2:master");
+            mlh::setProp(action, "command", "LEVEL");
+            mlh::setProp(action, "value", oneRingSourceVar(oneRingValueVar(0)));
+            mlh::setProp(channel, "target", action);
+            mlh::setProp(channel, "length", 16);
+            mlh::setProp(channel, "numerator", 1);
+            mlh::setProp(channel, "denominator", 16);
+            mlh::setProp(channel, "mode", 0);
+            mlh::setProp(channel, "repeats", 0);
+            mlh::setProp(channel, "enabled", c == 3);
+            mlh::setProp(channel, "offset", 0.0);
+            mlh::setProp(channel, "swing", 0.0);
+            mlh::setProp(channel, "humanize", 0.0);
+            mlh::setProp(channel, "mutableFields", 7);
+            const bool programmed = juce::String(id) == "A" && c == 3;
+            juce::Array<juce::var> steps;
+            if (sparse) {
+                if (programmed) {
+                    auto cell = oneRingCellVar(true, 40.0, oneRingValueVar(3, 0.25));
+                    mlh::setProp(cell, "index", 6);
+                    steps.add(cell);
+                }
+            } else {
+                for (int s = 0; s < 64; ++s)
+                    steps.add(programmed && s == 6 ? oneRingCellVar(true, 40.0, oneRingValueVar(3, 0.25))
+                                                   : oneRingCellVar(false, 100.0, oneRingValueVar(0)));
+            }
+            mlh::setProp(channel, "steps", steps);
+            mlh::setProp(channel, "follow", juce::Array<juce::var>());
+            channels.add(channel);
+        }
+        mlh::setProp(scene, "channels", channels);
+        scenes.add(scene);
+    }
+    mlh::setProp(state, "scenes", scenes);
+    return state;
+}
+
+bool oneRingThrows(const std::function<void()>& body)
+{
+    try { body(); }
+    catch (const std::exception&) { return true; }
+    return false;
+}
+
+void testOneRingStateJson()
+{
+    oneRingChecks("one-ring state json", [] {
+        const auto dense = oring::readProject(oneRingStateVar(false));
+        const auto sparse = oring::readProject(oneRingStateVar(true));
+        for (const auto* project : {&dense, &sparse}) {
+            const auto& cell = project->scenes[0].channels[3].steps[6];
+            expect(project->seed == UINT64_C(18446744073709551615) && project->mutation == 3,
+                   "one-ring json: the seed keeps its 64 bits");
+            expect(project->selectedScene == 1 && project->sceneTiming == oring::SceneTiming::NextBar
+                       && project->scenePosition == oring::ScenePosition::Preserve,
+                   "one-ring json: scene policies");
+            expect(cell.enabled && cell.probability == 40.0 && std::get<double>(cell.value.fixed) == 0.25,
+                   "one-ring json: a programmed cell");
+            expect(cell.conditions.size() == 1 && cell.conditions[0].kind == oring::ConditionKind::EveryNthLoop
+                       && cell.conditions[0].interval == 3,
+                   "one-ring json: a cell's conditions");
+            const auto& empty = project->scenes[0].channels[3].steps[7];
+            expect(!empty.enabled && empty.probability == 100.0 && empty.conditions.empty()
+                       && std::holds_alternative<std::monostate>(empty.value.fixed),
+                   "one-ring json: an empty cell");
+            expect(project->scenes[2].channels[3].enabled && !project->scenes[2].channels[2].enabled,
+                   "one-ring json: channel fields");
+            expect(project->scenes[0].channels[3].target.target == "mixer-2:master",
+                   "one-ring json: a channel's target");
+        }
+        expect(oring::validate(sparse, oring::withInternalCommands({}, sparse)).empty(),
+               "one-ring json: a sparse state is a valid sequence");
+
+        auto withBlank = oneRingStateVar(true);
+        auto& channel5 = withBlank["scenes"].getArray()->getReference(0)["channels"].getArray()->getReference(5);
+        mlh::setProp(channel5, "blank", oneRingCellVar(false, 100.0, oneRingValueVar(2, 64)));
+        auto overriding = oneRingCellVar(true, 100.0, oneRingValueVar(2, 10));
+        mlh::setProp(overriding, "index", 2);
+        juce::Array<juce::var> typedCells;
+        typedCells.add(overriding);
+        mlh::setProp(channel5, "steps", typedCells);
+        const auto blanked = oring::readProject(withBlank);
+        const auto& typed = blanked.scenes[0].channels[5];
+        expect(!typed.steps[0].enabled && std::get<std::int32_t>(typed.steps[0].value.fixed) == 64
+                   && std::get<std::int32_t>(typed.steps[63].value.fixed) == 64,
+               "one-ring json: an unlisted cell is the channel's blank");
+        expect(typed.steps[2].enabled && std::get<std::int32_t>(typed.steps[2].value.fixed) == 10
+                   && typed.steps[2].conditions.size() == 1,
+               "one-ring json: a listed cell replaces the blank");
+
+        auto state = oneRingStateVar(true);
+        const auto cells = [&state]() -> juce::var& {
+            return state["scenes"].getArray()->getReference(0)["channels"].getArray()->getReference(3)
+                .getDynamicObject()->getProperty("steps").getArray()->getReference(0);
+        };
+        mlh::setProp(cells(), "index", 64);
+        expect(oneRingThrows([&] { oring::readProject(state); }), "one-ring json: an index past 63 is refused");
+        mlh::setProp(cells(), "index", 6);
+        auto steps = state["scenes"].getArray()->getReference(0)["channels"].getArray()->getReference(3)["steps"];
+        const juce::var listed = steps.getArray()->getReference(0);
+        steps.getArray()->add(listed);
+        expect(oneRingThrows([&] { oring::readProject(state); }), "one-ring json: a cell listed twice is refused");
+
+        auto wrongVersion = oneRingStateVar(true);
+        mlh::setProp(wrongVersion, "version", 2);
+        expect(oneRingThrows([&] { oring::readProject(wrongVersion); }), "one-ring json: an unknown version is refused");
+        auto missingChannel = oneRingStateVar(true);
+        missingChannel["scenes"].getArray()->getReference(1)["channels"].getArray()->remove(15);
+        expect(oneRingThrows([&] { oring::readProject(missingChannel); }), "one-ring json: a scene needs 16 channels");
+        expect(oneRingThrows([] { oring::readProject(juce::var("not a state")); }), "one-ring json: a string is not a state");
+    });
+    oneRingChecks("one-ring registry json", [] {
+        const auto parsed = juce::JSON::parse(R"({"version":1,"revision":4,"modules":[
+            {"id":"sequencer:transport","label":"Transport","commands":[
+                {"id":"PLAY","label":"Play","type":0,"minimum":0,"maximum":1,"releaseCommand":"STOP","releaseValue":{"type":0}},
+                {"id":"STOP","label":"Stop","type":0,"minimum":0,"maximum":1},
+                {"id":"TEMPO","label":"Tempo","type":3,"minimum":20,"maximum":300},
+                {"id":"MODE","label":"Mode","type":4,"minimum":0,"maximum":1,"choices":[{"id":7,"label":"Up"},{"id":9,"label":"Down"}]}]}]})");
+        const auto registry = oring::readRegistry(parsed);
+        const auto* play = registry.find("sequencer:transport", "PLAY");
+        expect(play != nullptr && play->releaseCommand && *play->releaseCommand == "STOP",
+               "one-ring json: a declared release");
+        expect(registry.validate("sequencer:transport", "TEMPO", 120.0) == oring::Validation::Ok,
+               "one-ring json: a float target");
+        expect(registry.validate("sequencer:transport", "MODE", oring::EnumValue{9}) == oring::Validation::Ok
+                   && registry.validate("sequencer:transport", "MODE", oring::EnumValue{1}) == oring::Validation::UnknownChoice,
+               "one-ring json: choices keep their ids");
+        const auto broken = juce::JSON::parse(R"({"version":1,"revision":1,"modules":[
+            {"id":"a","label":"A","commands":[{"id":"ON","label":"On","type":0,"releaseCommand":"MISSING","releaseValue":{"type":0}}]}]})");
+        expect(oneRingThrows([&] { oring::readRegistry(broken); }), "one-ring json: a release to nowhere is refused");
+    });
+}
+
+// A sequence stepping `test:target` on CH1: cells 0 and 2 of four, a quarter
+// beat each, so it fires every half beat.
+oring::Project oneRingRuntimeProject()
+{
+    auto project = oneRingEmptyProject();
+    auto& channel = project.scenes[0].channels[0];
+    channel.enabled = true;
+    channel.length = 4;
+    channel.steps[0].enabled = channel.steps[2].enabled = true;
+    return project;
+}
+
+struct OneRingBench {
+    mlh::Transport transport;
+    std::unique_ptr<oring::Runtime> runtime = std::make_unique<oring::Runtime>();
+    std::vector<oring::Packet> events;
+    static constexpr int blockSize = 480;
+    static constexpr double sampleRate = 48000.0;
+
+    OneRingBench()
+    {
+        transport.setSampleRate(sampleRate);
+        transport.setBpm(120.0);
+    }
+    bool load(oring::Project project, bool restore = true)
+    {
+        std::string error;
+        return runtime->setProject(std::move(project), restore, error);
+    }
+    bool aim(std::uint64_t revision = 1)
+    {
+        std::string error;
+        return runtime->setTargets(oneRingTestRegistry(), revision, error);
+    }
+    // At 120 bpm and 48 kHz a 480-sample block is 0.02 of a beat.
+    void blocks(int count)
+    {
+        std::array<oring::Packet, 64> drained;
+        for (int i = 0; i < count; ++i) {
+            transport.beginBlock();
+            runtime->process(transport, blockSize, sampleRate);
+            transport.advance(blockSize);
+            for (auto n = runtime->takeEvents(drained.data(), drained.size()); n > 0;
+                 n = runtime->takeEvents(drained.data(), drained.size()))
+                events.insert(events.end(), drained.begin(), drained.begin() + static_cast<std::ptrdiff_t>(n));
+        }
+    }
+};
+
+void testOneRingRuntime()
+{
+    oneRingChecks("one-ring runtime clock", [] {
+        OneRingBench bench;
+        std::string error;
+        expect(!bench.runtime->setTargets(oneRingTestRegistry(), 1, error), "one-ring runtime: no targets before a sequence");
+        expect(bench.load(oneRingRuntimeProject()) && bench.aim(), "one-ring runtime: a sequence and its targets are taken");
+        bench.blocks(10);
+        expect(bench.events.empty() && !bench.runtime->status().playing, "one-ring runtime: nothing plays before RUN");
+        bench.runtime->run();
+        bench.blocks(100);
+        // Stopped, the arrangement sits at beat 0: RUN starts there, and its own
+        // clock carries it on at the tempo.
+        bool beats = bench.events.size() == 4;
+        for (std::size_t i = 0; beats && i < bench.events.size(); ++i) {
+            const auto& packet = bench.events[i];
+            beats = std::abs(packet.beat - 0.5 * static_cast<double>(i)) < 1e-9
+                && std::string(packet.target) == "test:target" && std::string(packet.command) == "FIRE"
+                && packet.registryRevision == 1 && packet.sequence == i + 1 && packet.valueType == 0;
+        }
+        expect(beats, "one-ring runtime: RUN plays on its own clock, every half beat");
+        const auto status = bench.runtime->status();
+        expect(status.playing && std::abs(status.beat - 2.0) < 1e-9 && std::abs(status.bpm - 120.0) < 1e-9,
+               "one-ring runtime: the status follows the clock");
+        bench.runtime->stop();
+        bench.blocks(5);
+        expect(!bench.runtime->status().playing && bench.events.size() == 4, "one-ring runtime: STOP stops it");
+    });
+    oneRingChecks("one-ring runtime transport", [] {
+        OneRingBench bench;
+        expect(bench.load(oneRingRuntimeProject()) && bench.aim(), "one-ring runtime: loaded");
+        bench.transport.setPlaying(true);
+        bench.blocks(50);
+        expect(bench.events.size() == 2 && bench.events[0].beat == 0.0 && std::abs(bench.events[1].beat - 0.5) < 1e-9,
+               "one-ring runtime: Play starts it at the arrangement's position");
+        bench.transport.setPlaying(false);
+        bench.blocks(50);
+        const auto afterStop = bench.runtime->status();
+        expect(afterStop.playing && bench.events.size() == 4 && std::abs(afterStop.beat - 2.0) < 1e-9,
+               "one-ring runtime: a transport Stop does not stop it");
+        bench.transport.seekPpq(8.0);
+        bench.transport.setPlaying(true);
+        bench.events.clear();
+        bench.blocks(1);
+        bench.blocks(49);
+        bool moved = !bench.events.empty();
+        for (const auto& packet : bench.events) moved = moved && packet.beat >= 8.0 && packet.beat < 9.0;
+        expect(moved, "one-ring runtime: playing on, it follows the arrangement's position");
+    });
+    oneRingChecks("one-ring runtime edits", [] {
+        OneRingBench bench;
+        expect(bench.load(oneRingRuntimeProject()) && bench.aim(), "one-ring runtime: loaded");
+        bench.runtime->run();
+        bench.blocks(25);
+        auto edited = oneRingRuntimeProject();
+        edited.scenes[0].channels[0].steps[1].enabled = true;
+        edited.selectedScene = 3;
+        expect(bench.load(edited, false), "one-ring runtime: an edit is taken while playing");
+        bench.events.clear();
+        bench.blocks(50);
+        const auto status = bench.runtime->status();
+        bool quarter = false;
+        for (const auto& packet : bench.events) quarter |= std::abs(packet.beat - std::floor(packet.beat) - 0.25) < 1e-9;
+        expect(status.playing && quarter, "one-ring runtime: an edit keeps it playing, with the new cell");
+        expect(status.scene == 0, "one-ring runtime: an edit keeps the scene that plays");
+        auto broken = oneRingRuntimeProject();
+        broken.scenes[0].channels[0].length = 5;
+        std::string error;
+        expect(!bench.runtime->setProject(broken, false, error) && !error.empty(), "one-ring runtime: a malformed sequence is refused");
+        auto elsewhere = oneRingRuntimeProject();
+        elsewhere.scenes[0].channels[0].target = {"nowhere:yet", "FIRE", {}};
+        expect(bench.load(elsewhere, false), "one-ring runtime: a target not cabled yet stays authored");
+        bench.events.clear();
+        bench.blocks(50);
+        expect(bench.events.empty() && bench.runtime->status().rejected > 0,
+               "one-ring runtime: a cell aimed at nothing is counted, not sent");
+    });
+    oneRingChecks("one-ring runtime legato", [] {
+        OneRingBench bench;
+        auto project = oneRingRuntimeProject();
+        auto& channel = project.scenes[0].channels[0];
+        channel.mode = oring::StepMode::Legato;
+        channel.target.command = "ON";
+        for (auto& step : channel.steps) step.enabled = true;
+        expect(bench.load(project) && bench.aim(), "one-ring runtime: loaded");
+        bench.runtime->run();
+        bench.blocks(30);
+        expect(bench.events.size() == 1 && std::string(bench.events[0].command) == "ON", "one-ring runtime: legato holds");
+        bench.runtime->stop();
+        bench.blocks(1);
+        expect(bench.events.size() == 2 && std::string(bench.events[1].command) == "OFF",
+               "one-ring runtime: STOP releases what legato held");
+    });
+    oneRingChecks("one-ring runtime commands", [] {
+        OneRingBench bench;
+        auto project = oneRingRuntimeProject();
+        project.scenes[1].channels[0].enabled = false;
+        expect(bench.load(project) && bench.aim(), "one-ring runtime: loaded");
+        expect(!bench.runtime->channelCommand(16, "START") && !bench.runtime->channelCommand(0, "JUMP")
+                   && !bench.runtime->recallScene(4),
+               "one-ring runtime: unknown channels, commands and scenes are refused");
+        bench.runtime->run();
+        bench.blocks(5);
+        expect(bench.runtime->channelCommand(0, "STOP"), "one-ring runtime: a channel command is queued");
+        bench.blocks(1);
+        expect(!bench.runtime->status().active[0] && bench.runtime->status().playing,
+               "one-ring runtime: a channel stops alone");
+        expect(bench.runtime->channelCommand(0, "START") && bench.runtime->recallScene(1), "one-ring runtime: queued");
+        bench.blocks(1);
+        const auto status = bench.runtime->status();
+        expect(status.scene == 1 && !status.active[0], "one-ring runtime: a scene recall takes its channels' state");
+        std::string error;
+        auto reloaded = project;
+        reloaded.selectedScene = 2;
+        expect(bench.runtime->setProject(reloaded, true, error), "one-ring runtime: a restore is taken");
+        bench.blocks(1);
+        expect(bench.runtime->status().scene == 2, "one-ring runtime: a restore takes the saved scene");
+    });
+}
+
 } // namespace
 
 int main(int argc, char** argv)
@@ -2252,6 +2620,10 @@ int main(int argc, char** argv)
     testOneRingSchedulerContracts();
     std::cerr << "[core] one-ring-mutation\n";
     testOneRingMutation();
+    std::cerr << "[core] one-ring-state-json\n";
+    testOneRingStateJson();
+    std::cerr << "[core] one-ring-runtime\n";
+    testOneRingRuntime();
     }
     if (runVst3) testRealVst3SequencerPlaybackArpAndMasterExport();
     if (runCrossTrack) crossTrackLevelIsolation();

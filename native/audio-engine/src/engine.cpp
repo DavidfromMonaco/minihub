@@ -2,6 +2,7 @@
 #include "host_system.h"
 #include "realtime_drops.h"
 #include "var_util.h"
+#include "one_ring/state_json.h"
 
 #include <algorithm>
 #include <cmath>
@@ -217,6 +218,7 @@ void Engine::timerCallback()
         ipc_.send(event);
     }
     forwardControlEvents();
+    forwardOneRings();
     if (preCountComplete_.exchange(false, std::memory_order_acq_rel))
     {
         // The audio callback owns count-in timing. The takes were opened when
@@ -509,6 +511,10 @@ void Engine::handleCommand(const juce::var& msg)
     else if (type == "setControlRegistry") cmdSetControlRegistry(msg);
     else if (type == "setControlStatus") cmdSetControlStatus(msg);
     else if (type == "pluginRequest") cmdPluginRequest(msg);
+    else if (type == "syncOneRing") cmdSyncOneRing(msg);
+    else if (type == "setOneRingTargets") cmdSetOneRingTargets(msg);
+    else if (type == "oneRingCommand") cmdOneRingCommand(msg);
+    else if (type == "removeOneRing") cmdRemoveOneRing(msg);
     else if (type == "setTransport") cmdSetTransport(msg);
     else if (type == "getTransport") cmdGetTransport(msg);
     else if (type == "syncAudioNetwork") cmdSyncAudioNetwork(msg);
@@ -2328,6 +2334,298 @@ void Engine::forwardControlEvents()
         }
 }
 
+// ---------- Native One Ring ----------
+//
+// A One Ring node's sequence runs here, and what it commands travels the way a
+// plugin's commands do: `controlEvents`, checked and carried out by the
+// renderer's CommandBus against the node's CTRL OUT cables. What differs is
+// the source: a node and a runtime generation, not a plugin instance.
+
+namespace {
+
+constexpr juce::int64 kMaxSafeInteger = 9007199254740991LL;
+
+juce::int64 integerOrZero(const juce::var& value)
+{
+    return value.isInt() || value.isInt64() ? static_cast<juce::int64>(value) : 0;
+}
+
+} // namespace
+
+void Engine::cmdSyncOneRing(const juce::var& msg)
+{
+    const juce::String nodeId = msg["nodeId"].toString();
+    const bool restore = static_cast<bool>(msg["restore"]);
+    juce::String error;
+    juce::int64 generation = 0;
+    bool created = false;
+    bool ok = false;
+    one_ring::Project project;
+    bool parsed = false;
+    if (!isProtocolChainId(nodeId))
+        error = "invalid One Ring node id";
+    else
+    {
+        try
+        {
+            project = one_ring::readProject(msg["state"]);
+            parsed = true;
+        }
+        catch (const std::exception& failure)
+        {
+            error = juce::String::fromUTF8(failure.what());
+        }
+    }
+    if (parsed)
+    {
+        std::string reason;
+        auto found = oneRings_.find(nodeId);
+        if (found == oneRings_.end())
+        {
+            OneRingNode node;
+            node.runtime = std::make_unique<one_ring::Runtime>();
+            node.generation = ++nextOneRingGeneration_;
+            // A runtime that did not exist starts from what it is given.
+            ok = node.runtime->setProject(std::move(project), true, reason);
+            if (ok)
+            {
+                generation = node.generation;
+                oneRings_.emplace(nodeId, std::move(node));
+                publishOneRingSet();
+                created = true;
+            }
+        }
+        else
+        {
+            generation = found->second.generation;
+            ok = found->second.runtime->setProject(std::move(project), restore, reason);
+        }
+        if (!ok)
+            error = juce::String::fromUTF8(reason.c_str());
+    }
+    juce::var out = makeObject();
+    setProp(out, "type", "oneRingSynced");
+    setProp(out, "nodeId", nodeId);
+    setProp(out, "generation", generation);
+    setProp(out, "created", created);
+    setProp(out, "ok", ok);
+    setProp(out, "message", ok ? juce::String() : error);
+    ipc_.send(out);
+}
+
+void Engine::cmdSetOneRingTargets(const juce::var& msg)
+{
+    const juce::String nodeId = msg["nodeId"].toString();
+    const juce::int64 generation = integerOrZero(msg["generation"]);
+    const juce::var registry = msg["registry"];
+    const juce::var revision = registry["revision"];
+    const juce::int64 revisionNumber = integerOrZero(revision);
+    juce::String error;
+    bool ok = false;
+    const auto found = isProtocolChainId(nodeId) ? oneRings_.find(nodeId) : oneRings_.end();
+    if (found == oneRings_.end())
+        error = "no such One Ring node";
+    else if (found->second.generation != generation)
+        // A list of targets describes what one runtime was told about.
+        error = "One Ring node was replaced";
+    else if (!registry.isObject() || !registry["version"].isInt() || static_cast<int>(registry["version"]) != 1
+             || !registry["modules"].isArray() || revisionNumber <= 0 || revisionNumber > kMaxSafeInteger)
+        error = "malformed command registry";
+    else if (juce::JSON::toString(registry, true).getNumBytesAsUTF8() > 4 * 1024 * 1024)
+        error = "command registry too large";
+    else
+    {
+        try
+        {
+            std::string reason;
+            ok = found->second.runtime->setTargets(one_ring::readRegistry(registry),
+                                                   static_cast<std::uint64_t>(revisionNumber), reason);
+            if (!ok)
+                error = juce::String::fromUTF8(reason.c_str());
+        }
+        catch (const std::exception& failure)
+        {
+            error = juce::String::fromUTF8(failure.what());
+        }
+    }
+    juce::var out = makeObject();
+    setProp(out, "type", "oneRingTargetsStatus");
+    setProp(out, "nodeId", nodeId);
+    setProp(out, "generation", generation);
+    setProp(out, "revision", revisionNumber > 0 ? juce::var(revisionNumber) : juce::var());
+    setProp(out, "ok", ok);
+    setProp(out, "message", ok ? juce::String() : error);
+    ipc_.send(out);
+}
+
+void Engine::cmdOneRingCommand(const juce::var& msg)
+{
+    const juce::String nodeId = msg["nodeId"].toString();
+    const juce::int64 generation = integerOrZero(msg["generation"]);
+    const juce::String command = msg["command"].toString();
+    juce::String error;
+    bool ok = false;
+    const auto found = isProtocolChainId(nodeId) ? oneRings_.find(nodeId) : oneRings_.end();
+    if (found == oneRings_.end())
+        error = "no such One Ring node";
+    else if (found->second.generation != generation)
+        error = "One Ring node was replaced";
+    else
+    {
+        auto& runtime = *found->second.runtime;
+        if (command == "run")
+        {
+            runtime.run();
+            ok = true;
+        }
+        else if (command == "stop")
+        {
+            runtime.stop();
+            ok = true;
+        }
+        else if (command == "channel")
+        {
+            const juce::int64 channel = integerOrZero(msg["channel"]);
+            ok = channel >= 1 && channel <= static_cast<juce::int64>(one_ring::channelCount)
+                && runtime.channelCommand(static_cast<std::size_t>(channel - 1),
+                                          msg["name"].toString().toStdString());
+            if (!ok)
+                error = "unknown channel command";
+        }
+        else if (command == "scene")
+        {
+            const juce::var scene = msg["scene"];
+            ok = (scene.isInt() || scene.isInt64()) && static_cast<juce::int64>(scene) >= 0
+                && runtime.recallScene(static_cast<std::size_t>(static_cast<juce::int64>(scene)));
+            if (!ok)
+                error = "unknown scene";
+        }
+        else
+            error = "unknown One Ring command";
+    }
+    juce::var out = makeObject();
+    setProp(out, "type", "oneRingCommandResult");
+    setProp(out, "nodeId", nodeId);
+    setProp(out, "generation", generation);
+    setProp(out, "command", command);
+    setProp(out, "ok", ok);
+    setProp(out, "message", ok ? juce::String() : error);
+    ipc_.send(out);
+}
+
+void Engine::cmdRemoveOneRing(const juce::var& msg)
+{
+    const juce::String nodeId = msg["nodeId"].toString();
+    const auto found = isProtocolChainId(nodeId) ? oneRings_.find(nodeId) : oneRings_.end();
+    const bool removed = found != oneRings_.end();
+    if (removed)
+    {
+        retiredOneRings_.push_back(std::move(found->second.runtime));
+        oneRings_.erase(found);
+        publishOneRingSet();
+    }
+    juce::var out = makeObject();
+    setProp(out, "type", "oneRingRemoved");
+    setProp(out, "nodeId", nodeId);
+    setProp(out, "removed", removed);
+    ipc_.send(out);
+}
+
+void Engine::publishOneRingSet()
+{
+    auto set = std::make_unique<OneRingSet>();
+    for (auto& entry : oneRings_)
+        set->runtimes.push_back(entry.second.runtime.get());
+    auto* published = set.get();
+    oneRingSets_.push_back(std::move(set));
+    activeOneRingSet_.store(published, std::memory_order_release);
+}
+
+void Engine::forwardOneRings()
+{
+    if (!oneRings_.empty() && !shutdownRequested_)
+    {
+        const double now = juce::Time::getMillisecondCounterHiRes();
+        for (auto& [nodeId, node] : oneRings_)
+        {
+            // Drained even when nobody will act on them, so an export that
+            // ends does not replay a stale backlog.
+            const auto count = node.runtime->takeEvents(oneRingPackets_.data(), oneRingPackets_.size());
+            if (count > 0 && !sequencer_.exporting())
+            {
+                juce::Array<juce::var> events;
+                for (std::size_t i = 0; i < count; ++i)
+                {
+                    const auto& packet = oneRingPackets_[i];
+                    if (packet.sequence > static_cast<std::uint64_t>(kMaxSafeInteger)
+                        || packet.registryRevision > static_cast<std::uint64_t>(kMaxSafeInteger)
+                        || !std::isfinite(packet.beat) || !std::isfinite(packet.number))
+                        continue;
+                    juce::var event = makeObject();
+                    setProp(event, "sequence", static_cast<juce::int64>(packet.sequence));
+                    setProp(event, "registryRevision", static_cast<juce::int64>(packet.registryRevision));
+                    setProp(event, "beat", packet.beat);
+                    setProp(event, "target", juce::String::fromUTF8(packet.target));
+                    setProp(event, "command", juce::String::fromUTF8(packet.command));
+                    setProp(event, "valueType", static_cast<int>(packet.valueType));
+                    setProp(event, "number", packet.number);
+                    events.add(event);
+                }
+                juce::var out = makeObject();
+                setProp(out, "type", "controlEvents");
+                setProp(out, "nodeId", nodeId);
+                setProp(out, "generation", node.generation);
+                setProp(out, "events", events);
+                ipc_.send(out);
+            }
+            const auto status = node.runtime->status();
+            const auto& last = node.lastStatus;
+            const bool changed = !node.statusSent || status.playing != last.playing
+                || status.scene != last.scene || status.playhead != last.playhead
+                || status.active != last.active || status.rejected != last.rejected
+                || status.guarded != last.guarded;
+            // The beat moves on every block; alone, it is sent ten times a second.
+            const bool beatDue = status.playing && now - node.statusSentAtMs >= 100.0;
+            if (!changed && !beatDue)
+                continue;
+            juce::var out = makeObject();
+            setProp(out, "type", "oneRingStatus");
+            setProp(out, "nodeId", nodeId);
+            setProp(out, "generation", node.generation);
+            setProp(out, "playing", status.playing);
+            setProp(out, "beat", status.beat);
+            setProp(out, "bpm", status.bpm);
+            setProp(out, "scene", static_cast<int>(status.scene));
+            juce::Array<juce::var> playheads, active;
+            for (std::size_t i = 0; i < one_ring::channelCount; ++i)
+            {
+                playheads.add(status.playhead[i]);
+                active.add(status.active[i]);
+            }
+            setProp(out, "playheads", playheads);
+            setProp(out, "active", active);
+            setProp(out, "rejected", static_cast<juce::int64>(
+                std::min<std::uint64_t>(status.rejected, static_cast<std::uint64_t>(kMaxSafeInteger))));
+            setProp(out, "guarded", static_cast<juce::int64>(
+                std::min<std::uint64_t>(status.guarded, static_cast<std::uint64_t>(kMaxSafeInteger))));
+            ipc_.send(out);
+            node.lastStatus = status;
+            node.statusSent = true;
+            node.statusSentAtMs = now;
+        }
+    }
+    // A callback raises the count before loading the set, so an old set, and a
+    // runtime only an old set names, go only in an interval with no reader.
+    if ((oneRingSets_.size() > 1 || !retiredOneRings_.empty())
+        && oneRingReaders_.load(std::memory_order_acquire) == 0)
+    {
+        const auto* keep = activeOneRingSet_.load(std::memory_order_acquire);
+        oneRingSets_.erase(std::remove_if(oneRingSets_.begin(), oneRingSets_.end(),
+            [keep](const auto& owned) { return owned.get() != keep; }), oneRingSets_.end());
+        retiredOneRings_.clear();
+    }
+}
+
 void Engine::cmdSetControlRegistry(const juce::var& msg)
 {
     const juce::String chainId = msg["chainId"].toString();
@@ -2662,6 +2960,13 @@ void Engine::processEngine2Block(const float* const* inputChannelData,
     auto* hardwareMidi = &physicalMidiOutput_;
     sequencer_.processMidi(numSamples,blockTransport,midiPlan,hardwareMidi,midiStartMs);
     if(midiPlan)midiPlan->process(numSamples,blockTransport,hardwareMidi,midiStartMs,currentSampleRate_);
+    // Native One Ring nodes: their commands are carried out on the control
+    // thread, so where they run in the block changes nothing but their clock.
+    oneRingReaders_.fetch_add(1, std::memory_order_acq_rel);
+    if (auto* oneRings = activeOneRingSet_.load(std::memory_order_acquire))
+        for (auto* runtime : oneRings->runtimes)
+            runtime->process(blockTransport, numSamples, currentSampleRate_);
+    oneRingReaders_.fetch_sub(1, std::memory_order_acq_rel);
     audioNetworkReaders_.fetch_add(1, std::memory_order_acq_rel);
     do { plan=activeAudioPlan_.load(std::memory_order_acquire); audioPlanHazard_.store(plan,std::memory_order_release); }
     while(plan!=activeAudioPlan_.load(std::memory_order_acquire));

@@ -136,6 +136,10 @@ add_executable(mlh_audio_engine
     src/one_ring/model.cpp
     src/one_ring/scheduler.h
     src/one_ring/scheduler.cpp
+    src/one_ring/state_json.h
+    src/one_ring/state_json.cpp
+    src/one_ring/runtime.h
+    src/one_ring/runtime.cpp
     src/engine2/audio_engine.h
     src/engine2/audio_engine.cpp
     src/engine2/realtime_output_buffer.h
@@ -211,6 +215,10 @@ if(BUILD_TESTING)
         src/one_ring/model.cpp
         src/one_ring/scheduler.h
         src/one_ring/scheduler.cpp
+        src/one_ring/state_json.h
+        src/one_ring/state_json.cpp
+        src/one_ring/runtime.h
+        src/one_ring/runtime.cpp
         src/chain.h
         src/chain.cpp
         src/plugin_host.h

@@ -10,7 +10,8 @@ finished, delete its entry**, in the same commit. What was done lives in git and
 **One Ring, made native** — started 2026-09-16 on the author's word, in place
 of the Matrix node (ROADMAP item 7). One Ring becomes a node of MiniHub with
 every function of the VST, its clock in the engine, its commands through the
-same CTRL OUT path, and a new page after hardware sequencers. Steps 0 and 1 of 11 done.
+same CTRL OUT path, and a new page after hardware sequencers.
+Steps 0 to 2 of 11 done.
 Plan: [plans/active/one-ring-native.md](plans/active/one-ring-native.md).
 
 **A plugin commands MiniHub's modules over a CTRL OUT cable — in the author's

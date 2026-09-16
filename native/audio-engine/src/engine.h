@@ -10,6 +10,7 @@
 #include "master_output.h"
 #include "sequencer.h"
 #include "engine2/audio_engine.h"
+#include "one_ring/runtime.h"
 
 #include <juce_audio_processors/juce_audio_processors.h>
 
@@ -96,6 +97,12 @@ private:
     void cmdSetControlStatus(const juce::var& msg);
     void cmdPluginRequest(const juce::var& msg);
     void forwardControlEvents();
+    void cmdSyncOneRing(const juce::var& msg);
+    void cmdSetOneRingTargets(const juce::var& msg);
+    void cmdOneRingCommand(const juce::var& msg);
+    void cmdRemoveOneRing(const juce::var& msg);
+    void publishOneRingSet();
+    void forwardOneRings();
     void cmdSetTransport(const juce::var& msg);
     void cmdGetTransport(const juce::var& msg);
     void cmdSyncAudioNetwork(const juce::var& msg);
@@ -283,6 +290,28 @@ private:
     std::map<juce::String, std::unique_ptr<Chain>> chains_;
     std::array<Chain*, kMaxChains> audioChains_{};
     std::atomic<int> audioChainCount_{0};
+
+    // Native One Ring nodes. The map belongs to the message thread; the
+    // callback reads an immutable list of the same runtimes, republished when a
+    // node comes or goes. A removed runtime waits in `retiredOneRings_` until an
+    // interval with no reader, like an old audio plan.
+    struct OneRingNode {
+        std::unique_ptr<one_ring::Runtime> runtime;
+        juce::int64 generation = 0;
+        one_ring::Status lastStatus;
+        bool statusSent = false;
+        double statusSentAtMs = 0.0;
+    };
+    struct OneRingSet {
+        std::vector<one_ring::Runtime*> runtimes;
+    };
+    std::map<juce::String, OneRingNode> oneRings_;
+    std::vector<std::unique_ptr<OneRingSet>> oneRingSets_;
+    std::vector<std::unique_ptr<one_ring::Runtime>> retiredOneRings_;
+    std::atomic<OneRingSet*> activeOneRingSet_ { nullptr };
+    std::atomic<std::uint32_t> oneRingReaders_ { 0 };
+    juce::int64 nextOneRingGeneration_ = 0;
+    std::vector<one_ring::Packet> oneRingPackets_ = std::vector<one_ring::Packet>(128);
 
     // Guards against a scan result / plugin creation landing on the message
     // thread after the Engine has been destroyed.

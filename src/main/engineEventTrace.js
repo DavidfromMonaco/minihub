@@ -30,7 +30,10 @@ const PERIODIC_EVENTS = new Set([
   // Where a plugin editor's frame is. Emitted on every frame of a drag, which
   // is why the engine splits it off `editorStatus`: opening and closing an
   // editor is rare and worth a line, moving it is not. ROADMAP item 9.
-  'editorBounds'
+  'editorBounds',
+  // A native One Ring's playheads and beat, ten times a second or on every
+  // step while it plays.
+  'oneRingStatus'
 ]);
 
 const RUNTIME_TELEMETRY = 'audioRuntimeTelemetry';

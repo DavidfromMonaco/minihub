@@ -9,7 +9,7 @@ page of its own in a new hardware-style design.
 "commence à travailler sur l'intégration de One Ring en natif". His direction
 for the look: every function kept, the whole design redone after hardware
 sequencers — the Korg SQ-64, the Roland P-6, the Cre8audio Programm.
-**Status** — **in progress, 2026-09-16.** Steps 0 and 1 done; step 2 next.
+**Status** — **in progress, 2026-09-16.** Steps 0 to 2 done; step 3 next.
 
 ## Context
 
@@ -110,7 +110,7 @@ to D-018 (written for the Matrix), D-032 (a command is performance), D-042
       Check: `npm run build:native` 0 errors 0 warnings +
       `mlh_native_tests.exe --core` (1463 checks) + `npm test` (1119) +
       `npm run sync:dist` — **green 2026-09-16**
-- [ ] 2. Native runtime: `OneRingRuntime` does the `Processor`'s work without a
+- [x] 2. Native runtime: `OneRingRuntime` does the `Processor`'s work without a
       plugin — plan published and swapped at a block boundary; `advance` in the
       callback on the live `Transport` (Play starts it, a seek shifts its
       timeline, after Stop it keeps the last tempo until its own STOP); RUN,
@@ -122,11 +122,21 @@ to D-018 (written for the Matrix), D-032 (a command is performance), D-042
       a sequence on a test transport emits its events at their beats; a new plan
       keeps playback going; STOP releases a held Legato.
       Check: build 0/0 + native tests + `npm test`
-- [ ] 3. Renderer model, `core/oneRing/`: defaults, the VST state to content and
-      back, validation with `model.cpp`'s rules against the compiled targets
-      plus One Ring's own channel and scene commands, `Random` in BigInt checked
-      against step 1's values, MUTATE and NEW SEED.
-      Check: `npm test`
+      Done as `one_ring/runtime.*` and `one_ring/state_json.*`, plus
+      `removeOneRing`, and `src/main/oneRingCommand.js` for the four commands'
+      shape. Build 0 errors 0 warnings; `--core` (1517 checks), `--vst3-e2e`
+      (99), `--cross-track-isolation` (27), `mlh_realtime_output_tests` (2535);
+      `npm test` (1125); `npm run check`; `npm run sync:dist` —
+      **green 2026-09-16**
+- [ ] 3. Renderer model, `core/oneRingRandom.js` and `core/oneRingSequence.js`
+      (flat, like `arpeggiatorState.js`): defaults, the VST state to content and
+      back (a sparse content, with each channel's `blank`), validation with
+      `model.cpp`'s rules against the compiled targets plus One Ring's own
+      channel and scene commands, `Random` in BigInt checked against step 1's
+      values, MUTATE, NEW SEED, a command change and STORE SCENE as the VST's
+      editor does them. MUTATE's results checked in C++ too, with the values the
+      JS draws.
+      Check: `npm test` + build + `--core`
 - [ ] 4. The node: type `one-ring` (MIDI category, CTRL OUT), its content the
       sequence; `engineSync` sends it on change and after an engine restart;
       `CommandBus` takes a native source beside plugin sources — targets
@@ -200,3 +210,29 @@ values were computed with a BigInt copy of the algorithm in Node and pass in
 C++ unchanged, so step 3's port has its reference already. A scheduler carries
 about 250 KB of fixed event storage: the tests allocate each one rather than
 stack two.
+
+2026-09-16 — Step 2. The runtime is the VST's `Processor` without the plugin:
+the same lock-free plan swap with a readers count, the same clock rules, the
+same queues, the engine's `Transport` where the VST had a host playhead. Three
+things were settled while building it:
+
+- The engine checks a sequence against One Ring's own targets only. A value a
+  cabled target would refuse stays authored, and the scheduler counts it as
+  refused when its cell plays: the VST refused a whole saved sequence over one
+  such cell, which is what made CommandBus publish targets after the state.
+- `syncOneRing` says whether it restores. A restore takes the saved scene; an
+  edit keeps the scene that is playing, as the VST's `project()` did.
+- Each channel of the content has a `blank`: the cell every unlisted index
+  holds. Choosing a command gives all 64 cells its default value, so a content
+  listing the cells that differ from an empty one would list them all again.
+
+The tests found one defect: a sparse channel with nothing programmed arrives as
+an empty list, which the reader took for a truncated whole one. Fixed: an empty
+list is sparse. What the tests do not reach: the four engine commands and the
+timer's `controlEvents` and `oneRingStatus` are exercised only through the
+runtime they wrap, not through IPC. Step 4 drives them from the renderer.
+Messages: `oneRingSynced` (created, generation), `oneRingTargetsStatus`,
+`oneRingCommandResult`, `oneRingRemoved`; `controlEvents` with `nodeId` and
+`generation`, which CommandBus ignores until step 4 since it has no `chainId`;
+`oneRingStatus` on any change, and every 100 ms while playing, kept out of the
+startup log.
