@@ -7,6 +7,12 @@ finished, delete its entry**, in the same commit. What was done lives in git and
 
 ## Started, not finished
 
+**One Ring, made native** — started 2026-09-16 on the author's word, in place
+of the Matrix node (ROADMAP item 7). One Ring becomes a node of MiniHub with
+every function of the VST, its clock in the engine, its commands through the
+same CTRL OUT path, and a new page after hardware sequencers. Step 0 of 11.
+Plan: [plans/active/one-ring-native.md](plans/active/one-ring-native.md).
+
 **A plugin commands MiniHub's modules over a CTRL OUT cable — in the author's
 test** — built 2026-09-15 for One Ring, a VST3 kept outside this repository
 (DECISIONS D-042, ARCHITECTURE §6 *Commands from a plugin*). Seen in the
@@ -16,9 +22,8 @@ pulled stopped the commands and plugged back resumed them.
 Since the same evening an agent programs One Ring (0.4.0) through the `plugin`
 request (D-043): seen setting channels, running, reading the clock, stopping,
 and the sequence surviving a save and a reload.
-- Ahead: One Ring is to become a function of MiniHub itself, in place of the
-  Matrix node — decided 2026-09-16, not started ([ROADMAP.md](ROADMAP.md)
-  item 7). What this cable path is for once One Ring is native is not decided.
+- Ahead: One Ring is becoming a node of MiniHub itself (the entry above). This
+  cable path stays: the native node goes through it, and so does any plugin.
 - Not seen yet: the author's own sequences; Codex building Orbites with the
   requests; Record through a cable in the application (the test rig covers it,
   guards and refusal message included).
@@ -86,9 +91,10 @@ A plugin too tall to leave room under the bar (Analog Lab V on the author's
 1080-pixel screen) gets it beside the window, as a column, instead of over its
 controls. Seen with Dexed and Analog Lab V: the author learned F1 from the bar
 onto Analog Lab V's Reverb Volume, and the capture plugged its cable. Left: the
-documents, step 8 of the plan.
+documents, step 8 of the plan, on standby since 2026-09-16 to free the slot
+for One Ring.
 - Not seen yet: the drawn knob following the plugin's own knob, or the MiniLab's.
-Plan: [plans/active/bindings-bar-docked.md](plans/active/bindings-bar-docked.md).
+Plan: [plans/done/bindings-bar-docked.md](plans/done/bindings-bar-docked.md).
 
 **The Patch Bay's context menus** — still hand-built in `routingModule.js`;
 `ui/contextMenu.js` exists and only the sequencer uses it.

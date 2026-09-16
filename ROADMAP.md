@@ -26,9 +26,11 @@ the hardware out of the core — and its Étape A finished on 2026-09-04, so the
 was free for **importing a profile**, finished 2026-09-05 (item 8 below, D-027 to
 D-030).
 
-`plans/active/` holds [bindings-bar-docked.md](plans/active/bindings-bar-docked.md),
-resumed 2026-09-14 with six of its eight steps landed. The agent channel's plan
-sits in `plans/done/` with the result "standby" while the author tests it
+`plans/active/` holds [one-ring-native.md](plans/active/one-ring-native.md),
+started 2026-09-16 (item 7 below). The bindings bar's plan went to `plans/done/`
+on standby the same day with only its documents left
+([bindings-bar-docked.md](plans/done/bindings-bar-docked.md)), and the agent
+channel's sits there too while the author tests it
 ([agent-channel.md](plans/done/agent-channel.md)). PLANS.md §2 holds the slot
 for work in progress, not for intentions.
 
@@ -531,9 +533,11 @@ dedicated cosmetic pass.
 **Decided 2026-09-16 by the author**: One Ring, a control sequencer that runs
 today as a VST3 built outside this repository, becomes a function of MiniHub
 itself, and it takes the place the Matrix node held in this item. The Matrix
-node will not be built. Nothing is designed yet — no specification, no plan, no
-decision entry. Whether One Ring also takes the Morpher's place, as the Matrix
-was to, is not decided either; the Morpher stays as it is.
+node will not be built. Started the same day on his word:
+[plans/active/one-ring-native.md](plans/active/one-ring-native.md) — a native
+scheduler ported from One Ring's own core, the VST's commands path reused, the
+VST's saved state as the format. Whether One Ring also takes the Morpher's
+place, as the Matrix was to, is not decided; the Morpher stays as it is.
 
 **What One Ring is today** — a VST3 that keeps its own channels, steps and
 scenes, runs its own clock, and commands the modules its VST node's CTRL OUT is
@@ -767,8 +771,8 @@ rather than drawn by hand. Written by the author, after the rest.
 
 Decided 2026-09-04 ([DECISIONS.md](DECISIONS.md) D-021), started 2026-09-12,
 resumed 2026-09-14.
-Plan: [plans/active/bindings-bar-docked.md](plans/active/bindings-bar-docked.md),
-**6 of 8 steps**.
+Plan: [plans/done/bindings-bar-docked.md](plans/done/bindings-bar-docked.md),
+**7 of 8 steps**, on standby since 2026-09-16 with its documents left.
 
 Learning a knob costs two windows today, and the plugin editor usually covers
 what you were reading. A frameless Electron window carrying the existing

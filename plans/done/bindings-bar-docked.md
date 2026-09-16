@@ -5,13 +5,23 @@ the bindings interface sits under the plugin editor and moves with it, and
 `renderControlBindings()` is gone from the VST node's editor.
 **Origin** — ROADMAP item 9, [DECISIONS.md](../../DECISIONS.md) D-021, asked
 2026-09-04, started 2026-09-12, resumed 2026-09-14 on the author's word.
-**Status** — **in progress, 2026-09-15.** Steps 1 to 7 landed: the bar exists,
-has been seen docked under a real plugin window, learns a knob with no cable in
-the Patch Bay, and its bound knobs move their parameters under the mouse. On the
-author's go, the panel has left the VST node's editor: the bar is the one place a
-knob is learned. A plugin too tall to leave room under it gets the bar beside it
-(see the log), and the bar takes no click outside what it draws. Left: step 8,
-the documents.
+**Status** — **standby, 2026-09-16**, to free the single slot for
+[one-ring-native.md](../active/one-ring-native.md), which the author started that
+day. Nothing in the application waits on it: steps 1 to 7 landed and are in use.
+The bar exists, has been seen docked under a real plugin window, learns a knob
+with no cable in the Patch Bay, and its bound knobs move their parameters under
+the mouse. On the author's go, the panel has left the VST node's editor: the bar
+is the one place a knob is learned. A plugin too tall to leave room under it gets
+the bar beside it (see the log), and the bar takes no click outside what it
+draws.
+
+**What is left, and what has gone stale while it waits** — step 8, the
+documents, all of them stale in the same way: D-021 is not marked implemented and
+its "Proof in the code" still names `nodeInstances.js` for
+`renderControlBindings()`, ROADMAP item 9 is still under To do, and ARCHITECTURE
+§4 and §10 name none of the bar's files. Not seen yet (TASKS.md): the drawn knob
+following the plugin's own knob, or the MiniLab's. Resuming means step 8 alone,
+once the slot is free.
 
 ## Context
 

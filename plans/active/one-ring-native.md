@@ -1,0 +1,190 @@
+# One Ring, made native — ExecPlan
+
+**Goal** — One Ring runs inside MiniHub as a node of its own, with every
+function of the VST: its clock in the engine, its commands through the Patch
+Bay's CTRL OUT, a sequence saved by the VST opened in it without loss, and a
+page of its own in a new hardware-style design.
+**Origin** — [ROADMAP.md](../../ROADMAP.md) item 7, decided by the author on
+2026-09-16 in place of the Matrix node, started the same day on his word:
+"commence à travailler sur l'intégration de One Ring en natif". His direction
+for the look: every function kept, the whole design redone after hardware
+sequencers — the Korg SQ-64, the Roland P-6, the Cre8audio Programm.
+**Status** — **in progress, 2026-09-16.** Step 0 done; step 1 next.
+
+## Context
+
+**The source** — One Ring 0.4, kept by the author outside this repository (not
+a git repository). What it is made of, all of it read before this plan was
+written:
+
+- `src/core/` — `model` (the project, its validation, MUTATE), `generative`
+  (the counter-based random draws, conditions, value sources), `commands` (the
+  target registry and value validation), `engine` (the scheduler, ~350 lines,
+  written for the audio thread). About 1,000 lines, no JUCE.
+- `src/plugin/Processor.cpp` — the clock (host tempo and position; Play starts
+  it; after Stop it keeps the last tempo until its own STOP), the lock-free plan
+  swap, the packet queues. `Serialization.cpp` — the saved state, JSON,
+  version 1. `Editor.cpp` — every control. `Requests.cpp` — the request
+  vocabulary.
+- `tests/core_tests.cpp`, `README.md` (the functions, as a user reads them),
+  `docs/REQUEST.md` (the original specification).
+
+**Every function, the list this plan answers to** — nothing on it is dropped:
+
+- 16 channels; each one: a target and a command, 4/8/16/32/64 steps, a
+  resolution from 1/4 to 1/32, 1/2/3/4/8 or endless repeats, Trigger or Legato
+  (Legato only for a target that declares a release), enabled, offset (in
+  steps, negative wraps), swing, humanize, which fields MUTATE may change,
+  Follow Actions run in order when a finite channel completes;
+- each of 64 cells: active, probability, a value (fixed, a range, or a list of
+  choices), conditions (first loop, last loop, every N loops, if a channel is
+  active or inactive) combined with the probability, LOCK STEP and per-field
+  locks;
+- scenes A–D holding all 16 channels; STORE SCENE; recall Immediate or Next
+  bar, Restart or Keep positions;
+- a seed, NEW SEED, MUTATE (one channel or all), the mutation count saved;
+- RUN and STOP of its own; per channel START, STOP, RESTART, RESET, TOGGLE,
+  ENABLE, DISABLE; its own channels and scene recall usable as targets by its
+  steps and Follow Actions;
+- what it shows: each channel's playhead and activity, the scene, running, the
+  beat and tempo, refused and guarded counts, the connection status and the
+  last refusal.
+
+**MiniHub** — ARCHITECTURE §5 (node types, the module contract), §6 *Commands
+from a plugin* (the path this node reuses end to end), §7 (`Transport`,
+`MidiExecutionPlan`: where a clock lives in the callback), §8 (threading), §10
+(the faceplate), §11 (project state). Files: `core/commandBus.js`,
+`core/commandRegistry.js`, `core/nodeCommands.js`, `core/nodeTypes.js`,
+`core/nodeInstances.js`, `core/nodeEditors.js`, `core/engineSync.js`,
+`core/engineClient.js`, `core/agentRequests.js`, `src/main/engineCommandPolicy.js`,
+`native/audio-engine/src/engine.cpp` (`timerCallback`, `forwardControlEvents`),
+`transport.h`, `midi_network.*`, `CMakeLists.txt`, `test/native_tests.cpp`.
+
+**Decisions it comes near** — D-012 and D-037 (one faceplate, graphite), D-016
+to D-018 (written for the Matrix), D-032 (a command is performance), D-042
+(commands over CTRL OUT), D-043 (requests).
+
+## Constraints
+
+- A One Ring VST state (version 1) converts to the node's content and back
+  without loss. The content keeps only what differs from an empty cell: the
+  VST writes all 4 × 16 × 64 cells, about 700 KB, which an undo step and a
+  settings save must not carry.
+- The random draws are part of that format. `mix` and `Random` are ported bit
+  for bit, in C++ and in JS, and both are checked against the same fixed values.
+- Invariant 2: the node commands only what its CTRL OUT is cabled to, through
+  `CommandBus` — never around it.
+- Invariant 3: the scheduler runs in the audio callback with no lock and no
+  allocation. A new sequence is an immutable plan swapped at a block boundary,
+  as the VST's `Processor` does.
+- D-032: a command the node sends is performance (`hub.perform`); editing its
+  sequence is authoring, one undo step.
+- An offline export executes no command, as today.
+- The plugin path stays whole: a plugin on a CTRL OUT cable still commands, and
+  the One Ring VST still works in MiniHub.
+- One faceplate (D-012): the page is built with `omni-pearl.css` and
+  `ui/omniPearl.js`, extended — never a second sheet.
+- Every new engine command joins `engineCommandPolicy.js`.
+
+## Out of scope
+
+- Changing or retiring the One Ring VST, or the CTRL OUT path for plugins.
+- The Morpher: whether One Ring takes its place is not decided.
+- Functions the VST does not have: commands of its own on a CTRL IN, more than
+  16 channels or 4 scenes, target commands executed at sample accuracy.
+- What the Matrix specification found missing: the post-chain gain stage, a
+  `ctrl-in` on dynamic-input nodes, a dual live/export runtime.
+- The site and the release notes.
+
+## Steps
+
+- [x] 0. The slot and the documents pointing at it: `bindings-bar-docked.md`
+      moved to `plans/done/` on standby (step 8, its documents, is what it has
+      left); this plan in `plans/active/`; TASKS.md and ROADMAP item 7 say the
+      work has started.
+      Check: `npm test` (1119) + `npm run check` (15 rules) — **green 2026-09-16**
+- [ ] 1. Native core: One Ring's `src/core/` into
+      `native/audio-engine/src/one_ring/`, namespace `mlh::one_ring`, behaviour
+      unchanged; `tests/core_tests.cpp` into `native_tests.cpp` as
+      `[core] one-ring-*`, plus fixed `Random` values that step 3 checks again.
+      Check: `npm run build:native` 0 errors 0 warnings +
+      `mlh_native_tests.exe --core`
+- [ ] 2. Native runtime: `OneRingRuntime` does the `Processor`'s work without a
+      plugin — plan published and swapped at a block boundary; `advance` in the
+      callback on the live `Transport` (Play starts it, a seek shifts its
+      timeline, after Stop it keeps the last tempo until its own STOP); RUN,
+      STOP, channel and scene commands in; events out through a lock-free queue
+      that `timerCallback` drains as `controlEvents` carrying `nodeId` and
+      `generation`; a status at the timer's pace. The content's JSON read with
+      defaults for absent cells. Engine commands `syncOneRing`,
+      `setOneRingTargets`, `oneRingCommand`, added to the policy. Native tests:
+      a sequence on a test transport emits its events at their beats; a new plan
+      keeps playback going; STOP releases a held Legato.
+      Check: build 0/0 + native tests + `npm test`
+- [ ] 3. Renderer model, `core/oneRing/`: defaults, the VST state to content and
+      back, validation with `model.cpp`'s rules against the compiled targets
+      plus One Ring's own channel and scene commands, `Random` in BigInt checked
+      against step 1's values, MUTATE and NEW SEED.
+      Check: `npm test`
+- [ ] 4. The node: type `one-ring` (MIDI category, CTRL OUT), its content the
+      sequence; `engineSync` sends it on change and after an engine restart;
+      `CommandBus` takes a native source beside plugin sources — targets
+      published with `setOneRingTargets`, events dispatched, holds released as a
+      plugin's are; a plain status panel with RUN, STOP and the four scenes.
+      Tests on the control rig: a native `controlEvents` moves a cabled mixer's
+      master; a pulled cable stops it.
+      Check: `npm test` + `npm run check` + `npm run sync:dist` + seen in
+      MiniHub: a sequence stepping a mixer's master
+- [ ] 5. From the VST: a VST node holding One Ring offers to copy its sequence
+      into a new One Ring node, and its CTRL OUT cables move to it.
+      Check: `npm test` + seen in MiniHub with one of the author's sequences.
+      **The author tries the native One Ring here.**
+- [ ] 6. The design, before the page: a still of the faceplate after the
+      author's references — transport and scenes, the 16 channels, the 64-cell
+      grid as lit pads, the channel's settings, the cell's settings — drawn with
+      the faceplate's tokens and shown to the author.
+      Check: his go. **The author decides here.**
+- [ ] 7. The page, playing half: channels, the grid with playheads and its four
+      cell appearances, the channel's settings, RUN and STOP, RESTART CH and
+      STOP CH, scenes.
+      Check: `npm test` (domShim) + `npm run check` + `npm run sync:dist` + seen
+- [ ] 8. The page, authoring half: the cell (active, probability, value modes,
+      conditions, locks), Follow Actions, seed, NEW SEED, MUTATE, STORE SCENE,
+      scene timing and position.
+      Check: same as step 7
+- [ ] 9. Requests: the node answers the VST's vocabulary (describe, status,
+      targets, get, set, run, stop, channel, scene, copy-scene, mutate,
+      new-seed) from its content, so what programmed the VST programs it.
+      Check: `npm test`
+- [ ] 10. Documents: a DECISIONS entry (where the clock runs, why the content is
+      the VST's state made sparse), D-016 to D-018 and INTENT §8 bis naming One
+      Ring, ARCHITECTURE §5, §6, §7 and §12, ROADMAP item 7 to Done, the TASKS
+      entry removed, this plan to `done/`.
+      Check: every command under *Done when*
+
+## Fallback point
+
+`e56f0fb` — before this workstream: everything green, `dist/` synchronised
+(the sources have not changed since the 0.3.0 release). Steps 1 to 4 add a node
+type and change nothing an existing project uses; step 5 is the first that
+touches a project's cables, and only on the author's click.
+
+## Done when
+
+`npm test`, `npm run check`, `npm run sync:dist`, `npm run build:native` with 0
+errors and 0 warnings, and the four native test binaries. Plus what no command
+proves:
+
+- a sequence copied from the VST, seen commanding the same targets at the same
+  steps in the native node;
+- the page, approved by the author.
+
+## Log
+
+2026-09-16 — Plan written after reading One Ring 0.4 whole: the core, the
+processor, the state, the editor's controls, the requests. The core was written
+for an audio thread and a registry it does not own, which is what makes a port
+cheap: MiniHub already compiles the registry (`CommandBus`) and already carries
+the packets (`controlEvents`). What changes is who produces them. The VST state
+is kept as the reference format and made sparse for the node, since a full state
+is about 700 KB.
