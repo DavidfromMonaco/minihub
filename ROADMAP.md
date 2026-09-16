@@ -542,6 +542,17 @@ and the transport. The path is ARCHITECTURE §6 *Commands from a plugin* and
 [DECISIONS.md](DECISIONS.md) D-042; what it keeps is reached through requests in
 its own vocabulary (D-043). It is in the author's test ([TASKS.md](TASKS.md)).
 
+**Every function stays, the whole look is redone** (the author, 2026-09-16) —
+One Ring's functions are worth keeping, all of them; its look is not. The native
+version gets a new design modelled on hardware sequencers. The author's
+references are the Korg SQ-64, the Roland P-6 and the Cre8audio Programm: dark
+plates, grids of lit pads, rows of knobs, a small screen or a few LEDs. Their
+photographs are not in this public repository; they belong to their makers.
+It is an instrument surface, so it is built in the faceplate (`omni-pearl.css`,
+`ui/omniPearl.js`), which it extends with what a step sequencer needs. A look
+that wanted a different plate would replace the faceplate for the arpeggiator
+too, never sit beside it (D-012, D-037).
+
 **What the Matrix leaves, to be read again when this starts** — all of it was
 written for the Matrix, and none of it is decided for One Ring:
 
