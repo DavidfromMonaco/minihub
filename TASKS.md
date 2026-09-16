@@ -29,7 +29,7 @@ and the sequence surviving a save and a reload.
   hold do not exist to be commanded.
 - One Ring's `AGENTS.md` still says the connection is not applied.
 
-**An agent drives MiniHub from outside — in test, not pushed** — works end to
+**An agent drives MiniHub from outside — in test** — works end to
 end (patches, plugins, notes, save, export, Splice's web page, quit). Its
 commits stay local while the author tests it.
 Plan: [plans/done/agent-channel.md](plans/done/agent-channel.md) (standby while
