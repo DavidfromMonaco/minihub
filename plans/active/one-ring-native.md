@@ -9,7 +9,7 @@ page of its own in a new hardware-style design.
 "commence à travailler sur l'intégration de One Ring en natif". His direction
 for the look: every function kept, the whole design redone after hardware
 sequencers — the Korg SQ-64, the Roland P-6, the Cre8audio Programm.
-**Status** — **in progress, 2026-09-17.** Steps 0 to 4 done; step 5 tried by the author, who found two faults, both fixed the same day; waiting for the author's second try.
+**Status** — **in progress, 2026-09-17.** Steps 0 to 5 done; step 6's still drawn, waiting for the author's go.
 
 ## Context
 
@@ -156,7 +156,7 @@ to D-018 (written for the Matrix), D-032 (a command is performance), D-042
       generation refused, the node removed. **Not yet seen: renderer and engine
       together in MiniHub** — it touches a project, so it moves to step 5, with
       the author.
-- [ ] 5. From the VST: a VST node holding One Ring offers to copy its sequence
+- [x] 5. From the VST: a VST node holding One Ring offers to copy its sequence
       into a new One Ring node, and its CTRL OUT cables move to it.
       Check: `npm test` + seen in MiniHub with one of the author's sequences.
       **The author tries the native One Ring here.**
@@ -168,14 +168,18 @@ to D-018 (written for the Matrix), D-032 (a command is performance), D-042
       Tried by the author 2026-09-17, a node made from the OmniBox menu: it
       is there and its sequence runs — step 4's renderer and engine seen
       together. Two faults, fixed the same day (log): scenes that stopped
-      answering, and a transport Stop that did not stop the node.
-      **Waiting for the author's second try**; the copy from the VST is not
-      seen yet.
+      answering, and a transport Stop that did not stop the node. The
+      author's second try, the same day: "c'est bon". **Not seen in the
+      application: the copy from a VST** — its reader is checked against the
+      three real states on disk.
 - [ ] 6. The design, before the page: a still of the faceplate after the
       author's references — transport and scenes, the 16 channels, the 64-cell
       grid as lit pads, the channel's settings, the cell's settings — drawn with
       the faceplate's tokens and shown to the author.
       Check: his go. **The author decides here.**
+      Drawn 2026-09-17 (log): the page at the size of the arpeggiator's on the
+      author's screen, with `omni-pearl.css` and a proposed section of new
+      tokens and parts. **Waiting for the author's go.**
 - [ ] 7. The page, playing half: channels, the grid with playheads and its four
       cell appearances, the channel's settings, RUN and STOP, RESTART CH and
       STOP CH, scenes.
@@ -337,3 +341,32 @@ over stdio: four scenes pressed at rest, all taken; a Stop without the flag
 leaves the node playing, one with it stops it, whether the transport ran or the
 node ran alone; a Next bar recall reported waiting, played on the bar, and
 played by STOP; no command refused, nothing guarded.
+
+2026-09-17 — Step 5 done on the author's second try ("c'est bon"). Step 6: the
+still, rendered from HTML that loads `base.css` and `omni-pearl.css` as they
+are, plus a proposed section 5 whose new colours are all tokens (D-037). What
+it takes from the references:
+
+- From the SQ-64, a glass deck across the top: RUN and STOP as large keys, a
+  display (scene, bar, tempo, running, a waiting recall, refused and guarded,
+  the last refusal, one dot per playing channel), the scene keys A–D with the
+  playing one lit and a waiting one ringed, STORE then a scene, the recall's
+  timing and position as two levers, the seed with NEW SEED, MUTATE for the
+  channel or all.
+- From the SQ-64 again, the 64 cells as four rows of sixteen pads in beats of
+  four. A pad's bar is lit when the cell is on, over the share of its width
+  its probability gives; the playing pad glows, the selected one is ringed,
+  small marks say condition, random value and locked, and the pads past the
+  channel's length sit recessed.
+- From the Programm and the P-6, the channel list as backlit keys with an LED
+  for a playing channel and a white key for the one edited, a scribble strip
+  for its target, and its whole sequence as a row of LEDs.
+- Rotary selectors with their positions printed round them for LENGTH, RATE
+  and REPEAT; knobs for OFFSET, SWING and HUMANIZE; a lever for Trigger and
+  Legato, Legato struck out when the target has no release.
+- Below the pads, the selected cell (ACTIVE, PROBABILITY, the value as Fixed,
+  Range or List with the target's range beside it, the conditions as chips,
+  the locks) and the channel's Follow Actions in order, with an add row.
+
+Every function of the list in *Context* has its place on it. Not drawn: the
+page with no runtime, and a choice target's value.
