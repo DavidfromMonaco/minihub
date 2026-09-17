@@ -167,6 +167,9 @@ std::unique_ptr<juce::AudioFormatWriter> createExportWriter(
 SequencerEngine::SequencerEngine()
 {
     formats_.registerBasicFormats();
+    // Up to four Note Offs for each of the 2,048 keys of a track, in the
+    // callback: never a reallocation there.
+    releaseScratch_.ensureSize(1 << 17);
 }
 
 SequencerEngine::~SequencerEngine()
@@ -206,8 +209,10 @@ void SequencerEngine::prepare(double sampleRate, int blockSize)
 bool SequencerEngine::sync(const juce::var& project,
                            const std::function<Chain*(const std::string&)>& chainLookup,
                            double engineSampleRate, int maxBlockSize,
-                           juce::Array<juce::var>& audioInfo, std::string& error)
+                           juce::Array<juce::var>& audioInfo, std::string& error,
+                           bool* keptRouting)
 {
+    if (keptRouting) *keptRouting = false;
     const auto* tracks = project["tracks"].getArray();
     const auto failClosed=[&](const char* message){error=message;clearPlan();return false;};
     if (!tracks) return failClosed("Sequencer tracks must be an array");
@@ -294,11 +299,97 @@ bool SequencerEngine::sync(const juce::var& project,
         if (track.type=="midi") track.midiScratch.ensureSize(std::max<size_t>(8192, track.midi.size()*24+256));
         next->tracks.push_back(std::move(track));
     }
+    // Every track still plays where it played: no destination needs silencing.
+    // Each track of the plan being replaced either keeps its sounding notes --
+    // the same notes, so their Note Offs are still ahead -- or has them
+    // released by the callback when it takes this plan (adoptLivePlan). The
+    // message thread is the only writer of plans, so the published one is
+    // read here safely.
+    const Plan* previous=activePlan_.load(std::memory_order_acquire);
+    const bool kept=previous!=nullptr&&keepsRouting(*previous,*next);
+    if(kept){
+        next->carryFrom=previous->generation;next->carry.resize(previous->tracks.size());
+        for(size_t j=0;j<previous->tracks.size();++j){
+            const auto& old=previous->tracks[j];
+            for(size_t k=0;k<next->tracks.size();++k){
+                const auto& now=next->tracks[k];if(now.id!=old.id)continue;
+                const bool mutedBefore=old.runtime&&old.runtime->muted.load(std::memory_order_acquire);
+                const bool mutedNow=now.runtime&&now.runtime->muted.load(std::memory_order_relaxed);
+                next->carry[j]={(int)k,old.type=="midi"&&!mutedBefore&&!mutedNow&&old.midi==now.midi};
+                break;
+            }
+        }
+    }
     auto* published=next.get();plans_.push_back(std::move(next));activePlan_.store(published,std::memory_order_release);
     // Large decoded audio assets are shared across plans by a file identity
     // cache, so edits do not duplicate sample data.
     reclaimPlans(published);
-    panic();return true;
+    if(keptRouting)*keptRouting=kept;
+    if(!kept)panic();
+    return true;
+}
+
+bool SequencerEngine::keepsRouting(const Plan& before,const Plan& after) noexcept
+{
+    // A track added plays nothing yet. A track removed, or one that plays
+    // somewhere else, is a new wiring: the sync panics, as it always did.
+    for(const auto& old:before.tracks){
+        const auto found=std::find_if(after.tracks.begin(),after.tracks.end(),[&old](const Track& track){return track.id==old.id;});
+        if(found==after.tracks.end())return false;
+        if(found->type!=old.type||found->outputId!=old.outputId||found->midiOutputKind!=old.midiOutputKind
+            ||found->destination!=old.destination||found->thru.size()!=old.thru.size())return false;
+        for(size_t i=0;i<old.thru.size();++i){
+            const auto& a=old.thru[i];const auto& b=found->thru[i];
+            if(a.id!=b.id||a.kind!=b.kind||a.chain!=b.chain)return false;
+        }
+    }
+    return true;
+}
+
+void SequencerEngine::adoptLivePlan(Plan& plan,MidiExecutionPlan* midiPlan,MidiOutputSink* hardware,double callbackStartMs) noexcept
+{
+    auto* last=liveCarry_.load(std::memory_order_relaxed);
+    if(last==&plan)return;
+    // A plan that panicked has its destinations silenced by the panic. One
+    // compiled against a plan this callback never played -- two edits between
+    // two blocks -- releases everything the last one sounds, and chases.
+    if(last!=nullptr&&plan.carryFrom!=0){
+        const bool exact=plan.carryFrom==last->generation&&plan.carry.size()==last->tracks.size();
+        for(size_t j=0;j<last->tracks.size();++j){
+            auto& old=last->tracks[j];
+            if(old.type!="midi")continue;
+            int to=-1;bool keep=false;
+            if(exact){to=plan.carry[j].to;keep=plan.carry[j].keep;}
+            else for(size_t k=0;k<plan.tracks.size();++k)if(plan.tracks[k].id==old.id){to=(int)k;break;}
+            if(keep&&to>=0){plan.tracks[(size_t)to].activeNotes=old.activeNotes;continue;}
+            releaseHeld(old,midiPlan,hardware,callbackStartMs);
+            if(to>=0)plan.tracks[(size_t)to].chasePending=true;
+        }
+    }
+    // Stored after the notes were taken over: reclaimPlans keeps `last` while
+    // this still names it.
+    liveCarry_.store(&plan,std::memory_order_release);
+}
+
+void SequencerEngine::releaseHeld(Track& track,MidiExecutionPlan* midiPlan,MidiOutputSink* hardware,double callbackStartMs) noexcept
+{
+    auto& buffer=releaseScratch_;buffer.clear();
+    for(int channel=1;channel<=16;++channel)for(int pitch=0;pitch<128;++pitch){
+        auto& held=track.activeNotes[(size_t)((channel-1)*128+pitch)];
+        for(int sent=0;held>0&&sent<4;--held,++sent)buffer.addEvent(juce::MidiMessage::noteOff(channel,pitch),0);
+        held=0;
+    }
+    if(buffer.isEmpty())return;
+    // The track's own destinations, as it played them: a released note rings
+    // out, and nothing is silenced.
+    bool hardwareSent=false;
+    const auto send=[&](Track::MidiOutputKind kind,const std::string& id,Chain* chain){
+        if(kind==Track::MidiOutputKind::physical){if(hardware&&!hardwareSent)hardware->sendBlock(buffer,callbackStartMs,sampleRate_);hardwareSent=true;}
+        else if(kind==Track::MidiOutputKind::processor){if(midiPlan)midiPlan->pushInputBuffer(id,buffer);}
+        else if(chain)chain->pushMidi(buffer,chain->midiEpoch());
+    };
+    send(track.midiOutputKind,track.outputId,track.destination);
+    for(const auto& hop:track.thru)send(hop.kind,hop.id,hop.chain);
 }
 
 void SequencerEngine::clearPlan()
@@ -320,9 +411,12 @@ void SequencerEngine::reclaimPlans(const Plan* published)
     // owned by preparedExportPlan_ and destroyed against its own claim in
     // cancelExport() and serviceEvents().
     const auto* liveHazard=liveHazard_.load(std::memory_order_acquire);
+    // Read after the live claim: the callback names a plan as the one it
+    // played last while it still claims it, and lets the claim go after.
+    const auto* liveCarry=liveCarry_.load(std::memory_order_acquire);
     const auto* exportHazard=exportHazard_.load(std::memory_order_acquire);
     const auto* exportPlan=exportPlan_.load(std::memory_order_acquire);
-    plans_.erase(std::remove_if(plans_.begin(),plans_.end(),[published,liveHazard,exportHazard,exportPlan](const auto& owned){return owned.get()!=published&&owned.get()!=liveHazard&&owned.get()!=exportHazard&&owned.get()!=exportPlan;}),plans_.end());
+    plans_.erase(std::remove_if(plans_.begin(),plans_.end(),[published,liveHazard,liveCarry,exportHazard,exportPlan](const auto& owned){return owned.get()!=published&&owned.get()!=liveHazard&&owned.get()!=liveCarry&&owned.get()!=exportHazard&&owned.get()!=exportPlan;}),plans_.end());
 }
 
 SequencerEngine::Plan* SequencerEngine::acquirePlan(bool exportContext) noexcept
@@ -367,6 +461,7 @@ int SequencerEngine::eventOffset(double target,double start,double qps,int count
 void SequencerEngine::processMidi(int count,Transport& transport,MidiExecutionPlan* midiPlan,MidiOutputSink* hardware,double callbackStartMs) noexcept
 {
     const bool exportContext=&transport==&offlineExportTransport_;auto* plan=acquirePlan(exportContext);if(!plan)return;
+    if(!exportContext)adoptLivePlan(*plan,midiPlan,hardware,callbackStartMs);
     const bool cleanup=(exportContext?exportMidiCleanupPending_:midiCleanupPending_).exchange(false,std::memory_order_acq_rel);
     const bool released=!exportContext&&midiReleasePending_.exchange(false,std::memory_order_acq_rel);
     const bool playing=transport.processingPlaying()&&transport.playing();
@@ -385,9 +480,11 @@ void SequencerEngine::processMidi(int count,Transport& transport,MidiExecutionPl
         for(auto& hop:track.thru)hop.blockEpoch=hop.chain?hop.chain->midiEpoch():0;
         if(cleanup||released){for(int channel=1;channel<=16;++channel){for(int pitch=0;pitch<128;++pitch){auto& held=track.activeNotes[(size_t)((channel-1)*128+pitch)];while(held>0){buffer.addEvent(juce::MidiMessage::noteOff(channel,pitch),0);--held;}}if(cleanup){buffer.addEvent(juce::MidiMessage::allNotesOff(channel),0);buffer.addEvent(juce::MidiMessage::allSoundOff(channel),0);}}}
         const bool muted=track.runtime&&track.runtime->muted.load(std::memory_order_acquire);
+        const bool chaseTrack=playing&&(chase||track.chasePending);
+        if(playing)track.chasePending=false;
         int activeClips=0;
         if(playing&&!muted){for(const auto& clip:track.clips){bool active=false;for(int sample=0;sample<count&&!active;++sample){const double q=transport.ppqAtSample(sample);active=q>=clip.startPpq&&q<clip.startPpq+clip.lengthPpq;}if(active)++activeClips;}
-            for(const auto& event:track.midi){int on=sourceEnded?-1:eventOffset(event.startPpq,start,qps,count,transport),off=eventOffset(event.endPpq,start,qps,count,transport);if(exportContext&&event.startPpq>=exportSourceEndPpq())on=-1;if(on>=0)buffer.addEvent(juce::MidiMessage::noteOn((int)event.channel,(int)event.pitch,(juce::uint8)event.velocity),on);else if(chase&&!sourceEnded&&!transport.loopEnabled()&&event.startPpq<start&&event.endPpq>start)buffer.addEvent(juce::MidiMessage::noteOn((int)event.channel,(int)event.pitch,(juce::uint8)event.velocity),0);if(off>=0)buffer.addEvent(juce::MidiMessage::noteOff((int)event.channel,(int)event.pitch),off);else if(transport.loopEnabled()&&event.startPpq<transport.loopEnd()&&event.endPpq>=transport.loopEnd()){const int boundary=(int)std::llround((transport.loopEnd()-start)/qps);if(boundary>=0&&boundary<=count)buffer.addEvent(juce::MidiMessage::noteOff((int)event.channel,(int)event.pitch),std::min(count-1,boundary));}}
+            for(const auto& event:track.midi){int on=sourceEnded?-1:eventOffset(event.startPpq,start,qps,count,transport),off=eventOffset(event.endPpq,start,qps,count,transport);if(exportContext&&event.startPpq>=exportSourceEndPpq())on=-1;if(on>=0)buffer.addEvent(juce::MidiMessage::noteOn((int)event.channel,(int)event.pitch,(juce::uint8)event.velocity),on);else if(chaseTrack&&!sourceEnded&&!transport.loopEnabled()&&event.startPpq<start&&event.endPpq>start)buffer.addEvent(juce::MidiMessage::noteOn((int)event.channel,(int)event.pitch,(juce::uint8)event.velocity),0);if(off>=0)buffer.addEvent(juce::MidiMessage::noteOff((int)event.channel,(int)event.pitch),off);else if(transport.loopEnabled()&&event.startPpq<transport.loopEnd()&&event.endPpq>=transport.loopEnd()){const int boundary=(int)std::llround((transport.loopEnd()-start)/qps);if(boundary>=0&&boundary<=count)buffer.addEvent(juce::MidiMessage::noteOff((int)event.channel,(int)event.pitch),std::min(count-1,boundary));}}
         }
         if(track.runtime)track.runtime->activeClips.store(activeClips,std::memory_order_release);
         if(sourceStopsThisBlock)for(int channel=1;channel<=16;++channel){buffer.addEvent(juce::MidiMessage::allNotesOff(channel),sourceStopOffset);buffer.addEvent(juce::MidiMessage::allSoundOff(channel),sourceStopOffset);}

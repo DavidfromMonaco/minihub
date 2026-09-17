@@ -555,6 +555,19 @@ comes after its design is approved (steps 14 and 15).
       no All Sound Off reaches a chain; a changed Destination still panics +
       `npm test` + heard by the author: a note edited while a pad plays leaves
       the pad sounding.
+      Built 2026-09-17: each plan names the plan it was compiled against and
+      what becomes of each of its tracks; the callback takes that over
+      (`adoptLivePlan`) and `reclaimPlans` keeps the plan it played last until
+      it has. A track added keeps the routing; a track removed or sent
+      elsewhere panics. Two edits between two blocks release and chase every
+      track. `sequencerSynced` carries `keptRouting`, and the startup log
+      prints it. Build 0 errors 0 warnings; `--core` (1568 checks, the new
+      `sync-keeps-routing` among them, which fails with the carry taken out),
+      `--vst3-e2e` (99), `--cross-track-isolation` (27),
+      `mlh_realtime_output_tests` (2535); `npm test` (1183), `npm run check`,
+      `npm run sync:dist`. The real engine over stdio: a first arrangement,
+      then a note changed while playing and a track added (kept), then a track
+      sent elsewhere (not kept), no error. **Not heard yet by the author.**
 - [ ] 11. MIDI IN and the material: the node's MIDI IN and MIDI OUT ports; One
       Ring as a track's Destination, the end of a MIDI thru walk, an input for
       a cabled controller; its destinations described and handed to the

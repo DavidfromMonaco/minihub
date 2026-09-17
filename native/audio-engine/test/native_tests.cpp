@@ -966,6 +966,79 @@ void testSeekReleasesWithoutSilencing()
     expect(std::any_of(stopped.begin(),stopped.end(),[](const juce::MidiMessage& m){return m.isAllSoundOff();}),"a panic still sends All Sound Off");
 }
 
+void testSyncKeepingRoutingReleasesOnlyWhatChanged()
+{
+    // A clip edited, or written by One Ring, while the piece plays. When every
+    // track still plays where it played, nothing is silenced: the track whose
+    // notes changed gives its sounding note a Note Off and chases the new
+    // content, and the other track's note plays on to its own end. A track
+    // sent somewhere else still panics.
+    mlh::SequencerEngine sequencer;sequencer.prepare(48000,1024);
+    mlh::Chain pad("vst-pad"),lead("vst-lead");pad.setMidiEnabled(true);lead.setMidiEnabled(true);
+    const auto lookup=[&](const std::string& id)->mlh::Chain*{return id=="vst-pad"?&pad:id=="vst-lead"?&lead:nullptr;};
+    auto padTrack=midiTrack("track-pad","vst-pad");mlh::setProp(padTrack,"outputKind","vst");
+    auto leadTrack=midiTrack("track-lead","vst-lead");mlh::setProp(leadTrack,"outputKind","vst");
+    const auto notesOf=[](juce::var& track,int pitch){juce::Array<juce::var> notes;notes.add(midiNote(0,3.5,pitch));replaceMidiNotes(track,notes);};
+    notesOf(padTrack,48);notesOf(leadTrack,72);
+    juce::Array<juce::var> tracks;tracks.add(padTrack);tracks.add(leadTrack);juce::Array<juce::var> info;std::string error;
+    bool kept=true,withAdded=false;juce::var added;
+    const auto publish=[&](){tracks.clear();tracks.add(padTrack);tracks.add(leadTrack);if(withAdded)tracks.add(added);return sequencer.sync(makeSequencerProject(tracks),lookup,48000,1024,info,error,&kept);};
+    expect(publish()&&!kept,"a first arrangement is a new wiring");
+    mlh::Transport transport;transport.setSampleRate(48000);transport.setLoop(false,0,4);transport.seekPpq(0);transport.setPlaying(true);transport.beginBlock();
+    std::vector<juce::MidiMessage> padOut,leadOut;
+    const auto pull=[](mlh::Chain& chain,std::vector<juce::MidiMessage>& into){into.clear();juce::MidiBuffer midi;chain.pullMidi(midi,1024);for(const auto& e:midi)into.push_back(e.getMessage());};
+    const auto play=[&](){sequencer.processMidi(1024,transport,nullptr);pull(pad,padOut);pull(lead,leadOut);transport.advance(1024);transport.beginBlock();};
+    const auto has=[](const std::vector<juce::MidiMessage>& out,bool on,int pitch){return std::any_of(out.begin(),out.end(),[on,pitch](const juce::MidiMessage& m){return (on?m.isNoteOn():m.isNoteOff())&&m.getNoteNumber()==pitch;});};
+    const auto silenced=[](const std::vector<juce::MidiMessage>& out){return std::any_of(out.begin(),out.end(),[](const juce::MidiMessage& m){return m.isAllNotesOff()||m.isAllSoundOff();});};
+    play();
+    expect(has(padOut,true,48)&&has(leadOut,true,72),"both tracks sound their note");
+    play();
+    const auto padEpoch=pad.midiEpoch(),leadEpoch=lead.midiEpoch();
+
+    notesOf(leadTrack,76);
+    expect(publish()&&kept,"a clip changed on its track keeps the routing");
+    play();
+    expect(padOut.empty(),"the unchanged track's note plays on: nothing reaches its instrument");
+    expect(leadOut.size()==2&&leadOut[0].isNoteOff()&&leadOut[0].getNoteNumber()==72&&leadOut[1].isNoteOn()&&leadOut[1].getNoteNumber()==76,
+           "the changed track releases its note, then chases its new one");
+    expect(!silenced(padOut)&&!silenced(leadOut)&&pad.midiEpoch()==padEpoch&&lead.midiEpoch()==leadEpoch,
+           "no All Sound Off, and no chain's epoch moved");
+
+    // The carried note is still the sequencer's to end: a seek releases it.
+    sequencer.release();transport.beginBlock();play();
+    expect(has(padOut,false,48)&&has(padOut,true,48)&&!silenced(padOut),"the note carried over is released by a seek, and chased");
+
+    // A generation written onto a new track: the routing is kept, nothing moves.
+    added=midiTrack("track-new","vst-lead");mlh::setProp(added,"outputKind","vst");juce::Array<juce::var> none;replaceMidiNotes(added,none);
+    withAdded=true;
+    expect(publish()&&kept,"a track added keeps the routing");
+    play();
+    expect(padOut.empty()&&leadOut.empty(),"and releases nothing");
+
+    // Two edits between two blocks: the callback never played the plan in the
+    // middle, so it releases everything and chases, as a seek does.
+    notesOf(leadTrack,79);expect(publish()&&kept,"a first quick edit");
+    notesOf(leadTrack,81);expect(publish()&&kept,"a second quick edit");
+    play();
+    expect(has(padOut,false,48)&&has(padOut,true,48)&&has(leadOut,false,76)&&has(leadOut,true,81)&&!has(leadOut,true,79),
+           "two edits at once release and chase every track, with the latest notes");
+    expect(!silenced(padOut)&&!silenced(leadOut),"still without All Sound Off");
+
+    // Every note ends once, at its own end.
+    int padOffs=0,leadOffs=0;
+    for(int i=0;i<90;++i){play();for(const auto& m:padOut)padOffs+=m.isNoteOff()&&m.getNoteNumber()==48;for(const auto& m:leadOut)leadOffs+=m.isNoteOff()&&m.getNoteNumber()==81;}
+    expect(padOffs==1&&leadOffs==1,"the carried and the chased notes each end exactly once");
+    sequencer.release();transport.beginBlock();play();
+    expect(!has(padOut,false,48)&&!has(leadOut,false,81),"and nothing is left for a later release to end");
+
+    // Sent somewhere else: a new wiring, which panics as it always did.
+    transport.seekPpq(0);transport.beginBlock();play();
+    mlh::setProp(leadTrack,"outputId","vst-pad");
+    expect(publish()&&!kept,"a track sent to another instrument is a new wiring");
+    play();
+    expect(silenced(padOut),"and its panic silences, as before");
+}
+
 void testSequencerMidiThruPlaysTheSeries()
 {
     // D-039. A track wired to one VST plays every node that VST's MIDI OUT is
@@ -2727,6 +2800,8 @@ int main(int argc, char** argv)
     testArpeggiatorTakesValuesWhilePlaying();
     std::cerr << "[core] seek-releases\n";
     testSeekReleasesWithoutSilencing();
+    std::cerr << "[core] sync-keeps-routing\n";
+    testSyncKeepingRoutingReleasesOnlyWhatChanged();
     std::cerr << "[core] audio-input-routing\n";
     testSequencerAudioInputRoutingAuthority();
     std::cerr << "[core] sequencer-sum-gain\n";

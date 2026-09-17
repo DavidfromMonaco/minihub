@@ -34,10 +34,16 @@ public:
     SequencerEngine();
     ~SequencerEngine();
 
+    /** `keptRouting` says whether every track kept where it plays. Then no
+     *  destination is panicked: the audio thread gives Note Off to the notes of
+     *  the tracks whose clips changed, and the rest play on (a clip written
+     *  while the piece plays must not cut it). Otherwise the sync panics, and
+     *  the engine silences every chain as before. */
     bool sync(const juce::var& project,
               const std::function<Chain*(const std::string&)>& chainLookup,
               double engineSampleRate, int maxBlockSize,
-              juce::Array<juce::var>& audioInfo, std::string& error);
+              juce::Array<juce::var>& audioInfo, std::string& error,
+              bool* keptRouting = nullptr);
     /** Publish an empty immutable plan, silencing any arrangement that was
      *  active before a failed sync or project handoff. */
     void clearPlan();
@@ -139,6 +145,11 @@ private:
     struct MidiEvent {
         double startPpq = 0, endPpq = 0;
         uint8_t pitch = 60, velocity = 100, channel = 1;
+        bool operator==(const MidiEvent& other) const noexcept
+        {
+            return startPpq == other.startPpq && endPpq == other.endPpq && pitch == other.pitch
+                && velocity == other.velocity && channel == other.channel;
+        }
     };
     struct AudioAsset {
         double sampleRate = 48000, durationSeconds = 0;
@@ -188,13 +199,33 @@ private:
         juce::AudioBuffer<float> audioSumScratch; // SUM, cleared once per track/block
         std::shared_ptr<TrackRuntime> runtime;
         std::array<uint16_t, 16 * 128> activeNotes{}; // audio-thread-owned
+        // Audio-thread-owned: this track's notes were released when its plan
+        // came in, so its next playing block chases the position.
+        bool chasePending = false;
         std::vector<MidiEvent> midi;
         std::vector<AudioClip> audio;
         std::vector<ClipTrace> clips;
     };
-    struct Plan { uint64_t generation = 0; std::vector<Track> tracks; };
+    /** What becomes of one track of the plan this one replaces. */
+    struct Carry {
+        int to = -1;       // the same track in this plan, or -1
+        bool keep = false; // same notes, not muted: its sounding notes go on
+    };
+    struct Plan {
+        uint64_t generation = 0;
+        std::vector<Track> tracks;
+        // The plan this one was compiled against, when every track kept its
+        // routing, and what becomes of each of its tracks. 0: the sync panicked.
+        uint64_t carryFrom = 0;
+        std::vector<Carry> carry;
+    };
     /** Panic every chain one track plays: its destination and its series. */
     static void panicDestinations(const Track&) noexcept;
+    static bool keepsRouting(const Plan& before, const Plan& after) noexcept;
+    /** Audio thread: the plan the callback played last hands its sounding
+     *  notes to `plan` -- kept, or given their Note Off. */
+    void adoptLivePlan(Plan& plan, MidiExecutionPlan*, MidiOutputSink*, double callbackStartMs) noexcept;
+    void releaseHeld(Track&, MidiExecutionPlan*, MidiOutputSink*, double callbackStartMs) noexcept;
 
     struct RecordedMidiEvent {
         double startPpq = 0, durationPpq = 0;
@@ -232,6 +263,10 @@ private:
     // later store erased the earlier claim, and the next edit could free the
     // plan the callback was still walking.
     std::atomic<Plan*> activePlan_{nullptr}, liveHazard_{nullptr}, exportHazard_{nullptr};
+    // The plan the callback played last, written by the audio thread alone and
+    // kept by reclaimPlans until the callback has taken its sounding notes over.
+    std::atomic<Plan*> liveCarry_{nullptr};
+    juce::MidiBuffer releaseScratch_; // audio-thread-owned, sized once
     // Captured before exportActive_ opens. It remains owned even if the editor
     // publishes a newer arrangement while the current master is rendering.
     std::atomic<Plan*> exportPlan_{nullptr};

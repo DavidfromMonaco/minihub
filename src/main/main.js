@@ -182,7 +182,11 @@ function startEngine() {
             // played, or only handed the running arpeggiators their new values.
             : (msg.type === 'midiNetworkSynced'
               ? ` nodes=${Number.isSafeInteger(msg.nodeCount) ? msg.nodeCount : '?'} rebuilt=${msg.rebuilt === true}`
-              : (msg.count !== undefined ? ' count=' + msg.count : '')))));
+              // An arrangement sync either kept every track where it plays,
+              // leaving the instruments sounding, or panicked them all.
+              : (msg.type === 'sequencerSynced'
+                ? ` tracks=${Number.isSafeInteger(msg.trackCount) ? msg.trackCount : '?'} keptRouting=${msg.keptRouting === true}`
+                : (msg.count !== undefined ? ' count=' + msg.count : ''))))));
       // Periodic telemetry is not written to disk; runtime telemetry only is,
       // and only when the window it describes actually reports a fault.
       const trace = engineEventTrace(msg, eventDetails);

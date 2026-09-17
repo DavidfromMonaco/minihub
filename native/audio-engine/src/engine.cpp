@@ -1908,7 +1908,13 @@ void Engine::cmdResetMasterClip(const juce::var&)
 
 void Engine::cmdSyncSequencer(const juce::var& msg)
 {
-    juce::Array<juce::var> info;std::string error;if(!sequencer_.sync(msg["project"],[this](const std::string&id){return id.empty()?nullptr:getOrCreateChain(juce::String(id));},currentSampleRate_,currentBlockSize_,info,error)){panicAllMidi();sendError("sequencer-invalid",juce::String(error));return;}panicAllMidi();for(const auto& event:info)ipc_.send(event);juce::var out=makeObject();setProp(out,"type","sequencerSynced");setProp(out,"trackCount",msg["project"]["tracks"].getArray()?msg["project"]["tracks"].getArray()->size():0);ipc_.send(out);
+    juce::Array<juce::var> info;std::string error;bool keptRouting=false;if(!sequencer_.sync(msg["project"],[this](const std::string&id){return id.empty()?nullptr:getOrCreateChain(juce::String(id));},currentSampleRate_,currentBlockSize_,info,error,&keptRouting)){panicAllMidi();sendError("sequencer-invalid",juce::String(error));return;}
+    // A sync that keeps every track where it plays -- a clip edited, or written
+    // by One Ring, while the piece plays -- leaves the instruments sounding:
+    // the sequencer releases what it must itself. A new wiring still silences
+    // every chain.
+    if(!keptRouting)panicAllMidi();
+    for(const auto& event:info)ipc_.send(event);juce::var out=makeObject();setProp(out,"type","sequencerSynced");setProp(out,"keptRouting",keptRouting);setProp(out,"trackCount",msg["project"]["tracks"].getArray()?msg["project"]["tracks"].getArray()->size():0);ipc_.send(out);
 }
 
 void Engine::cmdSetSequencerTrackControl(const juce::var& msg)

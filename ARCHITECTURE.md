@@ -613,8 +613,13 @@ pour que les instruments qui ignorent l'un ou l'autre CC s'arrêtent quand même
 A seek is not a panic. `Engine::releaseAllMidi` gives the notes the sequencer
 and the arpeggiators sound their Note Off, lets them ring out, and the sequencer
 chases the new position. One Ring's SEEK 0 at the end of its cycle used to put
-All Sound Off on every chain and cut every voice at the loop point. Stop, a
-sequencer sync and a new MIDI wiring still panic.
+All Sound Off on every chain and cut every voice at the loop point. Stop, a new
+MIDI wiring and a sequencer sync that sends a track somewhere else still panic.
+A sync that keeps every track where it plays — a clip edited, or written, while
+the piece plays — panics nothing: the callback gives Note Off to the notes of
+the tracks whose clips changed and chases their new ones, and the other tracks
+play on (`SequencerEngine::adoptLivePlan`; `sequencerSynced` says
+`keptRouting`).
 
 ### `MidiExecutionPlan` — arpégiateurs et destinations
 
