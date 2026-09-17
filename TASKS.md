@@ -11,9 +11,10 @@ finished, delete its entry**, in the same commit. What was done lives in git and
 of the Matrix node (ROADMAP item 7). One Ring becomes a node of MiniHub with
 every function of the VST, its clock in the engine, its commands through the
 same CTRL OUT path, and a new page after hardware sequencers.
-Steps 0 to 5 of 11 done: the node runs in MiniHub, tried by the author on
-2026-09-17. Step 6, the page's design as a still after the author's three
-machines, is drawn and waiting for the author's go.
+Steps 0 to 6 of 11 done: the node runs in MiniHub, tried by the author on
+2026-09-17, and its page's design is approved. The page itself (steps 7 and 8)
+is built and was tried in a browser on a fake engine; waiting for the author's
+trial in MiniHub.
 - Not seen yet: a sequence copied from the VST, in the application.
 Plan: [plans/active/one-ring-native.md](plans/active/one-ring-native.md).
 

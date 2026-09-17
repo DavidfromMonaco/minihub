@@ -131,6 +131,11 @@ export class CommandBus {
     return targets;
   }
 
+  /** What a node's CTRL OUT reaches, whether or not anything runs there: a One Ring page's target lists. */
+  targetsFrom(nodeId) {
+    return typeof nodeId === 'string' && nodeId ? this.targetsOf({ chainId: nodeId }) : [];
+  }
+
   /** Execute a batch of packets drained from one plugin instance, or from a One Ring node. */
   dispatch(message) {
     const native = typeof message?.nodeId === 'string';

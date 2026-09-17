@@ -28,6 +28,8 @@
  *   2. primitives  module frame, panels, labels, wells, control strip
  *   3. controls    selects, knobs, switches, buttons
  *   4. arpeggiator piano roll + velocity lane built on the primitives
+ *   5. sequencer hardware (key caps, LEDs, LCDs, pads, selectors) and the
+ *      One Ring page built on them
  *
  * CSP note: `style-src 'self'` - no inline styles anywhere. Anything that must
  * vary per value is expressed through SVG geometry attributes (percentages,
@@ -123,6 +125,62 @@
   --op-row-scale: rgba(255, 255, 255, 0.035);
   --op-axis: linear-gradient(90deg, #3a3d42 0%, #34373c 100%);
   --op-step-current: rgba(255, 139, 44, 0.16);
+
+  /* --- sequencer hardware (section 5) ------------------------------------- */
+  /* The glass strip across the top of an SQ-64, and the display behind it. */
+  --op-glass: linear-gradient(180deg, #1e2023 0%, #17181b 58%, #131416 100%);
+  --op-glass-sheen: linear-gradient(180deg, rgba(255, 255, 255, 0.045) 0%, rgba(255, 255, 255, 0) 42%);
+  --op-glass-edge: #0e0f11;
+  --op-glass-bevel: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  --op-display-bg: #060708;
+  --op-display-inset: inset 0 2px 8px rgba(0, 0, 0, 0.9), 0 0 0 1px rgba(255, 255, 255, 0.04);
+  --op-display-text: #e6ecf0;
+  --op-display-dim: #5b636b;
+  --op-display-dot: #1c1e21;
+  --op-display-glow: 0 0 7px rgba(230, 236, 240, 0.3);
+  --op-display-accent-glow: 0 0 8px rgba(255, 139, 44, 0.55);
+  /* Rubber key caps, lit orange like the accent or white like a Programm pad. */
+  --op-keycap: linear-gradient(180deg, #46494f 0%, #3b3e44 55%, #34373c 100%);
+  --op-keycap-edge: #53575e;
+  --op-keycap-shadow: 0 2px 0 #18191b, 0 4px 8px rgba(0, 0, 0, 0.5);
+  --op-keycap-shadow-pressed: 0 1px 0 #18191b, 0 2px 4px rgba(0, 0, 0, 0.45);
+  --op-keycap-bevel: inset 0 1px 0 rgba(255, 255, 255, 0.13);
+  --op-keycap-lit: linear-gradient(180deg, #ffb877 0%, #ff8f33 50%, #ee7815 100%);
+  --op-keycap-lit-glow: 0 0 16px rgba(255, 139, 44, 0.5), 0 0 3px rgba(255, 139, 44, 0.9);
+  --op-keycap-white: linear-gradient(180deg, #f6f7f8 0%, #dcdfe3 100%);
+  --op-keycap-white-glow: 0 0 14px rgba(255, 255, 255, 0.28);
+  --op-keycap-white-text: #17191c;
+  --op-keycap-pending: rgba(255, 139, 44, 0.85);
+  --op-led-off: #26282c;
+  --op-led-inset: inset 0 1px 1px rgba(0, 0, 0, 0.6);
+  --op-led-on: radial-gradient(circle at 40% 35%, #ffd2a8 0%, #ff8b2c 45%, #d9690d 100%);
+  --op-led-glow: 0 0 7px rgba(255, 139, 44, 0.85);
+  /* LCD fields and the scribble strips that name a channel's target. */
+  --op-lcd: #0b0c0e;
+  --op-lcd-edge: #2a2c30;
+  --op-lcd-inset: inset 0 1px 4px rgba(0, 0, 0, 0.8);
+  --op-lcd-text: #d8dde2;
+  --op-lcd-empty: #4d535a;
+  /* Pads: one per cell. The bar is the cell, lit over its probability. */
+  --op-pad: linear-gradient(180deg, #3b3e44 0%, #313338 100%);
+  --op-pad-shadow: 0 2px 0 #151618, 0 3px 6px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  --op-pad-lit: linear-gradient(180deg, #62666e 0%, #4d5057 100%);
+  --op-pad-lit-shadow: 0 2px 0 #151618, 0 0 18px rgba(255, 255, 255, 0.16), inset 0 0 12px rgba(255, 255, 255, 0.12);
+  --op-pad-recess: linear-gradient(180deg, #262729 0%, #232427 100%);
+  --op-pad-recess-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.6);
+  --op-pad-edge: #1a1b1d;
+  --op-pad-edge-out: #1d1e20;
+  --op-pad-num-out: #3c4046;
+  --op-pad-ring: #f4f5f6;
+  --op-bar-off: #4a4d54;
+  --op-bar-on: #ff8b2c;
+  --op-bar-on-bright: #ffc38e;
+  --op-bar-glow: drop-shadow(0 0 3px rgba(255, 139, 44, 0.9));
+  /* A channel's whole sequence, drawn small beside its name. */
+  --op-mini-off: #4a4e56;
+  --op-mini-out: #1c1d20;
+  --op-mini-on: #c96d24;
+  --op-mini-head: #fff3e8;
 
   /* --- geometry ---------------------------------------------------------- */
   --op-radius-lg: 16px;
@@ -994,6 +1052,1137 @@
 
 .omni-pearl ::-webkit-scrollbar-corner {
   background: var(--op-surface-2);
+}
+
+/* ========================= 5. sequencer hardware =========================== */
+/* The One Ring node's page, after the author's references: the Korg SQ-64's
+   glass deck and its four rows of sixteen pads, the Programm's backlit keys,
+   the P-6's printed legends (plans/active/one-ring-native.md, step 6, and the
+   still in docs/design-references/one-ring-faceplate.png). The parts come
+   first and belong to any faceplate; `.op-ring-*` is the page. */
+
+/* ---------- key caps ---------- */
+.op-keycap {
+  position: relative;
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 44px;
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--op-keycap-edge);
+  border-radius: var(--op-radius-sm);
+  background: var(--op-keycap);
+  box-shadow: var(--op-keycap-shadow), var(--op-keycap-bevel);
+  color: var(--op-text);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  line-height: 1;
+  text-transform: uppercase;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.op-keycap svg {
+  fill: currentColor;
+}
+
+.op-keycap:hover:not(:disabled) {
+  filter: brightness(1.1);
+}
+
+.op-keycap:active:not(:disabled) {
+  transform: translateY(1px);
+  box-shadow: var(--op-keycap-shadow-pressed), var(--op-keycap-bevel);
+}
+
+.op-keycap:focus-visible {
+  outline: none;
+  box-shadow: var(--op-ring), var(--op-keycap-shadow);
+}
+
+.op-keycap:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.op-keycap--lg {
+  width: 58px;
+  height: 58px;
+  padding: 0;
+}
+
+.op-keycap--sq {
+  width: 46px;
+  height: 46px;
+  padding: 0;
+  font-size: 17px;
+  letter-spacing: 0;
+}
+
+.op-keycap--word {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+}
+
+.op-keycap--sm {
+  min-width: 0;
+  height: 26px;
+  padding: 0 9px;
+  font-size: 10px;
+}
+
+.op-keycap.is-lit {
+  border-color: var(--op-orange-deep);
+  background: var(--op-keycap-lit);
+  box-shadow: var(--op-keycap-shadow), var(--op-keycap-lit-glow);
+  color: var(--op-text-on-accent);
+}
+
+.op-keycap.is-white {
+  background: var(--op-keycap-white);
+  box-shadow: var(--op-keycap-shadow), var(--op-keycap-white-glow);
+  color: var(--op-keycap-white-text);
+}
+
+/* A scene waiting for its bar, and the scenes STORE is waiting to be given. */
+.op-keycap.is-pending,
+.op-keycap.is-armed {
+  border-color: var(--op-keycap-pending);
+  box-shadow: var(--op-keycap-shadow), 0 0 0 1px var(--op-keycap-pending), 0 0 12px var(--op-orange-soft);
+  color: var(--op-orange);
+  animation: op-blink 1s steps(2, jump-none) infinite;
+}
+
+.op-keycap.is-lit.is-pending {
+  color: var(--op-text-on-accent);
+}
+
+@keyframes op-blink {
+  50% {
+    border-color: var(--op-keycap-edge);
+    box-shadow: var(--op-keycap-shadow), var(--op-keycap-bevel);
+  }
+}
+
+.op-keycap.is-dim {
+  color: var(--op-text-faint);
+}
+
+.op-keycap-row {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+/* ---------- LEDs ---------- */
+.op-led {
+  display: inline-block;
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--op-led-off);
+  box-shadow: var(--op-led-inset);
+}
+
+.op-led.is-on {
+  background: var(--op-led-on);
+  box-shadow: var(--op-led-glow);
+}
+
+/* ---------- printed legends ---------- */
+.op-legend {
+  color: var(--op-text-faint);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  line-height: 1.2;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.op-legend.is-on,
+.op-legend.accent {
+  color: var(--op-orange);
+}
+
+.op-legend.is-unavailable {
+  color: var(--op-lcd-empty);
+  text-decoration: line-through;
+}
+
+.op-legend.is-error {
+  color: var(--op-danger);
+}
+
+button.op-legend {
+  padding: 2px 0;
+  border: 0;
+  background: none;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+button.op-legend:hover:not(:disabled) {
+  color: var(--op-text-dim);
+}
+
+button.op-legend.is-on:hover {
+  color: var(--op-orange-hover);
+}
+
+button.op-legend:disabled {
+  cursor: default;
+}
+
+/* ---------- LCD fields and scribble strips ---------- */
+.op-lcd {
+  display: inline-flex;
+  align-items: center;
+  box-sizing: border-box;
+  height: 30px;
+  min-width: 0;
+  padding: 0 10px;
+  border: 1px solid var(--op-lcd-edge);
+  border-radius: 5px;
+  background: var(--op-lcd);
+  box-shadow: var(--op-lcd-inset);
+  color: var(--op-lcd-text);
+  font-family: "Cascadia Code", Consolas, "Roboto Mono", monospace;
+  font-size: 13px;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+
+input.op-lcd {
+  outline: none;
+}
+
+input.op-lcd:hover {
+  border-color: var(--op-border-strong);
+}
+
+input.op-lcd:focus {
+  border-color: var(--op-orange);
+  box-shadow: var(--op-ring), var(--op-lcd-inset);
+}
+
+input.op-lcd:disabled {
+  color: var(--op-lcd-empty);
+}
+
+.op-lcd.is-invalid {
+  border-color: var(--op-danger);
+}
+
+.op-lcd.is-dim {
+  color: var(--op-text-faint);
+}
+
+.op-lcd--sm {
+  height: 22px;
+  padding: 0 7px;
+  font-size: 11px;
+  text-align: center;
+}
+
+.op-lcd--seed {
+  width: 196px;
+}
+
+.op-lcd--value {
+  width: 86px;
+}
+
+.op-lcd--list {
+  width: 220px;
+}
+
+.op-scribble {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  height: 24px;
+  padding: 0 8px;
+  overflow: hidden;
+  border: 1px solid var(--op-lcd-edge);
+  border-radius: 4px;
+  background: var(--op-lcd);
+  box-shadow: var(--op-lcd-inset);
+  color: var(--op-lcd-text);
+  font-family: "Cascadia Code", Consolas, "Roboto Mono", monospace;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.op-scribble-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.op-scribble.is-empty {
+  color: var(--op-lcd-empty);
+}
+
+.op-scribble.is-missing .op-scribble-text {
+  color: var(--op-text-faint);
+  text-decoration: line-through;
+}
+
+.op-scribble b {
+  flex: 0 0 auto;
+  color: var(--op-orange);
+  font-weight: 600;
+}
+
+/* ---------- rotary selector: a knob with its positions printed round it ---------- */
+.op-selector {
+  position: relative;
+  width: 116px;
+  height: 84px;
+}
+
+.op-selector .op-knob {
+  position: absolute;
+  top: 26px;
+  left: 36px;
+  width: 44px;
+  height: 44px;
+}
+
+.op-selector .op-knob-body {
+  inset: 2px;
+}
+
+.op-selector-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.op-selector-svg .tick {
+  stroke: var(--op-border-strong);
+  stroke-width: 1.4;
+}
+
+.op-selector-svg .tick.is-on {
+  stroke: var(--op-orange);
+}
+
+.op-selector-svg text {
+  fill: var(--op-text-faint);
+  font-family: inherit;
+  font-size: 9.5px;
+  font-weight: 600;
+}
+
+.op-selector-svg text.is-on {
+  fill: var(--op-orange);
+}
+
+.op-selector-svg .hit {
+  fill: var(--op-handle);
+  pointer-events: all;
+  cursor: pointer;
+}
+
+.op-selector-svg .hit:hover + text {
+  fill: var(--op-text);
+}
+
+.op-selector-svg .pointer {
+  stroke: var(--op-text);
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  opacity: 0.85;
+}
+
+/* The real control, over the knob only: the printed positions stay clickable. */
+.op-selector > .op-native {
+  inset: auto;
+  top: 26px;
+  left: 36px;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+}
+
+.op-selector:has(.op-native:focus-visible) .op-knob-body {
+  box-shadow: var(--op-ring), var(--op-knob-shadow);
+}
+
+/* ---------- a knob turned by dragging up and down ---------- */
+.op-dragknob {
+  border-radius: 50%;
+  outline: none;
+  cursor: ns-resize;
+  touch-action: none;
+}
+
+.op-dragknob:focus-visible .op-knob-body {
+  box-shadow: var(--op-ring), var(--op-knob-shadow);
+}
+
+.op-dragknob.is-dragging .op-knob-body {
+  filter: brightness(1.12);
+}
+
+/* ---------- lever: a switch between two printed positions ---------- */
+.op-lever {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.op-switch--sm {
+  width: 46px;
+  height: 22px;
+}
+
+.op-switch--sm .op-switch-thumb {
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+}
+
+.op-switch--sm .op-native:checked ~ .op-switch-track .op-switch-thumb {
+  transform: translateX(24px);
+}
+
+.op-switch:has(.op-native:disabled) {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* ---------- pads ---------- */
+.op-pad {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 46px;
+  padding: 0;
+  border: 1px solid var(--op-pad-edge);
+  border-radius: 6px;
+  background: var(--op-pad);
+  box-shadow: var(--op-pad-shadow);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.op-pad:hover {
+  filter: brightness(1.1);
+}
+
+.op-pad:focus-visible {
+  outline: 2px solid var(--op-orange);
+  outline-offset: 2px;
+}
+
+.op-pad-bar {
+  position: absolute;
+  top: 7px;
+  left: 18%;
+  width: 64%;
+  height: 4px;
+  overflow: visible;
+}
+
+.op-pad-bar .off {
+  fill: var(--op-bar-off);
+}
+
+.op-pad-bar .on {
+  fill: var(--op-bar-on);
+  filter: var(--op-bar-glow);
+}
+
+.op-pad-num {
+  position: absolute;
+  bottom: 5px;
+  left: 7px;
+  color: var(--op-text-faint);
+  font-family: "Cascadia Code", Consolas, "Roboto Mono", monospace;
+  font-size: 9px;
+}
+
+.op-pad.is-beat .op-pad-num {
+  color: var(--op-text-dim);
+}
+
+.op-pad-flags {
+  position: absolute;
+  right: 6px;
+  bottom: 5px;
+  display: flex;
+  gap: 4px;
+  color: var(--op-text-dim);
+}
+
+.op-pad-flags svg,
+.op-glyph {
+  width: 10px;
+  height: 10px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+}
+
+.op-pad.is-playhead {
+  background: var(--op-pad-lit);
+  box-shadow: var(--op-pad-lit-shadow);
+}
+
+.op-pad.is-playhead .op-pad-bar .on {
+  fill: var(--op-bar-on-bright);
+}
+
+.op-pad.is-playhead .op-pad-num {
+  color: var(--op-text);
+}
+
+.op-pad.is-selected {
+  outline: 2px solid var(--op-pad-ring);
+  outline-offset: 2px;
+}
+
+.op-pad.is-out {
+  border-color: var(--op-pad-edge-out);
+  background: var(--op-pad-recess);
+  box-shadow: var(--op-pad-recess-shadow);
+}
+
+.op-pad.is-out .op-pad-bar {
+  display: none;
+}
+
+.op-pad.is-out .op-pad-num {
+  color: var(--op-pad-num-out);
+}
+
+/* ---------- chips ---------- */
+.op-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 26px;
+  padding: 0 3px 0 10px;
+  border: 1px solid var(--op-orange-line);
+  border-radius: var(--op-radius-pill);
+  background: var(--op-orange-tint);
+  color: var(--op-text);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.op-x {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--op-radius-pill);
+  background: none;
+  color: var(--op-text-faint);
+  font: inherit;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.op-x:hover {
+  color: var(--op-danger);
+}
+
+.op-x:focus-visible {
+  outline: none;
+  box-shadow: var(--op-ring);
+}
+
+/* ---------- the One Ring page ---------- */
+.omni-pearl.op-ring {
+  gap: 12px;
+}
+
+.op-ring-deck {
+  container-type: inline-size;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  row-gap: 14px;
+  padding: 12px 6px;
+  border: 1px solid var(--op-glass-edge);
+  border-radius: var(--op-radius);
+  background: var(--op-glass-sheen), var(--op-glass);
+  box-shadow: var(--op-shadow-2), var(--op-glass-bevel);
+}
+
+.op-ring-group {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0 16px;
+}
+
+.op-ring-group + .op-ring-group::before {
+  content: "";
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  left: 0;
+  width: 1px;
+  background: linear-gradient(180deg, transparent, var(--op-hairline) 20%, var(--op-hairline) 80%, transparent);
+}
+
+.op-ring-group--grow {
+  flex: 1 1 auto;
+}
+
+.op-ring-keys {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.op-ring-keyset {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.op-ring-store {
+  margin-left: 8px;
+}
+
+.op-ring-recall {
+  display: grid;
+  grid-template-columns: auto auto auto auto;
+  align-items: center;
+  gap: 10px;
+  padding-top: 4px;
+}
+
+/* the display */
+.op-display {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-content: space-between;
+  gap: 6px 18px;
+  box-sizing: border-box;
+  width: 440px;
+  height: 100%;
+  min-height: 92px;
+  padding: 11px 16px 10px;
+  border: 1px solid var(--op-glass-edge);
+  border-radius: 6px;
+  background: var(--op-display-bg);
+  box-shadow: var(--op-display-inset);
+  color: var(--op-display-text);
+  font-family: "Cascadia Code", Consolas, "Roboto Mono", monospace;
+  text-shadow: var(--op-display-glow);
+}
+
+.op-display-big {
+  font-size: 25px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.op-display-big small {
+  margin-right: 6px;
+  color: var(--op-display-dim);
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  text-shadow: none;
+}
+
+.op-display-big small + small,
+.op-display-big span + small {
+  margin-left: 12px;
+}
+
+.op-display-right {
+  text-align: right;
+}
+
+.op-display-line {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.op-display-line .dim {
+  color: var(--op-display-dim);
+  text-shadow: none;
+}
+
+.op-display-line .accent {
+  color: var(--op-orange);
+  text-shadow: var(--op-display-accent-glow);
+}
+
+.op-display-line .gap {
+  margin-left: 12px;
+}
+
+.op-display-dots {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.op-display-dots i {
+  width: 7px;
+  height: 7px;
+  border-radius: 1px;
+  background: var(--op-display-dot);
+}
+
+.op-display-dots i.is-on {
+  background: var(--op-display-text);
+  box-shadow: var(--op-display-glow);
+}
+
+/* the body */
+.op-ring-body {
+  display: grid;
+  grid-template-columns: minmax(400px, 540px) minmax(0, 1fr);
+  align-items: stretch;
+  gap: 12px;
+}
+
+.op-ring-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.op-ring-lower {
+  display: grid;
+  grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr);
+  gap: 12px;
+}
+
+.op-ring-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.op-ring-field .op-select {
+  height: 32px;
+}
+
+.op-select--wide {
+  min-width: 170px;
+  max-width: 260px;
+}
+
+/* the channel list */
+.op-ring-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin: 0;
+  padding: 12px;
+  list-style: none;
+}
+
+.op-ring-row {
+  display: grid;
+  grid-template-columns: 60px minmax(110px, 190px) minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--op-radius-sm);
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.op-ring-row:focus-visible {
+  outline: none;
+  box-shadow: var(--op-ring);
+}
+
+.op-ring-row .op-keycap {
+  justify-content: flex-start;
+  width: 60px;
+  height: 30px;
+  padding: 0 0 0 9px;
+  font-size: 12px;
+}
+
+.op-ring-row:hover .op-keycap {
+  filter: brightness(1.1);
+}
+
+.op-ring-row .op-scribble {
+  height: 28px;
+  font-size: 11.5px;
+}
+
+.op-ring-row.is-selected .op-scribble {
+  border-color: var(--op-orange-line);
+}
+
+.op-ring-row.is-disabled .op-keycap {
+  color: var(--op-text-faint);
+}
+
+.op-ring-row.is-disabled .op-scribble,
+.op-ring-row.is-disabled .op-ring-mini {
+  opacity: 0.4;
+}
+
+.op-ring-mini {
+  display: block;
+  width: 100%;
+  height: 28px;
+}
+
+.op-ring-mini .well {
+  fill: var(--op-lcd);
+  stroke: var(--op-lcd-edge);
+}
+
+/* Every cell has the same box; only its column is written in the markup. */
+.op-ring-mini rect[data-cell] {
+  y: 7px;
+  width: 3px;
+  height: 14px;
+  rx: 0.8px;
+}
+
+.op-ring-mini .out {
+  fill: var(--op-mini-out);
+}
+
+.op-ring-mini .off {
+  fill: var(--op-mini-off);
+}
+
+.op-ring-mini .on {
+  fill: var(--op-mini-on);
+}
+
+.op-ring-mini rect.is-head {
+  fill: var(--op-mini-head);
+}
+
+/* the channel being edited */
+.op-ring-chan-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--op-hairline);
+}
+
+.op-ring-chan-id {
+  color: var(--op-text);
+  font-family: "Cascadia Code", Consolas, "Roboto Mono", monospace;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.op-ring-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 6px;
+  padding: 10px 14px 8px;
+  border-bottom: 1px solid var(--op-hairline);
+}
+
+.op-ring-control {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 76px;
+}
+
+.op-ring-control .op-lcd--sm {
+  width: 62px;
+  margin-top: 2px;
+}
+
+.op-ring-sep {
+  align-self: stretch;
+  width: 1px;
+  margin: 4px 8px;
+  background: var(--op-hairline);
+}
+
+.op-ring-control--lever {
+  gap: 10px;
+  padding-bottom: 2px;
+}
+
+/* the pads */
+.op-ring-pads {
+  display: grid;
+  grid-template-columns: 34px repeat(4, minmax(0, 1fr));
+  gap: 8px 14px;
+  padding: 12px 14px 4px;
+}
+
+.op-ring-rowmark {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  color: var(--op-text-faint);
+  font-family: "Cascadia Code", Consolas, "Roboto Mono", monospace;
+  font-size: 10px;
+}
+
+.op-ring-beat {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.op-ring-padlegend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 18px;
+  padding: 8px 14px 12px 62px;
+}
+
+.op-ring-padlegend > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.op-ring-padlegend .op-glyph {
+  color: var(--op-text-dim);
+}
+
+.op-swatch {
+  display: inline-block;
+  width: 16px;
+  height: 4px;
+  border-radius: 1px;
+  background: var(--op-bar-on);
+}
+
+.op-swatch.is-half {
+  background: linear-gradient(90deg, var(--op-bar-on) 50%, var(--op-bar-off) 50%);
+}
+
+.op-swatch.is-head {
+  width: 12px;
+  height: 10px;
+  border-radius: 2px;
+  background: var(--op-pad-lit);
+}
+
+.op-swatch.is-ring {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  background: none;
+  outline: 2px solid var(--op-pad-ring);
+}
+
+/* the cell and the follow actions */
+.op-ring-cellgrid {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  align-items: start;
+  gap: 12px 22px;
+  padding: 12px 14px 14px;
+}
+
+.op-ring-cellwide {
+  display: flex;
+  flex-wrap: wrap;
+  grid-column: 1 / -1;
+  align-items: flex-start;
+  gap: 12px 22px;
+}
+
+.op-ring-valuefields {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.op-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.op-ring-condadd {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.op-ring-condadd .op-select {
+  width: 176px;
+  height: 26px;
+  font-size: 11px;
+}
+
+.op-ring-condadd .op-select + .op-select {
+  width: 86px;
+}
+
+.op-ring-follow ol {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 12px 14px 10px;
+  list-style: none;
+}
+
+.op-ring-follow li {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) 24px;
+  align-items: center;
+  gap: 8px;
+}
+
+.op-ring-follow-index {
+  color: var(--op-orange);
+  font-family: "Cascadia Code", Consolas, "Roboto Mono", monospace;
+  font-size: 11px;
+  text-align: right;
+}
+
+.op-ring-follow .op-scribble {
+  height: 28px;
+}
+
+.op-ring-follow li.op-ring-follow-empty {
+  display: block;
+  padding: 4px 0;
+  color: var(--op-text-faint);
+  font-size: 11px;
+}
+
+.op-ring-followadd {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px 14px;
+  border-top: 1px solid var(--op-hairline);
+}
+
+.op-ring-followadd .op-select {
+  height: 30px;
+  min-width: 0;
+  max-width: none;
+  font-size: 12.5px;
+}
+
+.op-ring-followadd .op-lcd,
+.op-ring-followadd .op-select:nth-child(3) {
+  width: 100%;
+}
+
+.op-ring-followadd .op-keycap {
+  justify-self: start;
+}
+
+/* Narrower than its five groups, the deck wraps, and a separator would open a row. */
+@container (max-width: 1550px) {
+  .op-ring-group + .op-ring-group::before {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .op-keycap.is-pending,
+  .op-keycap.is-armed {
+    animation: none;
+  }
+}
+
+/* The page is drawn for a full-width window; a narrower one stacks it. */
+@media (max-width: 1500px) {
+  .op-ring-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .op-ring-rows {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 18px;
+  }
+}
+
+@media (max-width: 1250px) {
+  .op-ring-lower {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  /* The display takes what is left of the transport's row. */
+  .op-ring-group:has(> .op-display) {
+    flex: 1 1 360px;
+  }
+  .op-display {
+    width: 100%;
+  }
+}
+
+@media (max-width: 1050px) {
+  .op-ring-rows {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .op-ring-pads {
+    gap: 6px 8px;
+    padding: 10px 10px 4px;
+  }
+  .op-ring-beat {
+    gap: 4px;
+  }
+  .op-pad {
+    height: 38px;
+  }
+  .op-pad-num {
+    display: none;
+  }
+  .op-ring-padlegend {
+    padding-left: 14px;
+  }
 }
 
 /* ---------- responsive ---------- */

@@ -9,7 +9,7 @@ page of its own in a new hardware-style design.
 "commence à travailler sur l'intégration de One Ring en natif". His direction
 for the look: every function kept, the whole design redone after hardware
 sequencers — the Korg SQ-64, the Roland P-6, the Cre8audio Programm.
-**Status** — **in progress, 2026-09-17.** Steps 0 to 5 done; step 6's still drawn, waiting for the author's go.
+**Status** — **in progress, 2026-09-17.** Steps 0 to 6 done; the page (steps 7 and 8) built and tried in a browser, waiting for the author's trial in MiniHub.
 
 ## Context
 
@@ -172,30 +172,36 @@ to D-018 (written for the Matrix), D-032 (a command is performance), D-042
       author's second try, the same day: "c'est bon". **Not seen in the
       application: the copy from a VST** — its reader is checked against the
       three real states on disk.
-- [ ] 6. The design, before the page: a still of the faceplate after the
+- [x] 6. The design, before the page: a still of the faceplate after the
       author's references — transport and scenes, the 16 channels, the 64-cell
       grid as lit pads, the channel's settings, the cell's settings — drawn with
       the faceplate's tokens and shown to the author.
       Check: his go. **The author decides here.**
       Drawn 2026-09-17 (log): the page at the size of the arpeggiator's on the
       author's screen, with `omni-pearl.css` and a proposed section of new
-      tokens and parts. **Waiting for the author's go.**
+      tokens and parts. The author's go, the same day: "c'est bon, écris la
+      vraie page". The still is `docs/design-references/one-ring-faceplate.png`.
 - [ ] 7. The page, playing half: channels, the grid with playheads and its four
       cell appearances, the channel's settings, RUN and STOP, RESTART CH and
       STOP CH, scenes.
       Check: `npm test` (domShim) + `npm run check` + `npm run sync:dist` + seen
+      Built with step 8, 2026-09-17 (log). `npm test` (1176), `npm run check`,
+      `npm run sync:dist` — green; tried in a browser on a fake engine.
+      **Waiting for the author's trial in MiniHub.**
 - [ ] 8. The page, authoring half: the cell (active, probability, value modes,
       conditions, locks), Follow Actions, seed, NEW SEED, MUTATE, STORE SCENE,
       scene timing and position.
       Check: same as step 7
+      Built with step 7; same checks, same wait.
 - [ ] 9. Requests: the node answers the VST's vocabulary (describe, status,
       targets, get, set, run, stop, channel, scene, copy-scene, mutate,
       new-seed) from its content, so what programmed the VST programs it.
       Check: `npm test`
 - [ ] 10. Documents: a DECISIONS entry (where the clock runs, why the content is
       the VST's state made sparse, which Stop stops it), D-016 to D-018 and
-      INTENT §8 bis naming One Ring, ARCHITECTURE §5, §6, §7 and §12,
-      ROADMAP item 7 to Done, the TASKS
+      INTENT §8 bis naming One Ring, ARCHITECTURE §5, §6, §7, §10 and §12,
+      AGENTS.md §6 and D-037 (the faceplate is no longer the arpeggiator's
+      alone), ROADMAP item 7 to Done, the TASKS
       entry removed, this plan to `done/`.
       Check: every command under *Done when*
 
@@ -370,3 +376,53 @@ it takes from the references:
 
 Every function of the list in *Context* has its place on it. Not drawn: the
 page with no runtime, and a choice target's value.
+
+2026-09-17 — Steps 6 to 8. The author approved the still and asked for the
+page. It is the still made to work: `modules/oneRing/oneRingFaceplate.js`
+draws it, `oneRingEdits.js` holds what each control does to the sequence (the
+VST editor's rules, as pure functions), `oneRingPanel.js` binds it. The new
+parts -- key caps, LEDs, LCD fields, scribble strips, rotary selectors, drag
+knobs, pads -- are in `ui/omniPearl.js` and section 5 of `omni-pearl.css`,
+whose new colours all sit in the token block; the provisional panel's rules left
+`base.css`. The node's icon is a ring.
+
+Settled while building:
+
+- The page is five regions, each put in only when its markup changes, and the
+  status never redraws: it lights the display, LEDs and playheads in place. A
+  full page is about 110 KB of markup, most of it the sixteen sequence strips,
+  whose cell boxes are drawn by the sheet so that only a column is written.
+- A knob drags up and down (a native range input drags sideways), turns with
+  the arrow keys, takes a typed value, and goes home on a double click. Turned,
+  it writes every 50 ms so the change is heard; the history folds the burst
+  into one step, and the region under the mouse is not redrawn until it lets
+  go.
+- A scene key recalls through the runtime; with no runtime it chooses the scene
+  the file opens in, as performance. STORE arms the scene keys; Escape disarms
+  them. At rest, and after STOP, a Next bar recall applies at once (step 5).
+- Values are checked against the command as typed, a French decimal comma
+  included; a value that does not fit marks its field and writes nothing. A
+  range's other end follows the one moved past it. A list of numbers is typed
+  with semicolons.
+- A new target clears the command, as the VST's editor did; the target lists
+  are what CTRL OUT reaches (`CommandBus.targetsFrom`, whether or not the node
+  runs) and One Ring's own channels and scenes. A target no longer cabled stays
+  authored and is shown struck out.
+- The channel and cell being edited are kept per node for the session. Text
+  being typed survives a redraw it did not cause, and a written field shows the
+  value as the page holds it.
+- Narrower windows stack the page: the channel list goes to two columns below
+  1500 px, the cell and follow panels stack below 1250 px, and the deck's
+  separators go once its groups wrap.
+
+Checked: `test/oneRingPage.test.mjs` (18 tests: the edits, the markup, the page
+bound to a recording container); `npm test` (1176), `npm run check`,
+`npm run sync:dist`. In a browser (the renderer served locally, a fake engine
+answering), with real clicks, drags and keys: RUN lights the display, LEDs and
+playheads; a Next bar recall blinks and plays on the bar; a channel, a pad, a
+double-click, a printed selector position, a selector's list, a knob dragged
+and stepped, a seed refused then taken, STORE, a target and command, a list of
+choices, a condition, a follow action, MUTATE, NEW SEED, the levers, the locks,
+the channel switch and RESTART and STOP of a channel each did what it says;
+focus stayed where it was across redraws. Rendered at 1920, 1500, 1280 and
+1000 px wide. Not seen: the page in MiniHub, with the real engine.

@@ -15,6 +15,8 @@ const ICONS = {
     '<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="10" r="1.5"/><path d="m21 15-5-5-5 5-3-3-5 5"/>',
   sequencer:
     '<path d="M2 12h3l2-7 4 14 2-7 3 0"/>',
+  ring:
+    '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="4" r="2.2" fill="currentColor" stroke="none"/>',
   instrument:
     '<rect x="3" y="7" width="18" height="10" rx="1.5"/><path d="M7 11h.01M11 11h.01M15 11h.01M19 11h.01M9 14h6"/>',
   'audio-effect':

@@ -1771,29 +1771,3 @@ body ::-webkit-scrollbar-corner { background:transparent; }
 .seq-export-state { color:#4ade82; max-width:300px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .seq-audio-detail { position:relative; height:90px; margin-top:14px; border:1px solid var(--border); border-radius:5px; background:#15201e; overflow:hidden; }
 @media (max-width:1000px) { .seq-tools label:nth-last-of-type(n+5){display:none}.seq-track-head{grid-template-columns:24px 24px minmax(0,1fr) 24px 20px}.seq-track-level{grid-template-columns:minmax(0,1fr)}.seq-track-level output{display:none} }
-
-/* ===================== One Ring node =====================
-   Its page until the faceplate after hardware sequencers replaces it
-   (plans/active/one-ring-native.md, steps 6 to 8). The status moves the
-   `active` and `playing` classes up to sixty times a second: nothing here
-   animates them. */
-.one-ring-head { display:flex; align-items:center; flex-wrap:wrap; gap:8px; }
-.one-ring-state { color:var(--text-dim); font:11px var(--mono); }
-.one-ring-scenes { display:flex; gap:4px; margin-left:auto; }
-.one-ring-scene { min-width:32px; }
-.one-ring-scene.active { color:#17191d; background:var(--accent-sequencer); border-color:var(--accent-sequencer); }
-/* A scene pressed under Next bar, waiting for its bar. */
-.one-ring-scene.pending { color:var(--accent-sequencer); border-color:var(--accent-sequencer); animation:one-ring-pending 1s infinite; }
-@keyframes one-ring-pending { 50% { border-color:transparent; } }
-@media (prefers-reduced-motion: reduce) { .one-ring-scene.pending { animation:none; } }
-.one-ring-refusal { margin:8px 0 0; color:#f5c451; font:11px var(--mono); }
-.one-ring-channels { display:grid; gap:4px; margin:12px 0 0; padding:0; list-style:none; }
-.one-ring-channel { display:grid; grid-template-columns:44px minmax(120px,220px) minmax(0,1fr); align-items:center; gap:8px; color:var(--text-dim); font:11px var(--mono); }
-.one-ring-channel.disabled { opacity:.45; }
-.one-ring-channel.active .one-ring-channel-name { color:var(--accent-sequencer); }
-.one-ring-channel-target { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.one-ring-cells { display:flex; gap:2px; min-width:0; overflow:hidden; }
-.one-ring-cell { flex:0 0 auto; width:8px; height:14px; border-radius:2px; background:#2a2e35; }
-.one-ring-cell.on { background:#6b7380; }
-.one-ring-cell.playing { box-shadow:inset 0 0 0 1px var(--accent-sequencer); }
-.one-ring-cell.on.playing { background:var(--accent-sequencer); }

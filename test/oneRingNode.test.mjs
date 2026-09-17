@@ -2,8 +2,6 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHub } from '../src/renderer/js/core/hub.js';
 import { setupEditHistory } from '../src/renderer/js/core/editHistory.js';
-import { getNodeEditor } from '../src/renderer/js/core/nodeEditors.js';
-import { registerOneRingPanel } from '../src/renderer/js/modules/oneRing/oneRingPanel.js';
 import { VALUE_TYPE } from '../src/renderer/js/core/commandRegistry.js';
 import { CHANNEL_COUNT, cellAt, setCell } from '../src/renderer/js/core/oneRingSequence.js';
 import { listOmniBoxCategories } from '../src/renderer/js/core/nodeTypes.js';
@@ -241,90 +239,4 @@ test('a refused sequence is said on the node, and sent again at the next change'
   const before = sent('syncOneRing').length;
   hub.oneRing.sync(ring.id);
   assert.equal(sent('syncOneRing').length, before + 1);
-});
-
-function fakeElement(dataset = {}) {
-  const classes = new Set();
-  return {
-    dataset,
-    disabled: false,
-    hidden: true,
-    textContent: '',
-    classList: {
-      toggle: (name, force) => { if (force) classes.add(name); else classes.delete(name); },
-      contains: (name) => classes.has(name)
-    },
-    closest(selector) { return selector.split(',').some((part) => this.matches(part.trim())) ? this : null; },
-    matches(selector) {
-      const name = selector.replace(/^\[data-|\]$/g, '').replace(/-([a-z])/g, (_, c) => c.toUpperCase());
-      return Object.hasOwn(this.dataset, name);
-    }
-  };
-}
-
-test('the page shows the sequence, runs it, follows its status and leaves nothing behind', async () => {
-  const unregister = registerOneRingPanel();
-  try {
-    const { api, hub, ring, sent, announce } = await rig();
-    const editor = getNodeEditor('one-ring');
-    const context = { instance: hub.nodes.get(ring.id), type: { id: 'one-ring' }, hub };
-    const before = editor.render(context);
-    assert.equal((before.match(/data-one-ring-channel=/g) || []).length, CHANNEL_COUNT);
-    assert.match(before, /data-one-ring-command="run" disabled/, 'nothing to run before the engine runs the sequence');
-    assert.match(before, /Not running in the engine/);
-
-    const generation = announce();
-    const cell = fakeElement({ oneRingCell: '1' });
-    const row = { ...fakeElement({ oneRingChannel: '0' }), querySelectorAll: () => [cell] };
-    const state = fakeElement({ oneRingState: '' });
-    const section = fakeElement({ oneRing: '', oneRingShown: '0' });
-    const sceneButtons = [0, 1, 2, 3].map((i) => fakeElement({ oneRingScene: String(i) }));
-    const listeners = new Map();
-    let painted = 0;
-    const container = {
-      contains: () => true,
-      addEventListener: (type, fn) => listeners.set(type, fn),
-      removeEventListener: (type, fn) => { if (listeners.get(type) === fn) listeners.delete(type); },
-      querySelector: (selector) => ({
-        '[data-one-ring-state]': state, '[data-one-ring]': section
-      })[selector] ?? null,
-      querySelectorAll: (selector) => ({
-        '[data-one-ring-channel]': [row], '[data-one-ring-scene]': sceneButtons
-      })[selector] ?? [],
-      set innerHTML(markup) { painted += 1; this.markup = markup; }
-    };
-    const teardown = editor.bind(container, context);
-    listeners.get('click')({ target: fakeElement({ oneRingCommand: 'run' }) });
-    listeners.get('click')({ target: fakeElement({ oneRingScene: '3' }) });
-    await settle();
-    assert.deepEqual(sent('oneRingCommand').map((msg) => [msg.command, msg.scene]), [['run', undefined], ['scene', 3]]);
-
-    const status = {
-      type: 'oneRingStatus', nodeId: ring.id, generation, playing: true, beat: 1.25, bpm: 118.6, scene: 0,
-      playheads: [1, ...Array(CHANNEL_COUNT - 1).fill(-1)], active: [true, ...Array(CHANNEL_COUNT - 1).fill(false)],
-      rejected: 2, guarded: 0
-    };
-    api.emitEvent(status);
-    assert.equal(state.textContent, 'Running · beat 1.25 · 119 BPM · 2 refused');
-    assert.equal(row.classList.contains('active'), true);
-    assert.equal(cell.classList.contains('playing'), true);
-    assert.equal(painted, 0, 'a status on the scene shown moves classes, it does not redraw');
-    const pending = () => sceneButtons.map((button) => button.classList.contains('pending'));
-    api.emitEvent({ ...status, pendingScene: 2 });
-    assert.deepEqual(pending(), [false, false, true, false], 'a scene waiting for its bar is marked');
-    assert.match(editor.render(context), /class="btn one-ring-scene pending" data-one-ring-scene="2"/);
-    api.emitEvent(status);
-    assert.deepEqual(pending(), [false, false, false, false], 'and unmarked once it plays');
-    assert.equal(painted, 0);
-    api.emitEvent({ ...status, scene: 1 });
-    assert.ok(painted >= 1, 'another scene is another drawing');
-
-    teardown();
-    assert.equal(listeners.size, 0);
-    const paintedBefore = painted;
-    api.emitEvent({ ...status, scene: 2 });
-    assert.equal(painted, paintedBefore, 'nothing listens after unmount');
-  } finally {
-    unregister();
-  }
 });

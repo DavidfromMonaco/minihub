@@ -111,6 +111,144 @@ export function pearlIconButton({ svg, attrs = '', title = '', disabled = false,
   return `<button type="button" class="op-iconbtn${active ? ' active' : ''}" title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}"${disabled ? ' disabled' : ''} ${attrs}>${svg}</button>`;
 }
 
+// ---------- sequencer hardware (omni-pearl.css section 5) ----------
+
+/** An LED: a dot, lit or not. */
+export function pearlLed(on = false, attrs = '') {
+  return `<span class="op-led${on ? ' is-on' : ''}" ${attrs}></span>`;
+}
+
+/**
+ * A rubber key cap. `size` is one or more of 'lg', 'sq', 'sm', 'word'; `state`
+ * is the look: 'lit' (orange), 'white' (the selected one), 'pending', 'armed',
+ * 'dim' or ''. `led` puts an LED before the label, lit when true. `label` is
+ * text and is escaped; `svg` is trusted markup.
+ */
+export function pearlKeycap({
+  label = '', svg = '', size = '', state = '', led = null, attrs = '', title = '', disabled = false, pressed = null
+} = {}) {
+  const sizes = String(size).split(/\s+/).filter(Boolean).map((name) => `op-keycap--${name}`);
+  const classes = ['op-keycap', ...sizes, state ? `is-${state}` : ''].filter(Boolean).join(' ');
+  const aria = pressed === null ? '' : ` aria-pressed="${pressed ? 'true' : 'false'}"`;
+  const hint = title ? ` title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}"` : '';
+  return `<button type="button" class="${classes}"${hint}${aria}${disabled ? ' disabled' : ''} ${attrs}>${led === null ? '' : pearlLed(led)}${svg}${escapeHtml(label)}</button>`;
+}
+
+/** A printed legend. With `attrs` it is a button: a position of a lever you can click. */
+export function pearlLegend(text, { state = '', attrs = '', disabled = false } = {}) {
+  const cls = `op-legend${state ? ` is-${state}` : ''}`;
+  if (!attrs) return `<span class="${cls}">${escapeHtml(text)}</span>`;
+  return `<button type="button" class="${cls}"${disabled ? ' disabled' : ''} ${attrs}>${escapeHtml(text)}</button>`;
+}
+
+/** An LCD readout, or an LCD field to type into when `input` is set. */
+export function pearlLcd({ value = '', input = false, size = '', attrs = '', ariaLabel = '', dim = false, invalid = false, disabled = false } = {}) {
+  const cls = ['op-lcd', size ? `op-lcd--${size}` : '', dim ? 'is-dim' : '', invalid ? 'is-invalid' : ''].filter(Boolean).join(' ');
+  if (!input) return `<span class="${cls}" ${attrs}>${escapeHtml(value)}</span>`;
+  return `<input type="text" class="${cls}" value="${escapeHtml(value)}" spellcheck="false" autocomplete="off" aria-label="${escapeHtml(ariaLabel)}"${invalid ? ' aria-invalid="true"' : ''}${disabled ? ' disabled' : ''} ${attrs}>`;
+}
+
+/**
+ * A scribble strip: what a channel is aimed at. `accent` is shown after the
+ * text in the accent colour -- a value.
+ */
+export function pearlScribble(text, { empty = false, missing = false, accent = '', attrs = '', title = '' } = {}) {
+  const cls = ['op-scribble', empty ? 'is-empty' : '', missing ? 'is-missing' : ''].filter(Boolean).join(' ');
+  const hint = title ? ` title="${escapeHtml(title)}"` : '';
+  return `<span class="${cls}"${hint} ${attrs}><span class="op-scribble-text">${escapeHtml(text)}</span>${accent ? `<b>${escapeHtml(accent)}</b>` : ''}</span>`;
+}
+
+// A selector's positions sit on an arc round a 44 px knob.
+const SELECTOR_CENTER = [58, 48];
+
+/**
+ * A rotary selector: a knob with its positions printed round it. A printed
+ * position is clicked (`optionAttr` names the data attribute carrying its
+ * value); the knob itself is a native `<select>`, for the keyboard and for a
+ * list. `attrs` goes on that select.
+ */
+export function pearlSelector({ options, value, attrs = '', optionAttr, ariaLabel = '', disabled = false } = {}) {
+  const [cx, cy] = SELECTOR_CENTER;
+  const sweep = options.length > 5 ? 250 : 220;
+  const angle = (i) => (options.length > 1 ? -sweep / 2 + (sweep * i) / (options.length - 1) : 0);
+  const polar = (deg, radius) => [
+    round(cx + radius * Math.sin((deg * Math.PI) / 180)),
+    round(cy - radius * Math.cos((deg * Math.PI) / 180))
+  ];
+  const selected = Math.max(0, options.findIndex((option) => String(option.value) === String(value)));
+  const marks = options.map((option, i) => {
+    const a = angle(i);
+    const [x1, y1] = polar(a, 25);
+    const [x2, y2] = polar(a, 29);
+    const [tx, ty] = polar(a, 38);
+    const anchor = a < -25 ? 'end' : a > 25 ? 'start' : 'middle';
+    const hitX = anchor === 'end' ? tx - 26 : anchor === 'start' ? tx - 2 : tx - 14;
+    const on = i === selected ? ' is-on' : '';
+    const hit = disabled ? '' : `<rect class="hit" x="${round(hitX)}" y="${round(ty - 7)}" width="28" height="15" ${optionAttr}="${escapeHtml(option.value)}"></rect>`;
+    return `<line class="tick${on}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"></line>${hit}
+      <text class="${on.trim()}" x="${tx}" y="${round(ty + 3.2)}" text-anchor="${anchor}">${escapeHtml(option.label)}</text>`;
+  }).join('');
+  const [px, py] = polar(angle(selected), 15);
+  const [qx, qy] = polar(angle(selected), 8);
+  return `<span class="op-selector">
+      <span class="op-knob"><span class="op-knob-body"></span></span>
+      <svg class="op-selector-svg" viewBox="0 0 116 84" aria-hidden="true" focusable="false">${marks}
+        <line class="pointer" x1="${qx}" y1="${qy}" x2="${px}" y2="${py}"></line></svg>
+      ${nativeSelect(options, value, `${disabled ? 'disabled ' : ''}${attrs}`, ariaLabel, 'op-native')}
+    </span>`;
+}
+
+/**
+ * A knob turned by dragging up and down, or by the arrow keys: a `slider` role
+ * on the knob itself, since a native range input drags sideways. `bipolar`
+ * draws its arc from the top, for a value that goes both ways from zero.
+ */
+export function pearlDragKnob({ value, min, max, bipolar = false, attrs = '', ariaLabel = '', text = '' } = {}) {
+  const fraction = max > min ? clamp01((value - min) / (max - min)) : 0;
+  return `<span class="op-knob op-dragknob" role="slider" tabindex="0" aria-label="${escapeHtml(ariaLabel)}"
+      aria-valuemin="${min}" aria-valuemax="${max}" aria-valuenow="${value}" aria-valuetext="${escapeHtml(text)}" ${attrs}>
+      <span class="op-knob-body"></span>
+      <svg class="op-knob-svg" viewBox="0 0 58 58" aria-hidden="true" focusable="false">
+        <circle class="op-knob-arc-track" cx="${KNOB_CENTER}" cy="${KNOB_CENTER}" r="${KNOB_RADIUS}"
+          transform="rotate(135 ${KNOB_CENTER} ${KNOB_CENTER})" stroke-dasharray="${knobArcDash(1)}"></circle>
+        <circle class="op-knob-arc" data-op-knob-arc cx="${KNOB_CENTER}" cy="${KNOB_CENTER}" r="${KNOB_RADIUS}"
+          ${knobArcAttributes(fraction, bipolar)}></circle>
+        <g class="op-knob-pointer" data-op-knob-pointer transform="${knobPointerTransform(fraction)}">
+          <line x1="${KNOB_CENTER}" y1="13.5" x2="${KNOB_CENTER}" y2="20.5"></line>
+        </g>
+      </svg>
+    </span>`;
+}
+
+// A unipolar arc starts at the knob's minimum; a bipolar one at its top, and
+// goes whichever way the value does. Nothing is drawn at zero: a dash of
+// length zero still paints its round cap.
+function knobArcAttributes(fraction, bipolar) {
+  if (!bipolar) {
+    const dash = fraction > 0 ? knobArcDash(fraction) : `0 ${round(KNOB_CIRCUMFERENCE)}`;
+    return `transform="rotate(135 ${KNOB_CENTER} ${KNOB_CENTER})" stroke-dasharray="${dash}" visibility="${fraction > 0 ? 'visible' : 'hidden'}"`;
+  }
+  const span = Math.abs(fraction - 0.5);
+  const start = fraction >= 0.5 ? 270 : 270 - KNOB_SWEEP * span;
+  return `transform="rotate(${round(start)} ${KNOB_CENTER} ${KNOB_CENTER})" stroke-dasharray="${knobArcDash(span)}" visibility="${span > 0 ? 'visible' : 'hidden'}"`;
+}
+
+/** A drag knob moved in place: arc, pointer and what it says it holds. */
+export function syncDragKnob(knob, { value, min, max, bipolar = false, text = '' } = {}) {
+  if (!knob) return false;
+  const fraction = max > min ? clamp01((value - min) / (max - min)) : 0;
+  const arc = knob.querySelector('[data-op-knob-arc]');
+  if (arc) {
+    for (const [, name, attr] of knobArcAttributes(fraction, bipolar).matchAll(/([\w-]+)="([^"]*)"/g)) {
+      arc.setAttribute(name, attr);
+    }
+  }
+  knob.querySelector('[data-op-knob-pointer]')?.setAttribute('transform', knobPointerTransform(fraction));
+  knob.setAttribute('aria-valuenow', String(value));
+  knob.setAttribute('aria-valuetext', text);
+  return true;
+}
+
 /**
  * Update a rendered knob in place (arc, pointer, printed value).
  *

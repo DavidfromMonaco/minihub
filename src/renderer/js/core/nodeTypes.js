@@ -84,7 +84,7 @@ export const NODE_TYPES = {
   // no sound, so it has no MIDI or audio port -- only the jack its commands
   // leave by, drawn always, since the node sends commands by construction.
   'one-ring': {
-    id: 'one-ring', label: 'One Ring', omniBoxCategory: 'MIDI', accent: '--accent-sequencer', icon: 'sequencer',
+    id: 'one-ring', label: 'One Ring', omniBoxCategory: 'MIDI', accent: '--accent-sequencer', icon: 'ring',
     emptyLabel: 'Cable CTRL OUT to what it plays',
     ports: {
       inputs: [],
