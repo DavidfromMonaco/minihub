@@ -179,6 +179,8 @@ test('an edit is sent as an edit; a scene the engine reports is kept without bei
   });
   assert.equal(statuses.length, 1);
   assert.equal(hub.oneRing.statusOf(ring.id).scene, 2);
+  assert.equal(hub.oneRing.statusOf(ring.id).pendingScene, -1, 'no recall waiting for a bar');
+  assert.equal(hub.oneRing.anyPlaying(), true);
   assert.equal(hub.nodes.get(ring.id).content.selectedScene, 2, 'the scene that plays is what the project saves');
   assert.equal(sent('syncOneRing').length, 2, 'a new plan would release what Legato holds');
   api.emitEvent({ type: 'oneRingStatus', nodeId: ring.id, generation: generation + 1, playing: false, scene: 0 });
@@ -276,6 +278,7 @@ test('the page shows the sequence, runs it, follows its status and leaves nothin
     const row = { ...fakeElement({ oneRingChannel: '0' }), querySelectorAll: () => [cell] };
     const state = fakeElement({ oneRingState: '' });
     const section = fakeElement({ oneRing: '', oneRingShown: '0' });
+    const sceneButtons = [0, 1, 2, 3].map((i) => fakeElement({ oneRingScene: String(i) }));
     const listeners = new Map();
     let painted = 0;
     const container = {
@@ -285,7 +288,9 @@ test('the page shows the sequence, runs it, follows its status and leaves nothin
       querySelector: (selector) => ({
         '[data-one-ring-state]': state, '[data-one-ring]': section
       })[selector] ?? null,
-      querySelectorAll: (selector) => (selector === '[data-one-ring-channel]' ? [row] : []),
+      querySelectorAll: (selector) => ({
+        '[data-one-ring-channel]': [row], '[data-one-ring-scene]': sceneButtons
+      })[selector] ?? [],
       set innerHTML(markup) { painted += 1; this.markup = markup; }
     };
     const teardown = editor.bind(container, context);
@@ -304,6 +309,13 @@ test('the page shows the sequence, runs it, follows its status and leaves nothin
     assert.equal(row.classList.contains('active'), true);
     assert.equal(cell.classList.contains('playing'), true);
     assert.equal(painted, 0, 'a status on the scene shown moves classes, it does not redraw');
+    const pending = () => sceneButtons.map((button) => button.classList.contains('pending'));
+    api.emitEvent({ ...status, pendingScene: 2 });
+    assert.deepEqual(pending(), [false, false, true, false], 'a scene waiting for its bar is marked');
+    assert.match(editor.render(context), /class="btn one-ring-scene pending" data-one-ring-scene="2"/);
+    api.emitEvent(status);
+    assert.deepEqual(pending(), [false, false, false, false], 'and unmarked once it plays');
+    assert.equal(painted, 0);
     api.emitEvent({ ...status, scene: 1 });
     assert.ok(painted >= 1, 'another scene is another drawing');
 

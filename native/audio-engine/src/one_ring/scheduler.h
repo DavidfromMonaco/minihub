@@ -1,9 +1,11 @@
 #pragma once
 
 // One Ring's scheduler: it walks the channels of the current scene on a beat
-// clock and hands each command to a sink. Ported from One Ring 0.4's core with
-// its behaviour unchanged (plans/active/one-ring-native.md); the class was
-// `Engine` there, a name this engine already uses for itself.
+// clock and hands each command to a sink. Ported from One Ring 0.4's core
+// (plans/active/one-ring-native.md); the class was `Engine` there, a name this
+// engine already uses for itself. Its behaviour is the VST's but for what the
+// author's first trial found: `beginCommand`, and a scene recall at rest or
+// cut short by STOP.
 
 #include "model.h"
 
@@ -50,10 +52,18 @@ public:
     void advance(double beginBeat, double endBeat) noexcept;
     void command(std::size_t channel, const std::string& command, double beat) noexcept;
     void scene(std::size_t index, double beat) noexcept;
+    // Called before a command from outside the sequence: RUN, STOP, a button.
+    // The guards against a sequence that restarts or recalls itself in a loop
+    // count per tick, and a clock at rest never starts a new tick -- the VST
+    // took a second scene pressed while stopped for such a loop, and refused
+    // it. A press is its own tick; what it sets off is still guarded.
+    void beginCommand(double beat) noexcept;
     void shiftTimeline(double delta) noexcept;
     void setBarLength(double beats) noexcept { if (beats > 0) barBeats_ = beats; }
     const std::array<ChannelState, channelCount>& states() const noexcept { return states_; }
     std::size_t currentScene() const noexcept { return scene_; }
+    // The scene a Next bar recall waits to play, or -1.
+    int pendingScene() const noexcept { return pendingSceneBeat_ >= 0 ? static_cast<int>(pendingScene_) : -1; }
     bool playing() const noexcept { return playing_; }
     std::uint64_t rejected() const noexcept { return rejected_; }
     std::uint64_t cycleGuards() const noexcept { return cycleGuards_; }

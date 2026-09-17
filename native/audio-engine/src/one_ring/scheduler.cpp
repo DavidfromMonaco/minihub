@@ -87,6 +87,13 @@ void Scheduler::beginTick(double beat) noexcept
     eventRead_ = eventWrite_ = 0;
 }
 
+void Scheduler::beginCommand(double beat) noexcept
+{
+    beginTick(beat);
+    startedThisTick_.fill(false);
+    sceneChangedThisTick_ = false;
+}
+
 void Scheduler::play(double beat) noexcept
 {
     if (!project_ || playing_) return;
@@ -110,7 +117,12 @@ void Scheduler::stop(double beat) noexcept
         states_[i].loop = 1;
     }
     playing_ = false;
-    pendingSceneBeat_ = -1;
+    // A recall still waiting for its bar is not lost to STOP: the scene asked
+    // for is the one shown, and the one the next RUN starts in.
+    if (pendingSceneBeat_ >= 0) {
+        pendingSceneBeat_ = -1;
+        applyScene(pendingScene_, beat);
+    }
     dispatch();
 }
 
@@ -272,7 +284,9 @@ void Scheduler::scene(std::size_t index, double beat) noexcept
 {
     if (!project_ || index >= project_->scenes.size()) { ++rejected_; return; }
     beginTick(beat);
-    if (project_->sceneTiming == SceneTiming::NextBar) {
+    // Next bar means a bar of a sequence that plays. At rest there is no bar
+    // to wait for, and a recall left pending would fire wherever RUN starts.
+    if (project_->sceneTiming == SceneTiming::NextBar && playing_) {
         pendingScene_ = index;
         pendingSceneBeat_ = std::ceil((beat + epsilon) / barBeats_) * barBeats_;
     } else applyScene(index, beat);

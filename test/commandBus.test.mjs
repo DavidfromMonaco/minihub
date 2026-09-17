@@ -349,6 +349,10 @@ test('Record through a cable keeps the guards of the Record button, and says why
 
   assert.equal(send('sequencer', 'STOP').ok, true);
   assert.equal(hub.sequencer.playing, false);
+  const stop = api.sent.filter((msg) => msg.type === 'setTransport').at(-1);
+  assert.equal(stop.playing, false);
+  assert.equal(Object.hasOwn(stop, 'stopOneRings'), false,
+    'a sequence stops the arrangement and the One Ring nodes play on');
   assert.equal(send('sequencer', 'TEMPO', VALUE_TYPE.integer, 140).ok, true);
   assert.equal(hub.sequencer.tempo, 140);
   assert.equal(send('sequencer', 'TEMPO', VALUE_TYPE.number, 140.5).reason, 'wrong-type', 'the tempo is a whole number');

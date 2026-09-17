@@ -37,7 +37,7 @@ export function sequencerCommands(hub) {
       label: 'Sequencer',
       commands: [
         action('PLAY', 'Play', () => controller.playTransport(), 'STOP'),
-        action('STOP', 'Stop', () => controller.stopTransport()),
+        action('STOP', 'Stop', () => controller.stopTransport({ bySequence: true })),
         action('RESTART', 'Restart', () => controller.goToStart() && controller.playTransport()),
         action('RECORD_ON', 'Record on', recordOn, 'RECORD_OFF'),
         // Ends the take and leaves the transport running, as the page's Record button does.

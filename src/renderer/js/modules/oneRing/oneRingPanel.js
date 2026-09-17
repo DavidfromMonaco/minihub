@@ -50,7 +50,8 @@ function render({ instance, hub }) {
   const shown = content.scenes[status?.scene] ? status.scene : content.selectedScene;
   const scene = content.scenes[shown] ?? content.scenes[0];
   const disabled = ready ? '' : ' disabled';
-  const scenes = content.scenes.map((item, i) => `<button type="button" class="btn one-ring-scene${i === shown ? ' active' : ''}" data-one-ring-scene="${i}" aria-pressed="${i === shown}" title="${escapeHtml(item.name)}"${disabled}>${escapeHtml(item.id)}</button>`).join('');
+  const pending = status?.pendingScene ?? -1;
+  const scenes = content.scenes.map((item, i) => `<button type="button" class="btn one-ring-scene${i === shown ? ' active' : ''}${i === pending ? ' pending' : ''}" data-one-ring-scene="${i}" aria-pressed="${i === shown}" title="${escapeHtml(item.name)}"${disabled}>${escapeHtml(item.id)}</button>`).join('');
   return `<section class="panel one-ring-panel" data-one-ring data-one-ring-shown="${shown}">
     <div class="one-ring-head">
       <button type="button" class="btn" data-one-ring-command="run"${disabled}>RUN</button>
@@ -66,6 +67,11 @@ function render({ instance, hub }) {
 function update(container, status, ready) {
   const state = container.querySelector('[data-one-ring-state]');
   if (state) state.textContent = stateText(status, ready);
+  // A scene pressed under Next bar waits for its bar: it blinks until then,
+  // so the press does not look ignored.
+  for (const button of container.querySelectorAll('[data-one-ring-scene]')) {
+    button.classList.toggle('pending', Number(button.dataset.oneRingScene) === status.pendingScene);
+  }
   for (const row of container.querySelectorAll('[data-one-ring-channel]')) {
     const index = Number(row.dataset.oneRingChannel);
     row.classList.toggle('active', status.active[index] === true);

@@ -1782,6 +1782,10 @@ body ::-webkit-scrollbar-corner { background:transparent; }
 .one-ring-scenes { display:flex; gap:4px; margin-left:auto; }
 .one-ring-scene { min-width:32px; }
 .one-ring-scene.active { color:#17191d; background:var(--accent-sequencer); border-color:var(--accent-sequencer); }
+/* A scene pressed under Next bar, waiting for its bar. */
+.one-ring-scene.pending { color:var(--accent-sequencer); border-color:var(--accent-sequencer); animation:one-ring-pending 1s infinite; }
+@keyframes one-ring-pending { 50% { border-color:transparent; } }
+@media (prefers-reduced-motion: reduce) { .one-ring-scene.pending { animation:none; } }
 .one-ring-refusal { margin:8px 0 0; color:#f5c451; font:11px var(--mono); }
 .one-ring-channels { display:grid; gap:4px; margin:12px 0 0; padding:0; list-style:none; }
 .one-ring-channel { display:grid; grid-template-columns:44px minmax(120px,220px) minmax(0,1fr); align-items:center; gap:8px; color:var(--text-dim); font:11px var(--mono); }

@@ -35,12 +35,22 @@ export function buildHeader(hub, statusEl) {
   const stopEl = document.getElementById('transport-stop');
   const bpmEl = document.getElementById('transport-bpm');
   let playing = false;
+  // A One Ring node plays on when a sequence stops the transport, and runs
+  // alone from its own RUN. Stop stays pressable while one plays, and stops it.
+  let oneRingPlaying = false;
   if (bpmEl) bpmEl.value = String(hub.sequencer.tempo);
   const renderTransport = () => {
     playEl?.classList.toggle('playing', playing);
     if (playEl) playEl.textContent = 'Play';
-    if (stopEl) stopEl.disabled = !playing && hub.sequencer?.recording !== true;
+    if (stopEl) stopEl.disabled = !playing && hub.sequencer?.recording !== true && !oneRingPlaying;
   };
+  const renderOneRing = () => {
+    const now = hub.oneRing?.anyPlaying?.() === true;
+    if (now === oneRingPlaying) return;
+    oneRingPlaying = now;
+    renderTransport();
+  };
+  for (const name of ['oneRing:status', 'oneRing:ready', 'oneRing:gone']) hub.events.on(name, renderOneRing);
   playEl?.addEventListener('click', () => {
     hub.sequencer?.playTransport();
   });

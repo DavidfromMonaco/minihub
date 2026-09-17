@@ -485,6 +485,8 @@ test('Sequencer and header controls share one global Play/Stop transport state',
     fire(view.action('stop'), 'click');
     assert.equal(ids.get('transport-play').classList.contains('playing'), false);
     assert.equal(api.sent.filter((message) => message.type === 'setTransport').at(-1).playing, false);
+    assert.equal(api.sent.filter((message) => message.type === 'setTransport').at(-1).stopOneRings, true,
+      'a Stop pressed stops the One Ring nodes too');
 
     fire(ids.get('transport-play'), 'click');
     assert.equal(view.action('play').classList.contains('active'), true);
@@ -492,6 +494,37 @@ test('Sequencer and header controls share one global Play/Stop transport state',
     assert.equal(hub.sequencer.playheadPpq, 6.5);
     assert.equal(hub.sequencer.model.state.loop.enabled, false);
     assert.equal(hub.settings.get('transportBpm'), 111);
+  } finally {
+    document.getElementById = previousGetElementById;
+  }
+});
+
+test('the header Stop stays pressable while a One Ring node plays on its own, and stops it', async () => {
+  const { api, hub } = await runtime();
+  const ids = new Map([
+    ['project-identity', makeEl('span')], ['transport-play', makeEl('button')],
+    ['transport-stop', makeEl('button')], ['transport-bpm', makeEl('input')]
+  ]);
+  const previousGetElementById = document.getElementById;
+  document.getElementById = (id) => ids.get(id) || null;
+  try {
+    buildHeader(hub, makeEl('span'));
+    const stop = ids.get('transport-stop');
+    assert.equal(stop.disabled, true, 'nothing plays');
+    const ring = hub.nodes.create('one-ring');
+    hub.events.emit('engine:oneRingSynced', { nodeId: ring.id, generation: 1, created: true, ok: true, message: '' });
+    const status = (playing) => hub.events.emit('engine:oneRingStatus', { nodeId: ring.id, generation: 1, playing, scene: 0 });
+    status(true);
+    assert.equal(stop.disabled, false, 'a One Ring on its own clock, the transport stopped, is something to stop');
+    fire(stop, 'click');
+    await flush();
+    const sent = api.sent.filter((message) => message.type === 'setTransport').at(-1);
+    assert.deepEqual([sent.playing, sent.stopOneRings], [false, true]);
+    status(false);
+    assert.equal(stop.disabled, true);
+    status(true);
+    hub.nodes.delete(ring.id);
+    assert.equal(stop.disabled, true, 'a node that goes takes its playing with it');
   } finally {
     document.getElementById = previousGetElementById;
   }

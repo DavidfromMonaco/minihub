@@ -1280,13 +1280,19 @@ export class SequencerController {
     return true;
   }
 
-  stopTransport() {
+  /**
+   * A Stop somebody gives -- a button, the clip editor, an agent -- also stops
+   * the One Ring nodes. `bySequence` is the Stop a sequence sends over a cable
+   * (sequencerCommands.js): One Ring plays on after it, since stopping the
+   * arrangement is one of the things its sequences are written to do.
+   */
+  stopTransport({ bySequence = false } = {}) {
     this.stopRecording();
     if (this.playing) {
       this.playing = false;
       this.hub.events.emit('sequencer:transport', { playing: false });
     }
-    this.hub.engine.setTransport({ playing: false });
+    this.hub.engine.setTransport({ playing: false, stopOneRings: bySequence !== true });
     this._queueEditorTransport();
     return true;
   }

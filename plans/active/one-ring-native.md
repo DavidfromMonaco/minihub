@@ -9,7 +9,7 @@ page of its own in a new hardware-style design.
 "commence à travailler sur l'intégration de One Ring en natif". His direction
 for the look: every function kept, the whole design redone after hardware
 sequencers — the Korg SQ-64, the Roland P-6, the Cre8audio Programm.
-**Status** — **in progress, 2026-09-17.** Steps 0 to 4 done; step 5 built, waiting for the author's trial in MiniHub.
+**Status** — **in progress, 2026-09-17.** Steps 0 to 4 done; step 5 tried by the author, who found two faults, both fixed the same day; waiting for the author's second try.
 
 ## Context
 
@@ -165,8 +165,12 @@ to D-018 (written for the Matrix), D-032 (a command is performance), D-042
       when the plugin runs), a "Copy to One Ring node" button on a One Ring card
       of the VST node's page. `npm test` (1158), `--core` (1528, JUCE's base64
       and state layout among them), `npm run check`, `npm run sync:dist` — green.
-      **Waiting for the author's trial**, which is also step 4's first sighting
-      of renderer and engine together.
+      Tried by the author 2026-09-17, a node made from the OmniBox menu: it
+      is there and its sequence runs — step 4's renderer and engine seen
+      together. Two faults, fixed the same day (log): scenes that stopped
+      answering, and a transport Stop that did not stop the node.
+      **Waiting for the author's second try**; the copy from the VST is not
+      seen yet.
 - [ ] 6. The design, before the page: a still of the faceplate after the
       author's references — transport and scenes, the 16 channels, the 64-cell
       grid as lit pads, the channel's settings, the cell's settings — drawn with
@@ -185,8 +189,9 @@ to D-018 (written for the Matrix), D-032 (a command is performance), D-042
       new-seed) from its content, so what programmed the VST programs it.
       Check: `npm test`
 - [ ] 10. Documents: a DECISIONS entry (where the clock runs, why the content is
-      the VST's state made sparse), D-016 to D-018 and INTENT §8 bis naming One
-      Ring, ARCHITECTURE §5, §6, §7 and §12, ROADMAP item 7 to Done, the TASKS
+      the VST's state made sparse, which Stop stops it), D-016 to D-018 and
+      INTENT §8 bis naming One Ring, ARCHITECTURE §5, §6, §7 and §12,
+      ROADMAP item 7 to Done, the TASKS
       entry removed, this plan to `done/`.
       Check: every command under *Done when*
 
@@ -298,3 +303,37 @@ disk decode. The copy moves the VST node's CTRL OUT cables to the new node and
 leaves the VST in its chain; its commands are refused from then on, as not
 cabled. Not decided, and not done: placing the new node next to the VST node
 in the Patch Bay, and bypassing the VST.
+
+2026-09-17 — Step 5, the author's first trial, in a new project with a node
+made from the OmniBox menu. The node is there and its sequence runs. Two
+faults:
+
+- Scenes stopped answering. The scheduler's guards against a sequence that
+  restarts or recalls itself in a loop count per tick, and a tick begins only
+  when the clock moves. At rest it does not, so the second scene pressed was
+  refused as a loop — and so would a second press on a channel, or RUN after
+  one. The VST has the same fault. A command from outside the sequence now
+  begins a tick of its own (`Scheduler::beginCommand`); what it sets off is
+  still guarded. Two changes on the same ground: at rest, Next bar applies a
+  recall at once (there is no bar to wait for, and a pending recall fired
+  wherever RUN started), and STOP plays a recall still waiting for its bar
+  instead of dropping it. The status carries the waiting scene
+  (`pendingScene`), and the page blinks it.
+- The transport's Stop did not stop the node. The node plays on after a host
+  stop, as the VST did, so that a sequence can stop the arrangement and carry
+  on; the header's Stop then greyed out while the node still played. The
+  author: "il faudrait que les deux fonctionnent quand elles sont activées
+  manuellement". `setTransport` now takes `stopOneRings` with a stop. Every
+  Stop a person gives sets it — the header, the Sequencer page, the Clip
+  Editor, an agent's request — and the STOP a sequence sends to the
+  Sequencer's CTRL IN does not. The header's Stop stays pressable while a node
+  plays.
+
+Checked: the new `[core]` checks fail with the fix taken out and pass with it;
+`--core` (1545), `--vst3-e2e`, `--cross-track-isolation`,
+`mlh_realtime_output_tests`, `npm test` (1159), `npm run check`,
+`npm run sync:dist` — green, build with no warning. The real engine, driven
+over stdio: four scenes pressed at rest, all taken; a Stop without the flag
+leaves the node playing, one with it stops it, whether the transport ran or the
+node ran alone; a Next bar recall reported waiting, played on the bar, and
+played by STOP; no command refused, nothing guarded.

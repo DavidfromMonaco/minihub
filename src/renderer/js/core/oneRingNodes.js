@@ -38,6 +38,8 @@ function readStatus(msg) {
     beat: Number.isFinite(msg.beat) ? msg.beat : 0,
     bpm: Number.isFinite(msg.bpm) ? msg.bpm : 0,
     scene: Number.isInteger(msg.scene) && msg.scene >= 0 ? msg.scene : 0,
+    // A Next bar recall that has not played yet, or -1.
+    pendingScene: Number.isInteger(msg.pendingScene) && msg.pendingScene >= 0 ? msg.pendingScene : -1,
     playheads: list(msg.playheads, (v) => Number.isInteger(v) && v >= -1, -1),
     active: list(msg.active, (v) => typeof v === 'boolean', false),
     rejected: count(msg.rejected),
@@ -83,6 +85,12 @@ export class OneRingNodes {
   /** What the node's runtime last reported, or null. */
   statusOf(nodeId) {
     return this._statuses.get(nodeId) ?? null;
+  }
+
+  /** Whether a node's runtime last said it plays: the transport's Stop has something to stop. */
+  anyPlaying() {
+    for (const status of this._statuses.values()) if (status.playing) return true;
+    return false;
   }
 
   /**

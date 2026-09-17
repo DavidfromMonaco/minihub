@@ -92,6 +92,8 @@ struct Status {
     std::array<int, channelCount> playhead{};
     std::array<bool, channelCount> active{};
     std::size_t scene = 0;
+    // A Next bar recall not played yet, or -1.
+    int pendingScene = -1;
     bool playing = false;
     double beat = 0;
     double bpm = 0;

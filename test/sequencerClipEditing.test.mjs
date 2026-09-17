@@ -303,7 +303,8 @@ test('Clip Editor transport commands control and reflect the one Sequencer/nativ
   assert.deepEqual(commands.at(-1), { type: 'transport', seekPpq: 0 });
   assert.equal(request('stop').ok, true);
   assert.equal(controller.playing, false);
-  assert.deepEqual(commands.at(-1), { type: 'transport', playing: false });
+  assert.deepEqual(commands.at(-1), { type: 'transport', playing: false, stopOneRings: true },
+    'the Clip Editor\'s Stop is somebody\'s Stop: it ends the One Ring nodes too');
   assert.equal(request('independent-clock').reason, 'unsupported-request');
   await new Promise((resolve) => setImmediate(resolve));
   assert.deepEqual(published.at(-1), {

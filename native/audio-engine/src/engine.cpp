@@ -1697,6 +1697,14 @@ void Engine::cmdSetTransport(const juce::var& msg)
         preCountComplete_.store(false,std::memory_order_release);
     }
     if(seeking){if(sequencer_.recording())for(const auto& event:sequencer_.finishRecording(transport_))ipc_.send(event);transport_.seekPpq(std::max(0.0,(double)msg["seekPpq"]));releaseAllMidi();}
+    // A Stop somebody gives ends the One Ring nodes with the arrangement. One
+    // a sequence sends over a cable comes without the flag, and One Ring plays
+    // on: stopping the arrangement is something its sequences do. Stopped
+    // before the transport, so no block sees the transport stopped and them not.
+    if (msg["playing"].isBool() && !static_cast<bool>(msg["playing"])
+        && msg["stopOneRings"].isBool() && static_cast<bool>(msg["stopOneRings"]))
+        for (auto& entry : oneRings_)
+            entry.second.runtime->stop();
     if (msg["playing"].isBool()) {const bool playing=static_cast<bool>(msg["playing"]);if(!playing&&wasPlaying&&sequencer_.recording())for(const auto& event:sequencer_.finishRecording(transport_))ipc_.send(event);transport_.setPlaying(playing);if(!playing)panicAllMidi();}
     cmdGetTransport(msg);
 }
@@ -2581,7 +2589,8 @@ void Engine::forwardOneRings()
             const auto status = node.runtime->status();
             const auto& last = node.lastStatus;
             const bool changed = !node.statusSent || status.playing != last.playing
-                || status.scene != last.scene || status.playhead != last.playhead
+                || status.scene != last.scene || status.pendingScene != last.pendingScene
+                || status.playhead != last.playhead
                 || status.active != last.active || status.rejected != last.rejected
                 || status.guarded != last.guarded;
             // The beat moves on every block; alone, it is sent ten times a second.
@@ -2596,6 +2605,7 @@ void Engine::forwardOneRings()
             setProp(out, "beat", status.beat);
             setProp(out, "bpm", status.bpm);
             setProp(out, "scene", static_cast<int>(status.scene));
+            setProp(out, "pendingScene", status.pendingScene);
             juce::Array<juce::var> playheads, active;
             for (std::size_t i = 0; i < one_ring::channelCount; ++i)
             {

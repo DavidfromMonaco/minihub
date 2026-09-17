@@ -145,16 +145,23 @@ void Runtime::process(const Transport& transport, int numSamples, double sampleR
         beat_ = hostBeat;
     }
     const int request = playRequest_.exchange(-1, std::memory_order_acq_rel);
-    if (request == 0) scheduler.stop(beat_);
-    // Play starts it and Stop does not stop it: it keeps its own time at the
-    // current tempo until its own STOP, as the VST did after a host stop.
+    if (request == 0) {
+        scheduler.beginCommand(beat_);
+        scheduler.stop(beat_);
+    }
+    // Play starts it. The transport stopping does not stop it: it keeps its
+    // own time at the current tempo, as the VST did after a host stop, so a
+    // sequence can stop the arrangement and play on. The Stop a person gives
+    // reaches it as a STOP of its own (the engine's setTransport).
     if (request == 1 || (hostPlaying && !previousHostPlaying_ && request != 0)) {
         if (!scheduler.playing()) beat_ = std::isfinite(hostBeat) ? hostBeat : 0.0;
+        scheduler.beginCommand(beat_);
         scheduler.play(beat_);
     }
     previousHostPlaying_ = hostPlaying;
     Command command;
     for (int i = 0; i < 256 && input_.pop(command); ++i) {
+        scheduler.beginCommand(beat_);
         if (command.kind == CommandKind::Channel)
             scheduler.command(command.index, channelCommands[command.name], beat_);
         else
@@ -167,6 +174,7 @@ void Runtime::process(const Transport& transport, int numSamples, double sampleR
     }
     Status status;
     status.scene = scheduler.currentScene();
+    status.pendingScene = scheduler.pendingScene();
     status.playing = scheduler.playing();
     status.beat = beat_;
     status.bpm = beatsPerSample * 60.0 * sampleRate;

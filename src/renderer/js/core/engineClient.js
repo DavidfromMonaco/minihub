@@ -633,10 +633,12 @@ export class EngineClient {
     return this._renderCommand({ type: 'setChainOutputEnabled', chainId, enabled });
   }
 
-  setTransport({ bpm, playing, seekPpq, loop } = {}) {
+  /** `stopOneRings`, with a stop: the engine stops its One Ring nodes too. */
+  setTransport({ bpm, playing, seekPpq, loop, stopOneRings } = {}) {
     const command = { type: 'setTransport' };
     if (Number.isFinite(bpm)) command.bpm = Math.max(20, Math.min(300, bpm));
     if (typeof playing === 'boolean') command.playing = playing;
+    if (playing === false && stopOneRings === true) command.stopOneRings = true;
     if (Number.isFinite(seekPpq)) command.seekPpq = Math.max(0, seekPpq);
     if (loop && typeof loop === 'object') command.loop = {
       enabled: loop.enabled === true,

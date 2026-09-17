@@ -2590,6 +2590,59 @@ void testOneRingRuntime()
         bench.blocks(1);
         expect(bench.runtime->status().scene == 2, "one-ring runtime: a restore takes the saved scene");
     });
+    // The author's first trial: stopped, the second scene pressed did nothing.
+    oneRingChecks("one-ring runtime presses at rest", [] {
+        OneRingBench bench;
+        expect(bench.load(oneRingRuntimeProject()) && bench.aim(), "one-ring runtime: loaded");
+        bool taken = true;
+        for (const std::size_t scene : std::initializer_list<std::size_t>{1, 2, 1, 3, 0}) {
+            taken = bench.runtime->recallScene(scene) && taken;
+            bench.blocks(1);
+            taken = bench.runtime->status().scene == scene && taken;
+        }
+        expect(taken, "one-ring runtime: stopped, every scene pressed is taken");
+        expect(bench.runtime->recallScene(2) && bench.runtime->recallScene(0), "one-ring runtime: two presses queued");
+        bench.blocks(1);
+        expect(bench.runtime->status().scene == 0, "one-ring runtime: two presses in one block, the last one stands");
+        expect(bench.runtime->channelCommand(0, "RESET"), "one-ring runtime: a channel press queued");
+        bench.blocks(1);
+        expect(bench.runtime->channelCommand(0, "RESET"), "one-ring runtime: the same press again");
+        bench.blocks(1);
+        expect(bench.runtime->status().guarded == 0, "one-ring runtime: presses at a clock at rest are not a loop");
+        // RUN starts where the clock rests, the beat the presses were taken at.
+        bench.runtime->run();
+        bench.blocks(1);
+        const auto running = bench.runtime->status();
+        expect(running.playing && running.active[0] && running.guarded == 0,
+               "one-ring runtime: RUN after a press at the same beat starts its channel");
+    });
+    oneRingChecks("one-ring runtime next bar", [] {
+        OneRingBench bench;
+        auto project = oneRingRuntimeProject();
+        project.sceneTiming = oring::SceneTiming::NextBar;
+        expect(bench.load(project) && bench.aim(), "one-ring runtime: loaded");
+        expect(bench.runtime->recallScene(2), "one-ring runtime: a recall at rest queued");
+        bench.blocks(1);
+        const auto rest = bench.runtime->status();
+        expect(rest.scene == 2 && rest.pendingScene == -1, "one-ring runtime: at rest, Next bar has no bar to wait for");
+        bench.runtime->run();
+        bench.blocks(10);
+        expect(bench.runtime->recallScene(1), "one-ring runtime: a recall while playing queued");
+        bench.blocks(1);
+        const auto waiting = bench.runtime->status();
+        expect(waiting.scene == 2 && waiting.pendingScene == 1, "one-ring runtime: playing, Next bar waits and says for what");
+        bench.blocks(190);
+        const auto bar = bench.runtime->status();
+        expect(bar.scene == 1 && bar.pendingScene == -1, "one-ring runtime: the recall plays on the bar");
+        expect(bench.runtime->recallScene(3), "one-ring runtime: another recall queued");
+        bench.blocks(1);
+        expect(bench.runtime->status().pendingScene == 3, "one-ring runtime: it waits for the next bar");
+        bench.runtime->stop();
+        bench.blocks(1);
+        const auto stopped = bench.runtime->status();
+        expect(!stopped.playing && stopped.scene == 3 && stopped.pendingScene == -1,
+               "one-ring runtime: STOP plays the recall it cut short");
+    });
 }
 
 } // namespace
