@@ -814,7 +814,12 @@ comes last (step 16; the author waived the still of step 14).
       declared `color-scheme`, so Chromium painted its own popup lists light
       against the dark plate -- the shell says `color-scheme: dark` now, the
       fields it paints light keep the dark text that came with them, and the
-      faceplate gives its lists its own surface. And keys sat on their
+      faceplate gives its lists its own surface -- and that was not enough:
+      the author saw white menus still, because the list a select opens is a
+      window Chromium draws itself, which on Windows follows the application's
+      theme and not the page's. The main process says `nativeTheme.themeSource
+      = 'dark'` now. **Not seen from here**: a native popup is outside the page,
+      so no bench can show it; the author looks. And keys sat on their
       printed legends, with knobs adrift among the fields: a legend has air
       now, a knob stands apart from a list behind a separator, the writer's
       window sits with the keys it belongs to, and a voice's lists keep a

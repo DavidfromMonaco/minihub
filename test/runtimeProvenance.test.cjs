@@ -104,3 +104,11 @@ test('Windows startup selects software rendering before Electron becomes ready',
     'both Windows GPU selections must happen synchronously before app.ready');
   assert.match(main, /process\.platform\s*===\s*['"]win32['"][\s\S]*appendSwitch\(['"]in-process-gpu['"]\)[\s\S]*app\.disableHardwareAcceleration\(\)/);
 });
+
+test('the application declares itself dark, so Chromium draws its menus dark', () => {
+  // A <select> opens a window Chromium draws itself, which follows the app's
+  // theme and not the page's `color-scheme`: without this every menu is white.
+  const main = read('src/main/main.js');
+  assert.match(main, /nativeTheme\.themeSource = 'dark'/);
+  assert.match(read('src/renderer/styles/base.css'), /:root \{\s+color-scheme: dark;/);
+});

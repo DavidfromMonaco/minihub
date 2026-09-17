@@ -3,7 +3,7 @@
 const { installConsoleStreamGuards } = require('./consoleStreamGuard');
 installConsoleStreamGuards();
 
-const { app, BrowserWindow, Menu, ipcMain, dialog, shell } = require('electron');
+const { app, BrowserWindow, Menu, ipcMain, dialog, nativeTheme, shell } = require('electron');
 // Electron's GPU subprocess exits with STATUS_DLL_NOT_FOUND (0xc0000135) on
 // the supported Windows runtime used for MiniHub, before the renderer can
 // finish loading. MiniHub's UI does not depend on WebGL; select Chromium's
@@ -354,6 +354,12 @@ if (hasSingleInstanceLock) Promise.all([launchPlace, app.whenReady()]).then(([pl
   redirectedInto = place.redirectedTo;
   if (redirectedInto) launchedInsidePackage = redirectedInto;
   startupMark('electron-ready');
+  // The list a <select> opens is not part of the page: Chromium draws it in a
+  // window of its own, and on Windows that window follows the application's
+  // theme, not the page's `color-scheme`. Left to the system theme, every menu
+  // in MiniHub opened white over a dark plate. The application is dark, whatever
+  // Windows is set to, so it says so once here.
+  nativeTheme.themeSource = 'dark';
   diagnostics.logStartupInfo();
   writeLaunchLines();
   createWindow();
