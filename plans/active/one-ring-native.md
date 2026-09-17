@@ -817,9 +817,16 @@ comes last (step 16; the author waived the still of step 14).
       faceplate gives its lists its own surface -- and that was not enough:
       the author saw white menus still, because the list a select opens is a
       window Chromium draws itself, which on Windows follows the application's
-      theme and not the page's. The main process says `nativeTheme.themeSource
-      = 'dark'` now. **Not seen from here**: a native popup is outside the page,
-      so no bench can show it; the author looks. And keys sat on their
+      theme and not the page's. The main process said `nativeTheme.themeSource
+      = 'dark'`; the author saw white menus still, from a MiniHub started after
+      that very change. Neither lever reaches that window in Electron 43, so
+      the page draws the list itself now (`bindPearlLists`, ui/omniPearl.js):
+      the select keeps the value, the keyboard and its `change`, and only its
+      list is ours -- bound once for every faceplate (app.js), which covers the
+      Arpeggiator's menus too. Tried in the browser with real presses, clicks
+      and keys: the list opens dark under the control, walks with the arrows,
+      takes a row, closes on Escape and on a press outside, and the page hears
+      the change as it did. And keys sat on their
       printed legends, with knobs adrift among the fields: a legend has air
       now, a knob stands apart from a list behind a separator, the writer's
       window sits with the keys it belongs to, and a voice's lists keep a

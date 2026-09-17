@@ -45,6 +45,8 @@
   --op-surface-2: #2c2e32;
   --op-surface-raised: linear-gradient(180deg, #41444a 0%, #383a40 100%);
   --op-surface-metal: linear-gradient(180deg, #44474d 0%, #3a3d42 52%, #34363b 100%);
+  /* A row of a drawn list, under the pointer or under the keys. */
+  --op-row-hover: #4c5057;
   --op-recess: linear-gradient(180deg, #232529 0%, #282a2e 12%, #2a2c31 100%);
   --op-well: #2a2c31;
   --op-plate: linear-gradient(180deg, #3b3d42 0%, var(--op-bg) 100%);
@@ -441,16 +443,69 @@
   outline: none;
 }
 
-/* The list a select opens is Chromium's own: `color-scheme` above makes it
-   dark, and these give it the faceplate's own surface. */
-.omni-pearl select option,
-.omni-pearl select optgroup {
-  background-color: var(--op-surface-raised);
-  color: var(--op-text);
+/* ---------- the list a select opens, drawn by the page ----------
+   Chromium draws a select's own list in a window of its own, which on Windows
+   is white whatever `color-scheme` and the application's theme say. The page
+   draws this one instead (`bindPearlLists` in ui/omniPearl.js); the select
+   underneath still holds the value and the keyboard. */
+.op-list {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 4px);
+  left: 0;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  min-width: 100%;
+  max-width: 460px;
+  max-height: 320px;
+  padding: 5px;
+  overflow-y: auto;
+  border: 1px solid var(--op-border-strong);
+  border-radius: var(--op-radius-sm);
+  background: var(--op-surface-raised);
+  box-shadow: var(--op-shadow-3);
 }
 
-.omni-pearl select option:disabled {
+.op-select.is-open {
+  border-color: var(--op-orange);
+}
+
+.op-list-row {
+  flex: 0 0 auto;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 5px;
+  background: none;
+  color: var(--op-text);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.op-list-row:hover:not(:disabled),
+.op-list-row.is-active {
+  background: var(--op-row-hover);
+}
+
+.op-list-row.is-selected {
+  color: var(--op-orange);
+}
+
+.op-list-row:disabled {
   color: var(--op-text-faint);
+  cursor: default;
+}
+
+.op-list-group {
+  padding: 8px 10px 4px;
+  color: var(--op-text-dim);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
 }
 
 .op-select:hover {

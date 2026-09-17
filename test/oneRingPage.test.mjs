@@ -307,10 +307,16 @@ async function page({ ready = true } = {}) {
     if (!live.has(selector)) live.set(selector, fakeElement({}, 'SPAN'));
     return live.get(selector);
   };
+  // A real element takes several listeners of a type -- the page's own and the
+  // one the drawn lists add -- so the rig keeps them all, in order.
   const container = {
     contains: () => true,
-    addEventListener: (type, fn) => listeners.set(type, fn),
-    removeEventListener: (type, fn) => { if (listeners.get(type) === fn) listeners.delete(type); },
+    addEventListener: (type, fn) => listeners.set(type, [...(listeners.get(type) ?? []), fn]),
+    removeEventListener: (type, fn) => {
+      const rest = (listeners.get(type) ?? []).filter((item) => item !== fn);
+      if (rest.length) listeners.set(type, rest);
+      else listeners.delete(type);
+    },
     querySelector(selector) {
       const named = selector.match(/^\[data-ring-region="([a-z]+)"\]$/);
       if (named) return region(named[1]);
@@ -322,7 +328,8 @@ async function page({ ready = true } = {}) {
   editor.render(context);
   const teardown = editor.bind(container, context);
   const sent = (type) => api.sent.filter((msg) => msg.type === type);
-  const fire = (type, target) => listeners.get(type)?.({ target, button: 0, pointerId: 1, clientY: 0, preventDefault() {} });
+  const dispatch = (type, event) => { for (const listener of listeners.get(type) ?? []) listener(event); };
+  const fire = (type, target) => dispatch(type, { target, button: 0, pointerId: 1, clientY: 0, preventDefault() {} });
   const press = (act, arg) => fire('click', fakeElement(arg === undefined ? { ringAct: act } : { ringAct: act, ringArg: String(arg) }));
   const change = (act, value, tagName = 'SELECT') => fire('change', fakeElement({ ringAct: act }, tagName, { value, type: 'text' }));
   const typed = (act, value, arg) => {
@@ -341,7 +348,7 @@ async function page({ ready = true } = {}) {
   press('bank', 'A');
   change('cond-channel', '1');
   change('follow-target', '');
-  return { api, hub, ring, mixer, context, container, listeners, regions, live, teardown, sent, fire, press, change, typed, content, liveElement, answer };
+  return { api, hub, ring, mixer, context, container, listeners, dispatch, regions, live, teardown, sent, fire, press, change, typed, content, liveElement, answer };
 }
 
 test('RUN, STOP, a scene and a channel\'s keys play the runtime and leave the sequence alone', async () => {
@@ -474,7 +481,7 @@ test('channels and cells are chosen, and a pad turns on with a double click', as
 test('a knob turns with the arrow keys and with the mouse, and goes home on a double click', async () => {
   const unregister = registerOneRingPanel();
   try {
-    const { listeners, fire, content, teardown } = await page();
+    const { listeners, dispatch, fire, content, teardown } = await page();
     const knob = (name, value) => {
       const attributes = { 'aria-valuenow': String(value) };
       return fakeElement({ ringKnob: name }, 'SPAN', {
@@ -483,16 +490,16 @@ test('a knob turns with the arrow keys and with the mouse, and goes home on a do
         setPointerCapture() {}
       });
     };
-    listeners.get('keydown')({ target: knob('swing', 0), key: 'ArrowUp', preventDefault() {} });
+    dispatch('keydown', { target: knob('swing', 0), key: 'ArrowUp', preventDefault() {} });
     assert.equal(content().scenes[0].channels[0].swing, 0.01);
-    listeners.get('keydown')({ target: knob('offset', 0), key: 'Home', preventDefault() {} });
+    dispatch('keydown', { target: knob('offset', 0), key: 'Home', preventDefault() {} });
     assert.equal(content().scenes[0].channels[0].offset, -64);
 
     const dragged = knob('humanize', 0);
-    listeners.get('pointerdown')({ target: dragged, button: 0, pointerId: 7, clientY: 300, preventDefault() {} });
-    listeners.get('pointermove')({ target: dragged, pointerId: 7, clientY: 200, shiftKey: false });
+    dispatch('pointerdown', { target: dragged, button: 0, pointerId: 7, clientY: 300, preventDefault() {} });
+    dispatch('pointermove', { target: dragged, pointerId: 7, clientY: 200, shiftKey: false });
     assert.equal(dragged.getAttribute('aria-valuenow'), '23', 'half the travel is half the range');
-    listeners.get('pointerup')({ target: dragged, pointerId: 7 });
+    dispatch('pointerup', { target: dragged, pointerId: 7 });
     assert.equal(content().scenes[0].channels[0].humanize, 0.23, 'the last position is written');
 
     fire('dblclick', knob('offset', -64));
@@ -738,23 +745,23 @@ test('the tabs change the body; MEMORY captures, loads and edits the material', 
 test('VOICES edits the scene\'s voice rules; a lowest takes its highest along', async () => {
   const unregister = registerOneRingPanel();
   try {
-    const { listeners, press, change, typed, content, regions, teardown } = await page();
+    const { dispatch, press, change, typed, content, regions, teardown } = await page();
     const knob = (name, value) => fakeElement({ ringKnob: name }, 'SPAN', { getAttribute: () => String(value), setAttribute() {} });
     press('tab', 'voices');
     press('voice', 2);
     assert.match(regions.get('voices').paints.at(-1), /Voice 3 now/);
     const voice = () => content().scenes[0].voices[2];
-    listeners.get('keydown')({ target: knob('voice-transpose', 0), key: 'ArrowUp', preventDefault() {} });
+    dispatch('keydown', { target: knob('voice-transpose', 0), key: 'ArrowUp', preventDefault() {} });
     assert.equal(voice().transpose, 1);
     typed('knob-value', 'C4', 'voice-low');
     assert.equal(voice().low, 60);
     typed('knob-value', 'C3', 'voice-high');
     assert.deepEqual([voice().low, voice().high], [48, 48], 'a highest below the lowest takes it down');
     const root = fakeElement({ ringAct: 'voice-rule', ringArg: 'root' }, 'SELECT', { value: '2' });
-    listeners.get('change')({ target: root });
+    dispatch('change', { target: root });
     assert.equal(voice().root, 2);
     const shortest = fakeElement({ ringAct: 'voice-rule', ringArg: 'shortest' }, 'SELECT', { value: '3840' });
-    listeners.get('change')({ target: shortest });
+    dispatch('change', { target: shortest });
     assert.deepEqual([voice().shortest, voice().longest], [3840, 61440]);
     press('voice-order', 3);
     assert.equal(voice().order, 3);
@@ -770,7 +777,7 @@ test('VOICES edits the scene\'s voice rules; a lowest takes its highest along', 
 test('WRITER sets where generations go, writes, and turns feedback on and off', async () => {
   const unregister = registerOneRingPanel();
   try {
-    const { api, hub, ring, listeners, press, change, sent, content, regions, teardown } = await page();
+    const { api, hub, ring, dispatch, press, change, sent, content, regions, teardown } = await page();
     const arp = hub.nodes.create('arpeggiator');
     const track = hub.sequencer.addTrack('midi');
     const clip = hub.sequencer.addMidiClip(track.id, 0, 4);
@@ -781,12 +788,12 @@ test('WRITER sets where generations go, writes, and turns feedback on and off', 
     change('writer-clip', clip.id);
     change('writer-destination', arp.id);
     const knob = fakeElement({ ringKnob: 'writer-bars' }, 'SPAN', { getAttribute: () => '4', setAttribute() {} });
-    listeners.get('keydown')({ target: knob, key: 'ArrowUp', preventDefault() {} });
+    dispatch('keydown', { target: knob, key: 'ArrowUp', preventDefault() {} });
     const on = fakeElement({ ringAct: 'writer-feedback' }, 'INPUT', { type: 'checkbox', checked: true });
-    listeners.get('change')({ target: on });
+    dispatch('change', { target: on });
     press('writer-feedback-mode', CAPTURE_MODE.add);
     const limit = fakeElement({ ringAct: 'knob-value', ringArg: 'writer-limit' }, 'INPUT', { value: '7 ×', type: 'text' });
-    listeners.get('change')({ target: limit });
+    dispatch('change', { target: limit });
     assert.deepEqual(content().writer, {
       ...defaultWriter(), mode: WRITE_MODE.replace, clipId: clip.id, destination: arp.id, bars: 5,
       feedback: true, feedbackMode: CAPTURE_MODE.add, limit: 7

@@ -267,3 +267,176 @@ export function syncKnobMount(mount, { fraction = 0, display = '' } = {}) {
   if (label) label.textContent = display;
   return true;
 }
+
+/**
+ * The list a `<select>` opens, drawn by the page.
+ *
+ * WHY NOT THE ONE THE BROWSER DRAWS
+ * ---------------------------------
+ * A select's list is not part of the page: Chromium draws it in a window of its
+ * own, and on Windows (Electron 43) that window is white whatever the page's
+ * `color-scheme` says and whatever theme the application declares -- both were
+ * tried. Over the graphite faceplate every menu opened as a white slab with
+ * grey text. So the page draws the list itself.
+ *
+ * The `<select>` stays the control: it holds the value, keeps the keyboard it
+ * always had, carries the module's `data-*` hooks and fires `change` as before.
+ * Only its list is ours, built from its own options each time it opens, so a
+ * module that renders a select renders nothing new.
+ *
+ * It covers the faceplate alone -- every select under `.omni-pearl`, whether it
+ * sits in a pearl box, under a rotary selector or behind a knob -- and is bound
+ * once, for the whole shell (app.js).
+ */
+export function bindPearlLists(root) {
+  if (!root?.addEventListener) return () => {};
+  const doc = root.ownerDocument ?? globalThis.document ?? root;
+  let open = null;
+
+  /** The faceplate select a press or a key is on, and the control it hangs from. */
+  const selectAt = (target) => {
+    const select = target?.closest?.('select');
+    if (!select || !select.closest('.omni-pearl')) return null;
+    return root.contains?.(select) === false ? null : select;
+  };
+  const anchorOf = (select) => select.closest('.op-select, .op-selector, .op-knob-mount');
+
+  const close = () => {
+    if (!open) return;
+    open.box.classList.remove('is-open');
+    open.list.remove();
+    open = null;
+  };
+
+  const rowsOf = (list) => [...list.querySelectorAll('.op-list-row:not([disabled])')];
+
+  const highlight = (row) => {
+    if (!open || !row) return;
+    for (const other of rowsOf(open.list)) other.classList.toggle('is-active', other === row);
+    row.scrollIntoView?.({ block: 'nearest' });
+  };
+
+  const apply = (row) => {
+    if (!open || !row) return;
+    const { select } = open;
+    const index = Number(row.dataset.opListIndex);
+    close();
+    if (!Number.isInteger(index) || select.selectedIndex === index) return;
+    select.selectedIndex = index;
+    select.dispatchEvent(new Event('input', { bubbles: true }));
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+  };
+
+  /** The select's own options, groups and all, as rows of the page. */
+  const build = (select) => {
+    const list = doc.createElement('div');
+    list.className = 'op-list';
+    list.setAttribute('role', 'listbox');
+    const add = (option) => {
+      const row = doc.createElement('button');
+      row.type = 'button';
+      row.className = 'op-list-row';
+      row.setAttribute('role', 'option');
+      row.dataset.opListIndex = String(option.index);
+      const chosen = option.index === select.selectedIndex;
+      row.setAttribute('aria-selected', chosen ? 'true' : 'false');
+      if (chosen) row.classList.add('is-selected');
+      if (option.disabled) row.disabled = true;
+      row.textContent = option.textContent;
+      list.append(row);
+    };
+    for (const child of select.children) {
+      if (child.tagName === 'OPTGROUP') {
+        const label = doc.createElement('span');
+        label.className = 'op-list-group';
+        label.textContent = child.label;
+        list.append(label);
+        for (const option of child.children) add(option);
+      } else if (child.tagName === 'OPTION') {
+        add(child);
+      }
+    }
+    return list;
+  };
+
+  const show = (select) => {
+    const box = anchorOf(select);
+    if (!box || select.disabled) return;
+    if (open?.select === select) {
+      close();
+      return;
+    }
+    close();
+    const list = build(select);
+    box.append(list);
+    box.classList.add('is-open');
+    open = { select, box, list };
+    highlight(list.querySelector('.op-list-row.is-selected') ?? rowsOf(list)[0]);
+    select.focus?.({ preventScroll: true });
+  };
+
+  // A select opens the browser's list on a press and on some keys; the page
+  // takes both and opens its own.
+  const onPointerDown = (event) => {
+    const select = selectAt(event.target);
+    if (select) {
+      event.preventDefault();
+      show(select);
+      return;
+    }
+    if (open && !event.target?.closest?.('.op-list')) close();
+  };
+
+  const onClick = (event) => {
+    const row = event.target?.closest?.('.op-list-row');
+    if (row && open?.list.contains(row)) {
+      event.preventDefault();
+      apply(row);
+    }
+  };
+
+  const onKeyDown = (event) => {
+    const select = selectAt(event.target);
+    if (!select) return;
+    const opening = event.key === 'Enter' || event.key === ' ' || event.key === 'F4'
+      || (event.key === 'ArrowDown' && event.altKey);
+    if (!open || open.select !== select) {
+      if (!opening) return;
+      event.preventDefault();
+      show(select);
+      return;
+    }
+    const rows = rowsOf(open.list);
+    const at = rows.indexOf(open.list.querySelector('.op-list-row.is-active'));
+    if (event.key === 'Escape' || event.key === 'Tab') {
+      if (event.key === 'Escape') event.preventDefault();
+      close();
+    } else if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      apply(rows[at] ?? null);
+    } else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      highlight(rows[Math.min(rows.length - 1, Math.max(0, at + (event.key === 'ArrowDown' ? 1 : -1)))]);
+    } else if (event.key === 'Home' || event.key === 'End') {
+      event.preventDefault();
+      highlight(event.key === 'Home' ? rows[0] : rows.at(-1));
+    }
+  };
+
+  // A redraw takes the open list with it; nothing is left pointing at it.
+  const onFocusOut = () => {
+    if (open && !open.select.isConnected) close();
+  };
+
+  root.addEventListener('pointerdown', onPointerDown, true);
+  root.addEventListener('click', onClick, true);
+  root.addEventListener('keydown', onKeyDown, true);
+  root.addEventListener('focusout', onFocusOut);
+  return () => {
+    close();
+    root.removeEventListener('pointerdown', onPointerDown, true);
+    root.removeEventListener('click', onClick, true);
+    root.removeEventListener('keydown', onKeyDown, true);
+    root.removeEventListener('focusout', onFocusOut);
+  };
+}

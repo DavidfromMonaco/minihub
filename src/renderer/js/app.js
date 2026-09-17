@@ -21,6 +21,7 @@ import { installHistoryKeys } from './ui/historyKeys.js';
 import { installAgentBridge } from './core/agentBridge.js';
 import { installBindingsBarHost } from './core/bindingsBarHost.js';
 import { registerOneRingPanel } from './modules/oneRing/oneRingPanel.js';
+import { bindPearlLists } from './ui/omniPearl.js';
 
 async function main() {
   const hub = createHub(window.hubAPI);
@@ -52,6 +53,10 @@ async function main() {
   // A node type with its own folder brings its page (nodeEditors.js). Before
   // the instances load, so none can open without it.
   registerOneRingPanel();
+  // Every menu of a faceplate is drawn by the page: the list Chromium opens for
+  // a <select> is a window of its own, white whatever the page and the
+  // application say (ui/omniPearl.js). Bound once, for every page.
+  bindPearlLists(document);
 
   // Restore persisted dynamic node instances (registers their modules +
   // routing nodes). Must run before restoring connections so nodes exist.
