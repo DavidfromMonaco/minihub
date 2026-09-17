@@ -2384,3 +2384,57 @@ that needs more carried than the channel switch and the command-line switches.
 `applyHandoff` in `src/main/launchContext.js`; `launchPlace`,
 `recordLaunchContext` and the startup in `src/main/main.js`. Tests:
 `test/launchContext.test.cjs`.
+
+---
+
+## D-046 — A bug report is a pre-filled issue, not a form MiniHub sends
+
+**Status**: in force · 2026-09-18 · **implemented**
+
+**Context** — The Home page was rebuilt on 2026-09-17 around the four project
+actions and a column saying what MiniHub is and how finished it is. The author
+asked that column for three things: the repository, the site, and a button to
+report a bug "through a form that sends a mail by the site". Neither half of
+that sentence had anywhere to land. `minihub.site` is hand-written HTML served
+by GitHub Pages: no process there can receive a POST, and its pages carry
+`script-src 'none'`. And a form inside MiniHub would be the application's first
+network call -- INTENT §7 keeps the renderer's CSP closed, puts every request in
+main behind an allow-listed command with its validator, and says that lifting
+that frame is done explicitly, with its reason. Both halves therefore meant new
+infrastructure: a Worker, a mail provider's key, an account to hold it.
+
+**Decision** — The button opens a GitHub issue form with the report already
+begun. `report` is a named destination in `src/main/externalLinks.js`, like
+`setups`: its URL carries a title, the three questions (what happened, what was
+expected, the steps) and an Environment block main fills in -- the version
+Electron itself reports, the Windows build, the Electron build. MiniHub sends
+nothing; the reporter posts it. The author chose this on 2026-09-17 over a form
+on the site and a form in the application, both put to him with their cost.
+
+**Consequences**
+
+- Reporting needs a GitHub account, and the report is public. That is already
+  what the site asks of a setup contribution (`setups/index.html`: "Send a
+  setup" leads to the issues), so the product asks one thing rather than two.
+- MiniHub still makes no network call, and still works with no connection --
+  which the Home column now says in so many words.
+- "Which version?" is answered before the page opens: the one question no
+  reporter can answer from memory.
+- The environment block is read in main at load (`package.json`,
+  `process.versions`, `os.release()`), never handed over by the renderer. A
+  renderer showing anything at all cannot change what the report claims.
+- The three Home buttons name their host in their own label, as the Browse
+  setups button does, and a test holds them to it: Home is the first page a
+  stranger sees.
+
+**What would justify revisiting** — A report the author wants private (a crash
+dump, a project file), or reporters without a GitHub account. Either needs a
+receiver: a Worker on minihub.site and a mail key, and with them the INTENT §7
+lift for a request that leaves main.
+
+**Proof in the code** — `reportBody` and `SITE_DESTINATIONS` in
+`src/main/externalLinks.js`; the `departure` buttons in
+`src/renderer/js/modules/home/homeModule.js`. Tests:
+`test/externalLinks.test.cjs` ("a bug report is a pre-filled issue form, with
+the answers nobody remembers", "every Home button names the host it actually
+opens"), `test/homeStartup.test.mjs`.

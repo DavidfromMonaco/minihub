@@ -27,6 +27,25 @@ const read = (file) => fs.readFileSync(path.join(repo, file), 'utf8');
 
 test('a named destination resolves to its page', () => {
   assert.equal(externalUrlFor('setups'), 'https://minihub.site/setups/');
+  assert.equal(externalUrlFor('site'), 'https://minihub.site/');
+  assert.equal(externalUrlFor('source'), 'https://github.com/DavidfromMonaco/minihub');
+});
+
+test('a bug report is a pre-filled issue form, with the answers nobody remembers', () => {
+  // The report destination exists so that "which version?" is already answered
+  // when the page opens. It is a LINK: MiniHub sends nothing, and the report
+  // exists only once the reporter posts it themselves (INTENT.md §7).
+  const url = new URL(externalUrlFor('report'));
+  assert.equal(url.host, 'github.com');
+  assert.match(url.pathname, /\/issues\/new$/);
+  assert.equal(url.pathname.startsWith(new URL(SITE_DESTINATIONS.source).pathname), true,
+    'the report goes to the repository the Source code button opens, not to another one');
+
+  const body = url.searchParams.get('body');
+  const { version } = require('../package.json');
+  assert.match(body, new RegExp(`MiniHub ${version.replace(/\./g, '\\.')}`), 'the version is filled in');
+  assert.match(body, /Windows \d+\.\d+/, 'the Windows build is filled in');
+  assert.match(body, /What happened/, 'and the reporter is asked the questions, not the environment');
 });
 
 test('anything that is not one of our names is refused', () => {
@@ -108,9 +127,25 @@ test('the button names the host it actually opens', () => {
   assert.ok(label[1].includes(host), `"${label[1]}" does not name ${host}`);
 });
 
+test('every Home button names the host it actually opens', () => {
+  // Same rule as the Browse setups button above, for the three places Home
+  // offers. Home is the first page a stranger sees, so a label promising
+  // minihub.site while the table opens github.com would be the first thing
+  // MiniHub ever lied about.
+  const home = read('src/renderer/js/modules/home/homeModule.js');
+  for (const destination of ['site', 'source', 'report']) {
+    const button = home.slice(home.indexOf(`departure('${destination}'`));
+    const label = button.slice(0, button.indexOf(')'));
+    assert.ok(label, `Home has no ${destination} button`);
+    const host = new URL(SITE_DESTINATIONS[destination]).host;
+    assert.ok(label.includes(host), `${destination}: "${label}" does not name ${host}`);
+  }
+});
+
 test('the renderer holds no URL of its own', () => {
   for (const file of ['src/renderer/js/ui/controllerProfileSection.js',
-    'src/renderer/js/modules/minilab/minilabModule.js']) {
+    'src/renderer/js/modules/minilab/minilabModule.js',
+    'src/renderer/js/modules/home/homeModule.js']) {
     assert.equal(/https?:\/\//.test(read(file)), false,
       `${file} spells a URL; the address list lives in src/main/externalLinks.js`);
   }

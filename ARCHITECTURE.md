@@ -888,11 +888,32 @@ matériel, pas de nous. `escapeHtml()`
 valeur atteint un littéral de gabarit : un plugin nommé
 `<img src=x onerror=…>` doit s'afficher comme du texte.
 
+### Home — the only bitmaps in the renderer
+
+The four Home cards are the first, and so far only, pictures MiniHub ships:
+`src/renderer/assets/home/*.jpg`, referenced from the module as
+`assets/home/<file>` — a path relative to `index.html`, which is what Chromium
+resolves, not to the module that writes the markup. JPEG at 1400 px wide: the
+column never renders a card past 700 px, so that covers a 2× screen, and it
+keeps each file near 100 kB where the source PNG was 1.8 MB.
+
+Their frames are cut by `clip-path`, and **a clipped box loses its border with
+its corners**. So every framed shape is a pair: a filled shape, and the same
+shape inset 1 px on top of it — `.home-card-frame` / `.home-card-face` for the
+card, `.home-card-art` / `.home-card-art-face` for the picture's slanted edge.
+What shows between the two is the 1 px outline the design asks for. Focus works
+the same way: there is no outside left to draw a ring in, so the frame itself
+takes the accent colour.
+
+A test reads the mounted markup and checks every picture it names is really on
+disk (`test/homeStartup.test.mjs`): a renamed file would otherwise leave a card
+with a silent hole in it — no error, no log.
+
 ### Deux systèmes visuels
 
 ⚠️ Il en coexiste **deux**, et c'est une dette identifiée :
 
-- `base.css` (1 634 lignes) — le langage historique : `.panel`, `.btn`, `.pill`,
+- `base.css` (1 938 lignes) — le langage historique : `.panel`, `.btn`, `.pill`,
   utilisé par 9 fichiers ;
 - `omni-pearl.css` (1 027 lignes) — le langage « Omni Pearl » : contrôles au
   rendu matériel construits autour de **vrais** éléments de formulaire, utilisé

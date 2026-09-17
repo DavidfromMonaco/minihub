@@ -1509,110 +1509,248 @@ body {
   content:''; position:absolute; left:50%; top:calc((1 - var(--ml-value, .5)) * 61px); width:17px; height:3px; margin-left:-8.5px;
   border-radius:2px; background:var(--accent); box-shadow:0 0 4px var(--accent); pointer-events:none;
 }
-.home-project-grid {
+/* ---------- Home ---------- */
+/* Two columns: the four ways into a project, then what MiniHub is. The rule
+   between them is the right column's own border, so it runs the full height of
+   the page whatever the shorter side holds. */
+.home-page {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 20px;
-  width: min(100%, 680px);
-  margin: 0 auto;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  min-height: 100%;
 }
-/* Per-tile accent for the vector scene. */
-.home-project-tile[data-accent='orange'] { --hp-accent: #f5a623; }
-.home-project-tile[data-accent='blue']   { --hp-accent: #4f8cff; }
-.home-project-tile[data-accent='purple'] { --hp-accent: #a78bfa; }
-
-.home-project-tile {
-  aspect-ratio: 1;
-  min-width: 0;
+/* The cards stop growing before the text does: past 700px a card is a banner,
+   while the paragraphs beside it still read better wider. */
+.home-actions {
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
-  align-items: stretch;
-  text-align: center;
-  border: 1px solid var(--border-strong);
-  border-radius: 22px;
-  background: var(--bg-panel);
-  color: var(--text);
-  padding: 20px;
-  cursor: pointer;
-  transition: background-color 140ms ease, border-color 140ms ease,
-              color 140ms ease, transform 140ms ease;
-}
-.home-project-tile:hover {
-  background: var(--bg-hover);
-  border-color: var(--accent-dim);
-  transform: translateY(-2px);
-}
-.home-project-tile:hover .home-project-scene {
-  transform: scale(1.03);
-}
-.home-project-tile:active {
-  background: var(--bg-active);
-  transform: translateY(0);
-}
-.home-project-tile:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 3px;
-}
-.home-project-tile:disabled {
-  background: var(--bg-raised);
-  border-color: var(--border);
-  color: var(--text-faint);
-  cursor: default;
-  transform: none;
-}
-.home-project-tile:disabled .home-project-scene {
-  opacity: 0.45;
+  gap: 18px;
+  min-width: 0;
+  max-width: 700px;
+  padding: 2px 30px 24px 0;
 }
 
-/* Vector scene area (upper ~2/3 of the tile) + label below. */
-.home-project-scene {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+/* A card is a picture with a bevelled frame. Both bevels and the picture's
+   slanted edge are cut by `clip-path`, which also cuts away any border -- hence
+   the frame/face pair: the frame is a filled shape, the face the same shape
+   inset 1px on top of it, and what shows between them is the 1px outline. The
+   picture plate repeats the trick for its own diagonal.
+   One slope for every diagonal of the card: that is what makes the shape read
+   as one object rather than three accidents. */
+.home-card {
+  --home-bevel-x: 26px;
+  --home-bevel-y: 40px;
+  --home-art-slant: 84px;
+  --home-card-shape: polygon(
+    0 var(--home-bevel-y), var(--home-bevel-x) 0, 100% 0,
+    100% calc(100% - var(--home-bevel-y)), calc(100% - var(--home-bevel-x)) 100%, 0 100%);
+  --home-art-shape: polygon(
+    0 var(--home-bevel-y), var(--home-bevel-x) 0, 100% 0,
+    calc(100% - var(--home-art-slant)) 100%, 0 100%);
+  position: relative;
+  display: block;
   width: 100%;
-  transition: transform 140ms ease;
+  height: clamp(136px, 19vh, 186px);
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
 }
-.home-project-scene .home-pictogram {
+/* Per-card accent: the icon's ink, and the focus ring. Read by homeIcons.js
+   drawings through `--home-accent`, never spelled inside a drawing. */
+.home-card[data-accent='amber']  { --home-accent: #f5a623; }
+.home-card[data-accent='blue']   { --home-accent: #4f8cff; }
+.home-card[data-accent='purple'] { --home-accent: #a78bfa; }
+
+.home-card-frame {
+  display: block;
   width: 100%;
   height: 100%;
-  max-height: 100%;
+  background: var(--border-strong);
+  clip-path: var(--home-card-shape);
+  transition: background-color 160ms ease;
 }
-.home-project-label {
-  margin-top: 12px;
-  font: 600 20px/1.2 var(--font);
-  color: var(--text);
-  max-width: 100%;
+.home-card-face {
+  position: absolute;
+  inset: 1px;
+  background: #15181b;
+  clip-path: var(--home-card-shape);
+  overflow: hidden;
 }
-/* A tile that opens something unfinished says so under its own name, rather
-   than answering with an empty page. */
-.home-project-note {
-  margin-top: 6px;
-  font: 500 11px/1.2 var(--font);
-  letter-spacing: 0.04em;
-  color: var(--text-faint);
+.home-card-art {
+  position: absolute;
+  inset: 0;
+  background: var(--border-strong);
+  clip-path: var(--home-art-shape);
 }
-
-/* Shared pictogram stroke language. */
-.home-pictogram {
+.home-card-art-face {
+  position: absolute;
+  inset: 1px;
+  background: #0f1214;
+  clip-path: var(--home-art-shape);
+  overflow: hidden;
+}
+.home-card-photo {
   display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  transition: transform 260ms ease, opacity 160ms ease;
 }
-.home-pictogram .hp-line,
-.home-pictogram .hp-accent {
+/* The label sits on the picture, so the picture is darkened under it rather
+   than the label given a box of its own. */
+.home-card-art-face::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg,
+    #14171a 0 10%, rgba(20, 23, 26, 0.88) 26%, rgba(20, 23, 26, 0.36) 47%,
+    rgba(20, 23, 26, 0) 66%);
+  pointer-events: none;
+}
+.home-card-body {
+  position: absolute;
+  left: 34px;
+  bottom: 22px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+.home-card-icon {
+  display: block;
+  width: 38px;
+  height: 38px;
+  margin-bottom: 10px;
+}
+.home-card-title {
+  font: 600 25px/1.15 var(--font);
+  letter-spacing: -0.01em;
+  color: #f4f6f8;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.55);
+}
+.home-card-sub {
+  margin-top: 3px;
+  font: 400 14px/1.35 var(--font);
+  color: #c4cad1;
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.6);
+}
+.home-card:hover .home-card-frame { background: #5a616a; }
+.home-card:hover .home-card-photo { transform: scale(1.045); }
+.home-card:active .home-card-photo { transform: scale(1.02); }
+/* A clipped shape cuts an outline off, so focus is shown by the frame itself
+   taking the accent colour -- there is no outside left to draw a ring in. */
+.home-card:focus-visible { outline: none; }
+.home-card:focus-visible .home-card-frame { background: var(--accent); }
+.home-card:focus-visible .home-card-face { inset: 2px; }
+.home-card:disabled { cursor: default; }
+.home-card:disabled .home-card-photo { opacity: 0.26; filter: grayscale(0.7); }
+.home-card:disabled .home-card-title,
+.home-card:disabled .home-card-sub { color: var(--text-faint); text-shadow: none; }
+.home-card:disabled .home-icon-ink { stroke: var(--text-faint); }
+
+/* Shared stroke language for the Home drawings. */
+.home-icon,
+.home-departure {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.home-icon-ink {
   fill: none;
-  stroke-width: 5;
+  stroke: var(--home-accent, var(--text));
+  stroke-width: 2.1;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
-.home-pictogram .hp-line { stroke: currentColor; }
-.home-pictogram .hp-accent { stroke: var(--hp-accent); }
-@media (max-width: 620px) {
-  .home-project-grid {
-    grid-template-columns: 1fr;
-    width: min(100%, 360px);
+
+/* What MiniHub is, how finished it is, and where the rest of the answer is. */
+.home-about {
+  min-width: 0;
+  padding: 2px 8px 32px 46px;
+  border-left: 1px solid var(--border);
+}
+.home-about-title {
+  margin: 0;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--border);
+  font: 600 34px/1.1 var(--font);
+  letter-spacing: -0.015em;
+  color: #f4f6f8;
+}
+.home-about-lead {
+  margin: 24px 0 0;
+  max-width: 54ch;
+  font: 400 17px/1.55 var(--font);
+  color: #d3d8de;
+}
+.home-about-text {
+  margin: 18px 0 0;
+  max-width: 62ch;
+  font: 400 14.5px/1.65 var(--font);
+  color: var(--text-dim);
+}
+.home-about-state { margin-top: 28px; }
+.home-about-state .home-about-text { margin-top: 10px; }
+.home-about-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 26px;
+}
+/* A label that wrapped would put the host on a line of its own, where it stops
+   reading as part of the same promise. The row wraps instead. */
+.home-link {
+  align-items: baseline;
+  white-space: nowrap;
+}
+.home-link .home-departure {
+  width: 13px;
+  height: 13px;
+  align-self: center;
+  fill: none;
+  stroke: var(--text-dim);
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.home-link:hover .home-departure { stroke: var(--accent); }
+.home-link-host {
+  font-size: 12px;
+  color: var(--text-faint);
+}
+.home-about-note {
+  margin: 14px 0 0;
+  max-width: 58ch;
+  font: 400 12.5px/1.6 var(--font);
+  color: var(--text-faint);
+}
+.home-about-error {
+  margin: 12px 0 0;
+  font: 500 13px/1.5 var(--font);
+  color: var(--danger);
+}
+
+/* Narrow window: the rule becomes horizontal rather than squeezing the text
+   into a column too thin to read. The threshold is a window width, and the
+   sidebar beside it is 220px, so this leaves each column some 430px -- the
+   point below which a card's title and the paragraphs both start to suffer. */
+@media (max-width: 1120px) {
+  .home-page { grid-template-columns: minmax(0, 1fr); }
+  .home-actions { padding-right: 0; }
+  .home-about {
+    margin-top: 26px;
+    padding: 24px 0 24px;
+    border-left: 0;
+    border-top: 1px solid var(--border);
   }
+}
+@media (max-width: 620px) {
+  .home-card-body { left: 22px; bottom: 16px; }
+  .home-card-icon { width: 32px; height: 32px; margin-bottom: 8px; }
+  .home-card-title { font-size: 21px; }
+  .home-about-title { font-size: 27px; }
 }
 .project-identity { color: var(--muted, #a7abb2); font-size: 13px; margin-right: 8px; }
 
