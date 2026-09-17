@@ -4,8 +4,8 @@
  * the startup diagnostic log.
  */
 export const BUILD_STAMP = {
-  version: '0.3.0',
-  build: 'release-0.3.0',
-  timestamp: '2026-09-16T20:44:42Z',
-  stamp: 'mlh-release-0.3.0-20260916'
+  version: '0.4.0',
+  build: 'release-0.4.0',
+  timestamp: '2026-09-17T22:18:37Z',
+  stamp: 'mlh-release-0.4.0-20260917'
 };
