@@ -5,8 +5,9 @@ import { setupEditHistory } from '../src/renderer/js/core/editHistory.js';
 import { getNodeEditor } from '../src/renderer/js/core/nodeEditors.js';
 import { VALUE_TYPE } from '../src/renderer/js/core/commandRegistry.js';
 import {
-  CHANNEL_COUNT, CONDITION, MUTABLE, SCENE_POSITION, SCENE_TIMING, STEP_MODE, VALUE_MODE,
-  cellAt, createSequence, readSequence, retarget, sequenceErrors, setCell, targetFinder
+  CAPTURE_MODE, CHANNEL_COUNT, CONDITION, MUTABLE, SCENE_POSITION, SCENE_TIMING, STEP_MODE, VALUE_MODE, WRITE_MODE,
+  cellAt, createSequence, defaultVoice, defaultWriter, loadMaterial, readSequence, retarget, sequenceErrors, setCell,
+  targetFinder
 } from '../src/renderer/js/core/oneRingSequence.js';
 import * as edits from '../src/renderer/js/core/oneRingEdits.js';
 import { renderPage, renderRegions } from '../src/renderer/js/modules/oneRing/oneRingFaceplate.js';
@@ -172,6 +173,9 @@ function viewFor(content, overrides = {}) {
     find: (target, command) => byId.get(target)?.commands.get(command) ?? null,
     ready: false, storeArmed: false, seedText: null, seedError: false,
     followDraft: { target: '', command: '', value: '' }, conditionChannel: 1,
+    tab: 'sequence', status: null, voiceIndex: 0, voiceRules: content.scenes[0].voices[0],
+    materialView: 'origin', loadChoice: '', materialError: '', writer: content.writer ?? defaultWriter(),
+    writes: null, clips: [], destinations: [],
     ...overrides
   };
 }
@@ -331,6 +335,8 @@ async function page({ ready = true } = {}) {
   const answer = () => api.emitEvent({ type: 'oneRingSynced', nodeId: ring.id, generation: 3, created: false, ok: true, message: '' });
   // What a page is looking at is kept per node id, and every test's hub
   // numbers its first node the same way.
+  press('tab', 'sequence');
+  press('voice', 0);
   press('channel', 0);
   press('bank', 'A');
   change('cond-channel', '1');
@@ -633,4 +639,213 @@ test('the status lights the display even for a page no one has touched', () => {
   applyStatus(container, context);
   assert.equal(texts.get('[data-ring-live="state"]').textContent, 'NOT IN THE ENGINE');
   assert.equal(texts.get('[data-ring-live="bar"]').textContent, '—');
+});
+
+// ---------- part two's tabs ----------
+
+test('four tabs under the deck; each tab draws its own panels, with no inline style', () => {
+  const content = loadMaterial(createSequence(), { length: 7680, notes: [
+    { pitch: 60, velocity: 100, channel: 1, start: 0, duration: 480 },
+    { pitch: 72, velocity: 80, channel: 2, start: 3840, duration: 960 }
+  ] });
+  const sequence = renderRegions(viewFor(content));
+  assert.deepEqual(Object.keys(sequence), ['deck', 'tabs', 'body', 'channels', 'channel', 'cell', 'follow']);
+  assert.equal((sequence.tabs.match(/data-ring-act="tab"/g) || []).length, 4);
+  assert.match(sequence.tabs, /is-white"[^>]*data-ring-act="tab" data-ring-arg="sequence" role="tab" aria-selected="true"/);
+  assert.equal((sequence.tabs.match(/data-ring-live-tab="/g) || []).length, 3, 'a LED for each of part two\'s tabs');
+
+  const clips = [{ id: 'clip-1', label: 'MIDI 1 · MIDI Clip · bar 1' }];
+  const memory = renderRegions(viewFor(content, { tab: 'memory', clips, loadChoice: 'clip-1' }));
+  assert.deepEqual(Object.keys(memory), ['deck', 'tabs', 'body', 'capture', 'material']);
+  assert.match(memory.body, /data-ring-region="capture"><\/section>/, 'the body is the tab\'s skeleton');
+  for (const act of ['capture', 'capture-end', 'capture-mode', 'capture-mode-toggle', 'material-view', 'freeze', 'revert', 'clear', 'load-choice', 'load-clip']) {
+    assert.match(memory.capture + memory.material, new RegExp(`data-ring-act="${act}"`), act);
+  }
+  assert.match(memory.capture, /data-ring-knob="capture-bars"/);
+  assert.equal((memory.material.match(/<rect class="note"/g) || []).length, 2, 'the roll draws each note');
+  assert.match(memory.material, /origin: 2 notes, 2 bars/);
+  assert.match(memory.material, /data-ring-act="load-clip"(?![^>]*disabled)/);
+
+  const voices = renderRegions(viewFor(content, { tab: 'voices', voiceIndex: 2, voiceRules: content.scenes[0].voices[2] }));
+  assert.deepEqual(Object.keys(voices), ['deck', 'tabs', 'body', 'voices']);
+  for (const knob of ['transpose', 'octave', 'octaveSpread', 'octaveChance', 'low', 'high', 'velocityScale', 'velocitySpread',
+    'velocityLow', 'velocityHigh', 'gateScale', 'gateSpread', 'density']) {
+    assert.match(voices.voices, new RegExp(`data-ring-knob="voice-${knob}"`), knob);
+  }
+  for (const rule of ['root', 'scale', 'channel', 'shortest', 'longest']) {
+    assert.match(voices.voices, new RegExp(`data-ring-act="voice-rule" data-ring-arg="${rule}"`), rule);
+  }
+  assert.match(voices.voices, /data-ring-act="voice-order"/);
+  assert.match(voices.voices, /Voice 3 now/);
+  assert.match(voices.voices, /<button[^>]*disabled [^>]*data-ring-act="voice-reset"/, 'nothing to reset on a voice that changes nothing');
+  assert.match(voices.voices, /aria-valuetext="C-1"[^>]*data-ring-knob="voice-low"/, 'a note reads as its name');
+
+  const writer = renderRegions(viewFor(content, { tab: 'writer', clips, destinations: [{ id: 'arp-1', label: 'Arpeggiator <1>' }] }));
+  for (const act of ['write', 'feedback-live', 'write-mode', 'writer-clip', 'writer-destination', 'writer-feedback', 'writer-feedback-mode']) {
+    assert.match(writer.writer, new RegExp(`data-ring-act="${act}"`), act);
+  }
+  for (const knob of ['writer-bars', 'writer-delay', 'writer-limit']) assert.match(writer.writer, new RegExp(`data-ring-knob="${knob}"`));
+  assert.match(writer.writer, /Arpeggiator &lt;1&gt;/);
+  assert.match(writer.writer, /The next one: “One Ring 1 Generation 1”/);
+
+  for (const tab of ['sequence', 'memory', 'voices', 'writer']) {
+    assert.doesNotMatch(renderPage(viewFor(content, { tab, clips })), /\sstyle\s*=/, tab);
+  }
+});
+
+test('the tabs change the body; MEMORY captures, loads and edits the material', async () => {
+  const unregister = registerOneRingPanel();
+  try {
+    const { hub, press, change, typed, sent, content, regions, teardown } = await page();
+    press('tab', 'memory');
+    assert.match(regions.get('body').paints.at(-1), /data-ring-region="capture"/);
+    assert.match(regions.get('body').paints.at(-1), /Capture/, 'the new body comes with its panels in it');
+    press('capture');
+    press('capture-mode', CAPTURE_MODE.add);
+    assert.equal(content().capture.mode, CAPTURE_MODE.add);
+    press('capture');
+    press('capture-end');
+    await settle();
+    assert.deepEqual(sent('oneRingCommand').map(({ command, name }) => `${command} ${name}`),
+      ['memory CAPTURE_REPLACE', 'memory CAPTURE_ADD', 'memory CAPTURE_END']);
+    typed('knob-value', 'to END', 'capture-bars');
+    assert.equal(content().capture.bars, 0);
+    typed('knob-value', '4', 'capture-bars');
+    assert.equal(content().capture.bars, 4);
+
+    const track = hub.sequencer.addTrack('midi');
+    const clip = hub.sequencer.addMidiClip(track.id, 0, 4, [{ pitch: 64, startPpq: 1, durationPpq: 0.5, velocity: 90, channel: 1 }]);
+    change('load-choice', clip.id);
+    press('load-clip');
+    assert.deepEqual(content().material.origin.notes, [{ pitch: 64, velocity: 90, channel: 1, start: 960, duration: 480 }]);
+    press('freeze');
+    assert.equal(content().material.frozen, true);
+    press('clear');
+    assert.deepEqual(content().material.origin.notes, [], 'asked by a person, CLEAR applies to frozen material too');
+    const long = hub.sequencer.addMidiClip(track.id, 8, 300);
+    change('load-choice', long.id);
+    press('load-clip');
+    assert.match(regions.get('material').paints.at(-1), /Not loaded: the clip is longer than a material/);
+
+    press('tab', 'sequence');
+    assert.match(regions.get('body').paints.at(-1), /data-ring-region="channels"/);
+    teardown();
+  } finally {
+    unregister();
+  }
+});
+
+test('VOICES edits the scene\'s voice rules; a lowest takes its highest along', async () => {
+  const unregister = registerOneRingPanel();
+  try {
+    const { listeners, press, change, typed, content, regions, teardown } = await page();
+    const knob = (name, value) => fakeElement({ ringKnob: name }, 'SPAN', { getAttribute: () => String(value), setAttribute() {} });
+    press('tab', 'voices');
+    press('voice', 2);
+    assert.match(regions.get('voices').paints.at(-1), /Voice 3 now/);
+    const voice = () => content().scenes[0].voices[2];
+    listeners.get('keydown')({ target: knob('voice-transpose', 0), key: 'ArrowUp', preventDefault() {} });
+    assert.equal(voice().transpose, 1);
+    typed('knob-value', 'C4', 'voice-low');
+    assert.equal(voice().low, 60);
+    typed('knob-value', 'C3', 'voice-high');
+    assert.deepEqual([voice().low, voice().high], [48, 48], 'a highest below the lowest takes it down');
+    const root = fakeElement({ ringAct: 'voice-rule', ringArg: 'root' }, 'SELECT', { value: '2' });
+    listeners.get('change')({ target: root });
+    assert.equal(voice().root, 2);
+    const shortest = fakeElement({ ringAct: 'voice-rule', ringArg: 'shortest' }, 'SELECT', { value: '3840' });
+    listeners.get('change')({ target: shortest });
+    assert.deepEqual([voice().shortest, voice().longest], [3840, 61440]);
+    press('voice-order', 3);
+    assert.equal(voice().order, 3);
+    press('voice-reset');
+    assert.deepEqual(voice(), defaultVoice());
+    assert.deepEqual(content().scenes[0].voices[0], defaultVoice(), 'only the voice shown');
+    teardown();
+  } finally {
+    unregister();
+  }
+});
+
+test('WRITER sets where generations go, writes, and turns feedback on and off', async () => {
+  const unregister = registerOneRingPanel();
+  try {
+    const { api, hub, ring, listeners, press, change, sent, content, regions, teardown } = await page();
+    const arp = hub.nodes.create('arpeggiator');
+    const track = hub.sequencer.addTrack('midi');
+    const clip = hub.sequencer.addMidiClip(track.id, 0, 4);
+    press('tab', 'writer');
+    assert.match(regions.get('body').paints.at(-1), new RegExp(`value="${clip.id}"`), 'the Sequencer\'s clips are offered');
+    assert.match(regions.get('body').paints.at(-1), new RegExp(`value="${arp.id}"`), 'and what a track may play');
+    press('write-mode', WRITE_MODE.replace);
+    change('writer-clip', clip.id);
+    change('writer-destination', arp.id);
+    const knob = fakeElement({ ringKnob: 'writer-bars' }, 'SPAN', { getAttribute: () => '4', setAttribute() {} });
+    listeners.get('keydown')({ target: knob, key: 'ArrowUp', preventDefault() {} });
+    const on = fakeElement({ ringAct: 'writer-feedback' }, 'INPUT', { type: 'checkbox', checked: true });
+    listeners.get('change')({ target: on });
+    press('writer-feedback-mode', CAPTURE_MODE.add);
+    const limit = fakeElement({ ringAct: 'knob-value', ringArg: 'writer-limit' }, 'INPUT', { value: '7 ×', type: 'text' });
+    listeners.get('change')({ target: limit });
+    assert.deepEqual(content().writer, {
+      ...defaultWriter(), mode: WRITE_MODE.replace, clipId: clip.id, destination: arp.id, bars: 5,
+      feedback: true, feedbackMode: CAPTURE_MODE.add, limit: 7
+    });
+
+    press('write');
+    press('feedback-live');
+    api.emitEvent({
+      type: 'oneRingStatus', nodeId: ring.id, generation: 3, playing: true, beat: 1, bpm: 120, scene: 0, pendingScene: -1,
+      playheads: Array(16).fill(-1), active: Array(16).fill(false), rejected: 0, guarded: 0, feedback: true, writes: 2
+    });
+    press('feedback-live');
+    await settle();
+    assert.deepEqual(sent('oneRingCommand').map(({ command, name }) => `${command} ${name}`),
+      ['writer WRITE', 'writer FEEDBACK_ON', 'writer FEEDBACK_OFF']);
+    teardown();
+  } finally {
+    unregister();
+  }
+});
+
+test('part two\'s lights and readouts follow the status in place', async () => {
+  const unregister = registerOneRingPanel();
+  try {
+    const { api, ring, press, liveElement, regions, teardown } = await page();
+    const status = {
+      type: 'oneRingStatus', nodeId: ring.id, generation: 3, playing: true, beat: 1, bpm: 120, scene: 0, pendingScene: -1,
+      playheads: Array(16).fill(-1), active: Array(16).fill(false), rejected: 0, guarded: 0,
+      capture: 1, captured: 3, captureRefused: 1, sounding: [2, 0, 0, 0], notesRefused: 4,
+      writes: 5, writesEmpty: 1, feedback: true, feedbackStopped: false
+    };
+    press('tab', 'memory');
+    const paints = () => [...regions.values()].reduce((sum, element) => sum + element.paints.length, 0);
+    const before = paints();
+    api.emitEvent(status);
+    assert.equal(paints(), before, 'nothing is drawn again');
+    assert.equal(liveElement('[data-ring-live-tab="memory"]').classList.contains('is-on'), true);
+    assert.equal(liveElement('[data-ring-live-tab="voices"]').classList.contains('is-on'), true);
+    assert.equal(liveElement('[data-ring-live-tab="writer"]').classList.contains('is-on'), true);
+    assert.equal(liveElement('[data-ring-live-key="capture"]').classList.contains('is-pending'), true, 'armed, CAPTURE blinks');
+    assert.equal(liveElement('[data-ring-live="capture-state"]').textContent, 'ARMED');
+    assert.equal(liveElement('[data-ring-live="capture-taken"]').textContent, '3');
+    api.emitEvent({ ...status, capture: 2 });
+    assert.equal(liveElement('[data-ring-live-key="capture"]').classList.contains('is-lit'), true, 'capturing, it is lit');
+
+    press('tab', 'voices');
+    api.emitEvent({ ...status, voices: [{ ...defaultVoice(), transpose: 5 }, defaultVoice(), defaultVoice(), defaultVoice()] });
+    assert.equal(liveElement('[data-ring-live-voice="0"]').classList.contains('is-on'), true);
+    assert.equal(liveElement('[data-ring-live="voice-sounding-0"]').textContent, '2 sounding');
+    assert.equal(liveElement('[data-ring-live="voice-live"]').textContent, 'transpose +5');
+    assert.equal(liveElement('[data-ring-live="voice-refused"]').textContent, '4');
+
+    press('tab', 'writer');
+    api.emitEvent({ ...status, feedback: false, feedbackStopped: true });
+    assert.equal(liveElement('[data-ring-live-key="feedback"]').classList.contains('is-lit'), false);
+    assert.equal(liveElement('[data-ring-live="writer-feedback"]').textContent, 'STOPPED AT ITS LIMIT');
+    assert.equal(liveElement('[data-ring-live="writer-sent"]').textContent, '5');
+    teardown();
+  } finally {
+    unregister();
+  }
 });

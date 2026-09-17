@@ -785,6 +785,30 @@ comes last (step 16; the author waived the still of step 14).
       call.
       Check: `npm test` (domShim) + `npm run check` + `npm run sync:dist` +
       tried in a browser on a fake engine + the author's trial in MiniHub
+      Built 2026-09-17: four tabs under the deck. SEQUENCE is the page as it
+      was. MEMORY: the capture (CAPTURE, END, what it takes, its length, its
+      state and count) and the material (the origin or the current
+      generation drawn as a roll, FREEZE, REVERT, CLEAR, a Sequencer clip
+      loaded as the origin). VOICES: the four voice keys with their LEDs,
+      the rules of the scene shown in five groups -- pitch, range,
+      velocity, length, playing -- what the running voice plays by now, and
+      a reset. WRITER: WRITE and FEEDBACK, what was sent, written and
+      refused, where generations go (a new track and what it plays, or a
+      clip to replace or add to), the window, and feedback's setting, mode,
+      delay and limit. `modules/oneRing/oneRingParts.js` holds the pieces
+      and one table of knobs, `oneRingNotes.js` the three new tabs; the body
+      is a region that changes with the tab. `npm test` (1232, the page's
+      24 among them), `npm run check`, `npm run sync:dist`. In a browser,
+      the renderer served locally with a fake engine that captures, sounds
+      and writes: every tab at 1920 and 1280 px, nothing past the page's
+      edge; a capture armed, then capturing, then over, its notes on the
+      roll; a clip loaded; FREEZE; a knob dragged with the mouse and stepped
+      with the keys; notes typed by name, a lowest taken down by its
+      highest; the order chosen on the selector's print; a voice's live
+      rules; the writer set to replace a clip, writing into it and nowhere
+      else; feedback turned off from its key. Found and fixed: the tab keys
+      were named by their hints; a generation's clip was listed with its
+      track's name twice. **Not yet: the author's trial in MiniHub.**
 - [ ] 17. The demonstration, with the author: a project made for it (a short
       source clip and no arrangement, a One Ring, an instrument, a track for
       the generations, an audio track recording from the start) and the
@@ -1092,3 +1116,24 @@ the renderer's own modules, two costs showed that four scenes had hidden:
   `oneRingNodes.js` now keeps one sequence in flight per node and sends the
   newest when the engine answers; a turned knob's last value reached the
   engine 125 ms after the last edit, through 39 sequences for 40 edits.
+
+2026-09-17 — Step 16, the page of part two, written without a still as the
+author asked. What was settled:
+
+- Tabs are mode keys under the deck, which stays above them: the transport,
+  the display and the scenes are the same whatever is edited. The tab, the
+  voice and the material shown are kept per node for the session.
+- The rules come as the page's knobs already are: drag, arrow keys, a typed
+  value, a double click home. A note is typed by its name (`C4`, `f#2`); a
+  capture's length reads `to END` at zero, a feedback delay `none`.
+- A lowest pushed past its highest takes the highest along, and the other way
+  round, for pitch, velocity and duration: a rule refused would leave the
+  knob showing what the voice does not hold.
+- Durations are chosen among note values, a sixty-fourth to sixteen bars; a
+  value set otherwise, by a request, is shown as it is.
+- FEEDBACK's key is what the engine does now; the switch beside the delay is
+  the setting. A change of the sequence puts the setting back, as the manual
+  says.
+- The material's roll is SVG geometry, the page having no style attribute:
+  bar and beat rules, C rows lifted, each note with its name, velocity and
+  channel in its tooltip.

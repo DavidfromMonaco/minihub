@@ -1,17 +1,19 @@
 import { escapeHtml } from '../../core/html.js';
 import { VALUE_TYPE } from '../../core/commandRegistry.js';
 import {
-  CHANNEL_COUNT, CHANNEL_TARGET_PREFIX, LENGTHS, MAX_STEPS, MEMORY_TARGET, MUTABLE, OFFSET_LIMIT, REPEATS, RESOLUTIONS,
-  SCENES_PER_BANK, SCENES_TARGET, SCENE_BANKS, SCENE_POSITION, SCENE_TIMING, STEP_MODE, VALUE_MODE,
-  VOICE_TARGET_PREFIX, WRITER_TARGET, cellsOf, sceneIndex, scenePlace
+  CHANNEL_COUNT, LENGTHS, MAX_STEPS, MUTABLE, REPEATS, RESOLUTIONS, SCENES_PER_BANK, SCENE_BANKS, SCENE_POSITION,
+  SCENE_TIMING, STEP_MODE, VALUE_MODE, cellsOf, sceneIndex, scenePlace
 } from '../../core/oneRingSequence.js';
-import {
-  pearlDragKnob, pearlKeycap, pearlLcd, pearlLed, pearlLegend, pearlScribble, pearlSelector
-} from '../../ui/omniPearl.js';
+import { pearlKeycap, pearlLcd, pearlLed, pearlLegend, pearlScribble } from '../../ui/omniPearl.js';
 import { icon } from '../../ui/icons.js';
+import { CONDITION_CHOICES, conditionLabel, describeCell, formatValue } from '../../core/oneRingEdits.js';
 import {
-  CONDITION_CHOICES, HUMANIZE_PERCENT, SWING_PERCENT, conditionLabel, describeCell, formatValue
-} from '../../core/oneRingEdits.js';
+  act, channelName, commandSelect, describeAction, glyphs, knobControl, optionTag, pad2, selectBox, selectorControl,
+  targetSelect
+} from './oneRingParts.js';
+import { renderCapture, renderMaterial, renderVoices, renderWriter } from './oneRingNotes.js';
+
+export { KNOBS, channelName, commandLabel, describeAction, targetLabel } from './oneRingParts.js';
 
 /**
  * The One Ring page's markup: the faceplate the author approved on 2026-09-17
@@ -23,89 +25,17 @@ import {
  * the display, the LEDs, the playheads -- carries a `data-ring-*` hook that the
  * panel updates in place. Every control names what it does with `data-ring-act`
  * (and `data-ring-arg`), which is all the panel reads back.
+ *
+ * THE TABS
+ * --------
+ * Part two gave the node as much again to show -- what it captures, what it
+ * plays notes from, its four voices, what it writes -- and the page had no room
+ * left, so below the deck the page has four tabs, as a hardware sequencer has
+ * mode keys: SEQUENCE is the page as it was, MEMORY, VOICES and WRITER are
+ * part two's (oneRingNotes.js). The deck stays above them all. The body is a
+ * region of its own that changes only with the tab; each tab's panels are
+ * regions inside it.
  */
-
-const glyphs = {
-  play: '<svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><path d="M5 3.5v11l9-5.5z"/></svg>',
-  stop: '<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="3" width="10" height="10" rx="1"/></svg>',
-  lock: '<svg class="op-glyph" viewBox="0 0 10 10" aria-hidden="true"><rect x="2" y="4.5" width="6" height="4.5" rx="0.8"/><path d="M3.5 4.5V3a1.5 1.5 0 0 1 3 0v1.5"/></svg>',
-  condition: '<svg class="op-glyph" viewBox="0 0 10 10" aria-hidden="true"><path d="M5 1.2 8.8 5 5 8.8 1.2 5z"/></svg>',
-  random: '<svg class="op-glyph" viewBox="0 0 10 10" aria-hidden="true"><path d="M1 6.5c1.2-3 2.4-3 3.6 0s2.4 3 4.4-2"/></svg>'
-};
-
-const pad2 = (n) => String(n).padStart(2, '0');
-export const channelName = (index) => `CH ${pad2(index + 1)}`;
-const act = (name, arg) => `data-ring-act="${name}"${arg === undefined ? '' : ` data-ring-arg="${escapeHtml(arg)}"`}`;
-const titleCase = (text) => {
-  const words = String(text).replace(/_/g, ' ');
-  return words.charAt(0).toUpperCase() + words.slice(1).toLowerCase();
-};
-
-// ---------- targets ----------
-
-/** How the page names a target: One Ring's own the way its panel reads, the others by their node. */
-export function targetLabel(target) {
-  if (target.id === SCENES_TARGET) return 'One Ring · Scenes';
-  if (target.id === MEMORY_TARGET) return 'One Ring · Memory';
-  if (target.id === WRITER_TARGET) return 'One Ring · Writer';
-  if (target.id.startsWith(VOICE_TARGET_PREFIX)) return `One Ring · Voice ${target.id.slice(VOICE_TARGET_PREFIX.length)}`;
-  if (target.id.startsWith(CHANNEL_TARGET_PREFIX)) {
-    return `One Ring · ${channelName(Number(target.id.slice(CHANNEL_TARGET_PREFIX.length)) - 1)}`;
-  }
-  return target.label;
-}
-
-export function commandLabel(target, descriptor) {
-  return target && (target.id === SCENES_TARGET || target.id === MEMORY_TARGET || target.id === WRITER_TARGET
-    || target.id.startsWith(CHANNEL_TARGET_PREFIX) || target.id.startsWith(VOICE_TARGET_PREFIX))
-    ? titleCase(descriptor.label)
-    : descriptor.label;
-}
-
-/** A target and command as one line of text, and whether either is gone. */
-export function describeAction(view, action) {
-  if (!action.target && !action.command) return { text: 'no target', empty: true, missing: false, descriptor: null };
-  const target = view.findTarget(action.target);
-  const descriptor = target?.commands.get(action.command) ?? null;
-  const commandText = !action.command ? 'no command' : descriptor ? commandLabel(target, descriptor) : action.command;
-  return {
-    text: `${target ? targetLabel(target) : action.target} · ${commandText}`,
-    empty: false,
-    missing: !target || (!!action.command && !descriptor),
-    descriptor
-  };
-}
-
-function optionTag(value, label, selected, disabled = false) {
-  return `<option value="${escapeHtml(value)}"${selected ? ' selected' : ''}${disabled ? ' disabled' : ''}>${escapeHtml(label)}</option>`;
-}
-
-function selectBox(inner, attrs, ariaLabel, extra = '') {
-  return `<span class="op-select ${extra}"><select class="op-select-native" aria-label="${escapeHtml(ariaLabel)}" ${attrs}>${inner}</select><span class="op-select-chevron"></span></span>`;
-}
-
-function targetSelect(view, value, attrs, ariaLabel) {
-  const external = view.targets.external;
-  const known = view.findTarget(value);
-  const cabled = external.length
-    ? external.map((target) => optionTag(target.id, targetLabel(target), target.id === value)).join('')
-    : optionTag('', 'Nothing cabled to CTRL OUT', false, true);
-  const own = view.targets.internal.map((target) => optionTag(target.id, targetLabel(target), target.id === value)).join('');
-  const lost = value && !known ? optionTag(value, `${value} (not cabled)`, true) : '';
-  return selectBox(`${optionTag('', '— No target —', !value)}${lost}
-    <optgroup label="Cabled to CTRL OUT">${cabled}</optgroup><optgroup label="One Ring">${own}</optgroup>`,
-  attrs, ariaLabel, 'op-select--wide');
-}
-
-function commandSelect(view, targetId, value, attrs, ariaLabel) {
-  const target = view.findTarget(targetId);
-  const commands = target ? [...target.commands.values()] : [];
-  const listed = commands.some((item) => item.id === value);
-  const options = commands.map((item) => optionTag(item.id, commandLabel(target, item), item.id === value)).join('');
-  const lost = value && !listed ? optionTag(value, `${value} (unknown)`, true) : '';
-  return selectBox(`${optionTag('', targetId ? '— Command —' : '— Choose a target —', !value)}${lost}${options}`,
-    `${commands.length ? '' : 'disabled '}${attrs}`, ariaLabel, 'op-select--wide');
-}
 
 // ---------- deck ----------
 
@@ -172,14 +102,14 @@ function renderDeck(view) {
   const scenes = renderScenes(view);
   const nextBar = content.sceneTiming === SCENE_TIMING.nextBar;
   const keep = content.scenePosition === SCENE_POSITION.keep;
-  const lever = (name, left, right, on) => `${pearlLegend(left, { state: on ? '' : 'on', attrs: act(name, 0) })}
+  const deckLever = (name, left, right, on) => `${pearlLegend(left, { state: on ? '' : 'on', attrs: act(name, 0) })}
     <label class="op-switch op-switch--sm"><input class="op-native" type="checkbox" aria-label="${escapeHtml(`${left} or ${right}`)}"${on ? ' checked' : ''} ${act(`${name}-toggle`)}><span class="op-switch-track"><span class="op-switch-thumb"></span></span></label>
     ${pearlLegend(right, { state: on ? 'on' : '', attrs: act(name, 1) })}`;
   const recall = `<div class="op-ring-group">
       <span class="op-label">Scene recall</span>
       <div class="op-ring-recall">
-        ${pearlLegend('Timing')}${lever('timing', 'Now', 'Next bar', nextBar)}
-        ${pearlLegend('Channels')}${lever('position', 'Restart', 'Keep', keep)}
+        ${pearlLegend('Timing')}${deckLever('timing', 'Now', 'Next bar', nextBar)}
+        ${pearlLegend('Channels')}${deckLever('position', 'Restart', 'Keep', keep)}
       </div>
     </div>`;
   const random = `<div class="op-ring-group op-ring-group--grow">
@@ -233,34 +163,6 @@ const LENGTH_OPTIONS = LENGTHS.map((value) => ({ value, label: String(value) }))
 const RATE_OPTIONS = RESOLUTIONS.map((value) => ({ value, label: `1/${value}` }));
 const REPEAT_OPTIONS = REPEATS.map((value) => ({ value, label: value === 0 ? '∞' : String(value) }));
 
-export const KNOBS = Object.freeze({
-  offset: { min: -OFFSET_LIMIT, max: OFFSET_LIMIT, bipolar: true, reset: 0, text: (v) => `${v > 0 ? '+' : ''}${v} st`, label: 'Offset' },
-  swing: { min: 0, max: SWING_PERCENT, reset: 0, text: (v) => `${v} %`, label: 'Swing' },
-  humanize: { min: 0, max: HUMANIZE_PERCENT, reset: 0, text: (v) => `${v} %`, label: 'Humanize' },
-  probability: { min: 0, max: 100, reset: 100, text: (v) => `${v} %`, label: 'Probability' }
-});
-
-/** A knob setting's value as the page holds it: steps, or a whole percentage. */
-export function knobValue(name, channel, cell) {
-  if (name === 'offset') return Math.round(channel.offset);
-  if (name === 'swing') return Math.round(channel.swing * 100);
-  if (name === 'humanize') return Math.round(channel.humanize * 100);
-  return Math.round(cell.probability);
-}
-
-function knobControl(name, value) {
-  const knob = KNOBS[name];
-  return `<div class="op-ring-control" data-ring-knob-control="${name}">
-      ${pearlDragKnob({ value, min: knob.min, max: knob.max, bipolar: knob.bipolar, ariaLabel: knob.label, text: knob.text(value), attrs: `data-ring-knob="${name}"` })}
-      ${pearlLcd({ value: knob.text(value), input: true, size: 'sm', ariaLabel: `${knob.label}, typed`, attrs: `${act('knob-value', name)} data-ring-knob-lcd="${name}" data-ring-focus="knob-${name}"` })}
-      ${pearlLegend(knob.label)}
-    </div>`;
-}
-
-function selectorControl(name, label, options, value) {
-  return `<div class="op-ring-control">${pearlSelector({ options, value, optionAttr: 'data-ring-option', ariaLabel: label, attrs: `${act(name)} data-ring-focus="${name}"` })}${pearlLegend(label)}</div>`;
-}
-
 function renderPad(view, cell, k) {
   const { channel } = view;
   const out = k >= channel.length;
@@ -312,9 +214,9 @@ function renderChannel(view) {
       ${selectorControl('rate', 'Rate', RATE_OPTIONS, channel.numerator === 1 ? channel.denominator : '')}
       ${selectorControl('repeats', 'Repeat', REPEAT_OPTIONS, channel.repeats)}
       <span class="op-ring-sep"></span>${mode}<span class="op-ring-sep"></span>
-      ${knobControl('offset', knobValue('offset', channel))}
-      ${knobControl('swing', knobValue('swing', channel))}
-      ${knobControl('humanize', knobValue('humanize', channel))}
+      ${knobControl('offset', view)}
+      ${knobControl('swing', view)}
+      ${knobControl('humanize', view)}
     </div>`;
   const cells = cellsOf(channel);
   const pads = [0, 16, 32, 48].map((start) => {
@@ -395,7 +297,7 @@ function renderCell(view) {
   return `<div class="op-panel-head"><span class="op-label accent">Cell ${cellIndex + 1}</span><span class="op-hint">${channelName(view.channelIndex)} · ${escapeHtml(describeCell(cell, channel, descriptor))}${cellIndex >= channel.length ? ' · past the channel\'s length, not played' : ''}</span></div>
     <div class="op-ring-cellgrid">
       <div class="op-ring-control">${pearlKeycap({ label: cell.enabled ? 'On' : 'Off', size: 'lg', state: cell.enabled ? 'lit' : '', pressed: cell.enabled, attrs: act('active') })}${pearlLegend('Active')}</div>
-      ${knobControl('probability', knobValue('probability', channel, cell))}
+      ${knobControl('probability', view)}
       <div class="op-ring-field"><span class="op-label">Value</span><span class="op-keycap-row">${modes}</span>${valueFields(view, cell, descriptor)}</div>
       <div class="op-ring-cellwide">
         <div class="op-ring-field"><span class="op-label">Conditions · all of them, then the probability</span><div class="op-chips">${chips}${add}</div></div>
@@ -443,17 +345,74 @@ function renderFollow(view) {
     </div>`;
 }
 
+// ---------- the tabs ----------
+
+export const TABS = Object.freeze([
+  { id: 'sequence', label: 'Sequence', hint: 'The sixteen channels, their cells and follow actions' },
+  { id: 'memory', label: 'Memory', hint: 'What MIDI IN captures, and the notes the voices play from' },
+  { id: 'voices', label: 'Voices', hint: 'The four voices and what each does to the notes, in this scene' },
+  { id: 'writer', label: 'Writer', hint: 'Generations written into the Sequencer, and feedback' }
+]);
+const TAB_IDS = TABS.map((tab) => tab.id);
+/** Each tab's panels, in the order they are drawn. */
+export const TAB_REGIONS = Object.freeze({
+  sequence: ['channels', 'channel', 'cell', 'follow'],
+  memory: ['capture', 'material'],
+  voices: ['voices'],
+  writer: ['writer']
+});
+const RENDER = {
+  channels: renderChannels,
+  channel: renderChannel,
+  cell: renderCell,
+  follow: renderFollow,
+  capture: renderCapture,
+  material: renderMaterial,
+  voices: renderVoices,
+  writer: renderWriter
+};
+
+export const tabOf = (view) => (TAB_IDS.includes(view.tab) ? view.tab : 'sequence');
+
+function renderTabs(view) {
+  const tab = tabOf(view);
+  // The hint is a tooltip only: a tab is named by its label.
+  return TABS.map((item) => pearlKeycap({
+    label: item.label, size: 'tab', state: item.id === tab ? 'white' : '',
+    led: item.id === 'sequence' ? null : false, ledAttrs: `data-ring-live-tab="${item.id}"`,
+    attrs: `${act('tab', item.id)} role="tab" aria-selected="${item.id === tab}" title="${escapeHtml(item.hint)}"`
+  })).join('');
+}
+
+/** A tab's body, its panels filled from `regions`: empty ones make the skeleton a redraw compares. */
+export function bodyMarkup(tab, regions = {}) {
+  const panel = (name, label, extra = '') => `<section class="op-panel op-ring-${name}${extra}" aria-label="${label}" data-ring-region="${name}">${regions[name] ?? ''}</section>`;
+  switch (tab) {
+    case 'memory':
+      return `<div class="op-ring-body op-ring-body--memory">${panel('capture', 'Capture')}${panel('material', 'Material')}</div>`;
+    case 'voices':
+      return `<div class="op-ring-body op-ring-body--single">${panel('voices', 'Voices')}</div>`;
+    case 'writer':
+      return `<div class="op-ring-body op-ring-body--single">${panel('writer', 'Writer')}</div>`;
+    default:
+      return `<div class="op-ring-body">
+      ${panel('channels', 'Channels')}
+      <div class="op-ring-editor">
+        ${panel('channel', 'The channel edited')}
+        <div class="op-ring-lower">${panel('cell', 'The cell edited')}${panel('follow', 'Follow actions')}</div>
+      </div>
+    </div>`;
+  }
+}
+
 // ---------- the page ----------
 
-/** Each region's inner markup, by name. */
+/** Each region's inner markup, by name: the deck, the tabs, the body's skeleton, then the tab's panels. */
 export function renderRegions(view) {
-  return {
-    deck: renderDeck(view),
-    channels: renderChannels(view),
-    channel: renderChannel(view),
-    cell: renderCell(view),
-    follow: renderFollow(view)
-  };
+  const tab = tabOf(view);
+  const regions = { deck: renderDeck(view), tabs: renderTabs(view), body: bodyMarkup(tab) };
+  for (const name of TAB_REGIONS[tab]) regions[name] = RENDER[name](view);
+  return regions;
 }
 
 export function renderPage(view, regions = renderRegions(view)) {
@@ -462,15 +421,7 @@ export function renderPage(view, regions = renderRegions(view)) {
       <h1 class="op-module-title">${escapeHtml(view.name)}</h1><span class="op-spacer"></span>
       <button type="button" id="node-delete" class="op-btn op-btn--danger">Delete Node</button></div>
     <section class="op-ring-deck" aria-label="Transport, scenes and randomness" data-ring-region="deck">${regions.deck}</section>
-    <div class="op-ring-body">
-      <section class="op-panel op-ring-channels" aria-label="Channels" data-ring-region="channels">${regions.channels}</section>
-      <div class="op-ring-editor">
-        <section class="op-panel op-ring-channel" aria-label="The channel edited" data-ring-region="channel">${regions.channel}</section>
-        <div class="op-ring-lower">
-          <section class="op-panel op-ring-cell" aria-label="The cell edited" data-ring-region="cell">${regions.cell}</section>
-          <section class="op-panel op-ring-follow" aria-label="Follow actions" data-ring-region="follow">${regions.follow}</section>
-        </div>
-      </div>
-    </div>
+    <nav class="op-ring-tabs" role="tablist" aria-label="Pages" data-ring-region="tabs">${regions.tabs}</nav>
+    <div class="op-ring-bodyframe" data-ring-region="body">${bodyMarkup(tabOf(view), regions)}</div>
   </div>`;
 }

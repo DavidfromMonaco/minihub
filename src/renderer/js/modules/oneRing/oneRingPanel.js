@@ -1,12 +1,17 @@
 import { registerNodeEditor } from '../../core/nodeEditors.js';
 import { VALUE_TYPE } from '../../core/commandRegistry.js';
 import {
-  CHANNEL_COUNT, MAX_STEPS, SCENE_BANKS, SCENE_POSITION, SCENE_TIMING, STEP_MODE,
-  addScene, cellAt, mutateSequence, oneRingTargets, parseSeed, reseed, sceneIndex, scenePlace, storeSceneAt
+  CAPTURE_MODE, CHANNEL_COUNT, MAX_STEPS, SCENE_BANKS, SCENE_POSITION, SCENE_TIMING, STEP_MODE, VOICE_COUNT,
+  addScene, cellAt, clearMaterial, defaultVoice, defaultWriter, loadMaterial, mutateSequence, noteListFromClip,
+  oneRingTargets, parseSeed, reseed, revertMaterial, sceneIndex, scenePlace, setCaptureSettings, setFrozen, setVoice,
+  setWriterSettings, storeSceneAt
 } from '../../core/oneRingSequence.js';
 import { syncDragKnob } from '../../ui/omniPearl.js';
 import * as edits from '../../core/oneRingEdits.js';
-import { KNOBS, renderPage, renderRegions, shownBank } from './oneRingFaceplate.js';
+import {
+  KNOBS, TABS, TAB_REGIONS, bodyMarkup, renderPage, renderRegions, shownBank, tabOf
+} from './oneRingFaceplate.js';
+import { liveRulesText } from './oneRingNotes.js';
 
 /**
  * The One Ring node's page: the faceplate of oneRingFaceplate.js, played and
@@ -23,14 +28,16 @@ import { KNOBS, renderPage, renderRegions, shownBank } from './oneRingFaceplate.
  *
  * WHAT IS REDRAWN
  * ---------------
- * The page is five regions. After any change each region's markup is built
- * again and put in only if it differs, so the control under the keyboard stays
- * where it is. The runtime's status arrives up to ten times a second and never
- * redraws: it lights the display, the LEDs and the playheads in place -- unless
- * the scene changed, which changes what the page shows.
+ * The page is regions: the deck, the tabs, the body -- whose markup changes
+ * only with the tab -- and the panels of the tab shown. After any change each
+ * region's markup is built again and put in only if it differs, so the control
+ * under the keyboard stays where it is; a new body puts its panels in with it.
+ * The runtime's status arrives up to ten times a second and never redraws: it
+ * lights the display, the LEDs, the playheads and part two's readouts in place
+ * -- unless the scene changed, which changes what the page shows.
  *
- * The channel and cell being edited are remembered per node for the session,
- * so leaving the page and coming back finds them again.
+ * The tab, the channel, cell and voice being edited are remembered per node
+ * for the session, so leaving the page and coming back finds them again.
  */
 
 // A knob's whole range is this many pixels of vertical travel; Shift is finer.
@@ -39,7 +46,11 @@ const FINE_FACTOR = 4;
 // A knob being turned is written at most this often.
 const DRAG_WRITE_MS = 50;
 const REFUSAL_CHARS = 56;
-const KNOB_REGION = Object.freeze({ offset: 'channel', swing: 'channel', humanize: 'channel', probability: 'cell' });
+const TAB_IDS = TABS.map((tab) => tab.id);
+// A rule and the one it may not pass: moving one past the other takes it along.
+const RULE_ABOVE = Object.freeze({ low: 'high', velocityLow: 'velocityHigh', shortest: 'longest' });
+const RULE_BELOW = Object.freeze({ high: 'low', velocityHigh: 'velocityLow', longest: 'shortest' });
+const MIDI_DESTINATION_TYPES = Object.freeze(['vst', 'arpeggiator', 'one-ring']);
 
 /** nodeId -> what the author was looking at. */
 const selections = new Map();
@@ -53,6 +64,10 @@ function selectionOf(nodeId) {
       // that letter until another scene is shown.
       bank: null,
       bankFor: -1,
+      tab: 'sequence',
+      voice: 0,
+      materialView: 'origin',
+      loadChoice: '',
       conditionChannel: 1,
       followDraft: { target: '', command: '', value: '' }
     });
@@ -75,6 +90,8 @@ function mountOf(context) {
       refusal: '',
       heads: new Map(),
       padHead: -1,
+      tab: null,
+      materialError: '',
       drag: null,
       deferred: false,
       // The field whose value is being written: its text is not kept over the
@@ -88,6 +105,23 @@ function mountOf(context) {
 const clampIndex = (value, count) => (Number.isInteger(value) && value >= 0 && value < count ? value : 0);
 const isReady = (hub, nodeId) => Number.isSafeInteger(hub.oneRing?.generationOf?.(nodeId));
 
+/** The Sequencer's MIDI clips, as the Writer and a load name them. */
+function midiClips(hub) {
+  const tracks = hub.sequencer?.model?.state?.tracks ?? [];
+  return tracks.filter((track) => track.type === 'midi').flatMap((track) => track.clips.map((clip) => ({
+    id: clip.id,
+    // A generation's clip is named after its track: said once.
+    label: `${clip.name === track.name ? track.name : `${track.name} · ${clip.name}`} · bar ${Math.floor(clip.startPpq / 4) + 1}`
+  })));
+}
+
+/** What a Sequencer track may play: a new generation's Destination. */
+function midiDestinations(hub) {
+  return (hub.network?.listNodes?.() ?? [])
+    .filter((node) => MIDI_DESTINATION_TYPES.includes(node.type))
+    .map((node) => ({ id: node.id, label: hub.nodes?.get?.(node.id)?.name || node.name || node.id }));
+}
+
 function viewOf(context) {
   const { instance, hub, type } = context;
   const selection = selectionOf(instance.id);
@@ -100,6 +134,8 @@ function viewOf(context) {
   const channelIndex = clampIndex(selection.channel, CHANNEL_COUNT);
   const channel = sceneData.channels[channelIndex];
   const cellIndex = clampIndex(selection.cell, MAX_STEPS);
+  const voiceIndex = clampIndex(selection.voice, VOICE_COUNT);
+  const tab = TAB_IDS.includes(selection.tab) ? selection.tab : 'sequence';
   const internal = oneRingTargets(content);
   const external = hub.commands?.targetsFrom?.(instance.id) ?? [];
   const byId = new Map([...internal, ...external].map((target) => [target.id, target]));
@@ -123,7 +159,19 @@ function viewOf(context) {
     seedText: mount.seedText,
     seedError: mount.seedError,
     followDraft: selection.followDraft,
-    conditionChannel: selection.conditionChannel
+    conditionChannel: selection.conditionChannel,
+    tab,
+    status,
+    voiceIndex,
+    voiceRules: sceneData.voices[voiceIndex],
+    materialView: selection.materialView,
+    loadChoice: selection.loadChoice,
+    materialError: mount.materialError,
+    writer: content.writer ?? defaultWriter(),
+    writes: hub.oneRing?.writesOf?.(instance.id) ?? null,
+    // Only what a tab shows is looked up.
+    clips: tab === 'memory' || tab === 'writer' ? midiClips(hub) : [],
+    destinations: tab === 'writer' ? midiDestinations(hub) : []
   };
 }
 
@@ -132,6 +180,7 @@ function render(context) {
   const view = viewOf(context);
   mount.regions = renderRegions(view);
   mount.scene = view.scene;
+  mount.tab = tabOf(view);
   mount.bank = shownBank(view);
   mount.ready = view.ready;
   mount.heads.clear();
@@ -184,6 +233,7 @@ export function applyStatus(container, context) {
   const current = content.scenes[scene].id;
   setText(live('scene-legend'), mount.storeArmed ? `Store ${current} into a place`
     : pending >= 0 ? `Next bar → ${content.scenes[pending].id}` : playing ? `${current} playing` : ' ');
+  applyNotesStatus(container, context, { ready, status });
   const channel = clampIndex(selectionOf(instance.id).channel, CHANNEL_COUNT);
   for (let i = 0; i < CHANNEL_COUNT; i += 1) {
     const active = playing && status.active[i] === true;
@@ -206,6 +256,56 @@ export function applyStatus(container, context) {
   }
 }
 
+const CAPTURE_TEXT = Object.freeze({ off: 'OFF', armed: 'ARMED', capturing: 'CAPTURING' });
+
+/** Part two's lights and readouts: the tabs' LEDs, and the tab shown. */
+function applyNotesStatus(container, context, { ready, status }) {
+  const { instance, hub } = context;
+  const live = (name) => container.querySelector(`[data-ring-live="${name}"]`);
+  const capture = ready ? status?.capture ?? 'off' : 'off';
+  const sounding = ready ? status?.sounding ?? [] : [];
+  const feedback = ready && status?.feedback === true;
+  container.querySelector('[data-ring-live-tab="memory"]')?.classList.toggle('is-on', capture !== 'off');
+  container.querySelector('[data-ring-live-tab="voices"]')?.classList.toggle('is-on', sounding.some((count) => count > 0));
+  container.querySelector('[data-ring-live-tab="writer"]')?.classList.toggle('is-on', feedback);
+  switch (mountOf(context).tab) {
+    case 'memory': {
+      const key = container.querySelector('[data-ring-live-key="capture"]');
+      key?.classList.toggle('is-lit', capture === 'capturing');
+      key?.classList.toggle('is-pending', capture === 'armed');
+      setText(live('capture-state'), ready ? CAPTURE_TEXT[capture] ?? 'OFF' : '—');
+      setText(live('capture-taken'), String(status?.captured ?? 0));
+      setText(live('capture-refused'), String(status?.captureRefused ?? 0));
+      break;
+    }
+    case 'voices': {
+      for (let v = 0; v < VOICE_COUNT; v += 1) {
+        container.querySelector(`[data-ring-live-voice="${v}"]`)?.classList.toggle('is-on', (sounding[v] ?? 0) > 0);
+        setText(live(`voice-sounding-${v}`), `${sounding[v] ?? 0} sounding`);
+      }
+      const selection = selectionOf(instance.id);
+      const scene = edits.shownScene(instance.content, status);
+      const voice = clampIndex(selection.voice, VOICE_COUNT);
+      setText(live('voice-live'), ready ? liveRulesText(status?.voices?.[voice], instance.content.scenes[scene].voices[voice]) : '—');
+      setText(live('voice-refused'), String(status?.notesRefused ?? 0));
+      break;
+    }
+    case 'writer': {
+      container.querySelector('[data-ring-live-key="feedback"]')?.classList.toggle('is-lit', feedback);
+      const writes = hub.oneRing?.writesOf?.(instance.id);
+      setText(live('writer-feedback'), !ready ? '—' : status?.feedbackStopped ? 'STOPPED AT ITS LIMIT' : feedback ? 'ON' : 'OFF');
+      setText(live('writer-sent'), String(status?.writes ?? 0));
+      setText(live('writer-empty'), String(status?.writesEmpty ?? 0));
+      setText(live('writer-written'), String(writes?.written ?? 0));
+      setText(live('writer-refused'), String(writes?.refused ?? 0));
+      setText(live('writer-last'), writes?.lastRefusal || '—');
+      break;
+    }
+    default:
+      break;
+  }
+}
+
 // ---------- redrawing ----------
 
 function focusKey(element) {
@@ -224,9 +324,20 @@ export function refreshPage(container, context) {
   const mount = mountOf(context);
   const view = viewOf(context);
   const regions = renderRegions(view);
+  const tab = tabOf(view);
   mount.regions ??= {};
   for (const [name, markup] of Object.entries(regions)) {
     if (mount.regions[name] === markup) continue;
+    if (name === 'body') {
+      const body = container.querySelector('[data-ring-region="body"]');
+      if (!body) continue;
+      body.innerHTML = bodyMarkup(tab, regions);
+      mount.regions.body = markup;
+      for (const panel of TAB_REGIONS[tab]) mount.regions[panel] = regions[panel];
+      mount.heads.clear();
+      mount.padHead = -1;
+      continue;
+    }
     // A redraw under a turning knob would take the knob from under the mouse.
     if (mount.drag?.region === name) {
       mount.deferred = true;
@@ -256,6 +367,7 @@ export function refreshPage(container, context) {
     }
   }
   mount.scene = view.scene;
+  mount.tab = tab;
   mount.bank = shownBank(view);
   mount.ready = view.ready;
   applyStatus(container, context);
@@ -311,9 +423,29 @@ function bind(container, context) {
     const descriptor = view.find(view.channel.target.target, view.channel.target.command);
     write(edits.editCell(view.content, view.scene, view.channelIndex, view.cellIndex, (cell) => change(cell, descriptor)));
   };
+  /** One voice rule, and the one it may not pass taken along. */
+  const voiceRule = (rule, value) => {
+    const view = viewOf(context);
+    const rules = { ...view.voiceRules, [rule]: value };
+    if (RULE_ABOVE[rule] && rules[rule] > rules[RULE_ABOVE[rule]]) rules[RULE_ABOVE[rule]] = rules[rule];
+    if (RULE_BELOW[rule] && rules[rule] < rules[RULE_BELOW[rule]]) rules[RULE_BELOW[rule]] = rules[rule];
+    const next = setVoice(view.content, view.scene, view.voiceIndex, rules);
+    // Refused, the knob goes back to what the voice holds.
+    if (next === view.content) refresh();
+    else write(next);
+  };
   const setKnob = (name, value) => {
-    if (name === 'probability') cellEdit((cell) => edits.setProbability(cell, value));
-    else if (KNOBS[name]) channelSetting(name, value);
+    const spec = KNOBS[name];
+    if (!spec || !Number.isFinite(value)) return;
+    const whole = Math.min(spec.max, Math.max(spec.min, Math.round(value)));
+    switch (spec.edit) {
+      case 'cell': cellEdit((cell) => edits.setProbability(cell, value)); break;
+      case 'channel': channelSetting(name, value); break;
+      case 'capture': write(setCaptureSettings(content(), { bars: whole })); break;
+      case 'voice': voiceRule(spec.rule, whole); break;
+      case 'writer': write(setWriterSettings(content(), { [spec.field]: whole })); break;
+      default: break;
+    }
   };
   /** A typed value that does not fit: the field says so until it is drawn again. */
   const refuse = (element) => {
@@ -327,6 +459,68 @@ function bind(container, context) {
   };
 
   const actions = {
+    tab: (id) => {
+      if (!TAB_IDS.includes(id) || selection.tab === id) return;
+      selection.tab = id;
+      refresh();
+    },
+    // ---- memory ----
+    capture: () => hub.oneRing.memory(nodeId, content().capture.mode === CAPTURE_MODE.add ? 'CAPTURE_ADD' : 'CAPTURE_REPLACE'),
+    'capture-end': () => hub.oneRing.memory(nodeId, 'CAPTURE_END'),
+    'capture-mode': (arg) => write(setCaptureSettings(content(), { mode: Number(arg) })),
+    'capture-mode-toggle': (_, element) => write(setCaptureSettings(content(),
+      { mode: element.checked ? CAPTURE_MODE.add : CAPTURE_MODE.replace })),
+    'material-view': (arg) => {
+      selection.materialView = arg === 'current' ? 'current' : 'origin';
+      refresh();
+    },
+    freeze: () => write(setFrozen(content(), !content().material.frozen)),
+    revert: () => write(revertMaterial(content())),
+    clear: () => write(clearMaterial(content())),
+    'load-choice': (_, element) => {
+      selection.loadChoice = String(element.value || '');
+      mount.materialError = '';
+      refresh();
+    },
+    'load-clip': () => {
+      const found = hub.sequencer?.model?._clip?.(selection.loadChoice);
+      if (!found || found.track.type !== 'midi') {
+        mount.materialError = 'That clip is gone';
+        refresh();
+        return;
+      }
+      try {
+        mount.materialError = '';
+        selection.materialView = 'origin';
+        write(loadMaterial(content(), noteListFromClip(found.clip)));
+      } catch (error) {
+        mount.materialError = `Not loaded: ${error?.message || error}`;
+      }
+      refresh();
+    },
+    // ---- voices ----
+    voice: (arg) => {
+      selection.voice = clampIndex(Number(arg), VOICE_COUNT);
+      refresh();
+    },
+    'voice-rule': (rule, element) => voiceRule(rule, Number(element.value)),
+    'voice-order': (arg, element) => voiceRule('order', Number(arg ?? element.value)),
+    'voice-reset': () => {
+      const view = viewOf(context);
+      write(setVoice(view.content, view.scene, view.voiceIndex, defaultVoice()));
+    },
+    // ---- writer ----
+    write: () => hub.oneRing.writer(nodeId, 'WRITE'),
+    'feedback-live': () => hub.oneRing.writer(nodeId,
+      hub.oneRing.statusOf(nodeId)?.feedback ? 'FEEDBACK_OFF' : 'FEEDBACK_ON'),
+    'write-mode': (arg) => write(setWriterSettings(content(), { mode: Number(arg) })),
+    'writer-clip': (_, element) => write(setWriterSettings(content(), { clipId: String(element.value || '') })),
+    'writer-destination': (_, element) => write(setWriterSettings(content(), { destination: String(element.value || '') })),
+    'writer-feedback': (_, element) => write(setWriterSettings(content(), { feedback: element.checked === true })),
+    'writer-feedback-mode': (arg) => write(setWriterSettings(content(), { feedbackMode: Number(arg) })),
+    'writer-feedback-mode-toggle': (_, element) => write(setWriterSettings(content(),
+      { feedbackMode: element.checked ? CAPTURE_MODE.add : CAPTURE_MODE.replace })),
+    // ---- the deck and the sequence ----
     run: () => hub.oneRing.command(nodeId, 'run'),
     stop: () => hub.oneRing.command(nodeId, 'stop'),
     bank: (letter) => {
@@ -416,8 +610,10 @@ function bind(container, context) {
     mode: (arg) => channelSetting('mode', Number(arg)),
     'mode-toggle': (_, element) => channelSetting('mode', element.checked ? STEP_MODE.legato : STEP_MODE.trigger),
     'knob-value': (name, element) => {
-      const value = parseNumber(element.value);
-      if (value === null) {
+      // A knob that reads its own words (a note name, END) is asked first.
+      const own = KNOBS[name]?.parse?.(element.value);
+      const value = own ?? parseNumber(element.value);
+      if (value === null || value === undefined) {
         refuse(element);
         return;
       }
@@ -591,7 +787,7 @@ function bind(container, context) {
     event.preventDefault();
     knob.focus?.({ preventScroll: true });
     mount.drag = {
-      knob, name, region: KNOB_REGION[name], pointerId: event.pointerId,
+      knob, name, region: KNOBS[name].region, pointerId: event.pointerId,
       startY: event.clientY, start: knobValueOf(knob), value: knobValueOf(knob), timer: null
     };
     knob.classList.add('is-dragging');
@@ -651,6 +847,9 @@ function bind(container, context) {
       mount.refusal = String(message || '');
       applyStatus(container, context);
     })),
+    // What the writer did: its readouts.
+    hub.events.on('oneRing:written', mine(() => applyStatus(container, context))),
+    hub.events.on('oneRing:writeRefused', mine(() => applyStatus(container, context))),
     hub.events.on('oneRing:refused', mine(({ message }) => {
       mount.refusal = `sequence refused: ${message || 'no reason'}`;
       applyStatus(container, context);

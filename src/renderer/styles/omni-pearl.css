@@ -181,6 +181,14 @@
   --op-mini-out: #1c1d20;
   --op-mini-on: #c96d24;
   --op-mini-head: #fff3e8;
+  /* The material's roll: a dark well, bars and beats as faint rules, C rows lifted. */
+  --op-roll-bg: #0f1012;
+  --op-roll-edge: #26282c;
+  --op-roll-bar: rgba(255, 255, 255, 0.16);
+  --op-roll-beat: rgba(255, 255, 255, 0.06);
+  --op-roll-c: rgba(255, 255, 255, 0.035);
+  --op-roll-note: #ff8b2c;
+  --op-roll-note-edge: #ffc38e;
 
   /* --- geometry ---------------------------------------------------------- */
   --op-radius-lg: 16px;
@@ -1129,6 +1137,24 @@
   letter-spacing: 0.1em;
 }
 
+/* A tab of the page: wider, and lower than a key that plays. */
+.op-keycap--tab {
+  min-width: 118px;
+  height: 32px;
+  padding: 0 16px;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+}
+
+/* A key that plays, with its word on it: CAPTURE, WRITE. */
+.op-keycap--tall {
+  min-width: 84px;
+  height: 46px;
+  padding: 0 14px;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+}
+
 /* A scene's number under its letter: A1 to D8. */
 .op-keycap--num {
   width: 34px;
@@ -1311,6 +1337,23 @@ input.op-lcd:disabled {
 
 .op-lcd--list {
   width: 220px;
+}
+
+/* What the engine reports, read out; and a voice's live rules, on one line. */
+.op-lcd--readout {
+  justify-content: center;
+  min-width: 96px;
+  height: 26px;
+  font-size: 12px;
+}
+
+.op-lcd--live {
+  min-width: 260px;
+  max-width: 460px;
+  height: 32px;
+  overflow: hidden;
+  font-size: 12px;
+  text-overflow: ellipsis;
 }
 
 .op-scribble {
@@ -2145,6 +2188,198 @@ input.op-lcd:disabled {
   justify-self: start;
 }
 
+/* the tabs: the mode keys under the deck */
+.op-ring-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0 2px;
+}
+
+.op-ring-bodyframe {
+  display: contents;
+}
+
+/* part two: memory, voices, writer */
+.op-ring-body--memory {
+  grid-template-columns: minmax(380px, 520px) minmax(0, 1fr);
+}
+
+.op-ring-body--single {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.op-ring-readouts {
+  display: grid;
+  grid-template-columns: max-content max-content;
+  align-items: center;
+  gap: 6px 12px;
+  padding: 12px 14px;
+}
+
+.op-ring-note {
+  margin: 0;
+  padding: 0 14px 14px;
+  color: var(--op-text-faint);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.op-ring-materialbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px 22px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--op-hairline);
+}
+
+.op-ring-load {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.op-ring-materialerror {
+  padding: 8px 14px 0;
+}
+
+.op-ring-rollframe {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 8px;
+  padding: 12px 14px 14px;
+}
+
+.op-ring-rollpitch {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  color: var(--op-text-faint);
+  font-family: "Cascadia Code", Consolas, "Roboto Mono", monospace;
+  font-size: 10px;
+  text-align: right;
+}
+
+.op-ring-roll {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  height: 240px;
+  border: 1px solid var(--op-roll-edge);
+  border-radius: var(--op-radius-sm);
+  background: var(--op-roll-bg);
+}
+
+.op-ring-roll.is-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 12px 14px 14px;
+  width: auto;
+  color: var(--op-text-faint);
+  font-size: 12px;
+}
+
+.op-ring-roll .c-row {
+  fill: var(--op-roll-c);
+}
+
+.op-ring-roll line {
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.op-ring-roll .bar {
+  stroke: var(--op-roll-bar);
+}
+
+.op-ring-roll .beat {
+  stroke: var(--op-roll-beat);
+}
+
+.op-ring-roll .note {
+  fill: var(--op-roll-note);
+  stroke: var(--op-roll-note-edge);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.op-ring-voicehead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px 18px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--op-hairline);
+}
+
+.op-ring-voicegroups {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.op-ring-voicegroup {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 16px 14px;
+  border-right: 1px solid var(--op-hairline);
+}
+
+.op-ring-voicecontrols {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px 6px;
+}
+
+.op-ring-field--short .op-select {
+  min-width: 76px;
+}
+
+.op-ring-fieldstack {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-left: 6px;
+}
+
+.op-ring-writergrid {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+}
+
+.op-ring-writerplay {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 4px 0 14px;
+  border-right: 1px solid var(--op-hairline);
+}
+
+.op-ring-writerrow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px 20px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--op-hairline);
+}
+
+.op-ring-writerset .op-ring-note {
+  padding-top: 12px;
+}
+
+/* A choice that applies to the other write mode: there, but quiet. */
+.op-select.is-idle {
+  opacity: 0.55;
+}
+
+.op-ring-control.is-disabled {
+  opacity: 0.45;
+}
+
 /* Narrower than its five groups, the deck wraps, and a separator would open a row. */
 @container (max-width: 1550px) {
   .op-ring-group + .op-ring-group::before {
@@ -2172,8 +2407,14 @@ input.op-lcd:disabled {
 }
 
 @media (max-width: 1250px) {
-  .op-ring-lower {
+  .op-ring-lower,
+  .op-ring-body--memory,
+  .op-ring-writergrid {
     grid-template-columns: minmax(0, 1fr);
+  }
+  .op-ring-writerplay {
+    border-right: 0;
+    border-bottom: 1px solid var(--op-hairline);
   }
   /* The display takes what is left of the transport's row. */
   .op-ring-group:has(> .op-display) {

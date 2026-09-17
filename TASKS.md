@@ -13,16 +13,16 @@ every function of the VST, its clock in the engine, its commands through the
 same CTRL OUT path, and a new page after hardware sequencers.
 Steps 0 to 15 of 19 done or waived: the node runs in MiniHub and its page
 works, both tried by the author on 2026-09-17; requests answer One Ring's
-vocabulary; scenes go from A1 to D8.
+vocabulary; scenes go from A1 to D8. Step 16, the page of part two in tabs,
+is built and waits for the author's trial.
 - Part two, asked 2026-09-17: One Ring plays notes — it captures what reaches
   a new MIDI IN, varies it through its channels and scenes, plays instruments,
   and writes its generations into new Sequencer tracks, which can feed the
   next. The author answered its three questions the same day and asked for
   every change that can be made in the meantime. Built and checked while the
   author was away: the material and its capture, four voices, the writer and
-  feedback, and their requests (steps 11 to 13). Not on the page yet: the
-  author asked for the page directly, in the same style, in tabs if needed
-  (step 16).
+  feedback, and their requests (steps 11 to 13), and their page, in tabs
+  (step 16), tried in a browser on a fake engine only.
 - Set aside by the author on 2026-09-17, to be rethought: One Ring creating
   the node a new generation's track plays.
 - Found while planning it: every Sequencer sync panicked every chain, so a

@@ -119,19 +119,21 @@ export function pearlLed(on = false, attrs = '') {
 }
 
 /**
- * A rubber key cap. `size` is one or more of 'lg', 'sq', 'sm', 'word'; `state`
- * is the look: 'lit' (orange), 'white' (the selected one), 'pending', 'armed',
- * 'dim' or ''. `led` puts an LED before the label, lit when true. `label` is
- * text and is escaped; `svg` is trusted markup.
+ * A rubber key cap. `size` is one or more of 'lg', 'sq', 'sm', 'num', 'tall',
+ * 'tab', 'word'; `state` is the look: 'lit' (orange), 'white' (the selected
+ * one), 'pending', 'armed', 'dim' or ''. `led` puts an LED before the label, lit
+ * when true, with `ledAttrs` on it for a page that lights it in place. `label`
+ * is text and is escaped; `svg` is trusted markup.
  */
 export function pearlKeycap({
-  label = '', svg = '', size = '', state = '', led = null, attrs = '', title = '', disabled = false, pressed = null
+  label = '', svg = '', size = '', state = '', led = null, ledAttrs = '', attrs = '', title = '', disabled = false,
+  pressed = null
 } = {}) {
   const sizes = String(size).split(/\s+/).filter(Boolean).map((name) => `op-keycap--${name}`);
   const classes = ['op-keycap', ...sizes, state ? `is-${state}` : ''].filter(Boolean).join(' ');
   const aria = pressed === null ? '' : ` aria-pressed="${pressed ? 'true' : 'false'}"`;
   const hint = title ? ` title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}"` : '';
-  return `<button type="button" class="${classes}"${hint}${aria}${disabled ? ' disabled' : ''} ${attrs}>${led === null ? '' : pearlLed(led)}${svg}${escapeHtml(label)}</button>`;
+  return `<button type="button" class="${classes}"${hint}${aria}${disabled ? ' disabled' : ''} ${attrs}>${led === null ? '' : pearlLed(led, ledAttrs)}${svg}${escapeHtml(label)}</button>`;
 }
 
 /** A printed legend. With `attrs` it is a button: a position of a lever you can click. */
