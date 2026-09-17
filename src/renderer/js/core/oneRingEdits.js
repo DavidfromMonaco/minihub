@@ -1,12 +1,13 @@
-import { VALUE_TYPE } from '../../core/commandRegistry.js';
+import { VALUE_TYPE } from './commandRegistry.js';
 import {
   CHANNEL_COUNT, CONDITION, HUMANIZE_MAX, LENGTHS, MAX_STEPS, MUTABLE, OFFSET_LIMIT, REPEATS, RESOLUTIONS,
   SCENE_POSITION, SCENE_TIMING, STEP_MODE, SWING_MAX, VALUE_MODE,
   cellAt, emptySource, emptyValue, retarget, setCell
-} from '../../core/oneRingSequence.js';
+} from './oneRingSequence.js';
 
 /**
- * What the One Ring page does to a sequence.
+ * What the One Ring page, and a request to the node (oneRingRequests.js), do to
+ * a sequence.
  *
  * Each function takes a content and gives back a new one, the way the VST's
  * editor changed its project -- same fields, same rules -- and gives back the
@@ -38,6 +39,11 @@ function mapChannel(content, scene, index, change) {
       channels: item.channels.map((current, c) => (c === index ? next : current))
     }))
   };
+}
+
+/** Channel `index` of `scene`, changed by `change(channel) -> channel`. */
+export function editChannel(content, scene, index, change) {
+  return mapChannel(content, scene, index, change);
 }
 
 // ---------- the channel ----------

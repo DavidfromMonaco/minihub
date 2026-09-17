@@ -52,6 +52,27 @@ function contentOf(instance, hub) {
 }
 
 /**
+ * What a One Ring node's runtime last reported, in the words of its `status`
+ * request -- which is what `set-node-content` never answered: whether the
+ * sequence it wrote is playing, where, and what was refused.
+ */
+function oneRingStatusOf(hub, nodeId) {
+  const status = hub.oneRing?.statusOf?.(nodeId) ?? null;
+  return {
+    ready: Number.isSafeInteger(hub.oneRing?.generationOf?.(nodeId)),
+    running: status?.playing === true,
+    beat: status?.beat ?? 0,
+    bpm: status?.bpm ?? 0,
+    scene: status?.scene ?? null,
+    pendingScene: status && status.pendingScene >= 0 ? status.pendingScene : null,
+    activeChannels: (status?.active ?? []).flatMap((active, i) => (active ? [i + 1] : [])),
+    refused: status?.rejected ?? 0,
+    guarded: status?.guarded ?? 0,
+    lastRefusal: hub.oneRing?.refusalOf?.(nodeId) ?? ''
+  };
+}
+
+/**
  * Every node in the network, with the ports it actually has.
  *
  * WHY THE NETWORK AND NOT `nodes.list()`
@@ -81,7 +102,8 @@ export function describeNodes(hub) {
       label: type?.label || node.name || node.id,
       system: !instance,
       ports: { inputs: strip(node.inputs), outputs: strip(node.outputs) },
-      content: contentOf(instance, hub)
+      content: contentOf(instance, hub),
+      ...(typeId === 'one-ring' ? { status: oneRingStatusOf(hub, node.id) } : {})
     };
   });
 }

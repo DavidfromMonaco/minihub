@@ -521,7 +521,7 @@ done from the page or the agent, not from a step.
       scene timing and position.
       Check: same as step 7
       Built with step 7; same checks, the same word from the author. **Done.**
-- [ ] 9. Requests: the node answers the VST's vocabulary (describe, status,
+- [x] 9. Requests: the node answers the VST's vocabulary (describe, status,
       targets, get, set, run, stop, channel, scene, copy-scene, mutate,
       new-seed) from its content, so what programmed the VST programs it; its
       `status` and `describe` read what the running node last reported
@@ -530,6 +530,16 @@ done from the page or the agent, not from a step.
       `../minihub-agent/AGENTS.md`.
       Check: `npm test` + `npm run check` + `npm run sync:dist` + a running
       node's status read through the channel
+      Done 2026-09-17: `core/oneRingRequests.js`, kind `one-ring` in
+      `agentRequests.js` (gated on the project, as `plugin`), `status` on a
+      One Ring in `describe`, the last refusal kept by `oneRingNodes.js`. The
+      page's edits moved to `core/oneRingEdits.js` so that both use them.
+      `test/oneRingRequests.test.mjs` (7 tests); `npm test` (1183),
+      `npm run check`, `npm run sync:dist` -- green. The client
+      (`../minihub-agent/minihub.mjs`) stamps `one-ring` with the project id;
+      the manual's One Ring section now describes the node. **Not done: the
+      status read from a running MiniHub** -- the author's machine was not
+      driven while the author was away; step 16 does it.
 
 **Part two — notes.** Each step leaves the node working as before for a
 sequence that plays no note, and brings its own requests and tests; the page

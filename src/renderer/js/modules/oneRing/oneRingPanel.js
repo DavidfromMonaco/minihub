@@ -5,7 +5,7 @@ import {
   cellAt, mutateSequence, oneRingTargets, parseSeed, reseed, storeScene
 } from '../../core/oneRingSequence.js';
 import { syncDragKnob } from '../../ui/omniPearl.js';
-import * as edits from './oneRingEdits.js';
+import * as edits from '../../core/oneRingEdits.js';
 import { KNOBS, renderPage, renderRegions } from './oneRingFaceplate.js';
 
 /**

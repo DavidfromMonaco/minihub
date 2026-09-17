@@ -2,6 +2,7 @@ import { describeSetup, describeWindows } from './agentDescribe.js';
 import { getVstParametersForNode } from './vstParameterDiscovery.js';
 import { CONTROL_BINDING_VERSION } from './controlBindings.js';
 import { updateMasterOutput } from './masterOutput.js';
+import { handleOneRingRequest } from './oneRingRequests.js';
 
 /**
  * The one door an outside agent knocks on.
@@ -40,7 +41,7 @@ const MUTATING = new Set([
   'create-node', 'delete-node', 'connect', 'disconnect',
   'add-plugin', 'remove-plugin', 'set-parameter', 'move-plugin', 'set-plugin-bypass',
   'add-track', 'remove-track', 'set-track', 'add-clip',
-  'set-node-content', 'set-binding', 'clear-binding', 'plugin', 'patch-bay'
+  'set-node-content', 'set-binding', 'clear-binding', 'plugin', 'one-ring', 'patch-bay'
 ]);
 
 /**
@@ -326,6 +327,15 @@ export async function handleAgentRequest(hub, request = {}) {
     if (answer?.status !== 'ok') return failed(answer?.status || 'failed', answer?.message);
     const reply = answer.reply && typeof answer.reply === 'object' ? answer.reply : null;
     return reply ? { ...reply, ok: reply.ok === true } : failed('invalid-reply');
+  }
+
+  if (kind === 'one-ring') {
+    // One Ring's own vocabulary, as the VST took it through `plugin`: the node
+    // answers it from its content and its runtime (oneRingRequests.js), with
+    // the page's own edits. Gated on the project id, as `plugin` is.
+    const nodeId = String(request.nodeId || '');
+    if (hub.nodes?.get?.(nodeId)?.type !== 'one-ring') return failed('node-not-found');
+    return handleOneRingRequest(hub, nodeId, request.request);
   }
 
   if (kind === 'set-parameter') {

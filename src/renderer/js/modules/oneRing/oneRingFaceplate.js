@@ -10,7 +10,7 @@ import {
 import { icon } from '../../ui/icons.js';
 import {
   CONDITION_CHOICES, HUMANIZE_PERCENT, SWING_PERCENT, conditionLabel, describeCell, formatValue
-} from './oneRingEdits.js';
+} from '../../core/oneRingEdits.js';
 
 /**
  * The One Ring page's markup: the faceplate the author approved on 2026-09-17

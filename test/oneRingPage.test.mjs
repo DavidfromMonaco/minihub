@@ -8,7 +8,7 @@ import {
   CHANNEL_COUNT, CONDITION, MUTABLE, SCENE_POSITION, SCENE_TIMING, STEP_MODE, VALUE_MODE,
   cellAt, createSequence, readSequence, retarget, sequenceErrors, setCell, targetFinder
 } from '../src/renderer/js/core/oneRingSequence.js';
-import * as edits from '../src/renderer/js/modules/oneRing/oneRingEdits.js';
+import * as edits from '../src/renderer/js/core/oneRingEdits.js';
 import { renderPage, renderRegions } from '../src/renderer/js/modules/oneRing/oneRingFaceplate.js';
 import { applyStatus, registerOneRingPanel } from '../src/renderer/js/modules/oneRing/oneRingPanel.js';
 

@@ -56,6 +56,8 @@ export class OneRingNodes {
     this._statuses = new Map();
     /** nodeId -> the content last sent, without its scene. */
     this._sent = new Map();
+    /** nodeId -> why its last command or sequence was refused; '' once one is taken. */
+    this._refusals = new Map();
     this._refusalsLogged = 0;
     /** Whether this file has seen the engine running since it last stopped. */
     this._engineRunning = false;
@@ -69,7 +71,10 @@ export class OneRingNodes {
       // The device state it then asks for is the first sign given here.
       hub.events.on('engine:deviceState', () => this._onEngineUp()),
       hub.events.on('engine:oneRingSynced', (msg) => this._acceptSynced(msg)),
-      hub.events.on('engine:oneRingStatus', (msg) => this._acceptStatus(msg))
+      hub.events.on('engine:oneRingStatus', (msg) => this._acceptStatus(msg)),
+      hub.events.on('oneRing:refusal', (msg) => {
+        if (this.isOneRing(msg?.nodeId)) this._refusals.set(msg.nodeId, String(msg.message || ''));
+      })
     ];
   }
 
@@ -85,6 +90,11 @@ export class OneRingNodes {
   /** What the node's runtime last reported, or null. */
   statusOf(nodeId) {
     return this._statuses.get(nodeId) ?? null;
+  }
+
+  /** Why the node's last command or sequence was refused, or ''. */
+  refusalOf(nodeId) {
+    return this._refusals.get(nodeId) ?? '';
   }
 
   /** Whether a node's runtime last said it plays: the transport's Stop has something to stop. */
@@ -155,6 +165,7 @@ export class OneRingNodes {
     this._generations.delete(nodeId);
     this._statuses.delete(nodeId);
     this._sent.delete(nodeId);
+    this._refusals.delete(nodeId);
   }
 
   _onNetworkChange(change) {
@@ -184,6 +195,7 @@ export class OneRingNodes {
     this._generations.clear();
     this._statuses.clear();
     this._sent.clear();
+    this._refusals.clear();
     for (const nodeId of known) this.hub.events.emit('oneRing:gone', { nodeId });
     if (state?.state === 'running') this.syncAll();
   }
@@ -196,6 +208,7 @@ export class OneRingNodes {
         this._refusalsLogged += 1;
         this.hub.diagnostics?.log?.(`one-ring: ${msg.nodeId} sequence refused -- ${msg.message || 'no reason'}`);
       }
+      this._refusals.set(msg.nodeId, `sequence refused: ${msg.message || 'no reason'}`);
       this.hub.events.emit('oneRing:refused', { nodeId: msg.nodeId, message: String(msg.message || '') });
       return;
     }
