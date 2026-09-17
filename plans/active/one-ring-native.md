@@ -17,12 +17,14 @@ after trying the node ("tout fonctionne bien, mais je voudrais des fonctions
 en plus") — One Ring as the generative engine of a piece. The author's
 instruction for that day: check that it is possible and prepare it, no code.
 **Status** — **in progress, 2026-09-17.** Steps 0 to 8 done: the page works,
-the author says. Part two (steps 10 to 16) designed and planned; the author
+the author says. Part two (steps 10 to 17) designed and planned; the author
 answered its three questions the same day and asked for every change that can
 be made while away ("fais toutes les modifications que tu peux, je reviens
 check dans quelques heures"): steps 9, 11, 12 and 13 are done, each checked
-and committed, and step 10 is built and waits to be heard. The design still of
-step 14 and what follows wait for the author.
+and committed, and step 10 is built and waits to be heard. The author's second
+round, the same day: the page of part two is written without a still first
+(step 14 waived), scenes grow to A1 to D8 (step 15, new), and One Ring creating
+nodes is set aside.
 
 ## Context
 
@@ -238,8 +240,8 @@ Part two adds:
 - Changing or retiring the One Ring VST, or the CTRL OUT path for plugins.
 - The Morpher: whether One Ring takes its place is not decided.
 - Functions the VST does not have — commands of its own on a CTRL IN, more than
-  16 channels or 4 scenes, target commands executed at sample accuracy — except
-  part two's notes, which the author asked for on 2026-09-17.
+  16 channels, target commands executed at sample accuracy — except part two's
+  notes and the scenes A1 to D8, which the author asked for on 2026-09-17.
 - What the Matrix specification found missing: the post-chain gain stage, a
   `ctrl-in` on dynamic-input nodes, a dual live/export runtime.
 - The site and the release notes.
@@ -260,11 +262,15 @@ Part two leaves out:
 - A time-stretch of the material, and timing finer than the Sequencer's 960
   ticks to the quarter.
 - Generation driven by a model, or any code in a request.
+- One Ring creating a node itself, for the track a new generation is written
+  to: set aside by the author on 2026-09-17 ("il faut que je repense le
+  truc"). The author, or an agent, creates and cables it.
+- Removing a scene: the list of scenes only grows (*Scenes A1 to D8*).
 
 ## Part two — design
 
 Written 2026-09-17 from the code, before any of it is built. It moves into
-ARCHITECTURE and DECISIONS at step 17; until then this is where it lives.
+ARCHITECTURE and DECISIONS at step 18; until then this is where it lives.
 
 **The node** — MIDI IN and MIDI OUT beside CTRL OUT. MIDI IN takes a Sequencer
 track that names the node as its Destination, and a controller cabled to it.
@@ -423,11 +429,47 @@ done from the page or the agent, not from a step.
    exists: an audio track armed on a node cabled into the Sequencer's AUDIO IN
    (a Mixer gathering the instruments One Ring plays) records from the start,
    and the export plays the take. A Sequencer sync keeps an audio take going
-   (the track's writer is the same object across plans). Step 16 checks it.
+   (the track's writer is the same object across plans). Step 17 checks it.
    What follows from it: the take ends when the transport stops, a sequence's
    STOP included; a later playback sounds the take and One Ring together.
 3. *One undo step per generation*: "Ne te soucie pas des étapes
    d'annulation" — as proposed, nothing special.
+
+**The author's second round, 2026-09-17** — after reading what steps 9 to 13
+built:
+
+1. "Tu peux écrire la nouvelle page en restant dans le même style. Si il n'y a
+   pas assez de place, tu peux aussi explorer la possibilité d'onglets." The
+   page of part two is written in the faceplate's style with no still first;
+   step 14 is waived.
+2. "Pour le moment mets la création de node par le One Ring de côté, il faut
+   que je repense le truc." Set aside (*Out of scope*).
+3. "Il faut plus de scènes disponibles. Pour le moment il y a A B C et D, il
+   faudrait donner la possibilité de faire A1, A2, A3 etc." Step 15.
+
+**Scenes A1 to D8** — what the third answer becomes.
+
+- The four letters the deck has now, A to D, each with eight numbered scenes:
+  32 in all. A scene's id is its place, `A1` to `D8`; its name, `Scene A1`.
+- A scene exists once it is chosen or stored into, and the content keeps only
+  those: an empty scene is 8 KB of content, and the content is copied into
+  every undo step. A new node has A1, B1, C1 and D1, the four scenes it had.
+- The list of scenes only grows. A scene's index is what a RECALL value, a
+  scene command and the status carry, and a list that only grows never moves
+  one under a running sequence. A RECALL takes one scene or a list of them,
+  never a range (the VST's rule for choices), so the list's order carries no
+  meaning; the page and the requests show scenes by their place. Removing a
+  scene would move the indices after it, and is not built.
+- A sequence saved with the VST's four scenes, `A` to `D`, opens with them as
+  A1, B1, C1 and D1, in the same order: its recalls are unchanged. A scene
+  whose id is no place takes the first free one.
+- The deck: a row of letter keys and a row of number keys for the letter
+  shown. A number with no scene is dark; choosing it creates the scene, empty,
+  and recalls it. STORE then a number copies the scene shown there, creating
+  it if need be. The letter shown follows the scene that plays, until a letter
+  key is pressed.
+- The engine takes up to 32 scenes and refuses more; the renderer refuses more
+  before it sends them.
 
 ## Steps
 
@@ -545,11 +587,11 @@ done from the page or the agent, not from a step.
       (`../minihub-agent/minihub.mjs`) stamps `one-ring` with the project id;
       the manual's One Ring section now describes the node. **Not done: the
       status read from a running MiniHub** -- the author's machine was not
-      driven while the author was away; step 16 does it.
+      driven while the author was away; step 17 does it.
 
 **Part two — notes.** Each step leaves the node working as before for a
 sequence that plays no note, and brings its own requests and tests; the page
-comes after its design is approved (steps 14 and 15).
+comes last (step 16; the author waived the still of step 14).
 
 - [ ] 10. A Sequencer sync that keeps the routing stops panicking
       (*Part two — design*): sounding notes kept per track across plans, a Note
@@ -612,7 +654,7 @@ comes after its design is approved (steps 14 and 15).
       sequence whose first step captures, a track aimed at the node playing
       C, E, G and D, the four notes reported at their ticks (0, 0, 0, 1920),
       a frozen material refusing CLEAR, the node removed -- 12 checks. Not
-      seen in MiniHub: the page shows none of it until step 15.
+      seen in MiniHub: the page shows none of it until step 16.
 - [x] 12. MIDI OUT and the voices: `PLAY`, `NOTE`, the rule commands and the
       per-scene rules, their draws, notes sent at their sample to the
       destinations, One Ring run before the arpeggiators, the registry of
@@ -697,24 +739,61 @@ comes after its design is approved (steps 14 and 15).
       while playing, the next generation replaced the first clip's notes and
       nothing else, with no sequence republished; nothing written after Stop;
       undo gave the first clip its notes back. **Not heard by the author; the
-      page shows none of it until step 15.**
-- [ ] 14. The design of part two, before its page: a still of what the page
+      page shows none of it until step 16.**
+- [x] 14. The design of part two, before its page: a still of what the page
       gains — MIDI IN and the capture, the material (origin and current
       generation), the four voices and their rules, the writer and feedback —
       in the faceplate, after the author's references, shown to the author.
-      Check: the author's go. **The author decides here.**
-- [ ] 15. The page of part two, after the still; the controls call what the
-      requests call.
+      Check: the author's go. **Waived by the author on 2026-09-17**: the page
+      is written in the faceplate's style directly, in tabs if it needs them
+      (*The author's second round*).
+- [x] 15. Scenes A1 to D8 (*Scenes A1 to D8*): the ids, the reading of a
+      four-scene sequence, a scene created when chosen or stored into, the
+      engine's limit, the deck's letter and number keys, and the requests
+      naming and creating scenes.
+      Check: build 0/0 + the four binaries — a 32-scene sequence is taken and
+      a recall reaches its last scene, a 33rd scene is refused + `npm test` —
+      a four-scene content opens as A1 to D1 with its recalls unchanged;
+      choosing an empty number creates the scene and recalls it; STORE into
+      an empty number creates it as a copy; the requests name scenes as
+      `A1` (and `A` as `A1`) and create them + `npm run check` +
+      `npm run sync:dist` + the real engine over stdio: a sequence of 32
+      scenes, how long it takes to publish, a recall of the last.
+      Done 2026-09-17. Renderer: the places and their order
+      (`SCENE_PLACES`), `addScene`, `storeSceneAt`, `sceneIndex`, the VST's
+      letters read as their first number and written back as letters,
+      RECALL's choices listed in the deck's order; the deck's letter and
+      number keys (`bank`, `place`) and one live legend; the requests
+      `new-scene`, `copy-scene` into a free place, scenes named by place
+      (`A` being `A1`) and listed by `describe` and `get`. Engine: at most 32
+      scenes, refused before they are laid out. Build 0 errors 0 warnings;
+      `--core` (1697 checks, `one-ring-scenes` among them: 32 taken, the
+      32nd recalled at rest and played by its own rules, a 33rd refused
+      both as a project and as a state), `--vst3-e2e` (99),
+      `--cross-track-isolation` (27), `mlh_realtime_output_tests` (2535);
+      `npm test` (1227, `oneRingScenes.test.mjs` among them), `npm run check`,
+      `npm run sync:dist`. The real engine over stdio, 7 checks: 32 worked
+      scenes (1 MB of content) taken, published in 72 ms each, a 33rd
+      refused, the 32nd recalled while running. Two costs found and fixed
+      (log): an edit of such a node took 300 ms in the renderer, now 29; the
+      renderer sent sequences faster than the engine reads them, now one at a
+      time. **Not seen yet in a browser or in MiniHub: the deck's keys** --
+      with step 16's trial.
+- [ ] 16. The page of part two, in the faceplate's style and in tabs if it
+      needs them: the capture and the material, the four voices and their
+      rules, the writer and feedback; the controls call what the requests
+      call.
       Check: `npm test` (domShim) + `npm run check` + `npm run sync:dist` +
-      the author's trial in MiniHub
-- [ ] 16. The demonstration, with the author: a project made for it (a short
+      tried in a browser on a fake engine + the author's trial in MiniHub
+- [ ] 17. The demonstration, with the author: a project made for it (a short
       source clip and no arrangement, a One Ring, an instrument, a track for
       the generations, an audio track recording from the start) and the
       brief's eight points, each seen or heard; the export holds the take.
       Check: the eight points written in the log, each with how it was seen,
       and what was not
-- [ ] 17. Documents: a DECISIONS entry (where the clock runs, why the content
-      is the VST's state made sparse, which Stop stops it), D-016 to D-018 and
+- [ ] 18. Documents: a DECISIONS entry (where the clock runs, why the content
+      is the VST's state made sparse and how its scenes grew past the VST's
+      four, which Stop stops it), D-016 to D-018 and
       INTENT §8 bis naming One Ring, ARCHITECTURE §5, §6, §7, §10 and §12,
       AGENTS.md §6 and D-037 (the faceplate is no longer the arpeggiator's
       alone). For part two: DECISIONS entries (One Ring plays notes as a MIDI
@@ -747,7 +826,7 @@ proves:
 - the page, approved by the author;
 - the author's three answers built as the design records them;
 - the brief's eight points, seen or heard with the author in the demonstration
-  project (step 16).
+  project (step 17).
 
 ## Log
 
@@ -993,3 +1072,23 @@ alone. What was settled on the way, beyond what each step records:
   bench, before the Sequencer had ever been synced, saw the first write's sync
   change the routing: the panic cut the note sounding, and the generation kept
   it cut, as heard.
+
+2026-09-17 — Step 15, scenes A1 to D8. A scene in the engine is laid out for
+the audio thread: 135 KB (sixteen channels of sixty-four cells), so a plan of
+32 scenes is 4.3 MB, and reading a sequence costs about 70 ms per megabyte of
+content -- 72 ms for 32 worked scenes, 3 ms for a new node. Measured through
+the renderer's own modules, two costs showed that four scenes had hidden:
+
+- An edit of a 32-scene node took 300 ms in the renderer. `nodes.setContent`
+  reads every content it is given (`readSequence`), and reading a sparse
+  channel laid its 64 cells out with `structuredClone`: 32,768 clones. A
+  channel listing fewer than half its cells, in order and none equal to its
+  blank, is already in its own form and is now read as it stands, and a cell
+  is copied field by field. 29 ms, most of it the JSON comparisons every
+  content goes through; a test checks the short way gives the long way's
+  result, and fails when either of its two conditions is taken out.
+- A knob writes twenty times a second and the engine took 72 ms per sequence,
+  so edits queued in the engine and the sound would have trailed the knob.
+  `oneRingNodes.js` now keeps one sequence in flight per node and sends the
+  newest when the engine answers; a turned knob's last value reached the
+  engine 125 ms after the last edit, through 39 sequences for 40 edits.

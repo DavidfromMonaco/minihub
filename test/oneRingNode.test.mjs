@@ -159,6 +159,46 @@ test('a renderer that opens while the engine runs sends the sequences once the e
   assert.deepEqual(syncs.map((msg) => [msg.nodeId, msg.restore]), [[ring.id, true]], 'once, as saved');
 });
 
+test('a sequence waits for the answer to the one before, and the newest goes next', async () => {
+  const { api, hub, ring, sent, announce } = await rig();
+  const generation = announce();
+  const answer = () => api.emitEvent({ type: 'oneRingSynced', nodeId: ring.id, generation, created: false, ok: true, message: '' });
+  const edit = (swing) => {
+    const next = structuredClone(hub.nodes.get(ring.id).content);
+    next.scenes[0].channels[0].swing = swing;
+    hub.nodes.setContent(ring.id, next);
+  };
+  const swings = () => sent('syncOneRing').map((msg) => msg.state.scenes[0].channels[0].swing);
+  const before = swings().length;
+  edit(0.1);
+  edit(0.2);
+  edit(0.3);
+  assert.deepEqual(swings().slice(before), [0.1], 'one sequence in flight');
+  answer();
+  assert.deepEqual(swings().slice(before), [0.1, 0.3], 'then the newest, not each one');
+  answer();
+  assert.deepEqual(swings().slice(before), [0.1, 0.3], 'nothing more was waiting');
+
+  edit(0.4);
+  const realNow = Date.now;
+  try {
+    Date.now = () => realNow() + 2500;
+    edit(0.5);
+  } finally {
+    Date.now = realNow;
+  }
+  assert.deepEqual(swings().slice(before), [0.1, 0.3, 0.4, 0.5], 'an answer that never came frees the node');
+
+  answer();
+  const engineCommand = api.engineCommand;
+  api.engineCommand = async (msg) => (msg.type === 'syncOneRing' ? { ok: false, reason: 'invalid-request' } : engineCommand(msg));
+  edit(0.6);
+  await settle();
+  api.engineCommand = engineCommand;
+  edit(0.7);
+  assert.deepEqual(swings().slice(before), [0.1, 0.3, 0.4, 0.5, 0.7], 'a sequence main refused frees the node at once');
+});
+
 test('an edit is sent as an edit; a scene the engine reports is kept without being sent back', async () => {
   const { api, hub, ring, sent, announce } = await rig();
   setupEditHistory(hub);

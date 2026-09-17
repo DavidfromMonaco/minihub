@@ -332,6 +332,9 @@ Project readProject(const juce::var& state)
     project.writer = readWriter(state["writer"]);
     const auto* scenes = state["scenes"].getArray();
     if (scenes == nullptr || scenes->isEmpty()) throw std::invalid_argument("Missing scenes");
+    // Refused before 33 scenes are laid out, not after.
+    if (scenes->size() > static_cast<int>(maximumScenes))
+        throw std::invalid_argument("A sequence has at most 32 scenes");
     for (const auto& item : *scenes) {
         Scene scene;
         scene.id = text(item, "id");

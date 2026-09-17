@@ -101,7 +101,8 @@ test('the writer is One Ring\'s own target, with the engine\'s three commands', 
 });
 
 test('the engine is sent the window and feedback; where generations go publishes nothing', async () => {
-  const { sent, setWriter } = await rig();
+  const { sent, setWriter, announce } = await rig();
+  announce();
   const syncs = sent('syncOneRing').length;
   assert.deepEqual(sent('syncOneRing').at(-1).state.writer,
     { bars: 4, feedback: false, feedbackMode: CAPTURE_MODE.replace, delayBars: 0, limit: 16 });

@@ -2,7 +2,8 @@ import { escapeHtml } from '../../core/html.js';
 import { VALUE_TYPE } from '../../core/commandRegistry.js';
 import {
   CHANNEL_COUNT, CHANNEL_TARGET_PREFIX, LENGTHS, MAX_STEPS, MEMORY_TARGET, MUTABLE, OFFSET_LIMIT, REPEATS, RESOLUTIONS,
-  SCENES_TARGET, SCENE_POSITION, SCENE_TIMING, STEP_MODE, VALUE_MODE, VOICE_TARGET_PREFIX, WRITER_TARGET, cellsOf
+  SCENES_PER_BANK, SCENES_TARGET, SCENE_BANKS, SCENE_POSITION, SCENE_TIMING, STEP_MODE, VALUE_MODE,
+  VOICE_TARGET_PREFIX, WRITER_TARGET, cellsOf, sceneIndex, scenePlace
 } from '../../core/oneRingSequence.js';
 import {
   pearlDragKnob, pearlKeycap, pearlLcd, pearlLed, pearlLegend, pearlScribble, pearlSelector
@@ -108,6 +109,46 @@ function commandSelect(view, targetId, value, attrs, ariaLabel) {
 
 // ---------- deck ----------
 
+/** The letter whose eight scenes the deck shows: the one asked for, or the scene's own. */
+export function shownBank(view) {
+  return view.bank ?? scenePlace(view.content.scenes[view.scene]?.id)?.bank ?? SCENE_BANKS[0];
+}
+
+/**
+ * A letter row and a number row, as a hardware sequencer's banks and
+ * patterns. A number with no scene is dark; pressed, it becomes one.
+ */
+function renderScenes(view) {
+  const { content, scene } = view;
+  const current = content.scenes[scene];
+  const bank = shownBank(view);
+  const playingBank = scenePlace(current.id)?.bank;
+  const letters = SCENE_BANKS.map((letter) => pearlKeycap({
+    label: letter, size: 'sq', state: letter === bank ? 'white' : '', led: letter === playingBank, pressed: letter === bank,
+    title: `The scenes of ${letter}`, attrs: `${act('bank', letter)} data-ring-bank="${letter}"`
+  })).join('');
+  const store = pearlKeycap({ label: 'Store', size: 'sq word', state: view.storeArmed ? 'lit' : '', title: 'Store this scene into another place', pressed: view.storeArmed, attrs: act('store') });
+  const numbers = Array.from({ length: SCENES_PER_BANK }, (_, n) => {
+    const place = `${bank}${n + 1}`;
+    const index = sceneIndex(content, place);
+    const here = index === scene;
+    const state = here ? 'lit' : view.storeArmed ? 'armed' : index >= 0 ? '' : 'dim';
+    const title = view.storeArmed && !here ? `Store ${current.id} into ${place}`
+      : index >= 0 ? content.scenes[index].name : `${place} is empty: press to make it`;
+    const hook = index >= 0 ? ` data-ring-scene="${index}"` : '';
+    return pearlKeycap({ label: String(n + 1), size: 'num', state, title, pressed: here, attrs: `${act('place', place)}${hook}` });
+  }).join('');
+  const legend = view.storeArmed ? `Store ${current.id} into a place` : '';
+  return `<div class="op-ring-group">
+      <span class="op-label">Scenes</span>
+      <div class="op-ring-scenes">
+        <div class="op-ring-keys">${letters}<span class="op-ring-store">${store}</span></div>
+        <div class="op-ring-keys op-ring-numbers" aria-label="${escapeHtml(`The scenes of ${bank}`)}">${numbers}</div>
+        <span class="op-legend accent" data-ring-live="scene-legend">${escapeHtml(legend) || '&nbsp;'}</span>
+      </div>
+    </div>`;
+}
+
 function renderDeck(view) {
   const { content, scene, ready } = view;
   const transport = `<div class="op-ring-group">
@@ -128,16 +169,7 @@ function renderDeck(view) {
         <div class="op-display-line op-display-right"><span class="dim">LAST REFUSAL</span> <span data-ring-live="refusal">—</span></div>
       </div>
     </div>`;
-  const keys = content.scenes.map((item, i) => {
-    const state = i === scene ? 'lit' : view.storeArmed ? 'armed' : '';
-    const title = view.storeArmed && i !== scene ? `Store ${content.scenes[scene].id} into ${item.id}` : item.name;
-    return `<div class="op-ring-keyset">${pearlKeycap({ label: item.id, size: 'sq', state, title, pressed: i === scene, attrs: `${act('scene', i)} data-ring-scene="${i}"` })}<span class="op-legend accent" data-ring-scene-legend="${i}">${view.storeArmed && i !== scene ? 'Store here' : '&nbsp;'}</span></div>`;
-  }).join('');
-  const store = `<div class="op-ring-keyset op-ring-store">${pearlKeycap({ label: 'Store', size: 'sq word', state: view.storeArmed ? 'lit' : '', title: 'Store this scene into another', pressed: view.storeArmed, attrs: act('store') })}${pearlLegend(view.storeArmed ? 'Pick a scene' : 'then a scene', { state: view.storeArmed ? 'on' : '' })}</div>`;
-  const scenes = `<div class="op-ring-group">
-      <span class="op-label">Scenes</span>
-      <div class="op-ring-keys">${keys}${store}</div>
-    </div>`;
+  const scenes = renderScenes(view);
   const nextBar = content.sceneTiming === SCENE_TIMING.nextBar;
   const keep = content.scenePosition === SCENE_POSITION.keep;
   const lever = (name, left, right, on) => `${pearlLegend(left, { state: on ? '' : 'on', attrs: act(name, 0) })}

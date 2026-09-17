@@ -28,6 +28,7 @@ std::vector<std::string> validate(const Project& project, const CommandRegistry&
         errors.push_back("Invalid scene policy");
     if (project.scenes.empty() || project.selectedScene >= project.scenes.size())
         errors.push_back("Missing selected scene");
+    if (project.scenes.size() > maximumScenes) errors.push_back("A sequence has at most 32 scenes");
     std::vector<std::string> ids;
     const auto actionValid = [&](const Action& action, const ValueSource& value) {
         if (action.target.empty() && action.command.empty()) return true;

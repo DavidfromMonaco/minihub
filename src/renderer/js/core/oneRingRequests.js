@@ -6,7 +6,8 @@ import {
   VOICE_COUNT, VOICE_RULES, WRITE_MODE, setVoice, voiceValid,
   cellsOf, clearCells, clearMaterial, defaultSource, defaultWriter, emptyCell, loadMaterial, mutateSequence,
   noteListFromClip, oneRingTargets, parseSeed, readNoteList, readSequence, reseed, retarget, revertMaterial,
-  sequenceErrors, setCaptureSettings, setFrozen, setWriterSettings, storeScene
+  sequenceErrors, setCaptureSettings, setFrozen, setWriterSettings, storeScene,
+  SCENE_BANKS, addScene, sceneIndex, scenePlace, storeSceneAt
 } from './oneRingSequence.js';
 import {
   HUMANIZE_PERCENT, SWING_PERCENT,
@@ -49,6 +50,13 @@ import {
  * by now; `set-voice` edits one voice's rules as the page does. A channel plays
  * notes by aiming at `one-ring:voice:N`, through `set`, like any command.
  *
+ * THE SCENES
+ * ----------
+ * A scene is named by its place, `A1` to `D8` (`A` alone being `A1`, as the
+ * VST's scenes now read), by its index or by its name. It exists once it is
+ * made: `new-scene`, or `copy-scene` into a free place. `scene` recalls one
+ * that exists; the page makes one when an empty place is chosen.
+ *
  * THE WRITER
  * ----------
  * `writer` reads where generations go and what became of them; `set-writer`
@@ -59,7 +67,8 @@ import {
  */
 
 export const REQUEST_KINDS = Object.freeze([
-  'describe', 'status', 'targets', 'get', 'set', 'run', 'stop', 'channel', 'scene', 'copy-scene', 'mutate', 'new-seed',
+  'describe', 'status', 'targets', 'get', 'set', 'run', 'stop', 'channel', 'scene', 'copy-scene', 'new-scene', 'mutate',
+  'new-seed',
   'material', 'set-material', 'capture', 'capture-end', 'clear', 'freeze', 'unfreeze', 'revert',
   'voices', 'set-voice', 'writer', 'set-writer', 'write', 'feedback'
 ]);
@@ -88,7 +97,8 @@ const VALUES = Object.freeze({
   value: 'a number, true or false, or a choice as its label or its id -- what the command declares',
   random: '{"min": a, "max": b} for a number or a whole number; {"oneOf": [ ... ]} for any command',
   conditions: '"first", "last", {"every": n}, {"ifActive": channel}, {"ifInactive": channel}',
-  scene: 'an index from 0, an id such as "A", or a name such as "Scene A"',
+  scene: 'a place from "A1" to "D8" ("A" is "A1"), an index from 0, or a name such as "Scene A1"; a place has a '
+    + 'scene once one is made there (new-scene, copy-scene)',
   notes: 'a note is {pitch 0-127, velocity 1-127, channel 1-16, startPpq, durationPpq}, in quarter notes from the '
     + 'material\'s start; a material lasts lengthPpq, at most 256 quarter notes, and keeps at most 256 notes',
   capture: '{"mode": "replace" or "add", "bars": 1-16, or 0 until capture-end}; a capture asked here starts at '
@@ -117,14 +127,34 @@ const refuse = (path, message) => { throw new Refusal(path ? `${path}: ${message
 
 // ---------- reading what a request names ----------
 
+/** A place as a request writes it, `a3` or `A`, as the content writes it; or null. */
+function placeOf(ref) {
+  if (typeof ref !== 'string') return null;
+  const text = ref.trim().toUpperCase();
+  const place = SCENE_BANKS.includes(text) ? `${text}1` : text;
+  return scenePlace(place) ? place : null;
+}
+
 function sceneAt(content, ref, path) {
   if (Number.isInteger(ref) && content.scenes[ref]) return ref;
   if (typeof ref === 'string') {
+    const place = placeOf(ref);
     const text = ref.trim().toLowerCase();
-    const found = content.scenes.findIndex((scene) => scene.id.toLowerCase() === text || scene.name.toLowerCase() === text);
+    const found = place
+      ? sceneIndex(content, place)
+      : content.scenes.findIndex((scene) => scene.name.toLowerCase() === text);
     if (found >= 0) return found;
+    if (place) refuse(path, `no scene at ${place} yet: new-scene makes one`);
   }
   return refuse(path, `no scene ${JSON.stringify(ref)}: ${VALUES.scene}`);
+}
+
+/** Every scene, in the deck's order. */
+function scenesOut(content) {
+  return content.scenes
+    .map((scene, index) => ({ index, id: scene.id, name: scene.name, order: scenePlace(scene.id)?.order ?? index }))
+    .sort((a, b) => a.order - b.order)
+    .map(({ order: _order, ...scene }) => scene);
 }
 
 function channelAt(ref, path) {
@@ -732,6 +762,7 @@ export async function handleOneRingRequest(hub, nodeId, body) {
           node: { id: nodeId, name: context.node.name },
           kinds: [...REQUEST_KINDS],
           values: VALUES,
+          scenes: scenesOut(content),
           status: statusAnswer(hub, nodeId, context),
           targets: targetsAnswer(context).targets
         };
@@ -749,6 +780,7 @@ export async function handleOneRingRequest(hub, nodeId, body) {
           sceneTiming: TIMING_NAMES[content.sceneTiming],
           scenePosition: POSITION_NAMES[content.scenePosition],
           selectedScene: content.selectedScene,
+          scenes: scenesOut(content),
           scene: sceneOut(content, scene),
           channels: body.channel === undefined ? channels : [channels[channelAt(body.channel, 'channel')]]
         };
@@ -816,8 +848,25 @@ export async function handleOneRingRequest(hub, nodeId, body) {
       }
       case 'copy-scene': {
         const from = sceneAt(content, body.from, 'from');
-        const to = sceneAt(content, body.to, 'to');
-        return { ok: true, changed: write(hub, nodeId, context, storeScene(content, from, to)) };
+        const place = placeOf(body.to);
+        const next = place
+          ? storeSceneAt(content, from, place)
+          : storeScene(content, from, sceneAt(content, body.to, 'to'));
+        const changed = write(hub, nodeId, context, next);
+        const after = hub.nodes.get(nodeId).content;
+        const to = place ? sceneIndex(after, place) : sceneAt(after, body.to, 'to');
+        return { ok: true, changed, scene: sceneOut(after, to) };
+      }
+      case 'new-scene': {
+        const place = placeOf(body.scene);
+        if (!place) refuse('scene', 'a place from "A1" to "D8"');
+        if (sceneIndex(content, place) >= 0) refuse('scene', `${place} already has a scene: copy-scene writes over it`);
+        const next = body.from === undefined
+          ? addScene(content, place)
+          : storeSceneAt(content, sceneAt(content, body.from, 'from'), place);
+        write(hub, nodeId, context, next);
+        const after = hub.nodes.get(nodeId).content;
+        return { ok: true, changed: true, scene: sceneOut(after, sceneIndex(after, place)) };
       }
       case 'mutate': {
         const scene = body.scene === undefined ? context.scene : sceneAt(content, body.scene, 'scene');

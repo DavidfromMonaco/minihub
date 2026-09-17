@@ -93,12 +93,12 @@ test('set programs a channel whole, and get gives it back in the shape set takes
         ] },
       { channel: 2, target: arp.id, command: 'RATE', repeats: 'loop', mode: 'trigger', offset: -2,
         steps: [{ step: 2, enabled: true, value: '1/16', conditions: [{ ifActive: 1 }] }],
-        follow: [{ target: 'one-ring:scenes', command: 'RECALL', value: 'Scene C' }] }
+        follow: [{ target: 'one-ring:scenes', command: 'RECALL', value: 'Scene C1' }] }
     ]
   });
   assert.equal(answer.ok, true, answer.message);
   assert.equal(answer.changed, true);
-  assert.deepEqual(answer.scene, { index: 1, id: 'B', name: 'Scene B' });
+  assert.deepEqual(answer.scene, { index: 1, id: 'B1', name: 'Scene B1' });
   assert.equal(content().sceneTiming, 1);
 
   const one = content().scenes[1].channels[0];
@@ -128,11 +128,11 @@ test('set programs a channel whole, and get gives it back in the shape set takes
     ],
     follow: []
   }]);
-  const second = (await ask({ kind: 'get', scene: 'Scene B', channel: 2 })).channels[0];
+  const second = (await ask({ kind: 'get', scene: 'Scene B1', channel: 2 })).channels[0];
   assert.equal(second.repeats, 'loop');
   assert.equal(second.offset, -2);
   assert.deepEqual(second.steps, [{ step: 2, enabled: true, value: '1/16', conditions: [{ ifActive: 1 }] }]);
-  assert.deepEqual(second.follow, [{ target: 'one-ring:scenes', command: 'RECALL', value: 'Scene C' }]);
+  assert.deepEqual(second.follow, [{ target: 'one-ring:scenes', command: 'RECALL', value: 'Scene C1' }]);
 
   const again = await ask({ kind: 'set', scene: 1, channels: got.channels });
   assert.equal(again.ok, true, again.message);
@@ -181,8 +181,8 @@ test('status reads what the runtime last reported, and the last refusal', async 
   assert.equal(status.ready, true);
   assert.equal(status.running, true);
   assert.deepEqual([status.beat, status.bpm, status.refused, status.guarded], [7.5, 96, 2, 1]);
-  assert.deepEqual(status.scene, { index: 2, id: 'C', name: 'Scene C' });
-  assert.deepEqual(status.pendingScene, { index: 3, id: 'D', name: 'Scene D' });
+  assert.deepEqual(status.scene, { index: 2, id: 'C1', name: 'Scene C1' });
+  assert.deepEqual(status.pendingScene, { index: 3, id: 'D1', name: 'Scene D1' });
   assert.deepEqual(status.channels[0], { channel: 1, active: true, step: 5 });
   assert.deepEqual(status.channels[1], { channel: 2, active: false, step: null });
   assert.equal(status.lastRefusal, 'MASTER: not cabled');
@@ -198,7 +198,8 @@ test('run, stop, a channel and a scene go to the runtime; with none, a scene is 
   setupEditHistory(hub, { apply: async () => {}, quietMs: 5 });
   hub.history.start();
   hub.project.dirty = false;
-  assert.deepEqual(await ask({ kind: 'scene', scene: 'C' }), { ok: true, scene: { index: 2, id: 'C', name: 'Scene C' } });
+  assert.deepEqual(await ask({ kind: 'scene', scene: 'C' }), { ok: true, scene: { index: 2, id: 'C1', name: 'Scene C1' } },
+    'a letter alone is its first scene, as the scenes of the VST now read');
   assert.equal(content().selectedScene, 2);
   await new Promise((resolve) => setTimeout(resolve, 30));
   assert.equal(hub.history.canUndo, false, 'choosing the scene is not an edit');
@@ -225,9 +226,9 @@ test('copy-scene, mutate and new-seed write the sequence as the page does', asyn
   await ask({ kind: 'set', scene: 0, channels: [{ channel: 1, target: mixer.id, command: 'MASTER',
     steps: Array.from({ length: 16 }, (_, i) => ({ step: i + 1, enabled: true, value: { min: 0, max: 2 } })) }] });
   const copied = await ask({ kind: 'copy-scene', from: 'A', to: 'D' });
-  assert.deepEqual(copied, { ok: true, changed: true });
+  assert.deepEqual(copied, { ok: true, changed: true, scene: { index: 3, id: 'D1', name: 'Scene D1' } });
   assert.deepEqual(content().scenes[3].channels, content().scenes[0].channels);
-  assert.equal(content().scenes[3].name, 'Scene D');
+  assert.equal(content().scenes[3].name, 'Scene D1');
 
   const seeded = await ask({ kind: 'new-seed', seed: '4815162342' });
   assert.deepEqual(seeded, { ok: true, seed: '4815162342' });

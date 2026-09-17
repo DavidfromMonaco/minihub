@@ -36,6 +36,16 @@ import {
  * becomes a clip (D-032). The material last sent or received is remembered, so
  * neither side is sent back what it already holds.
  *
+ * ONE SEQUENCE AT A TIME
+ * -----------------------
+ * The engine reads a sequence in tens of milliseconds once it holds many
+ * scenes -- about 70 ms for thirty-two worked ones -- and a knob being turned
+ * edits twenty times a second. Sent as they come, the edits would queue in the
+ * engine and the sound would trail the knob. So a node has at most one
+ * sequence waiting for its answer; what changes meanwhile is sent, newest
+ * only, when the answer comes. An answer that never comes releases the node
+ * after `SYNC_TIMEOUT_MS`.
+ *
  * A GENERATION IS WRITTEN HERE, ONCE
  * ----------------------------------
  * A WRITE in the engine sends `oneRingWrite`: the notes the voices played over
@@ -49,6 +59,7 @@ import {
 
 const TYPE = 'one-ring';
 const MAX_REFUSALS_LOGGED = 20;
+const SYNC_TIMEOUT_MS = 2000;
 
 const sentKey = (content) => JSON.stringify({ ...engineSequence(content), selectedScene: null });
 const CAPTURE_STATES = Object.freeze(['off', 'armed', 'capturing']);
@@ -109,6 +120,8 @@ export class OneRingNodes {
     this._materials = new Map();
     /** nodeId -> what was written of its generations this session, and what was refused. */
     this._writes = new Map();
+    /** nodeId -> the sequence sent and not yet answered: when, and whether another waits. */
+    this._inflight = new Map();
     this._refusalsLogged = 0;
     /** Whether this file has seen the engine running since it last stopped. */
     this._engineRunning = false;
@@ -192,12 +205,34 @@ export class OneRingNodes {
     const key = sentKey(node.content);
     const sequenceDue = restore || this._sent.get(nodeId) !== key;
     if (sequenceDue) {
-      this._sent.set(nodeId, key);
-      const sequence = engineSequence(node.content);
-      this._send(this._sent, nodeId, key, () => this.hub.engine.syncOneRing(nodeId, sequence, restore));
+      const inflight = this._inflight.get(nodeId);
+      if (inflight && Date.now() - inflight.at < SYNC_TIMEOUT_MS) {
+        inflight.waiting = true;
+        inflight.restore ||= restore;
+      } else {
+        this._sendSequence(nodeId, node, key, restore);
+      }
     }
     const materialDue = this._syncMaterial(nodeId, node.content.material, restore);
     return sequenceDue || materialDue;
+  }
+
+  _sendSequence(nodeId, node, key, restore) {
+    this._sent.set(nodeId, key);
+    const flight = { at: Date.now(), waiting: false, restore: false };
+    this._inflight.set(nodeId, flight);
+    const sequence = engineSequence(node.content);
+    // Not sent: nothing will answer, so the node is free again.
+    this._send(this._sent, nodeId, key, () => this.hub.engine.syncOneRing(nodeId, sequence, restore), () => {
+      if (this._inflight.get(nodeId) === flight) this._landed(nodeId);
+    });
+  }
+
+  /** The sequence in flight is answered, or lost: send what waited, if anything did. */
+  _landed(nodeId) {
+    const flight = this._inflight.get(nodeId);
+    this._inflight.delete(nodeId);
+    if (flight?.waiting) this.sync(nodeId, { restore: flight.restore });
   }
 
   /** The material, sent after the sequence it belongs to, when the engine does not hold it already. */
@@ -210,9 +245,12 @@ export class OneRingNodes {
     return true;
   }
 
-  _send(memory, nodeId, key, send) {
+  _send(memory, nodeId, key, send, failed = () => {}) {
     // Not carried: the next change sends it again instead of trusting it landed.
-    const forget = () => { if (memory.get(nodeId) === key) memory.delete(nodeId); };
+    const forget = () => {
+      if (memory.get(nodeId) === key) memory.delete(nodeId);
+      failed();
+    };
     Promise.resolve(send())
       .then((result) => { if (result?.ok === false) forget(); })
       .catch(forget);
@@ -265,6 +303,7 @@ export class OneRingNodes {
     this._refusals.delete(nodeId);
     this._materials.delete(nodeId);
     this._writes.delete(nodeId);
+    this._inflight.delete(nodeId);
   }
 
   _onNetworkChange(change) {
@@ -296,12 +335,21 @@ export class OneRingNodes {
     this._sent.clear();
     this._refusals.clear();
     this._materials.clear();
+    this._inflight.clear();
     for (const nodeId of known) this.hub.events.emit('oneRing:gone', { nodeId });
     if (state?.state === 'running') this.syncAll();
   }
 
   _acceptSynced(msg) {
     if (!this.isOneRing(msg?.nodeId)) return;
+    try {
+      this._takeSynced(msg);
+    } finally {
+      this._landed(msg.nodeId);
+    }
+  }
+
+  _takeSynced(msg) {
     if (msg.ok !== true) {
       this._sent.delete(msg.nodeId);
       if (this._refusalsLogged < MAX_REFUSALS_LOGGED) {

@@ -181,8 +181,10 @@ test('the page draws sixteen channels, sixty-four pads and every control, with n
   const page = renderPage(viewFor(content));
   assert.equal((page.match(/data-ring-act="channel"/g) || []).length, CHANNEL_COUNT);
   assert.equal((page.match(/data-ring-pad="/g) || []).length, 64);
-  assert.equal((page.match(/data-ring-scene="/g) || []).length, 4);
-  for (const act of ['run', 'stop', 'store', 'timing', 'position', 'seed', 'new-seed', 'mutate-channel', 'mutate-all',
+  assert.equal((page.match(/data-ring-bank="/g) || []).length, 4, 'four letters');
+  assert.equal((page.match(/data-ring-act="place"/g) || []).length, 8, 'eight numbers for the letter shown');
+  assert.equal((page.match(/data-ring-scene="/g) || []).length, 1, 'of which only A1 is a scene yet');
+  for (const act of ['run', 'stop', 'bank', 'place', 'store', 'timing', 'position', 'seed', 'new-seed', 'mutate-channel', 'mutate-all',
     'target', 'command', 'restart-channel', 'stop-channel', 'mutable', 'enabled', 'length', 'rate', 'repeats', 'mode',
     'knob-value', 'active', 'value-mode', 'cond-add', 'cond-channel', 'lock-cell', 'lock-field',
     'follow-target', 'follow-command', 'follow-add']) {
@@ -325,12 +327,15 @@ async function page({ ready = true } = {}) {
     return field;
   };
   const content = () => hub.nodes.get(ring.id).content;
+  // The engine's answer to the sequence last sent, which the next one waits for.
+  const answer = () => api.emitEvent({ type: 'oneRingSynced', nodeId: ring.id, generation: 3, created: false, ok: true, message: '' });
   // What a page is looking at is kept per node id, and every test's hub
   // numbers its first node the same way.
   press('channel', 0);
+  press('bank', 'A');
   change('cond-channel', '1');
   change('follow-target', '');
-  return { api, hub, ring, mixer, context, container, listeners, regions, live, teardown, sent, fire, press, change, typed, content, liveElement };
+  return { api, hub, ring, mixer, context, container, listeners, regions, live, teardown, sent, fire, press, change, typed, content, liveElement, answer };
 }
 
 test('RUN, STOP, a scene and a channel\'s keys play the runtime and leave the sequence alone', async () => {
@@ -340,7 +345,7 @@ test('RUN, STOP, a scene and a channel\'s keys play the runtime and leave the se
     const before = JSON.stringify(content());
     press('run');
     press('stop');
-    press('scene', 2);
+    press('place', 'C1');
     press('restart-channel');
     press('stop-channel');
     await settle();
@@ -360,7 +365,7 @@ test('with no runtime a scene key chooses the scene the file opens in, as perfor
     const { hub, press, sent, content, teardown } = await page({ ready: false });
     setupEditHistory(hub, { apply: async () => {}, quietMs: 5 });
     hub.history.start();
-    press('scene', 3);
+    press('place', 'D1');
     await new Promise((resolve) => setTimeout(resolve, 20));
     assert.equal(content().selectedScene, 3);
     assert.equal(sent('oneRingCommand').length, 0);
@@ -374,11 +379,12 @@ test('with no runtime a scene key chooses the scene the file opens in, as perfor
 test('an edit is one undo step and reaches the engine; STORE copies the scene shown into the one pressed', async () => {
   const unregister = registerOneRingPanel();
   try {
-    const { hub, ring, mixer, press, change, sent, content, regions, teardown } = await page();
+    const { hub, ring, mixer, press, change, sent, content, regions, teardown, answer } = await page();
     setupEditHistory(hub, { apply: async () => {}, quietMs: 5 });
     hub.history.start();
     const syncs = sent('syncOneRing').length;
     change('target', mixer.id);
+    answer();
     change('command', 'MASTER');
     await new Promise((resolve) => setTimeout(resolve, 20));
     const channel = content().scenes[0].channels[0];
@@ -390,10 +396,46 @@ test('an edit is one undo step and reaches the engine; STORE copies the scene sh
     assert.ok(regions.get('channels').paints.at(-1).includes('Mixer 1 · Master'), 'the channel list is drawn again');
 
     press('store');
-    press('scene', 2);
+    press('place', 'C1');
     assert.deepEqual(content().scenes[2].channels, content().scenes[0].channels);
-    assert.equal(content().scenes[2].id, 'C');
+    assert.equal(content().scenes[2].id, 'C1');
+    press('store');
+    press('place', 'A2');
+    assert.equal(content().scenes.length, 5, 'STORE into an empty place makes the scene there');
+    assert.deepEqual([content().scenes[4].id, content().scenes[4].name], ['A2', 'Scene A2']);
+    assert.deepEqual(content().scenes[4].channels, content().scenes[0].channels);
     assert.equal(sent('oneRingCommand').length, 0, 'a scene key that stores does not recall');
+    teardown();
+  } finally {
+    unregister();
+  }
+});
+
+test('a letter shows its eight numbers; an empty number becomes a scene, then plays', async () => {
+  const unregister = registerOneRingPanel();
+  try {
+    const { api, hub, press, sent, content, regions, teardown } = await page();
+    setupEditHistory(hub, { apply: async () => {}, quietMs: 5 });
+    hub.history.start();
+    press('bank', 'B');
+    const deck = regions.get('deck').paints.at(-1);
+    assert.match(deck, /data-ring-act="place" data-ring-arg="B1" data-ring-scene="1"/);
+    assert.match(deck, /class="op-keycap op-keycap--num is-dim"[^>]*data-ring-arg="B2"/, 'B2 is dark: no scene yet');
+    assert.match(deck, /class="op-keycap op-keycap--sq is-white"[^>]*data-ring-act="bank" data-ring-arg="B"/);
+    press('place', 'B2');
+    assert.equal(content().scenes.length, 5);
+    assert.deepEqual([content().scenes[4].id, content().scenes[4].name], ['B2', 'Scene B2']);
+    await settle();
+    const order = api.sent.filter((msg) => msg.type === 'syncOneRing' || msg.type === 'oneRingCommand').slice(-2);
+    assert.deepEqual(order.map((msg) => msg.type), ['syncOneRing', 'oneRingCommand'],
+      'the engine has the scene before it is asked to play it');
+    assert.equal(order[0].state.scenes[4].id, 'B2');
+    assert.equal(order[1].scene, 4);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    assert.equal(hub.history.canUndo, true, 'making a scene is an edit');
+    press('place', 'B2');
+    assert.equal(content().scenes.length, 5, 'pressed again, it is only recalled');
+    assert.equal(sent('oneRingCommand').at(-1).scene, 4);
     teardown();
   } finally {
     unregister();
@@ -539,7 +581,8 @@ test('the status lights the page in place, and a scene change redraws it', async
     assert.equal(liveElement('[data-ring-live="state"]').textContent, '▶ RUNNING');
     assert.equal(liveElement('[data-ring-live="bar"]').textContent, '3.2');
     assert.equal(liveElement('[data-ring-live="bpm"]').textContent, '118.6');
-    assert.equal(liveElement('[data-ring-live="pending"]').textContent, 'NEXT BAR → B');
+    assert.equal(liveElement('[data-ring-live="pending"]').textContent, 'NEXT BAR → B1');
+    assert.equal(liveElement('[data-ring-live="scene-legend"]').textContent, 'Next bar → B1');
     assert.equal(liveElement('[data-ring-live="refused"]').textContent, '4');
     assert.equal(liveElement('[data-ring-dot="0"]').classList.contains('is-on'), true);
     assert.equal(liveElement('[data-ring-led="0"]').classList.contains('is-on'), true);
@@ -550,7 +593,7 @@ test('the status lights the page in place, and a scene change redraws it', async
 
     api.emitEvent({ ...status, scene: 1, pendingScene: -1 });
     assert.ok(paints() > before, 'another scene is another drawing');
-    assert.match(regions.get('channels').paints.at(-1), /Scene B/);
+    assert.match(regions.get('channels').paints.at(-1), /Scene B1/);
     teardown();
   } finally {
     unregister();

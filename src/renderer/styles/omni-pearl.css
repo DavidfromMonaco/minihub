@@ -1129,6 +1129,16 @@
   letter-spacing: 0.1em;
 }
 
+/* A scene's number under its letter: A1 to D8. */
+.op-keycap--num {
+  width: 34px;
+  min-width: 0;
+  height: 30px;
+  padding: 0;
+  font-size: 13px;
+  letter-spacing: 0;
+}
+
 .op-keycap--sm {
   min-width: 0;
   height: 26px;
@@ -1668,6 +1678,17 @@ input.op-lcd:disabled {
 
 .op-ring-store {
   margin-left: 8px;
+}
+
+/* Letters over numbers, and one legend for both. */
+.op-ring-scenes {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.op-ring-numbers {
+  gap: 5px;
 }
 
 .op-ring-recall {

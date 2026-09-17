@@ -158,7 +158,8 @@ test('a clip becomes material as it plays: its window, from its start, cut at it
 // ---------- the node and the engine ----------
 
 test('the material goes to the engine on its own, and a change of it sends only it', async () => {
-  const { hub, ring, sent, content } = await rig();
+  const { hub, ring, sent, content, announce } = await rig();
+  announce();
   const [sequence] = sent('syncOneRing');
   assert.equal('material' in sequence.state, false, 'the sequence travels without its material');
   assert.deepEqual(sequence.state.capture, content().capture, 'but with the capture\'s settings');

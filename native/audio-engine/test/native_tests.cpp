@@ -3548,6 +3548,55 @@ std::vector<int> pitchesFrom(const std::vector<PlayedNote>& played, long long fr
     return pitches;
 }
 
+void testOneRingScenes()
+{
+    oneRingChecks("one-ring scenes a1 to d8", [] {
+        // Each scene transposes voice 1 by its own index: the notes say which plays.
+        auto project = voiceProject();
+        const auto first = project.scenes[0];
+        project.scenes.clear();
+        for (std::size_t i = 0; i < oring::maximumScenes; ++i) {
+            auto scene = first;
+            scene.id = std::string(1, static_cast<char>('A' + i / 8)) + std::to_string(i % 8 + 1);
+            scene.name = "Scene " + scene.id;
+            scene.voices[0].transpose = static_cast<std::int32_t>(i);
+            project.scenes.push_back(std::move(scene));
+        }
+        std::cerr << "[core] one-ring scene, laid out: " << sizeof(oring::Scene) << " bytes\n";
+        VoiceBench bench;
+        expect(bench.load(project), "one-ring scenes: a sequence of 32 scenes is taken");
+        bench.runtime->setMaterial(chordMaterial());
+        expect(bench.runtime->recallScene(31), "one-ring scenes: the 32nd scene can be recalled");
+        bench.blocks(1);
+        expect(bench.runtime->status().scene == 31, "one-ring scenes: at rest, the recall is taken at once");
+        bench.runtime->run();
+        bench.until(96000 + 480);
+        expect(pitchesFrom(bench.played, 0, 96000) == std::vector<int>({91, 95, 98, 93}),
+               "one-ring scenes: the 32nd scene plays by its own rules");
+        expect(!bench.runtime->recallScene(32), "one-ring scenes: there is no 33rd to recall");
+
+        auto crowded = project;
+        crowded.scenes.push_back(first);
+        crowded.scenes.back().id = "E1";
+        std::string error;
+        auto other = std::make_unique<oring::Runtime>();
+        expect(!other->setProject(crowded, true, error) && error == "A sequence has at most 32 scenes",
+               "one-ring scenes: a 33rd scene is refused");
+
+        auto state = oneRingStateVar(true);
+        auto* scenes = state["scenes"].getArray();
+        const juce::var model = scenes->getReference(0);
+        while (scenes->size() < 33) {
+            juce::var copy = juce::JSON::parse(juce::JSON::toString(model));
+            mlh::setProp(copy, "id", juce::String("S") + juce::String(scenes->size()));
+            scenes->add(copy);
+        }
+        expect(oneRingThrows([&] { oring::readProject(state); }), "one-ring scenes: a state of 33 scenes is refused");
+        scenes->removeLast();
+        expect(!oneRingThrows([&] { oring::readProject(state); }), "one-ring scenes: a state of 32 is read");
+    });
+}
+
 void testOneRingWriter()
 {
     oneRingChecks("one-ring writer take", [] {
@@ -3897,6 +3946,8 @@ int main(int argc, char** argv)
     testOneRingVoices();
     std::cerr << "[core] one-ring-writer\n";
     testOneRingWriter();
+    std::cerr << "[core] one-ring-scenes\n";
+    testOneRingScenes();
     std::cerr << "[core] sequencer-feeds-one-ring\n";
     testSequencerFeedsOneRing();
     }

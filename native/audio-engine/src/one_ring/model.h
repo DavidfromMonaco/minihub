@@ -53,6 +53,11 @@ struct Channel {
     std::vector<Action> follow;
 };
 
+// The page's four letters of eight scenes, A1 to D8. A scene is laid out for
+// the audio thread -- sixteen channels of sixty-four cells -- so this bounds a
+// plan's size as much as the page.
+constexpr std::size_t maximumScenes = 32;
+
 struct Scene {
     std::string id;
     std::string name;

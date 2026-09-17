@@ -42,9 +42,47 @@ test('a new sequence is four empty scenes, valid, and small', () => {
   const content = createSequence();
   assert.equal(content.scenes.length, 4);
   assert.ok(content.scenes.every((scene) => scene.channels.length === CHANNEL_COUNT));
-  assert.deepEqual(content.scenes.map((scene) => scene.name), ['Scene A', 'Scene B', 'Scene C', 'Scene D']);
+  assert.deepEqual(content.scenes.map((scene) => scene.name), ['Scene A1', 'Scene B1', 'Scene C1', 'Scene D1']);
   assert.deepEqual(sequenceErrors(content, targetFinder(content)), []);
   assert.ok(JSON.stringify(content).length < 40000, `${JSON.stringify(content).length} characters`);
+});
+
+test('a channel read as it stands is the channel its 64 cells make', () => {
+  // Listed in order or not, a cell equal to the blank or not, few or many:
+  // read sparse, each channel must be what reading all 64 of its cells gives.
+  const base = createSequence();
+  const on = (probability, extra = {}) => ({ ...emptyCell(), enabled: true, probability, ...extra });
+  const blank = { ...emptyCell(), value: { ...emptySource(), fixed: int(5) } };
+  const listings = [
+    [],
+    [{ index: 3, ...on(50) }, { index: 9, ...on(70) }],
+    [{ index: 9, ...on(70) }, { index: 3, ...on(50) }],
+    [{ index: 4, ...blank }, { index: 5, ...on(10) }],
+    Array.from({ length: 31 }, (_, k) => ({ index: k * 2, ...on(k) })),
+    Array.from({ length: 40 }, (_, k) => ({ index: k, ...on(90) })),
+    Array.from({ length: 33 }, (_, k) => ({ index: 63 - k, ...on(k % 3) })),
+    [{ index: 1, enabled: true }, { index: 2, conditions: [{ kind: CONDITION.first, interval: 2, channel: 0 }] }]
+  ];
+  const raw = structuredClone(base);
+  listings.forEach((steps, c) => {
+    raw.scenes[0].channels[c] = { ...raw.scenes[0].channels[c], blank: c % 2 ? blank : emptyCell(), steps };
+  });
+  const sparse = readSequence(raw);
+  const dense = readSequence(toVstState(sparse));
+  const denseFromRaw = structuredClone(raw);
+  denseFromRaw.scenes[0].channels = raw.scenes[0].channels.map((channel) => {
+    const cells = Array.from({ length: 64 }, () => structuredClone(channel.blank ?? emptyCell()));
+    for (const { index, ...cell } of channel.steps) cells[index] = { ...cells[index], ...cell };
+    return { ...channel, blank: undefined, steps: cells };
+  });
+  const expected = readSequence(denseFromRaw);
+  listings.forEach((_, c) => {
+    assert.equal(JSON.stringify(sparse.scenes[0].channels[c]), JSON.stringify(expected.scenes[0].channels[c]), `channel ${c}`);
+    assert.equal(JSON.stringify(dense.scenes[0].channels[c]), JSON.stringify(sparse.scenes[0].channels[c]), `channel ${c}, again`);
+  });
+  assert.equal(JSON.stringify(readSequence(sparse)), JSON.stringify(sparse), 'read again, it stays as it is');
+  assert.throws(() => readSequence({ ...raw, scenes: [{ ...raw.scenes[0], channels: raw.scenes[0].channels.map((channel, c) => (c ? channel
+    : { ...channel, steps: [{ index: 3, ...on(1) }, { index: 3, ...on(2) }] })) }] }), /cell 3 is listed twice/);
 });
 
 test('a VST state comes in sparse and goes back out unchanged', () => {
@@ -228,8 +266,8 @@ test('a cell set, and a scene stored into another, leave the content they came f
   assert.throws(() => setCell(channel, 64, emptyCell()), RangeError);
   const stored = storeScene(content, 1, 3);
   assert.deepEqual(stored.scenes[3].channels, content.scenes[1].channels);
-  assert.equal(stored.scenes[3].id, 'D');
-  assert.equal(stored.scenes[3].name, 'Scene D');
+  assert.equal(stored.scenes[3].id, 'D1');
+  assert.equal(stored.scenes[3].name, 'Scene D1');
   assert.equal(storeScene(content, 2, 2), content);
   assert.throws(() => storeScene(content, 0, 4), RangeError);
   assert.deepEqual(content, before);

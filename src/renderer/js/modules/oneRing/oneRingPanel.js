@@ -1,12 +1,12 @@
 import { registerNodeEditor } from '../../core/nodeEditors.js';
 import { VALUE_TYPE } from '../../core/commandRegistry.js';
 import {
-  CHANNEL_COUNT, MAX_STEPS, SCENE_POSITION, SCENE_TIMING, STEP_MODE,
-  cellAt, mutateSequence, oneRingTargets, parseSeed, reseed, storeScene
+  CHANNEL_COUNT, MAX_STEPS, SCENE_BANKS, SCENE_POSITION, SCENE_TIMING, STEP_MODE,
+  addScene, cellAt, mutateSequence, oneRingTargets, parseSeed, reseed, sceneIndex, scenePlace, storeSceneAt
 } from '../../core/oneRingSequence.js';
 import { syncDragKnob } from '../../ui/omniPearl.js';
 import * as edits from '../../core/oneRingEdits.js';
-import { KNOBS, renderPage, renderRegions } from './oneRingFaceplate.js';
+import { KNOBS, renderPage, renderRegions, shownBank } from './oneRingFaceplate.js';
 
 /**
  * The One Ring node's page: the faceplate of oneRingFaceplate.js, played and
@@ -18,7 +18,8 @@ import { KNOBS, renderPage, renderRegions } from './oneRingFaceplate.js';
  * runtime (`hub.oneRing.command`) and leave the sequence alone. Everything else
  * writes the node's content through `hub.nodes.setContent`: an undo step, which
  * oneRingNodes.js sends to the engine. A knob being turned writes as it moves,
- * so it is heard; the history folds the burst into one step.
+ * so it is heard; the history folds the burst into one step. A scene key on an
+ * empty place does both: making the scene is an edit, recalling it is not.
  *
  * WHAT IS REDRAWN
  * ---------------
@@ -48,6 +49,10 @@ function selectionOf(nodeId) {
     selections.set(nodeId, {
       channel: 0,
       cell: 0,
+      // A letter key pressed, and the scene shown when it was: the deck shows
+      // that letter until another scene is shown.
+      bank: null,
+      bankFor: -1,
       conditionChannel: 1,
       followDraft: { target: '', command: '', value: '' }
     });
@@ -91,6 +96,7 @@ function viewOf(context) {
   const status = hub.oneRing?.statusOf?.(instance.id) ?? null;
   const scene = edits.shownScene(content, status);
   const sceneData = content.scenes[scene];
+  const bank = selection.bank && selection.bankFor === scene ? selection.bank : null;
   const channelIndex = clampIndex(selection.channel, CHANNEL_COUNT);
   const channel = sceneData.channels[channelIndex];
   const cellIndex = clampIndex(selection.cell, MAX_STEPS);
@@ -104,6 +110,7 @@ function viewOf(context) {
     content,
     scene,
     sceneData,
+    bank,
     channelIndex,
     channel,
     cellIndex,
@@ -125,6 +132,7 @@ function render(context) {
   const view = viewOf(context);
   mount.regions = renderRegions(view);
   mount.scene = view.scene;
+  mount.bank = shownBank(view);
   mount.ready = view.ready;
   mount.heads.clear();
   mount.padHead = -1;
@@ -167,13 +175,15 @@ export function applyStatus(container, context) {
     const index = Number(key.dataset.ringScene);
     key.classList.toggle('is-pending', index === pending);
   }
-  for (const legend of container.querySelectorAll('[data-ring-scene-legend]')) {
-    const index = Number(legend.dataset.ringSceneLegend);
-    const text = mount.storeArmed
-      ? (index === scene ? '' : 'Store here')
-      : index === pending ? 'Next bar' : index === scene ? (playing ? 'Playing' : '') : '';
-    setText(legend, text || ' ');
+  // A recall waiting in a letter the deck does not show blinks its letter.
+  const shown = mount.bank ?? scenePlace(content.scenes[scene].id)?.bank;
+  const pendingBank = pending >= 0 ? scenePlace(content.scenes[pending].id)?.bank : null;
+  for (const key of container.querySelectorAll('[data-ring-bank]')) {
+    key.classList.toggle('is-pending', key.dataset.ringBank === pendingBank && pendingBank !== shown);
   }
+  const current = content.scenes[scene].id;
+  setText(live('scene-legend'), mount.storeArmed ? `Store ${current} into a place`
+    : pending >= 0 ? `Next bar → ${content.scenes[pending].id}` : playing ? `${current} playing` : ' ');
   const channel = clampIndex(selectionOf(instance.id).channel, CHANNEL_COUNT);
   for (let i = 0; i < CHANNEL_COUNT; i += 1) {
     const active = playing && status.active[i] === true;
@@ -246,6 +256,7 @@ export function refreshPage(container, context) {
     }
   }
   mount.scene = view.scene;
+  mount.bank = shownBank(view);
   mount.ready = view.ready;
   applyStatus(container, context);
 }
@@ -318,17 +329,34 @@ function bind(container, context) {
   const actions = {
     run: () => hub.oneRing.command(nodeId, 'run'),
     stop: () => hub.oneRing.command(nodeId, 'stop'),
-    scene: (arg) => {
+    bank: (letter) => {
+      if (!SCENE_BANKS.includes(letter)) return;
+      selection.bank = letter;
+      selection.bankFor = viewOf(context).scene;
+      refresh();
+    },
+    place: (place) => {
       const view = viewOf(context);
-      const index = Number(arg);
+      const where = scenePlace(place);
+      if (!where) return;
+      // The deck stays on this letter while the recall waits for its bar.
+      selection.bank = where.bank;
+      selection.bankFor = view.scene;
       if (mount.storeArmed) {
         mount.storeArmed = false;
-        if (index !== view.scene) write(storeScene(view.content, view.scene, index));
+        if (sceneIndex(view.content, place) !== view.scene) write(storeSceneAt(view.content, view.scene, place));
         refresh();
         return;
       }
+      let index = sceneIndex(view.content, place);
+      if (index < 0) {
+        write(addScene(view.content, place));
+        index = sceneIndex(content(), place);
+        if (index < 0) return;
+      }
       if (view.ready) hub.oneRing.command(nodeId, 'scene', { scene: index });
-      else perform(edits.selectScene(view.content, index));
+      else perform(edits.selectScene(content(), index));
+      refresh();
     },
     store: () => {
       mount.storeArmed = !mount.storeArmed;

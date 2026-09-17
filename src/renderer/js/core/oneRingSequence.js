@@ -40,6 +40,15 @@ import { OneRingRandom, RANDOM_STREAM } from './oneRingRandom.js';
  * voice does to the material's notes while the scene plays. A channel aimed at
  * `one-ring:voice:N` plays notes through that voice.
  *
+ * THE SCENES: A1 TO D8
+ * --------------------
+ * The VST had four scenes, A to D. A node has four letters of eight: `A1` to
+ * `D8`, a scene's id being its place. A scene exists once it is chosen or
+ * stored into -- an empty one is 8 KB of content, copied into every undo step
+ * -- and the list only grows, so the index a RECALL value, a scene command and
+ * the status carry never moves. A sequence saved with the VST's four scenes
+ * reads them as A1, B1, C1 and D1, in the same order.
+ *
  * THE WRITER
  * ----------
  * A step aimed at `one-ring:writer` WRITEs: the engine turns what the voices
@@ -52,7 +61,13 @@ import { OneRingRandom, RANDOM_STREAM } from './oneRingRandom.js';
 
 export const CHANNEL_COUNT = 16;
 export const MAX_STEPS = 64;
-export const SCENE_IDS = Object.freeze(['A', 'B', 'C', 'D']);
+/** The deck's letters; each holds eight numbered scenes, `A1` to `D8`. */
+export const SCENE_BANKS = Object.freeze(['A', 'B', 'C', 'D']);
+export const SCENES_PER_BANK = 8;
+export const MAX_SCENES = SCENE_BANKS.length * SCENES_PER_BANK;
+/** Every place a scene can have, in the deck's order. */
+export const SCENE_PLACES = Object.freeze(SCENE_BANKS.flatMap((bank) =>
+  Array.from({ length: SCENES_PER_BANK }, (_, n) => `${bank}${n + 1}`)));
 export const LENGTHS = Object.freeze([4, 8, 16, 32, 64]);
 /** The editor's resolutions, as the denominator of 1/N. */
 export const RESOLUTIONS = Object.freeze([4, 8, 16, 32]);
@@ -138,6 +153,23 @@ const INT32_MIN = -2147483648;
 const INT32_MAX = 2147483647;
 
 const clone = (value) => structuredClone(value);
+// A cell is plain data of a known shape: copied field by field, it costs a
+// fraction of `structuredClone`, and a content of 32 scenes reads 32,768 of them.
+const copyValue = (value) => ({ ...value });
+const copyCell = (cell) => ({
+  enabled: cell.enabled,
+  probability: cell.probability,
+  value: {
+    mode: cell.value.mode,
+    fixed: copyValue(cell.value.fixed),
+    min: copyValue(cell.value.min),
+    max: copyValue(cell.value.max),
+    choices: cell.value.choices.map(copyValue)
+  },
+  locked: cell.locked,
+  lockedFields: cell.lockedFields,
+  conditions: cell.conditions.map((condition) => ({ ...condition }))
+});
 const isObject = (value) => !!value && typeof value === 'object' && !Array.isArray(value);
 const fail = (message) => { throw new Error(message); };
 
@@ -179,6 +211,18 @@ export function defaultVoice() {
 
 export const defaultVoices = () => Array.from({ length: VOICE_COUNT }, defaultVoice);
 
+export const sceneName = (place) => `Scene ${place}`;
+
+/** A place's letter and number, or null when `place` is none. */
+export function scenePlace(place) {
+  const index = SCENE_PLACES.indexOf(String(place));
+  return index < 0 ? null : { bank: SCENE_BANKS[Math.floor(index / SCENES_PER_BANK)], number: (index % SCENES_PER_BANK) + 1, order: index };
+}
+
+export function emptyScene(place) {
+  return { id: place, name: sceneName(place), channels: Array.from({ length: CHANNEL_COUNT }, emptyChannel), voices: defaultVoices() };
+}
+
 /**
  * `clipId` names the clip Replace and Add write into; `destination`, the node a
  * new track plays, or none. `written` counts the generations written, and
@@ -198,12 +242,7 @@ export function createSequence() {
     selectedScene: 0,
     sceneTiming: SCENE_TIMING.immediate,
     scenePosition: SCENE_POSITION.restart,
-    scenes: SCENE_IDS.map((id) => ({
-      id,
-      name: `Scene ${id}`,
-      channels: Array.from({ length: CHANNEL_COUNT }, emptyChannel),
-      voices: defaultVoices()
-    })),
+    scenes: SCENE_BANKS.map((bank) => emptyScene(`${bank}1`)),
     capture: defaultCapture(),
     material: emptyMaterial(),
     writer: defaultWriter()
@@ -261,7 +300,7 @@ function readAction(raw, path) {
 // A field a cell leaves out keeps the value of the cell it starts from.
 function readCell(raw, from, path) {
   if (!isObject(raw)) fail(`${path}: a cell is required`);
-  const cell = clone(from);
+  const cell = copyCell(from);
   if ('enabled' in raw) cell.enabled = raw.enabled === true;
   if ('probability' in raw) cell.probability = Number(raw.probability);
   if ('value' in raw) cell.value = readSource(raw.value, `${path}.value`);
@@ -309,7 +348,26 @@ function readChannel(raw, path) {
     return withCells(channel, steps.map((item, i) => readCell(item, emptyCell(), `${path}.steps[${i}]`)));
   }
   const blank = isObject(raw.blank) ? readCell(raw.blank, emptyCell(), `${path}.blank`) : emptyCell();
-  const cells = Array.from({ length: MAX_STEPS }, () => clone(blank));
+  // Fewer than half the cells listed, in order, none the blank: the channel is
+  // already in the form `withCells` gives -- the blank is the most common cell
+  // -- and is read as it stands, without laying out its 64 cells.
+  if (steps.length * 2 < MAX_STEPS) {
+    const blankKey = cellKey(blank);
+    const listed = [];
+    let previous = -1;
+    let canonical = true;
+    steps.forEach((item, i) => {
+      const index = item?.index;
+      if (!Number.isInteger(index) || index < 0 || index >= MAX_STEPS) fail(`${path}.steps[${i}]: an index from 0 to 63 is required`);
+      if (listed.some((step) => step.index === index)) fail(`${path}.steps[${i}]: cell ${index} is listed twice`);
+      const cell = readCell(item, blank, `${path}.steps[${i}]`);
+      if (index < previous || cellKey(cell) === blankKey) canonical = false;
+      previous = index;
+      listed.push({ index, ...cell });
+    });
+    if (canonical) return { ...channel, blank, steps: listed };
+  }
+  const cells = Array.from({ length: MAX_STEPS }, () => copyCell(blank));
   const seen = new Set();
   steps.forEach((item, i) => {
     const index = item?.index;
@@ -424,6 +482,29 @@ function readSeed(raw, path) {
 }
 
 /**
+ * Each scene given its place. A place already right is kept; one of the VST's
+ * letters is its first number; any other scene, or a second one claiming a
+ * place, takes the first place free. A name that was its old id's default
+ * follows the new id.
+ */
+function placeScenes(scenes) {
+  if (scenes.length > MAX_SCENES) fail(`scenes: at most ${MAX_SCENES} scenes, A1 to D8`);
+  const taken = new Set();
+  const claimed = scenes.map((scene) => {
+    const id = scenePlace(scene.id) ? scene.id : SCENE_BANKS.includes(scene.id) ? `${scene.id}1` : null;
+    if (!id || taken.has(id)) return null;
+    taken.add(id);
+    return id;
+  });
+  const free = SCENE_PLACES.filter((place) => !taken.has(place));
+  return scenes.map((scene, i) => {
+    const id = claimed[i] ?? free.shift();
+    const name = !scene.name || scene.name === sceneName(scene.id) ? sceneName(id) : scene.name;
+    return id === scene.id && name === scene.name ? scene : { ...scene, id, name };
+  });
+}
+
+/**
  * A sequence from a VST state or a node's content, checked and put in the
  * node's form. Throws an Error naming the first field it cannot read.
  */
@@ -436,7 +517,7 @@ export function readSequence(raw) {
     fail('sceneTiming: invalid scene behavior');
   }
   if (!Array.isArray(raw.scenes) || raw.scenes.length === 0) fail('scenes: missing scenes');
-  const scenes = raw.scenes.map((scene, s) => {
+  const scenes = placeScenes(raw.scenes.map((scene, s) => {
     if (!isObject(scene)) fail(`scenes[${s}]: a scene is required`);
     if (!Array.isArray(scene.channels) || scene.channels.length !== CHANNEL_COUNT) {
       fail(`scenes[${s}]: a scene must contain 16 channels`);
@@ -447,7 +528,7 @@ export function readSequence(raw) {
       channels: scene.channels.map((channel, c) => readChannel(channel, `scenes[${s}].channels[${c}]`)),
       voices: readVoices(scene.voices, `scenes[${s}].voices`)
     };
-  });
+  }));
   const selectedScene = Number(raw.selectedScene);
   return {
     version: 1,
@@ -495,8 +576,16 @@ export function sequenceFromComponentState(bytes) {
   return fail('not a One Ring state');
 }
 
-/** A node's content as the VST writes its state: every cell, in the VST's key order. */
+/**
+ * A node's content as the VST writes its state: every cell, in the VST's key
+ * order. The VST's four scenes were A to D: a content holding just A1 to D1,
+ * in that order, is written with those ids.
+ */
 export function toVstState(content) {
+  const four = content.scenes.length === SCENE_BANKS.length
+    && content.scenes.every((scene, i) => scene.id === `${SCENE_BANKS[i]}1`);
+  const vstId = (scene) => (four ? scene.id.slice(0, 1) : scene.id);
+  const vstName = (scene) => (four && scene.name === sceneName(scene.id) ? `Scene ${vstId(scene)}` : scene.name);
   return {
     version: 1,
     seed: content.seed,
@@ -505,8 +594,8 @@ export function toVstState(content) {
     sceneTiming: content.sceneTiming,
     scenePosition: content.scenePosition,
     scenes: content.scenes.map((scene) => ({
-      id: scene.id,
-      name: scene.name,
+      id: vstId(scene),
+      name: vstName(scene),
       channels: scene.channels.map((channel) => ({
         target: clone(channel.target),
         length: channel.length,
@@ -533,18 +622,13 @@ const cellKey = (cell) => JSON.stringify(cell);
 /** The cell at `index`: its listed cell, or the channel's blank. A copy. */
 export function cellAt(channel, index) {
   const listed = channel.steps.find((step) => step.index === index);
-  if (!listed) return clone(channel.blank);
-  const { index: _index, ...cell } = listed;
-  return clone(cell);
+  return copyCell(listed ?? channel.blank);
 }
 
 /** All 64 cells of a channel, as copies. */
 export function cellsOf(channel) {
-  const cells = Array.from({ length: MAX_STEPS }, () => clone(channel.blank));
-  for (const step of channel.steps) {
-    const { index, ...cell } = step;
-    cells[index] = clone(cell);
-  }
+  const cells = Array.from({ length: MAX_STEPS }, () => copyCell(channel.blank));
+  for (const step of channel.steps) cells[step.index] = copyCell(step);
   return cells;
 }
 
@@ -562,7 +646,7 @@ export function withCells(channel, cells) {
   const blankKey = counts.get(emptyKey) === most ? emptyKey : [...counts].find(([, count]) => count === most)[0];
   const steps = [];
   keys.forEach((key, index) => {
-    if (key !== blankKey) steps.push({ index, ...clone(cells[index]) });
+    if (key !== blankKey) steps.push({ index, ...copyCell(cells[index]) });
   });
   return { ...channel, blank: JSON.parse(blankKey), steps };
 }
@@ -590,11 +674,16 @@ export function oneRingTargets(content) {
       id, label: id, type: VALUE_TYPE.none, ...(id === 'START' ? { releaseCommand: 'STOP' } : {})
     }]))
   }));
+  // A scene's value is its index, which never moves; the list reads in the deck's order.
+  const order = (scene) => scenePlace(scene.id)?.order ?? MAX_SCENES;
   const recall = {
     id: 'RECALL',
     label: 'RECALL',
     type: VALUE_TYPE.choice,
-    choices: content.scenes.map((scene, i) => ({ id: i, label: scene.name }))
+    choices: content.scenes
+      .map((scene, i) => ({ id: i, label: scene.name, order: order(scene) }))
+      .sort((a, b) => a.order - b.order || a.id - b.id)
+      .map(({ id, label }) => ({ id, label }))
   };
   // A Legato channel holds a capture open while its steps play.
   const memory = new Map(MEMORY_COMMANDS.map((id) => [id, {
@@ -697,9 +786,10 @@ export function sequenceErrors(content, find) {
           && condition.channel >= CHANNEL_COUNT) errors.add('Condition channel is outside CH1-CH16');
     }
   };
+  if (scenes.length > MAX_SCENES) errors.add(`At most ${MAX_SCENES} scenes`);
   const ids = new Set();
   for (const scene of scenes) {
-    if (!scene.id || ids.has(scene.id)) errors.add('Missing or duplicate scene ID');
+    if (!scenePlace(scene.id) || ids.has(scene.id)) errors.add('Missing or duplicate scene ID');
     ids.add(scene.id);
     for (const channel of scene.channels) {
       if (channel.mode !== STEP_MODE.trigger && channel.mode !== STEP_MODE.legato) errors.add('Invalid step mode');
@@ -875,6 +965,29 @@ export function storeScene(content, from, to) {
     ...content,
     scenes: content.scenes.map((scene, s) => (s === to ? { ...scene, channels, voices } : scene))
   };
+}
+
+/** The index of the scene at `place` (`A1`...), or -1. */
+export function sceneIndex(content, place) {
+  return content.scenes.findIndex((scene) => scene.id === place);
+}
+
+/**
+ * An empty scene at `place`, added at the end of the list; the content
+ * unchanged when the place is none or already has one.
+ */
+export function addScene(content, place) {
+  if (!scenePlace(place) || sceneIndex(content, place) >= 0 || content.scenes.length >= MAX_SCENES) return content;
+  return { ...content, scenes: [...content.scenes, emptyScene(place)] };
+}
+
+/** STORE into a place: into its scene, or into a new one made there. */
+export function storeSceneAt(content, from, place) {
+  if (!content.scenes[from] || !scenePlace(place)) return content;
+  const at = sceneIndex(content, place);
+  if (at >= 0) return storeScene(content, from, at);
+  const added = addScene(content, place);
+  return added === content ? content : storeScene(added, from, added.scenes.length - 1);
 }
 
 /** One voice of a scene given whole rules, checked; the content unchanged when they do not fit. */
