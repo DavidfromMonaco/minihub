@@ -441,6 +441,18 @@
   outline: none;
 }
 
+/* The list a select opens is Chromium's own: `color-scheme` above makes it
+   dark, and these give it the faceplate's own surface. */
+.omni-pearl select option,
+.omni-pearl select optgroup {
+  background-color: var(--op-surface-raised);
+  color: var(--op-text);
+}
+
+.omni-pearl select option:disabled {
+  color: var(--op-text-faint);
+}
+
 .op-select:hover {
   border-color: var(--op-orange-line);
 }
@@ -1985,22 +1997,23 @@ input.op-lcd:disabled {
   display: flex;
   flex-wrap: wrap;
   align-items: flex-end;
-  gap: 6px;
-  padding: 10px 14px 8px;
+  gap: 10px 12px;
+  padding: 12px 14px 10px;
   border-bottom: 1px solid var(--op-hairline);
 }
 
+/* A key or a knob, what it reads, and its printed legend: the legend needs
+   air, or it reads as part of the key above it. */
 .op-ring-control {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 2px;
+  gap: 7px;
   min-width: 76px;
 }
 
 .op-ring-control .op-lcd--sm {
   width: 62px;
-  margin-top: 2px;
 }
 
 .op-ring-sep {
@@ -2334,8 +2347,23 @@ input.op-lcd:disabled {
   gap: 8px 6px;
 }
 
+/* A voice's lists keep a width their words fit in: squeezed by a narrow
+   window, a select shows two letters of "Minor Pentatonic". */
+.op-ring-voicegroup .op-ring-field,
+.op-ring-writerrow .op-ring-field {
+  flex: 0 0 auto;
+}
+
+.op-ring-voicegroup .op-select {
+  min-width: 124px;
+}
+
 .op-ring-field--short .op-select {
-  min-width: 76px;
+  min-width: 68px;
+}
+
+.op-ring-fieldstack .op-select {
+  min-width: 96px;
 }
 
 .op-ring-fieldstack {
@@ -2362,8 +2390,8 @@ input.op-lcd:disabled {
   display: flex;
   flex-wrap: wrap;
   align-items: flex-end;
-  gap: 12px 20px;
-  padding: 12px 14px;
+  gap: 12px 18px;
+  padding: 14px 14px 12px;
   border-bottom: 1px solid var(--op-hairline);
 }
 

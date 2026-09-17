@@ -34,6 +34,7 @@ export function renderCapture(view) {
       <div class="op-ring-control">${pearlKeycap({ label: 'End', size: 'tall', title: 'End the capture now', disabled: !view.ready, attrs: act('capture-end') })}${pearlLegend('Ends it now')}</div>
       <span class="op-ring-sep"></span>
       <div class="op-ring-control op-ring-control--lever">${lever('capture-mode', 'Replace', 'Add', adding)}${pearlLegend('What it takes')}</div>
+      <span class="op-ring-sep"></span>
       ${knobControl('capture-bars', view)}
     </div>
     <div class="op-ring-readouts">
@@ -176,6 +177,7 @@ export function renderVoices(view) {
   const pitch = group('Pitch', `
       ${field('Root', selectBox(roots, `${act('voice-rule', 'root')} data-ring-focus="voice-root"`, 'Root'), 'op-ring-field--short')}
       ${field('Scale', selectBox(scales, `${act('voice-rule', 'scale')} data-ring-focus="voice-scale"`, 'Scale'))}
+      <span class="op-ring-sep"></span>
       ${knobControl('voice-transpose', view)}
       ${knobControl('voice-octave', view)}
       ${knobControl('voice-octaveSpread', view)}
@@ -189,6 +191,7 @@ export function renderVoices(view) {
   const length = group('Length', `
       ${knobControl('voice-gateScale', view)}
       ${knobControl('voice-gateSpread', view)}
+      <span class="op-ring-sep"></span>
       <div class="op-ring-fieldstack">
         ${durationSelect('shortest', rules.shortest, 'Shortest')}
         ${durationSelect('longest', rules.longest, 'Longest')}
@@ -196,6 +199,7 @@ export function renderVoices(view) {
   const play = group('Playing', `
       ${selectorControl('voice-order', 'Order', ORDER_OPTIONS, rules.order)}
       ${knobControl('voice-density', view)}
+      <span class="op-ring-sep"></span>
       ${field('MIDI channel', selectBox(channels, `${act('voice-rule', 'channel')} data-ring-focus="voice-channel"`, 'MIDI channel'))}`);
   const neutral = Object.entries(VOICE_RULES).every(([rule, { neutral: value }]) => rules[rule] === value);
   const live = view.ready ? liveRulesText(view.status?.voices?.[voice], rules) : '—';
@@ -257,13 +261,15 @@ export function renderWriter(view) {
       <div class="op-ring-writerset">
         <div class="op-ring-writerrow">
           ${field('Where a generation goes', `<span class="op-keycap-row">${modes}</span>`)}
+          ${knobControl('writer-bars', view)}
+          <span class="op-ring-sep"></span>
           ${field('Clip (replace, add)', clipSelect)}
           ${field('Track plays (new track)', destinationSelect)}
-          ${knobControl('writer-bars', view)}
         </div>
         <div class="op-ring-writerrow">
           ${field('Feedback', `<label class="op-switch"><input class="op-native" type="checkbox" aria-label="Feedback, as the sequence starts"${writer.feedback ? ' checked' : ''} ${act('writer-feedback')}><span class="op-switch-track"><span class="op-switch-thumb"></span></span></label>`)}
           <div class="op-ring-control op-ring-control--lever">${lever('writer-feedback-mode', 'Replace', 'Add', writer.feedbackMode === CAPTURE_MODE.add)}${pearlLegend('The generation')}</div>
+          <span class="op-ring-sep"></span>
           ${knobControl('writer-delay', view)}
           ${knobControl('writer-limit', view)}
           <span class="op-spacer"></span>

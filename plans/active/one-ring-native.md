@@ -779,7 +779,7 @@ comes last (step 16; the author waived the still of step 14).
       renderer sent sequences faster than the engine reads them, now one at a
       time. **Not seen yet in a browser or in MiniHub: the deck's keys** --
       with step 16's trial.
-- [ ] 16. The page of part two, in the faceplate's style and in tabs if it
+- [x] 16. The page of part two, in the faceplate's style and in tabs if it
       needs them: the capture and the material, the four voices and their
       rules, the writer and feedback; the controls call what the requests
       call.
@@ -808,7 +808,17 @@ comes last (step 16; the author waived the still of step 14).
       rules; the writer set to replace a clip, writing into it and nowhere
       else; feedback turned off from its key. Found and fixed: the tab keys
       were named by their hints; a generation's clip was listed with its
-      track's name twice. **Not yet: the author's trial in MiniHub.**
+      track's name twice.
+      **Tried by the author in MiniHub, 2026-09-17**: "tout fonctionne bien",
+      with two faults, fixed the same day. Every menu opened white: nothing
+      declared `color-scheme`, so Chromium painted its own popup lists light
+      against the dark plate -- the shell says `color-scheme: dark` now, the
+      fields it paints light keep the dark text that came with them, and the
+      faceplate gives its lists its own surface. And keys sat on their
+      printed legends, with knobs adrift among the fields: a legend has air
+      now, a knob stands apart from a list behind a separator, the writer's
+      window sits with the keys it belongs to, and a voice's lists keep a
+      width their words fit in. **Not seen by the author since the fix.**
 - [ ] 17. The demonstration, with the author: a project made for it (a short
       source clip and no arrangement, a One Ring, an instrument, a track for
       the generations, an audio track recording from the start) and the

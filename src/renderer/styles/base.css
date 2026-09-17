@@ -1,4 +1,11 @@
+/* The application is dark, and so are the widgets Chromium paints itself: a
+   select's popup list, the scrollbar inside it, a field's caret and selection.
+   Without this they come out white -- which is what a One Ring menu looked
+   like against its graphite faceplate. The fields below keep the light face
+   they were given, so they keep the dark text that used to come with it. */
 :root {
+  color-scheme: dark;
+
   /* Surfaces */
   --bg: #191b1e;
   --bg-raised: #1f2226;
@@ -384,6 +391,7 @@ body {
    the faceplate -- keeps its own look. */
 :where(select, textarea, input:not([type]), input[type="text"], input[type="number"], input[type="search"]) {
   background-color: #c8cdd4;
+  color: #17191d;
 }
 
 /* ---------- Selects ---------- */
