@@ -26,8 +26,8 @@ scope), the invariants in §4 below (the architecture), and
 
 A desktop music workstation for Windows, built around the **Arturia MiniLab 3**
 MIDI controller: a Patch Bay of typed cables, a native VST3 host, a
-sample-accurate MIDI + audio sequencer, Mixer / Morpher / Arpeggiator nodes, and
-learning that binds physical knobs to VST3 parameters.
+sample-accurate MIDI + audio sequencer, Mixer / Morpher / Arpeggiator / One Ring
+nodes, and learning that binds physical knobs to VST3 parameters.
 
 Three processes: Electron main (CommonJS) — renderer (Chromium, ES modules, no
 build step) — C++17 audio engine (JUCE 9, PortAudio/WASAPI, VST3 SDK).
@@ -144,7 +144,7 @@ scope; here are the technical prohibitions:
 
 ```bash
 npm install              # Electron + rcedit
-npm test                 # 775 JS tests, node:test runner, ~5 s
+npm test                 # 1241 JS tests, node:test runner, ~10 s
 npm run check            # 15 rules (Node stdlib + the profile validator, ~1 s)
 npm run build:native     # native Release build (CMake + MSBuild)
 npm run build:native:tests

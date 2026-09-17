@@ -2,8 +2,9 @@
 
 A desktop music workstation for Windows, built around the **Arturia MiniLab 3**
 MIDI controller: a Patch Bay of typed cables, a native VST3 host, a
-sample-accurate MIDI + audio sequencer, Mixer / Morpher / Arpeggiator nodes, and
-learning that binds physical knobs to VST3 parameters.
+sample-accurate MIDI + audio sequencer, Mixer / Morpher / Arpeggiator nodes, a
+One Ring node that sequences the parameters of your own patch and plays notes of
+its own, and learning that binds physical knobs to VST3 parameters.
 
 **Your cables** — not the page you happen to be looking at — decide what you hear.
 
@@ -11,8 +12,8 @@ learning that binds physical knobs to VST3 parameters.
 
 ## Status
 
-A personal project under active development. The first public build is
-**[MiniHub 0.3.0](https://github.com/DavidfromMonaco/minihub/releases/tag/v0.3.0)**,
+A personal project under active development. The current build is
+**[MiniHub 0.4.0](https://github.com/DavidfromMonaco/minihub/releases/tag/v0.4.0)**,
 a pre-alpha, available two ways: an installer, or a portable folder you unzip
 and replace. Both carry the same build, and both read the same settings,
 projects and recordings — none of which live inside the application folder
