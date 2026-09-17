@@ -575,6 +575,12 @@ written for the Matrix, and none of it is decided for One Ring:
   and a dual-context live/export runtime (§9.1) — an offline export executes no
   command today.
 
+**Part two, asked 2026-09-17 by the author** — One Ring as the generative engine
+of a piece: a MIDI IN whose notes it captures, a MIDI OUT it plays through its
+channels and scenes, and generations it writes into the Sequencer's clips, where
+one can feed the next — a loop bounded in time, not a cable cycle. Planned in the
+same plan (*Part two*), not started.
+
 ### 8. The controller platform — A done, D-022's half of B done; the plural refused
 
 The hardware has stopped being code. `MINILAB_CONTROL_SOURCES` **was** a profile
