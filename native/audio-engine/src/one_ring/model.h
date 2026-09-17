@@ -5,6 +5,7 @@
 // (plans/active/one-ring-native.md).
 
 #include "generative.h"
+#include "material.h"
 
 #include <string>
 
@@ -65,6 +66,8 @@ struct Project {
     std::size_t selectedScene = 0;
     SceneTiming sceneTiming = SceneTiming::Immediate;
     ScenePosition scenePosition = ScenePosition::Restart;
+    // Part two. The material itself travels apart (Runtime::setMaterial).
+    CaptureSettings capture;
 };
 
 Project makeProject(SceneTiming, ScenePosition);

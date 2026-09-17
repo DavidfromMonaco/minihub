@@ -1,14 +1,17 @@
 #pragma once
 
 // One native One Ring: what the VST's Processor did around the scheduler, with
-// the engine's live Transport where the VST had a host playhead.
+// the engine's live Transport where the VST had a host playhead -- and, part
+// two, the notes it captures on its MIDI IN and keeps as its material.
 //
-// Three threads meet here. The message thread publishes sequences and targets,
-// queues RUN, STOP, channel and scene commands, and drains the commands the
-// scheduler produced. The audio callback owns the scheduler: it swaps in the
-// newest plan at a block boundary, runs the clock and advances. Nothing the
-// callback touches locks or allocates.
+// Three threads meet here. The message thread publishes sequences, targets and
+// material, queues RUN, STOP, channel, scene and memory commands and live notes,
+// and drains the commands the scheduler produced and the material the callback
+// changed. The audio callback owns the scheduler and the material: it swaps in
+// the newest plan at a block boundary, runs the clock, advances, and captures.
+// Nothing the callback touches locks or allocates.
 
+#include "capture.h"
 #include "scheduler.h"
 #include "../transport.h"
 
@@ -67,6 +70,13 @@ public:
             read_ = middle_.exchange(read_, std::memory_order_acq_rel) & ~fresh;
         return slots_[read_];
     }
+    // The value written since the last take, or null when there is none.
+    const T* take() noexcept
+    {
+        if (!(middle_.load(std::memory_order_acquire) & fresh)) return nullptr;
+        read_ = middle_.exchange(read_, std::memory_order_acq_rel) & ~fresh;
+        return &slots_[read_];
+    }
 
 private:
     static constexpr unsigned fresh = 4;
@@ -99,9 +109,29 @@ struct Status {
     double bpm = 0;
     std::uint64_t rejected = 0;
     std::uint64_t guarded = 0;
+    // Part two.
+    CaptureState capture = CaptureState::Off;
+    std::uint32_t captured = 0;
+    // Notes a capture could not keep, and changes frozen material refused.
+    std::uint64_t captureRefused = 0;
+    std::uint32_t originNotes = 0;
+    std::uint32_t currentNotes = 0;
+    bool hasCurrent = false;
+    bool frozen = false;
+    std::uint32_t materialGeneration = 0;
+    std::uint64_t materialRevision = 0;
 };
 
-class Runtime final : private EventSink {
+// What the callback made of the material, numbered.
+struct MaterialReport {
+    std::uint64_t revision = 0;
+    Material material;
+};
+
+enum class MemoryCommand : std::uint8_t { CaptureReplace, CaptureAdd, CaptureEnd, Clear, Freeze, Unfreeze, Revert };
+bool memoryCommandNamed(const std::string& name, MemoryCommand& command) noexcept;
+
+class Runtime final : private EventSink, private CaptureSink {
 public:
     Runtime();
     ~Runtime() override;
@@ -122,11 +152,25 @@ public:
     void stop() noexcept { playRequest_.store(0, std::memory_order_release); }
     bool channelCommand(std::size_t channel, const std::string& command) noexcept;
     bool recallScene(std::size_t scene) noexcept;
+    // A capture asked from outside the sequence waits for the next bar of what
+    // plays; with nothing playing it starts at once.
+    bool memoryCommand(MemoryCommand) noexcept;
+    // The material the node's content holds: a project opened, a clip loaded,
+    // an edit undone. It replaces what the callback has; nothing is reported.
+    void setMaterial(const Material&) noexcept;
+    // A note from a controller cabled to MIDI IN, taken at the next block.
+    bool pushLiveInput(const unsigned char* bytes, int size) noexcept;
     std::size_t takeEvents(Packet* out, std::size_t capacity) noexcept;
     Status status() noexcept { return status_.read(); }
+    // The material as the callback last changed it, when it did since the last call.
+    const MaterialReport* takeMaterialReport() noexcept { return materialOut_.take(); }
     bool hasProject() const noexcept { return pending_.load(std::memory_order_acquire) != nullptr; }
 
-    // Audio thread: one block of `numSamples` at the transport's position.
+    // Audio thread.
+
+    // What the Sequencer sends this block, before process().
+    void pushInput(const juce::MidiBuffer&) noexcept;
+    // One block of `numSamples` at the transport's position.
     void process(const Transport&, int numSamples, double sampleRate) noexcept;
 
 private:
@@ -136,16 +180,27 @@ private:
         std::uint64_t revision = 0;
         std::uint64_t projectVersion = 0;
     };
-    enum class CommandKind : std::uint8_t { Channel, Scene };
+    enum class CommandKind : std::uint8_t { Channel, Scene, Memory };
     struct Command {
         CommandKind kind = CommandKind::Channel;
         std::uint8_t name = 0;
         std::uint16_t index = 0;
     };
+    struct LiveNote {
+        unsigned char bytes[3]{};
+        int size = 0;
+    };
 
     bool publish(Project, bool registryOnly, std::string& error);
     void reclaim() noexcept;
     bool send(const Event&) noexcept override;
+    void reach(double beat) noexcept override;
+    void captured(const NoteList&, CaptureMode) noexcept override;
+    void memory(MemoryCommand, int offset, bool fromOutside) noexcept;
+    void drainTo(int offset) noexcept;
+    int offsetOf(double beat) const noexcept;
+    double nextBarWait() const noexcept;
+    void report() noexcept;
 
     // Message thread only.
     std::vector<std::unique_ptr<Plan>> plans_;
@@ -163,7 +218,10 @@ private:
 
     Queue<Command, 256> input_;
     Queue<Packet, 2048> output_;
+    Queue<LiveNote, 512> liveNotes_;
     Latest<Status> status_;
+    Latest<Material> materialIn_;
+    Latest<MaterialReport> materialOut_;
 
     // Audio thread only.
     std::unique_ptr<Scheduler> scheduler_;
@@ -171,6 +229,21 @@ private:
     bool previousHostPlaying_ = false;
     std::uint64_t sequence_ = 0;
     std::uint64_t dropped_ = 0;
+    Material material_;
+    MaterialReport outgoing_;
+    std::uint64_t materialRevision_ = 0;
+    std::uint64_t materialRefused_ = 0;
+    Capture capture_{*this};
+    juce::MidiBuffer scheduledInput_;
+    juce::MidiBufferIterator inputAt_{}, inputEnd_{};
+    std::array<LiveNote, 512> liveBlock_{};
+    std::size_t liveCount_ = 0, liveRead_ = 0;
+    // The block being processed.
+    double blockBegin_ = 0;
+    double blockBeatsPerSample_ = 0;
+    int blockSamples_ = 0;
+    double hostBeat_ = 0;
+    bool hostPlaying_ = false;
 };
 
 } // namespace mlh::one_ring

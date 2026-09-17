@@ -11,6 +11,8 @@ namespace {
 // reference, and a std::string made in the callback would allocate.
 const std::array<std::string, 7> channelCommands{
     "START", "STOP", "RESTART", "RESET", "TOGGLE", "ENABLE", "DISABLE"};
+const std::array<std::string, 7> memoryCommands{
+    "CAPTURE_REPLACE", "CAPTURE_ADD", "CAPTURE_END", "CLEAR", "FREEZE", "UNFREEZE", "REVERT"};
 
 template <std::size_t N>
 void copyText(char (&out)[N], const std::string& text) noexcept
@@ -22,7 +24,19 @@ void copyText(char (&out)[N], const std::string& text) noexcept
 
 } // namespace
 
-Runtime::Runtime() : scheduler_(std::make_unique<Scheduler>()) {}
+bool memoryCommandNamed(const std::string& name, MemoryCommand& command) noexcept
+{
+    const auto found = std::find(memoryCommands.begin(), memoryCommands.end(), name);
+    if (found == memoryCommands.end()) return false;
+    command = static_cast<MemoryCommand>(found - memoryCommands.begin());
+    return true;
+}
+
+Runtime::Runtime() : scheduler_(std::make_unique<Scheduler>())
+{
+    // The Sequencer's block for this node, at its sample offsets: sized once.
+    scheduledInput_.ensureSize(8192);
+}
 
 Runtime::~Runtime() = default;
 
@@ -112,6 +126,25 @@ bool Runtime::recallScene(std::size_t scene) noexcept
     return input_.push({CommandKind::Scene, 0, static_cast<std::uint16_t>(scene)});
 }
 
+bool Runtime::memoryCommand(MemoryCommand command) noexcept
+{
+    return input_.push({CommandKind::Memory, static_cast<std::uint8_t>(command), 0});
+}
+
+void Runtime::setMaterial(const Material& material) noexcept
+{
+    materialIn_.write(material);
+}
+
+bool Runtime::pushLiveInput(const unsigned char* bytes, int size) noexcept
+{
+    if (bytes == nullptr || size < 1 || size > 3) return false;
+    LiveNote note;
+    std::memcpy(note.bytes, bytes, static_cast<std::size_t>(size));
+    note.size = size;
+    return liveNotes_.push(note);
+}
+
 std::size_t Runtime::takeEvents(Packet* out, std::size_t capacity) noexcept
 {
     std::size_t count = 0;
@@ -119,11 +152,139 @@ std::size_t Runtime::takeEvents(Packet* out, std::size_t capacity) noexcept
     return count;
 }
 
+void Runtime::pushInput(const juce::MidiBuffer& buffer) noexcept
+{
+    scheduledInput_.addEvents(buffer, 0, -1, 0);
+}
+
+int Runtime::offsetOf(double beat) const noexcept
+{
+    const int last = std::max(0, blockSamples_ - 1);
+    if (!(blockBeatsPerSample_ > 0) || !std::isfinite(beat)) return 0;
+    const double samples = std::round((beat - blockBegin_) / blockBeatsPerSample_);
+    if (!(samples > 0)) return 0;
+    return samples >= last ? last : static_cast<int>(samples);
+}
+
+void Runtime::drainTo(int offset) noexcept
+{
+    // A controller's notes arrive between blocks: they count from its start.
+    for (; liveRead_ < liveCount_; ++liveRead_) {
+        capture_.advanceTo(0);
+        capture_.note(0, liveBlock_[liveRead_].bytes, liveBlock_[liveRead_].size);
+    }
+    const int last = std::max(0, blockSamples_ - 1);
+    while (inputAt_ != inputEnd_) {
+        const auto event = *inputAt_;
+        if (event.samplePosition >= offset) break;
+        const int at = std::clamp(event.samplePosition, 0, last);
+        capture_.advanceTo(at);
+        capture_.note(at, event.data, event.numBytes);
+        ++inputAt_;
+    }
+    if (blockSamples_ > 0) capture_.advanceTo(std::min(offset, last));
+}
+
+void Runtime::reach(double beat) noexcept
+{
+    drainTo(offsetOf(beat));
+}
+
+double Runtime::nextBarWait() const noexcept
+{
+    const auto wait = [](double beat) {
+        if (!std::isfinite(beat) || beat < 0) return 0.0;
+        const double bar = std::ceil(beat / beatsPerBar - 1.0e-9) * beatsPerBar;
+        return std::max(0.0, bar - beat);
+    };
+    if (scheduler_->playing()) return wait(blockBegin_);
+    if (hostPlaying_) return wait(hostBeat_);
+    return 0.0;
+}
+
+void Runtime::report() noexcept
+{
+    outgoing_.revision = ++materialRevision_;
+    outgoing_.material = material_;
+    materialOut_.write(outgoing_);
+}
+
+void Runtime::captured(const NoteList& notes, CaptureMode mode) noexcept
+{
+    // A capture that heard nothing leaves the material as it was.
+    if (notes.count == 0) return;
+    if (material_.frozen) {
+        ++materialRefused_;
+        return;
+    }
+    if (mode == CaptureMode::Replace) material_.origin = notes;
+    else materialRefused_ += merge(material_.origin, notes);
+    material_.hasCurrent = false;
+    material_.generation = 0;
+    report();
+}
+
+void Runtime::memory(MemoryCommand command, int offset, bool fromOutside) noexcept
+{
+    const auto* plan = active_.load(std::memory_order_acquire);
+    const auto bars = plan != nullptr ? plan->project.capture.bars : CaptureSettings{}.bars;
+    switch (command) {
+    case MemoryCommand::CaptureReplace:
+    case MemoryCommand::CaptureAdd: {
+        if (material_.frozen) {
+            ++materialRefused_;
+            return;
+        }
+        const auto mode = command == MemoryCommand::CaptureAdd ? CaptureMode::Add : CaptureMode::Replace;
+        if (fromOutside) capture_.arm(offset, mode, bars, nextBarWait());
+        else capture_.start(offset, mode, bars);
+        return;
+    }
+    case MemoryCommand::CaptureEnd:
+        capture_.end(offset);
+        return;
+    case MemoryCommand::Clear:
+        if (material_.frozen) {
+            ++materialRefused_;
+            return;
+        }
+        if (material_.origin.count == 0 && !material_.hasCurrent && material_.generation == 0) return;
+        material_.origin.clear();
+        material_.origin.length = ticksPerBar;
+        material_.current.clear();
+        material_.hasCurrent = false;
+        material_.generation = 0;
+        report();
+        return;
+    case MemoryCommand::Freeze:
+    case MemoryCommand::Unfreeze: {
+        const bool frozen = command == MemoryCommand::Freeze;
+        if (material_.frozen == frozen) return;
+        material_.frozen = frozen;
+        report();
+        return;
+    }
+    case MemoryCommand::Revert:
+        if (material_.frozen) {
+            ++materialRefused_;
+            return;
+        }
+        if (!material_.hasCurrent && material_.generation == 0) return;
+        material_.hasCurrent = false;
+        material_.generation = 0;
+        report();
+        return;
+    }
+}
+
 void Runtime::process(const Transport& transport, int numSamples, double sampleRate) noexcept
 {
     readers_.fetch_add(1, std::memory_order_acq_rel);
     auto* plan = pending_.load(std::memory_order_acquire);
     if (plan == nullptr) {
+        scheduledInput_.clear();
+        LiveNote dropped;
+        while (liveNotes_.pop(dropped)) {}
         readers_.fetch_sub(1, std::memory_order_acq_rel);
         return;
     }
@@ -133,6 +294,7 @@ void Runtime::process(const Transport& transport, int numSamples, double sampleR
                          previous != nullptr && previous->projectVersion == plan->projectVersion);
         active_.store(plan, std::memory_order_release);
     }
+    if (const auto* given = materialIn_.take()) material_ = *given;
     auto& scheduler = *scheduler_;
     const double beatsPerSample = transport.quarterNotesPerSample();
     const bool hostPlaying = transport.processingPlaying();
@@ -144,7 +306,20 @@ void Runtime::process(const Transport& transport, int numSamples, double sampleR
         scheduler.shiftTimeline(hostBeat - beat_);
         beat_ = hostBeat;
     }
+    const bool clockValid = numSamples > 0 && std::isfinite(beatsPerSample) && beatsPerSample > 0;
+    blockSamples_ = std::max(0, numSamples);
+    blockBeatsPerSample_ = clockValid ? beatsPerSample : 0.0;
+    hostPlaying_ = hostPlaying;
+    hostBeat_ = hostBeat;
+    capture_.begin(blockSamples_, blockBeatsPerSample_);
+    liveCount_ = 0;
+    liveRead_ = 0;
+    for (LiveNote note; liveCount_ < liveBlock_.size() && liveNotes_.pop(note);) liveBlock_[liveCount_++] = note;
+    inputAt_ = scheduledInput_.begin();
+    inputEnd_ = scheduledInput_.end();
+
     const int request = playRequest_.exchange(-1, std::memory_order_acq_rel);
+    blockBegin_ = beat_;
     if (request == 0) {
         scheduler.beginCommand(beat_);
         scheduler.stop(beat_);
@@ -155,6 +330,7 @@ void Runtime::process(const Transport& transport, int numSamples, double sampleR
     // reaches it as a STOP of its own (the engine's setTransport).
     if (request == 1 || (hostPlaying && !previousHostPlaying_ && request != 0)) {
         if (!scheduler.playing()) beat_ = std::isfinite(hostBeat) ? hostBeat : 0.0;
+        blockBegin_ = beat_;
         scheduler.beginCommand(beat_);
         scheduler.play(beat_);
     }
@@ -164,14 +340,22 @@ void Runtime::process(const Transport& transport, int numSamples, double sampleR
         scheduler.beginCommand(beat_);
         if (command.kind == CommandKind::Channel)
             scheduler.command(command.index, channelCommands[command.name], beat_);
-        else
+        else if (command.kind == CommandKind::Scene)
             scheduler.scene(command.index, beat_);
+        else if (command.name < memoryCommands.size()) {
+            drainTo(0);
+            memory(static_cast<MemoryCommand>(command.name), 0, true);
+        }
     }
-    if (scheduler.playing() && numSamples > 0 && std::isfinite(beatsPerSample) && beatsPerSample > 0) {
+    if (scheduler.playing() && clockValid) {
         const double end = beat_ + static_cast<double>(numSamples) * beatsPerSample;
         scheduler.advance(beat_, end);
         beat_ = end;
     }
+    drainTo(blockSamples_);
+    capture_.finish();
+    scheduledInput_.clear();
+
     Status status;
     status.scene = scheduler.currentScene();
     status.pendingScene = scheduler.pendingScene();
@@ -184,6 +368,15 @@ void Runtime::process(const Transport& transport, int numSamples, double sampleR
         status.playhead[i] = scheduler.states()[i].playhead;
         status.active[i] = scheduler.states()[i].active;
     }
+    status.capture = capture_.state();
+    status.captured = capture_.taken();
+    status.captureRefused = capture_.refused() + materialRefused_;
+    status.originNotes = material_.origin.count;
+    status.currentNotes = material_.hasCurrent ? material_.current.count : 0;
+    status.hasCurrent = material_.hasCurrent;
+    status.frozen = material_.frozen;
+    status.materialGeneration = material_.generation;
+    status.materialRevision = materialRevision_;
     status_.write(status);
     liveScene_.store(status.scene, std::memory_order_release);
     readers_.fetch_sub(1, std::memory_order_acq_rel);
@@ -191,6 +384,15 @@ void Runtime::process(const Transport& transport, int numSamples, double sampleR
 
 bool Runtime::send(const Event& event) noexcept
 {
+    if (event.action->target == memoryTarget) {
+        const auto& name = event.release ? *event.descriptor->releaseCommand : event.action->command;
+        MemoryCommand command;
+        if (!memoryCommandNamed(name, command)) return false;
+        const int offset = offsetOf(event.beat);
+        drainTo(offset);
+        memory(command, offset, false);
+        return true;
+    }
     Packet packet;
     packet.sequence = ++sequence_;
     const auto* plan = active_.load(std::memory_order_acquire);

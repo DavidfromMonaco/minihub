@@ -6,7 +6,7 @@ const ALLOWED_ENGINE_COMMANDS = new Set([
   'setChainMidiEnabled','setChainOutputEnabled','openEditor','closeEditor',
   'getState','setState','getVstParameters','setVstParameter','setVstParameterLearn',
   'setControlRegistry','setControlStatus','pluginRequest',
-  'syncOneRing','setOneRingTargets','oneRingCommand','removeOneRing',
+  'syncOneRing','setOneRingTargets','oneRingCommand','removeOneRing','setOneRingMaterial',
   'setTransport','getTransport','syncAudioNetwork','setAudioNodeValues','syncMidiNetwork',
   'midiNode','setMetronome','setMasterOutput','resetMasterClip','syncSequencer','setSequencerTrackControl','sequencerMidiInput',
   'sequencerRecord','sequencerExport','sequencerCancelExport','sequencerQuiesce','sequencerPanic'

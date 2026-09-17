@@ -11,6 +11,8 @@ constexpr double epsilon = 1.0e-10;
 const char* channelPrefix = "one-ring:channel:";
 }
 
+const std::string memoryTarget = "one-ring:memory";
+
 CommandRegistry withInternalCommands(const CommandRegistry& external, const Project& project)
 {
     CommandRegistry registry = external;
@@ -34,6 +36,19 @@ CommandRegistry withInternalCommands(const CommandRegistry& external, const Proj
     for (std::size_t i = 0; i < project.scenes.size(); ++i)
         recall.choices.push_back({EnumValue{static_cast<std::int32_t>(i)}, project.scenes[i].name});
     registry.registerModule({"one-ring:scenes", "One Ring Scenes", {recall}});
+    ModuleDescriptor memory;
+    memory.id = memoryTarget;
+    memory.label = "One Ring Memory";
+    for (const auto* name : {"CAPTURE_REPLACE", "CAPTURE_ADD", "CAPTURE_END", "CLEAR", "FREEZE", "UNFREEZE", "REVERT"}) {
+        CommandDescriptor command;
+        command.id = command.label = name;
+        command.domain = ExecutionDomain::Audio;
+        memory.commands.push_back(command);
+    }
+    // A Legato channel holds a capture open while its steps play.
+    memory.commands[0].releaseCommand = "CAPTURE_END";
+    memory.commands[1].releaseCommand = "CAPTURE_END";
+    registry.registerModule(std::move(memory));
     return registry;
 }
 
@@ -346,6 +361,7 @@ void Scheduler::advance(double beginBeat, double endBeat) noexcept
         if (pendingSceneBeat_ >= 0) next = std::min(next, pendingSceneBeat_);
         if (next >= endBeat - epsilon) return;
         next = std::max(next, beginBeat);
+        sink_->reach(next);
         beginTick(next);
         if (pendingSceneBeat_ >= 0 && pendingSceneBeat_ <= next + epsilon) {
             const auto index = pendingScene_;

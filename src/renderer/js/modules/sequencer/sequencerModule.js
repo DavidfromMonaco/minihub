@@ -274,7 +274,7 @@ function chainLabel(hub, nodeId) {
 }
 
 function trackDestinations(hub, track) {
-  if (track.type === 'midi') return hub.network.listNodes().filter((node) => ['vst', 'arpeggiator'].includes(node.type)).map((node) => ({
+  if (track.type === 'midi') return hub.network.listNodes().filter((node) => ['vst', 'arpeggiator', 'one-ring'].includes(node.type)).map((node) => ({
     id: node.id,
     name: node.type === 'vst' ? `${node.name} — ${chainLabel(hub, node.id)}`
       : `${node.name} — Arpeggiator`

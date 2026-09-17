@@ -24,6 +24,16 @@ import { OneRingRandom, RANDOM_STREAM } from './oneRingRandom.js';
  *
  * Every function returns a new content and leaves its argument alone: a node's
  * content is an undo step, and a step that changes afterwards is not one.
+ *
+ * PART TWO: THE MATERIAL
+ * ----------------------
+ * A node also keeps what it plays notes from (native one_ring/material.h): the
+ * notes it captured or was given -- the `origin` -- and what feedback made of
+ * them -- the `current` generation, null until there is one -- with the
+ * capture's settings. A note is `{ pitch, velocity, channel, start, duration }`
+ * in ticks, 960 to the quarter as the Sequencer counts, and a list is ordered
+ * by start, pitch and channel, as the engine orders it, so the same notes read
+ * the same on both sides. None of it is in the VST's state.
  */
 
 export const CHANNEL_COUNT = 16;
@@ -48,6 +58,17 @@ export const OFFSET_LIMIT = 64;
 export const CHANNEL_TARGET_PREFIX = 'one-ring:channel:';
 export const SCENES_TARGET = 'one-ring:scenes';
 export const CHANNEL_COMMANDS = Object.freeze(['START', 'STOP', 'RESTART', 'RESET', 'TOGGLE', 'ENABLE', 'DISABLE']);
+export const MEMORY_TARGET = 'one-ring:memory';
+export const MEMORY_COMMANDS = Object.freeze([
+  'CAPTURE_REPLACE', 'CAPTURE_ADD', 'CAPTURE_END', 'CLEAR', 'FREEZE', 'UNFREEZE', 'REVERT'
+]);
+
+export const TICKS_PER_BEAT = 960;
+export const TICKS_PER_BAR = 4 * TICKS_PER_BEAT;
+export const MATERIAL_CAPACITY = 256;
+export const MAX_MATERIAL_TICKS = 64 * TICKS_PER_BAR;
+export const MAX_CAPTURE_BARS = 16;
+export const CAPTURE_MODE = Object.freeze({ replace: 0, add: 1 });
 
 const UINT64_MAX = (1n << 64n) - 1n;
 const INT32_MIN = -2147483648;
@@ -81,6 +102,14 @@ export function emptyChannel() {
   };
 }
 
+export const emptyNoteList = () => ({ length: TICKS_PER_BAR, notes: [] });
+
+export function emptyMaterial() {
+  return { origin: emptyNoteList(), current: null, generation: 0, frozen: false };
+}
+
+export const defaultCapture = () => ({ mode: CAPTURE_MODE.replace, bars: 1 });
+
 /** What One Ring holds when it is first loaded: four empty scenes, seed 1. */
 export function createSequence() {
   return {
@@ -94,7 +123,9 @@ export function createSequence() {
       id,
       name: `Scene ${id}`,
       channels: Array.from({ length: CHANNEL_COUNT }, emptyChannel)
-    }))
+    })),
+    capture: defaultCapture(),
+    material: emptyMaterial()
   };
 }
 
@@ -209,6 +240,60 @@ function readChannel(raw, path) {
   return withCells(channel, cells);
 }
 
+const wholeIn = (value, low, high) => Number.isInteger(value) && value >= low && value <= high;
+
+function readNote(raw, length, path) {
+  if (!isObject(raw)) fail(`${path}: a note is an object`);
+  if (!wholeIn(raw.pitch, 0, 127)) fail(`${path}.pitch: a pitch from 0 to 127`);
+  if (!wholeIn(raw.velocity, 1, 127)) fail(`${path}.velocity: a velocity from 1 to 127`);
+  if (!wholeIn(raw.channel, 1, 16)) fail(`${path}.channel: a channel from 1 to 16`);
+  if (!wholeIn(raw.start, 0, length - 1)) fail(`${path}.start: a start from 0 to ${length - 1} ticks`);
+  if (!wholeIn(raw.duration, 1, MAX_MATERIAL_TICKS)) fail(`${path}.duration: a duration from 1 to ${MAX_MATERIAL_TICKS} ticks`);
+  return { pitch: raw.pitch, velocity: raw.velocity, channel: raw.channel, start: raw.start, duration: raw.duration };
+}
+
+/** Notes in the order the engine keeps them: start, pitch, channel; a stable sort. */
+export function sortNotes(notes) {
+  return notes
+    .map((note, index) => ({ note, index }))
+    .sort((a, b) => a.note.start - b.note.start || a.note.pitch - b.note.pitch
+      || a.note.channel - b.note.channel || a.index - b.index)
+    .map(({ note }) => note);
+}
+
+/** A note list, checked and ordered. Throws naming the first field it cannot read. */
+export function readNoteList(raw, path = 'notes') {
+  if (!isObject(raw)) fail(`${path}: a note list is an object`);
+  if (!wholeIn(raw.length, 1, MAX_MATERIAL_TICKS)) fail(`${path}.length: a length from 1 tick to 64 bars`);
+  if (!Array.isArray(raw.notes)) fail(`${path}.notes: a list of notes`);
+  if (raw.notes.length > MATERIAL_CAPACITY) fail(`${path}.notes: at most ${MATERIAL_CAPACITY} notes`);
+  return { length: raw.length, notes: sortNotes(raw.notes.map((note, i) => readNote(note, raw.length, `${path}.notes[${i}]`))) };
+}
+
+/** A node's material, checked; an absent one is empty. */
+export function readMaterial(raw) {
+  if (raw === undefined) return emptyMaterial();
+  if (!isObject(raw)) fail('material: an object');
+  if (!wholeIn(raw.generation, 0, 999999)) fail('material.generation: a whole number');
+  if (typeof raw.frozen !== 'boolean') fail('material.frozen: true or false');
+  return {
+    origin: readNoteList(raw.origin, 'material.origin'),
+    current: raw.current === null || raw.current === undefined ? null : readNoteList(raw.current, 'material.current'),
+    generation: raw.generation,
+    frozen: raw.frozen
+  };
+}
+
+function readCapture(raw) {
+  if (raw === undefined) return defaultCapture();
+  if (!isObject(raw)) fail('capture: an object');
+  const mode = raw.mode ?? CAPTURE_MODE.replace;
+  const bars = raw.bars ?? 1;
+  if (!Object.values(CAPTURE_MODE).includes(mode)) fail('capture.mode: replace or add');
+  if (!wholeIn(bars, 0, MAX_CAPTURE_BARS)) fail(`capture.bars: 0 to ${MAX_CAPTURE_BARS} bars`);
+  return { mode, bars };
+}
+
 function readSeed(raw, path) {
   const text = String(raw ?? '');
   if (!/^\d{1,20}$/.test(text) || BigInt(text) > UINT64_MAX) fail(`${path}: a seed below 18446744073709551616`);
@@ -247,7 +332,9 @@ export function readSequence(raw) {
     selectedScene: Number.isInteger(selectedScene) ? selectedScene : 0,
     sceneTiming,
     scenePosition,
-    scenes
+    scenes,
+    capture: readCapture(raw.capture),
+    material: readMaterial(raw.material)
   };
 }
 
@@ -365,7 +452,7 @@ export function setCell(channel, index, cell) {
 
 // ---------- targets and checks ----------
 
-/** One Ring's own targets: each channel's seven commands, and the scene recall. */
+/** One Ring's own targets: each channel's seven commands, the scene recall, and the material's commands. */
 export function oneRingTargets(content) {
   const channels = Array.from({ length: CHANNEL_COUNT }, (_, i) => ({
     id: `${CHANNEL_TARGET_PREFIX}${i + 1}`,
@@ -380,7 +467,16 @@ export function oneRingTargets(content) {
     type: VALUE_TYPE.choice,
     choices: content.scenes.map((scene, i) => ({ id: i, label: scene.name }))
   };
-  return [...channels, { id: SCENES_TARGET, label: 'One Ring Scenes', commands: new Map([['RECALL', recall]]) }];
+  // A Legato channel holds a capture open while its steps play.
+  const memory = new Map(MEMORY_COMMANDS.map((id) => [id, {
+    id, label: id, type: VALUE_TYPE.none,
+    ...(id === 'CAPTURE_REPLACE' || id === 'CAPTURE_ADD' ? { releaseCommand: 'CAPTURE_END' } : {})
+  }]));
+  return [
+    ...channels,
+    { id: SCENES_TARGET, label: 'One Ring Scenes', commands: new Map([['RECALL', recall]]) },
+    { id: MEMORY_TARGET, label: 'One Ring Memory', commands: memory }
+  ];
 }
 
 /**
@@ -616,4 +712,81 @@ export function storeScene(content, from, to) {
     ...content,
     scenes: content.scenes.map((scene, s) => (s === to ? { ...scene, channels } : scene))
   };
+}
+
+// ---------- the material ----------
+
+const sameList = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+
+/** The notes the voices play: the current generation, or the origin. */
+export function playingNotes(material) {
+  return material.current ?? material.origin;
+}
+
+/** The capture's settings: `mode` (CAPTURE_MODE) and `bars` (0 until its end). */
+export function setCaptureSettings(content, { mode = content.capture.mode, bars = content.capture.bars } = {}) {
+  const next = readCapture({ mode, bars });
+  return next.mode === content.capture.mode && next.bars === content.capture.bars ? content : { ...content, capture: next };
+}
+
+/** `list` as the new origin; the current generation goes, as after a capture. */
+export function loadMaterial(content, list) {
+  const origin = readNoteList(list, 'origin');
+  const { material } = content;
+  if (sameList(origin, material.origin) && material.current === null && material.generation === 0) return content;
+  return { ...content, material: { ...material, origin, current: null, generation: 0 } };
+}
+
+/** Both lists emptied. Asked by a person, it applies to frozen material too. */
+export function clearMaterial(content) {
+  const { material } = content;
+  const empty = emptyMaterial();
+  if (sameList(material.origin, empty.origin) && material.current === null && material.generation === 0) return content;
+  return { ...content, material: { ...empty, frozen: material.frozen } };
+}
+
+export function setFrozen(content, frozen) {
+  return content.material.frozen === (frozen === true)
+    ? content : { ...content, material: { ...content.material, frozen: frozen === true } };
+}
+
+/** The current generation dropped: the voices play the origin again. */
+export function revertMaterial(content) {
+  const { material } = content;
+  if (material.current === null && material.generation === 0) return content;
+  return { ...content, material: { ...material, current: null, generation: 0 } };
+}
+
+/**
+ * A MIDI clip's notes as a material list: those sounding in the clip's window,
+ * from its start, cut at its end -- what the clip plays. Throws when the clip
+ * is longer than a material, or holds more notes than one keeps.
+ */
+export function noteListFromClip(clip) {
+  const offset = Number(clip?.sourceOffsetPpq) || 0;
+  const lengthPpq = Number(clip?.lengthPpq);
+  if (!(lengthPpq > 0)) fail('the clip has no length');
+  const length = Math.max(1, Math.round(lengthPpq * TICKS_PER_BEAT));
+  if (length > MAX_MATERIAL_TICKS) fail('the clip is longer than a material (64 bars)');
+  const end = offset + lengthPpq;
+  const notes = [];
+  for (const note of Array.isArray(clip?.notes) ? clip.notes : []) {
+    const noteStart = Number(note.startPpq);
+    const noteEnd = noteStart + Number(note.durationPpq);
+    if (!(noteEnd > offset) || !(noteStart < end)) continue;
+    const start = Math.round((Math.max(noteStart, offset) - offset) * TICKS_PER_BEAT);
+    if (start >= length) continue;
+    const stop = Math.round((Math.min(noteEnd, end) - offset) * TICKS_PER_BEAT);
+    notes.push({
+      pitch: Math.round(note.pitch),
+      velocity: Math.round(note.velocity),
+      channel: Math.round(note.channel),
+      start,
+      duration: Math.max(1, stop - start)
+    });
+  }
+  if (notes.length > MATERIAL_CAPACITY) {
+    fail(`the clip plays ${notes.length} notes; a material keeps at most ${MATERIAL_CAPACITY}`);
+  }
+  return readNoteList({ length, notes }, 'clip');
 }

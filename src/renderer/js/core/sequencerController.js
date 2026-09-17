@@ -762,7 +762,7 @@ export class SequencerController {
     // window, otherwise the missing cable also removes the only Note Off path.
     const node = this.hub.network.getNode(destinationId);
     if (node?.type === 'vst') this.hub.engine.midi?.(destinationId, raw);
-    else if (node?.type === 'arpeggiator') this.hub.engine.midiNode?.(destinationId, raw);
+    else if (node?.type === 'arpeggiator' || node?.type === 'one-ring') this.hub.engine.midiNode?.(destinationId, raw);
     else if (node?.type === 'midi-output') this.hub.midi.send?.(raw);
     else return false;
     return true;

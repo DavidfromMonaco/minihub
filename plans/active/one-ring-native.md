@@ -568,7 +568,7 @@ comes after its design is approved (steps 14 and 15).
       `npm run sync:dist`. The real engine over stdio: a first arrangement,
       then a note changed while playing and a track added (kept), then a track
       sent elsewhere (not kept), no error. **Not heard yet by the author.**
-- [ ] 11. MIDI IN and the material: the node's MIDI IN and MIDI OUT ports; One
+- [x] 11. MIDI IN and the material: the node's MIDI IN and MIDI OUT ports; One
       Ring as a track's Destination, the end of a MIDI thru walk, an input for
       a cabled controller; its destinations described and handed to the
       runtime; capture, load, freeze, revert, clear; the material in the
@@ -584,6 +584,29 @@ comes after its design is approved (steps 14 and 15).
       destinations + `npm run check` + `npm run sync:dist` + the real engine
       over stdio: a track aimed at One Ring plays a clip and the status
       reports its notes captured.
+      Done 2026-09-17. Native: `one_ring/material.*` (the lists, fixed
+      capacity), `one_ring/capture.*` (the capture, fed a block at a time in
+      sample order; the scheduler tells the runtime where each tick falls,
+      `EventSink::reach`, so a step's capture and the notes around it keep
+      their order), the runtime's material and live notes,
+      `setOneRingMaterial`, `oneRingMaterial`, the status's capture fields;
+      a track pushes into One Ring as into an arpeggiator
+      (`MidiProcessorInput`), and One Ring now runs between the Sequencer
+      and the arpeggiators. Renderer: the ports, the thru walk ending at One
+      Ring, its MIDI destinations described (the engine takes them at step
+      12), a track's Destination, a controller's notes, the material and the
+      capture's settings in the content, sent apart from the sequence and
+      taken back as an edit, the requests (`material`, `set-material`,
+      `capture`, `capture-end`, `clear`, `freeze`, `unfreeze`, `revert`, and
+      `capture` in `set`). Build 0 errors 0 warnings; `--core` (1611 checks:
+      `one-ring-capture`, `sequencer-feeds-one-ring`), `--vst3-e2e` (99),
+      `--cross-track-isolation` (27), `mlh_realtime_output_tests` (2535);
+      `npm test` (1199, `oneRingMaterial.test.mjs` among them),
+      `npm run check`, `npm run sync:dist`. The real engine over stdio: a
+      sequence whose first step captures, a track aimed at the node playing
+      C, E, G and D, the four notes reported at their ticks (0, 0, 0, 1920),
+      a frozen material refusing CLEAR, the node removed -- 12 checks. Not
+      seen in MiniHub: the page shows none of it until step 15.
 - [ ] 12. MIDI OUT and the voices: `PLAY`, `NOTE`, the rule commands and the
       per-scene rules, their draws, notes sent at their sample to the
       destinations, One Ring run before the arpeggiators, the registry of

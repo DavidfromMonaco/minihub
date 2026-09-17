@@ -15,6 +15,13 @@ namespace mlh::one_ring {
 // std::invalid_argument naming what it cannot read.
 Project readProject(const juce::var& state);
 
+// A node's material, as its content keeps it (part two): `{ origin, current,
+// generation, frozen }`, each list `{ length, notes: [{ pitch, velocity,
+// channel, start, duration }] }` in ticks, `current` null until feedback made
+// one. Throws std::invalid_argument naming what it cannot read.
+Material readMaterial(const juce::var& material);
+juce::var writeMaterial(const Material& material);
+
 // What a node's CTRL OUT is cabled to, as CommandBus publishes it:
 // `{ version: 1, revision, modules: [{ id, label, commands: [...] }] }`.
 // Throws std::invalid_argument on a malformed list, as the VST refuses one.

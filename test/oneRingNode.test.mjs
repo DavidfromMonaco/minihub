@@ -72,7 +72,9 @@ test('the engine is given the sequence when the node appears, and a source exist
   const [first] = sent('syncOneRing');
   assert.equal(first.nodeId, ring.id);
   assert.equal(first.restore, true);
-  assert.deepEqual(first.state, ring.content);
+  const { material, ...sequence } = ring.content;
+  assert.deepEqual(first.state, sequence, 'the sequence, its material sent apart');
+  assert.deepEqual(sent('setOneRingMaterial')[0].material, material);
   assert.equal(hub.oneRing.generationOf(ring.id), null);
   assert.equal(source(), undefined, 'no source before the engine says it runs the sequence');
   const generation = announce();

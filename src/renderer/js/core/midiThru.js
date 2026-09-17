@@ -23,9 +23,10 @@
  */
 
 /** The node types a series delivers to. A VST passes MIDI on; an arpeggiator
- *  makes notes of its own and a hardware output is the hardware, so the walk
- *  stops at both. Anything else -- the Sequencer -- is never a recipient. */
-const RECIPIENT_TYPES = new Set(['vst', 'arpeggiator', 'midi-output']);
+ *  and a One Ring make notes of their own and a hardware output is the
+ *  hardware, so the walk stops at them. Anything else -- the Sequencer -- is
+ *  never a recipient. */
+const RECIPIENT_TYPES = new Set(['vst', 'arpeggiator', 'one-ring', 'midi-output']);
 
 /**
  * Everything MIDI entering `nodeId` reaches through MIDI OUT cables, beyond the

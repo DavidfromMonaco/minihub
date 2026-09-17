@@ -79,16 +79,20 @@ export const NODE_TYPES = {
       outputs: [{ id: 'audio-out', type: 'audio', label: 'AUDIO OUT' }]
     }
   },
-  // A control sequencer: sixteen channels stepping whatever its CTRL OUT is
-  // cabled to (oneRingSequence.js, oneRingNodes.js). It plays no note and makes
-  // no sound, so it has no MIDI or audio port -- only the jack its commands
-  // leave by, drawn always, since the node sends commands by construction.
+  // A sequencer of commands and of notes: sixteen channels stepping whatever
+  // its CTRL OUT is cabled to (oneRingSequence.js, oneRingNodes.js), and the
+  // notes it captures on its MIDI IN and plays from its MIDI OUT. Its commands'
+  // jack is drawn always, since the node sends commands by construction. It
+  // makes no sound of its own, so it has no audio port.
   'one-ring': {
     id: 'one-ring', label: 'One Ring', omniBoxCategory: 'MIDI', accent: '--accent-sequencer', icon: 'ring',
-    emptyLabel: 'Cable CTRL OUT to what it plays',
+    emptyLabel: 'Cable CTRL OUT or MIDI OUT to what it plays',
     ports: {
-      inputs: [],
-      outputs: [{ id: 'ctrl-out', type: 'control', label: 'CTRL OUT', commands: true }]
+      inputs: [{ id: 'midi-in', type: 'midi', label: 'MIDI IN' }],
+      outputs: [
+        { id: 'ctrl-out', type: 'control', label: 'CTRL OUT', commands: true },
+        { id: 'midi-out', type: 'midi', label: 'MIDI OUT' }
+      ]
     }
   },
   arpeggiator: {

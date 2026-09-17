@@ -15,6 +15,9 @@ const MAX_STATE_CHARS = 4 * 1024 * 1024;
 const MAX_REGISTRY_CHARS = 4 * 1024 * 1024;
 const NODE_ID = /^[A-Za-z][A-Za-z0-9_-]*$/;
 const CHANNEL_COMMANDS = new Set(['START', 'STOP', 'RESTART', 'RESET', 'TOGGLE', 'ENABLE', 'DISABLE']);
+const MEMORY_COMMANDS = new Set(['CAPTURE_REPLACE', 'CAPTURE_ADD', 'CAPTURE_END', 'CLEAR', 'FREEZE', 'UNFREEZE', 'REVERT']);
+// Two lists of at most 256 notes: far below this.
+const MAX_MATERIAL_CHARS = 256 * 1024;
 const CHANNELS = 16;
 const MAX_SCENE_INDEX = 255;
 
@@ -65,9 +68,19 @@ function isValidOneRingCommand(msg) {
         && CHANNEL_COMMANDS.has(msg.name);
     case 'scene':
       return Number.isInteger(msg.scene) && msg.scene >= 0 && msg.scene <= MAX_SCENE_INDEX;
+    case 'memory':
+      return MEMORY_COMMANDS.has(msg.name);
     default:
       return false;
   }
+}
+
+function isValidSetOneRingMaterialCommand(msg) {
+  if (!msg || msg.v !== 1 || msg.type !== 'setOneRingMaterial' || !validNodeId(msg.nodeId)) return false;
+  const material = msg.material;
+  if (!material || typeof material !== 'object' || Array.isArray(material)
+      || !material.origin || typeof material.origin !== 'object' || !Array.isArray(material.origin.notes)) return false;
+  return sizeWithin(material, MAX_MATERIAL_CHARS);
 }
 
 function isValidRemoveOneRingCommand(msg) {
@@ -78,5 +91,6 @@ module.exports = {
   isValidSyncOneRingCommand,
   isValidSetOneRingTargetsCommand,
   isValidOneRingCommand,
-  isValidRemoveOneRingCommand
+  isValidRemoveOneRingCommand,
+  isValidSetOneRingMaterialCommand
 };

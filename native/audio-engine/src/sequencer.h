@@ -18,6 +18,14 @@ namespace mlh {
 class MidiExecutionPlan;
 class MidiOutputSink;
 
+/** A MIDI processor a track can play into besides the arpeggiators -- a One
+ *  Ring node, which the engine runs apart from the MIDI plan. */
+class MidiProcessorInput {
+public:
+    virtual ~MidiProcessorInput() = default;
+    virtual bool pushInputBuffer(const std::string& nodeId, const juce::MidiBuffer&) noexcept = 0;
+};
+
 /** Native, sample-clocked arrangement engine. The renderer publishes immutable
  * project snapshots; the audio callback only reads a precompiled plan. */
 class SequencerEngine {
@@ -50,7 +58,8 @@ public:
 
     void prepare(double sampleRate, int blockSize);
     void processMidi(int numSamples, Transport&, MidiExecutionPlan* = nullptr,
-                     MidiOutputSink* = nullptr, double callbackStartMs = 0) noexcept;
+                     MidiOutputSink* = nullptr, double callbackStartMs = 0,
+                     MidiProcessorInput* processors = nullptr) noexcept;
     void renderAudio(juce::AudioBuffer<float>& destination, int numSamples, Transport&) noexcept;
     void renderAudioForOutput(juce::AudioBuffer<float>& destination, int numSamples,
                               Transport&, const std::string& outputId) noexcept;
@@ -224,8 +233,12 @@ private:
     static bool keepsRouting(const Plan& before, const Plan& after) noexcept;
     /** Audio thread: the plan the callback played last hands its sounding
      *  notes to `plan` -- kept, or given their Note Off. */
-    void adoptLivePlan(Plan& plan, MidiExecutionPlan*, MidiOutputSink*, double callbackStartMs) noexcept;
-    void releaseHeld(Track&, MidiExecutionPlan*, MidiOutputSink*, double callbackStartMs) noexcept;
+    void adoptLivePlan(Plan& plan, MidiExecutionPlan*, MidiOutputSink*, double callbackStartMs,
+                       MidiProcessorInput*) noexcept;
+    void releaseHeld(Track&, MidiExecutionPlan*, MidiOutputSink*, double callbackStartMs,
+                     MidiProcessorInput*) noexcept;
+    static void pushToProcessor(const std::string& id, const juce::MidiBuffer&, MidiExecutionPlan*,
+                                MidiProcessorInput*) noexcept;
 
     struct RecordedMidiEvent {
         double startPpq = 0, durationPpq = 0;

@@ -319,6 +319,8 @@ export class EngineClient {
       case 'oneRingStatus':
       case 'oneRingCommandResult':
       case 'oneRingRemoved':
+      case 'oneRingMaterial':
+      case 'oneRingMaterialSet':
         this.events.emit(`engine:${msg.type}`, msg);
         break;
       case 'pluginRequestResult': {
@@ -850,11 +852,19 @@ export class EngineClient {
     return Promise.resolve(this.command({ type: 'setOneRingTargets', nodeId, generation, registry }));
   }
 
-  /** RUN, STOP, a channel command or a scene recall for a One Ring node's runtime. */
+  /** RUN, STOP, a channel command, a scene recall or a memory command for a One Ring node's runtime. */
   oneRingCommand(nodeId, generation, command, { channel, name, scene } = {}) {
     if (this.state !== 'running') return Promise.resolve({ ok: false, reason: 'engine-not-running' });
-    const fields = command === 'channel' ? { channel, name } : command === 'scene' ? { scene } : {};
+    const fields = command === 'channel' ? { channel, name }
+      : command === 'scene' ? { scene }
+        : command === 'memory' ? { name } : {};
     return Promise.resolve(this.command({ type: 'oneRingCommand', nodeId, generation, command, ...fields }));
+  }
+
+  /** What a One Ring node plays notes from, as its content holds it. */
+  setOneRingMaterial(nodeId, material) {
+    if (this.state !== 'running') return Promise.resolve({ ok: false, reason: 'engine-not-running' });
+    return Promise.resolve(this.command({ type: 'setOneRingMaterial', nodeId, material }));
   }
 
   /** A One Ring node is gone: its runtime goes with it. */

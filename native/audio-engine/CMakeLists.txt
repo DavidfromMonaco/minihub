@@ -130,6 +130,10 @@ add_executable(mlh_audio_engine
     src/midi_output.cpp
     src/one_ring/commands.h
     src/one_ring/commands.cpp
+    src/one_ring/material.h
+    src/one_ring/material.cpp
+    src/one_ring/capture.h
+    src/one_ring/capture.cpp
     src/one_ring/generative.h
     src/one_ring/generative.cpp
     src/one_ring/model.h
@@ -209,6 +213,10 @@ if(BUILD_TESTING)
         src/midi_network.cpp
         src/one_ring/commands.h
         src/one_ring/commands.cpp
+        src/one_ring/material.h
+        src/one_ring/material.cpp
+        src/one_ring/capture.h
+        src/one_ring/capture.cpp
         src/one_ring/generative.h
         src/one_ring/generative.cpp
         src/one_ring/model.h

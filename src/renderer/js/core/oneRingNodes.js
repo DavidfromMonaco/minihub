@@ -1,4 +1,4 @@
-import { CHANNEL_COMMANDS, CHANNEL_COUNT } from './oneRingSequence.js';
+import { CHANNEL_COMMANDS, CHANNEL_COUNT, MEMORY_COMMANDS, readMaterial } from './oneRingSequence.js';
 
 /**
  * The project's One Ring nodes, as the engine runs them.
@@ -22,12 +22,23 @@ import { CHANNEL_COMMANDS, CHANNEL_COUNT } from './oneRingSequence.js';
  * for nothing, and a new plan releases what Legato holds -- a PLAY held by a
  * channel would stop and start again. So a content that differs from the last
  * one sent only by its scene is not sent.
+ *
+ * THE MATERIAL TRAVELS ON ITS OWN
+ * -------------------------------
+ * What a node plays notes from changes in the engine -- a capture ends, a step
+ * clears it -- and in the content -- a clip loaded, an edit undone. Sent inside
+ * the sequence, each change would publish a new plan, and a new plan releases
+ * what Legato holds. So the material goes by `setOneRingMaterial`, and comes
+ * back by `oneRingMaterial`, which the content takes as an edit, as a take
+ * becomes a clip (D-032). The material last sent or received is remembered, so
+ * neither side is sent back what it already holds.
  */
 
 const TYPE = 'one-ring';
 const MAX_REFUSALS_LOGGED = 20;
 
-const sentKey = (content) => JSON.stringify({ ...content, selectedScene: null });
+const sentKey = (content) => JSON.stringify({ ...content, selectedScene: null, material: null });
+const CAPTURE_STATES = Object.freeze(['off', 'armed', 'capturing']);
 
 function readStatus(msg) {
   const list = (value, check, fallback) => Array.from({ length: CHANNEL_COUNT },
@@ -43,7 +54,15 @@ function readStatus(msg) {
     playheads: list(msg.playheads, (v) => Number.isInteger(v) && v >= -1, -1),
     active: list(msg.active, (v) => typeof v === 'boolean', false),
     rejected: count(msg.rejected),
-    guarded: count(msg.guarded)
+    guarded: count(msg.guarded),
+    capture: CAPTURE_STATES[msg.capture] ?? 'off',
+    captured: count(msg.captured),
+    captureRefused: count(msg.captureRefused),
+    originNotes: count(msg.originNotes),
+    currentNotes: count(msg.currentNotes),
+    hasCurrent: msg.hasCurrent === true,
+    frozen: msg.frozen === true,
+    materialGeneration: count(msg.materialGeneration)
   };
 }
 
@@ -58,6 +77,8 @@ export class OneRingNodes {
     this._sent = new Map();
     /** nodeId -> why its last command or sequence was refused; '' once one is taken. */
     this._refusals = new Map();
+    /** nodeId -> the material the engine holds, as JSON: last sent, or last reported. */
+    this._materials = new Map();
     this._refusalsLogged = 0;
     /** Whether this file has seen the engine running since it last stopped. */
     this._engineRunning = false;
@@ -72,6 +93,7 @@ export class OneRingNodes {
       hub.events.on('engine:deviceState', () => this._onEngineUp()),
       hub.events.on('engine:oneRingSynced', (msg) => this._acceptSynced(msg)),
       hub.events.on('engine:oneRingStatus', (msg) => this._acceptStatus(msg)),
+      hub.events.on('engine:oneRingMaterial', (msg) => this._acceptMaterial(msg)),
       hub.events.on('oneRing:refusal', (msg) => {
         if (this.isOneRing(msg?.nodeId)) this._refusals.set(msg.nodeId, String(msg.message || ''));
       })
@@ -90,6 +112,15 @@ export class OneRingNodes {
   /** What the node's runtime last reported, or null. */
   statusOf(nodeId) {
     return this._statuses.get(nodeId) ?? null;
+  }
+
+  /**
+   * A memory command asked by a person or an agent: a capture (armed for the
+   * next bar of what plays), its end, or one of the material's own commands.
+   */
+  memory(nodeId, name) {
+    if (!MEMORY_COMMANDS.includes(name)) return Promise.resolve({ ok: false, reason: 'invalid-command' });
+    return this.command(nodeId, 'memory', { name });
   }
 
   /** Why the node's last command or sequence was refused, or ''. */
@@ -113,17 +144,32 @@ export class OneRingNodes {
     if (!node || node.type !== TYPE || this.hub.engine?.state !== 'running') return false;
     this._engineRunning = true;
     const key = sentKey(node.content);
-    if (!restore && this._sent.get(nodeId) === key) return false;
-    this._sent.set(nodeId, key);
-    Promise.resolve(this.hub.engine.syncOneRing(nodeId, node.content, restore))
-      .then((result) => {
-        // Not carried: the next change sends it again instead of trusting it landed.
-        if (result?.ok === false && this._sent.get(nodeId) === key) this._sent.delete(nodeId);
-      })
-      .catch(() => {
-        if (this._sent.get(nodeId) === key) this._sent.delete(nodeId);
-      });
+    const sequenceDue = restore || this._sent.get(nodeId) !== key;
+    if (sequenceDue) {
+      this._sent.set(nodeId, key);
+      const { material: _material, ...sequence } = node.content;
+      this._send(this._sent, nodeId, key, () => this.hub.engine.syncOneRing(nodeId, sequence, restore));
+    }
+    const materialDue = this._syncMaterial(nodeId, node.content.material, restore);
+    return sequenceDue || materialDue;
+  }
+
+  /** The material, sent after the sequence it belongs to, when the engine does not hold it already. */
+  _syncMaterial(nodeId, material, force) {
+    if (!material) return false;
+    const key = JSON.stringify(material);
+    if (!force && this._materials.get(nodeId) === key) return false;
+    this._materials.set(nodeId, key);
+    this._send(this._materials, nodeId, key, () => this.hub.engine.setOneRingMaterial?.(nodeId, material));
     return true;
+  }
+
+  _send(memory, nodeId, key, send) {
+    // Not carried: the next change sends it again instead of trusting it landed.
+    const forget = () => { if (memory.get(nodeId) === key) memory.delete(nodeId); };
+    Promise.resolve(send())
+      .then((result) => { if (result?.ok === false) forget(); })
+      .catch(forget);
   }
 
   syncAll() {
@@ -140,7 +186,10 @@ export class OneRingNodes {
     const generation = this.generationOf(nodeId);
     if (generation === null) return Promise.resolve({ ok: false, reason: 'not-running' });
     const fields = {};
-    if (command === 'channel') {
+    if (command === 'memory') {
+      if (!MEMORY_COMMANDS.includes(name)) return Promise.resolve({ ok: false, reason: 'invalid-command' });
+      fields.name = name;
+    } else if (command === 'channel') {
       if (!Number.isInteger(channel) || channel < 1 || channel > CHANNEL_COUNT || !CHANNEL_COMMANDS.includes(name)) {
         return Promise.resolve({ ok: false, reason: 'invalid-command' });
       }
@@ -166,6 +215,7 @@ export class OneRingNodes {
     this._statuses.delete(nodeId);
     this._sent.delete(nodeId);
     this._refusals.delete(nodeId);
+    this._materials.delete(nodeId);
   }
 
   _onNetworkChange(change) {
@@ -196,6 +246,7 @@ export class OneRingNodes {
     this._statuses.clear();
     this._sent.clear();
     this._refusals.clear();
+    this._materials.clear();
     for (const nodeId of known) this.hub.events.emit('oneRing:gone', { nodeId });
     if (state?.state === 'running') this.syncAll();
   }
@@ -227,6 +278,22 @@ export class OneRingNodes {
     this._statuses.set(msg.nodeId, status);
     this.hub.events.emit('oneRing:status', { nodeId: msg.nodeId, status });
     this._keepScene(msg.nodeId, status.scene);
+  }
+
+  _acceptMaterial(msg) {
+    if (!this.isOneRing(msg?.nodeId) || msg.generation !== this._generations.get(msg.nodeId)) return;
+    let material;
+    try {
+      material = readMaterial(msg.material);
+    } catch (error) {
+      this.hub.diagnostics?.log?.(`one-ring: ${msg.nodeId} material unreadable -- ${error?.message || error}`);
+      return;
+    }
+    this._materials.set(msg.nodeId, JSON.stringify(material));
+    const node = this.hub.nodes.get(msg.nodeId);
+    if (JSON.stringify(node.content.material) === JSON.stringify(material)) return;
+    // What the engine made of the material is authored, as a take's clip is.
+    this.hub.nodes.setContent(msg.nodeId, { ...node.content, material });
   }
 
   _keepScene(nodeId, scene) {

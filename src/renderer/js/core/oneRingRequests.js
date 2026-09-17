@@ -1,9 +1,10 @@
 import { VALUE_TYPE } from './commandRegistry.js';
 import {
-  CHANNEL_COMMANDS, CHANNEL_COUNT, CONDITION, LENGTHS, MAX_STEPS, MUTABLE, OFFSET_LIMIT, REPEATS, RESOLUTIONS,
-  SCENE_POSITION, SCENE_TIMING, STEP_MODE, VALUE_MODE,
-  cellsOf, clearCells, defaultSource, emptyCell, mutateSequence, oneRingTargets, parseSeed,
-  readSequence, reseed, retarget, sequenceErrors, storeScene
+  CAPTURE_MODE, CHANNEL_COMMANDS, CHANNEL_COUNT, CONDITION, LENGTHS, MAX_CAPTURE_BARS, MAX_MATERIAL_TICKS, MAX_STEPS,
+  MUTABLE, OFFSET_LIMIT, REPEATS, RESOLUTIONS, SCENE_POSITION, SCENE_TIMING, STEP_MODE, TICKS_PER_BEAT, VALUE_MODE,
+  cellsOf, clearCells, clearMaterial, defaultSource, emptyCell, loadMaterial, mutateSequence, noteListFromClip,
+  oneRingTargets, parseSeed, readNoteList, readSequence, reseed, retarget, revertMaterial, sequenceErrors,
+  setCaptureSettings, setFrozen, storeScene
 } from './oneRingSequence.js';
 import {
   HUMANIZE_PERCENT, SWING_PERCENT,
@@ -31,16 +32,26 @@ import {
  * performance. `set`, `copy-scene`, `mutate` and `new-seed` write the content:
  * one undo step each (D-032). A `set` is built whole and checked whole before
  * anything is written, and a refusal names the field it failed on.
+ *
+ * THE MATERIAL (PART TWO)
+ * -----------------------
+ * `material` reads what the node plays notes from; `set-material` loads notes,
+ * or a clip's; `clear`, `freeze`, `unfreeze` and `revert` edit it as the page
+ * does, whatever the engine is doing. `capture` and `capture-end` go to the
+ * runtime: a capture asked here waits for the next bar of what plays. Notes are
+ * written in quarter notes, as a clip's are; the node keeps them in ticks.
  */
 
 export const REQUEST_KINDS = Object.freeze([
-  'describe', 'status', 'targets', 'get', 'set', 'run', 'stop', 'channel', 'scene', 'copy-scene', 'mutate', 'new-seed'
+  'describe', 'status', 'targets', 'get', 'set', 'run', 'stop', 'channel', 'scene', 'copy-scene', 'mutate', 'new-seed',
+  'material', 'set-material', 'capture', 'capture-end', 'clear', 'freeze', 'unfreeze', 'revert'
 ]);
 
 const TYPE_NAMES = Object.freeze(['none', 'boolean', 'integer', 'number', 'choice']);
 const FIELD_BITS = Object.freeze({ enabled: MUTABLE.enabled, probability: MUTABLE.probability, value: MUTABLE.value });
 const TIMING_NAMES = Object.freeze({ [SCENE_TIMING.immediate]: 'immediate', [SCENE_TIMING.nextBar]: 'next-bar' });
 const POSITION_NAMES = Object.freeze({ [SCENE_POSITION.restart]: 'restart', [SCENE_POSITION.keep]: 'keep' });
+const CAPTURE_NAMES = Object.freeze({ [CAPTURE_MODE.replace]: 'replace', [CAPTURE_MODE.add]: 'add' });
 // Far beyond any loop a sequence reaches, and far inside the engine's 32 bits.
 const MAX_INTERVAL = 9999;
 
@@ -50,6 +61,10 @@ const VALUES = Object.freeze({
   random: '{"min": a, "max": b} for a number or a whole number; {"oneOf": [ ... ]} for any command',
   conditions: '"first", "last", {"every": n}, {"ifActive": channel}, {"ifInactive": channel}',
   scene: 'an index from 0, an id such as "A", or a name such as "Scene A"',
+  notes: 'a note is {pitch 0-127, velocity 1-127, channel 1-16, startPpq, durationPpq}, in quarter notes from the '
+    + 'material\'s start; a material lasts lengthPpq, at most 256 quarter notes, and keeps at most 256 notes',
+  capture: '{"mode": "replace" or "add", "bars": 1-16, or 0 until capture-end}; a capture asked here starts at '
+    + 'the next bar of what plays, or at once when nothing plays',
   channel: 'channel 1-16, target, command, length 4/8/16/32/64, resolution "1/4" "1/8" "1/16" "1/32", '
     + 'repeats 1/2/3/4/8 or "loop", mode "trigger" or "legato", enabled, offset -64 to 64 steps, '
     + 'swing 0-95 and humanize 0-45 (percent), mutable ["enabled", "probability", "value"], '
@@ -166,6 +181,51 @@ function fieldsFrom(raw, path) {
   return bits >>> 0;
 }
 
+function captureFrom(raw, content, path) {
+  if (!isObject(raw)) refuse(path, VALUES.capture);
+  const mode = raw.mode === undefined ? content.capture.mode
+    : Object.keys(CAPTURE_NAMES).map(Number).find((key) => CAPTURE_NAMES[key] === raw.mode);
+  if (mode === undefined) refuse(`${path}.mode`, '"replace" or "add"');
+  const bars = raw.bars === undefined ? content.capture.bars : raw.bars;
+  if (!Number.isInteger(bars) || bars < 0 || bars > MAX_CAPTURE_BARS) refuse(`${path}.bars`, `0 to ${MAX_CAPTURE_BARS} bars`);
+  return { mode, bars };
+}
+
+const ticksOf = (ppq) => Math.round(ppq * TICKS_PER_BEAT);
+
+function noteListFrom(raw, path) {
+  if (!isObject(raw)) refuse(path, 'an object');
+  const { lengthPpq } = raw;
+  if (!Number.isFinite(lengthPpq) || lengthPpq <= 0 || ticksOf(lengthPpq) > MAX_MATERIAL_TICKS) {
+    refuse(`${path}.lengthPpq`, 'a length from a tick to 256 quarter notes');
+  }
+  if (!Array.isArray(raw.notes)) refuse(`${path}.notes`, 'a list of notes');
+  const notes = raw.notes.map((note, i) => {
+    const at = `${path}.notes[${i}]`;
+    if (!isObject(note)) refuse(at, VALUES.notes);
+    if (!Number.isFinite(note.startPpq) || !Number.isFinite(note.durationPpq)) refuse(at, VALUES.notes);
+    return {
+      pitch: note.pitch,
+      velocity: note.velocity ?? 100,
+      channel: note.channel ?? 1,
+      start: ticksOf(note.startPpq),
+      duration: ticksOf(note.durationPpq)
+    };
+  });
+  return readNoteList({ length: ticksOf(lengthPpq), notes }, path);
+}
+
+const listOut = (list) => ({
+  lengthPpq: list.length / TICKS_PER_BEAT,
+  notes: list.notes.map((note) => ({
+    pitch: note.pitch,
+    velocity: note.velocity,
+    channel: note.channel,
+    startPpq: note.start / TICKS_PER_BEAT,
+    durationPpq: note.duration / TICKS_PER_BEAT
+  }))
+});
+
 const percentIn = (raw, high, path) => (Number.isFinite(raw) && raw >= 0 && raw <= high
   ? raw : refuse(path, `a percentage from 0 to ${high}`));
 
@@ -280,6 +340,24 @@ function contextOf(hub, nodeId) {
   return { node, content, targets, byId, find, status, scene: shownScene(content, status) };
 }
 
+function materialAnswer(content, status) {
+  const { capture, material } = content;
+  return {
+    ok: true,
+    capture: {
+      mode: CAPTURE_NAMES[capture.mode],
+      bars: capture.bars,
+      state: status?.capture ?? 'off',
+      taken: status?.captured ?? 0
+    },
+    origin: listOut(material.origin),
+    current: material.current ? listOut(material.current) : null,
+    generation: material.generation,
+    frozen: material.frozen,
+    refused: status?.captureRefused ?? 0
+  };
+}
+
 function statusAnswer(hub, nodeId, context) {
   const { content, status } = context;
   const ready = Number.isSafeInteger(hub.oneRing?.generationOf?.(nodeId));
@@ -298,7 +376,14 @@ function statusAnswer(hub, nodeId, context) {
     })),
     refused: status?.rejected ?? 0,
     guarded: status?.guarded ?? 0,
-    lastRefusal: hub.oneRing?.refusalOf?.(nodeId) ?? ''
+    lastRefusal: hub.oneRing?.refusalOf?.(nodeId) ?? '',
+    capture: status?.capture ?? 'off',
+    material: {
+      originNotes: content.material.origin.notes.length,
+      currentNotes: content.material.current ? content.material.current.notes.length : null,
+      generation: content.material.generation,
+      frozen: content.material.frozen
+    }
   };
 }
 
@@ -497,6 +582,7 @@ export async function handleOneRingRequest(hub, nodeId, body) {
           if (position === undefined) refuse('scenePosition', '"restart" or "keep"');
           next = setScenePosition(next, Number(position));
         }
+        if ('capture' in body) next = setCaptureSettings(next, captureFrom(body.capture, next, 'capture'));
         const changed = [];
         if ('channels' in body) {
           if (!Array.isArray(body.channels)) refuse('channels', 'a list of channels');
@@ -556,6 +642,45 @@ export async function handleOneRingRequest(hub, nodeId, body) {
           scene: sceneOut(after, scene),
           channels: indices.map((index) => channelOut(after.scenes[scene].channels[index], index, context.find))
         };
+      }
+      case 'material':
+        return materialAnswer(content, context.status);
+      case 'set-material': {
+        let list;
+        if ('clipId' in body) {
+          const found = hub.sequencer?.model?._clip?.(String(body.clipId));
+          if (!found) refuse('clipId', `no clip ${JSON.stringify(body.clipId)}`);
+          if (found.track?.type !== 'midi') refuse('clipId', 'not a MIDI clip');
+          try {
+            list = noteListFromClip(found.clip);
+          } catch (error) {
+            refuse('clipId', String(error?.message || error));
+          }
+        } else {
+          list = noteListFrom(body, 'material');
+        }
+        write(hub, nodeId, context, loadMaterial(content, list));
+        return materialAnswer(hub.nodes.get(nodeId).content, context.status);
+      }
+      case 'capture': {
+        if ('mode' in body || 'bars' in body) {
+          write(hub, nodeId, context, setCaptureSettings(content, captureFrom(body, content, 'capture')));
+        }
+        const { capture } = hub.nodes.get(nodeId).content;
+        const name = capture.mode === CAPTURE_MODE.add ? 'CAPTURE_ADD' : 'CAPTURE_REPLACE';
+        const played = await playResult(hub.oneRing.memory(nodeId, name));
+        return played.ok ? { ok: true, capture: { mode: CAPTURE_NAMES[capture.mode], bars: capture.bars } } : played;
+      }
+      case 'capture-end':
+        return await playResult(hub.oneRing.memory(nodeId, 'CAPTURE_END'));
+      case 'clear':
+      case 'freeze':
+      case 'unfreeze':
+      case 'revert': {
+        const edit = { clear: clearMaterial, revert: revertMaterial,
+          freeze: (held) => setFrozen(held, true), unfreeze: (held) => setFrozen(held, false) }[kind];
+        write(hub, nodeId, context, edit(content));
+        return materialAnswer(hub.nodes.get(nodeId).content, context.status);
       }
       case 'new-seed': {
         let seed;

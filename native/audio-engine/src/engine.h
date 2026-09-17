@@ -101,6 +101,7 @@ private:
     void cmdSetOneRingTargets(const juce::var& msg);
     void cmdOneRingCommand(const juce::var& msg);
     void cmdRemoveOneRing(const juce::var& msg);
+    void cmdSetOneRingMaterial(const juce::var& msg);
     void publishOneRingSet();
     void forwardOneRings();
     void cmdSetTransport(const juce::var& msg);
@@ -303,7 +304,28 @@ private:
         double statusSentAtMs = 0.0;
     };
     struct OneRingSet {
-        std::vector<one_ring::Runtime*> runtimes;
+        struct Entry {
+            std::string id;
+            one_ring::Runtime* runtime = nullptr;
+        };
+        std::vector<Entry> entries;
+    };
+    // What a Sequencer track sends to a One Ring node, in the callback.
+    class OneRingInputs final : public MidiProcessorInput {
+    public:
+        explicit OneRingInputs(const OneRingSet* set) noexcept : set_(set) {}
+        bool pushInputBuffer(const std::string& nodeId, const juce::MidiBuffer& buffer) noexcept override
+        {
+            if (set_ != nullptr)
+                for (const auto& entry : set_->entries)
+                    if (entry.id == nodeId) {
+                        entry.runtime->pushInput(buffer);
+                        return true;
+                    }
+            return false;
+        }
+    private:
+        const OneRingSet* set_;
     };
     std::map<juce::String, OneRingNode> oneRings_;
     std::vector<std::unique_ptr<OneRingSet>> oneRingSets_;

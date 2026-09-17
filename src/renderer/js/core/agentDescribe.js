@@ -68,7 +68,8 @@ function oneRingStatusOf(hub, nodeId) {
     activeChannels: (status?.active ?? []).flatMap((active, i) => (active ? [i + 1] : [])),
     refused: status?.rejected ?? 0,
     guarded: status?.guarded ?? 0,
-    lastRefusal: hub.oneRing?.refusalOf?.(nodeId) ?? ''
+    lastRefusal: hub.oneRing?.refusalOf?.(nodeId) ?? '',
+    capture: status?.capture ?? 'off'
   };
 }
 

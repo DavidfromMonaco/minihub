@@ -236,7 +236,7 @@ bool SequencerEngine::sync(const juce::var& project,
             // for every track output, so comparing the id to one keyboard's name
             // was both redundant and the last hardware literal in the engine.
             if(outputKind=="midi-output")track.midiOutputKind=Track::MidiOutputKind::physical;
-            else if(outputKind=="arpeggiator")track.midiOutputKind=Track::MidiOutputKind::processor;
+            else if(outputKind=="arpeggiator"||outputKind=="one-ring")track.midiOutputKind=Track::MidiOutputKind::processor;
             else{track.destination=chainLookup(track.outputId);if(!track.destination&&outputKind.isNotEmpty())track.midiOutputKind=Track::MidiOutputKind::processor;}
             // The series behind the destination (D-039), by kind like the
             // destination itself. A kind this build does not know is skipped
@@ -248,7 +248,7 @@ bool SequencerEngine::sync(const juce::var& project,
                     if(!validId(hopId))return failClosed("Invalid MIDI thru destination id");
                     Track::Thru entry;entry.id=hopId.toStdString();
                     if(hopKind=="midi-output")entry.kind=Track::MidiOutputKind::physical;
-                    else if(hopKind=="arpeggiator")entry.kind=Track::MidiOutputKind::processor;
+                    else if(hopKind=="arpeggiator"||hopKind=="one-ring")entry.kind=Track::MidiOutputKind::processor;
                     else if(hopKind=="vst"){entry.chain=chainLookup(entry.id);if(!entry.chain)continue;}
                     else continue;
                     track.thru.push_back(std::move(entry));
@@ -346,7 +346,13 @@ bool SequencerEngine::keepsRouting(const Plan& before,const Plan& after) noexcep
     return true;
 }
 
-void SequencerEngine::adoptLivePlan(Plan& plan,MidiExecutionPlan* midiPlan,MidiOutputSink* hardware,double callbackStartMs) noexcept
+void SequencerEngine::pushToProcessor(const std::string& id,const juce::MidiBuffer& buffer,MidiExecutionPlan* midiPlan,MidiProcessorInput* processors) noexcept
+{
+    if(midiPlan&&midiPlan->pushInputBuffer(id,buffer))return;
+    if(processors)processors->pushInputBuffer(id,buffer);
+}
+
+void SequencerEngine::adoptLivePlan(Plan& plan,MidiExecutionPlan* midiPlan,MidiOutputSink* hardware,double callbackStartMs,MidiProcessorInput* processors) noexcept
 {
     auto* last=liveCarry_.load(std::memory_order_relaxed);
     if(last==&plan)return;
@@ -362,7 +368,7 @@ void SequencerEngine::adoptLivePlan(Plan& plan,MidiExecutionPlan* midiPlan,MidiO
             if(exact){to=plan.carry[j].to;keep=plan.carry[j].keep;}
             else for(size_t k=0;k<plan.tracks.size();++k)if(plan.tracks[k].id==old.id){to=(int)k;break;}
             if(keep&&to>=0){plan.tracks[(size_t)to].activeNotes=old.activeNotes;continue;}
-            releaseHeld(old,midiPlan,hardware,callbackStartMs);
+            releaseHeld(old,midiPlan,hardware,callbackStartMs,processors);
             if(to>=0)plan.tracks[(size_t)to].chasePending=true;
         }
     }
@@ -371,7 +377,7 @@ void SequencerEngine::adoptLivePlan(Plan& plan,MidiExecutionPlan* midiPlan,MidiO
     liveCarry_.store(&plan,std::memory_order_release);
 }
 
-void SequencerEngine::releaseHeld(Track& track,MidiExecutionPlan* midiPlan,MidiOutputSink* hardware,double callbackStartMs) noexcept
+void SequencerEngine::releaseHeld(Track& track,MidiExecutionPlan* midiPlan,MidiOutputSink* hardware,double callbackStartMs,MidiProcessorInput* processors) noexcept
 {
     auto& buffer=releaseScratch_;buffer.clear();
     for(int channel=1;channel<=16;++channel)for(int pitch=0;pitch<128;++pitch){
@@ -385,7 +391,7 @@ void SequencerEngine::releaseHeld(Track& track,MidiExecutionPlan* midiPlan,MidiO
     bool hardwareSent=false;
     const auto send=[&](Track::MidiOutputKind kind,const std::string& id,Chain* chain){
         if(kind==Track::MidiOutputKind::physical){if(hardware&&!hardwareSent)hardware->sendBlock(buffer,callbackStartMs,sampleRate_);hardwareSent=true;}
-        else if(kind==Track::MidiOutputKind::processor){if(midiPlan)midiPlan->pushInputBuffer(id,buffer);}
+        else if(kind==Track::MidiOutputKind::processor)pushToProcessor(id,buffer,midiPlan,processors);
         else if(chain)chain->pushMidi(buffer,chain->midiEpoch());
     };
     send(track.midiOutputKind,track.outputId,track.destination);
@@ -458,10 +464,10 @@ int SequencerEngine::eventOffset(double target,double start,double qps,int count
     double delta=target-start;if(delta<0)delta+=length;const int offset=(int)std::llround(delta/qps);return offset>=0&&offset<count?offset:-1;
 }
 
-void SequencerEngine::processMidi(int count,Transport& transport,MidiExecutionPlan* midiPlan,MidiOutputSink* hardware,double callbackStartMs) noexcept
+void SequencerEngine::processMidi(int count,Transport& transport,MidiExecutionPlan* midiPlan,MidiOutputSink* hardware,double callbackStartMs,MidiProcessorInput* processors) noexcept
 {
     const bool exportContext=&transport==&offlineExportTransport_;auto* plan=acquirePlan(exportContext);if(!plan)return;
-    if(!exportContext)adoptLivePlan(*plan,midiPlan,hardware,callbackStartMs);
+    if(!exportContext)adoptLivePlan(*plan,midiPlan,hardware,callbackStartMs,processors);
     const bool cleanup=(exportContext?exportMidiCleanupPending_:midiCleanupPending_).exchange(false,std::memory_order_acq_rel);
     const bool released=!exportContext&&midiReleasePending_.exchange(false,std::memory_order_acq_rel);
     const bool playing=transport.processingPlaying()&&transport.playing();
@@ -491,11 +497,11 @@ void SequencerEngine::processMidi(int count,Transport& transport,MidiExecutionPl
         if(buffer.isEmpty())continue;
         const bool mayDispatch=cleanup||released||transport.playing();if(!mayDispatch)continue;
         bool hardwareSent=false;
-        if(track.midiOutputKind==Track::MidiOutputKind::physical){if(hardware)hardware->sendBlock(buffer,callbackStartMs,sampleRate_);hardwareSent=true;}else if(track.midiOutputKind==Track::MidiOutputKind::processor){if(midiPlan)midiPlan->pushInputBuffer(track.outputId,buffer);}else if(track.destination)track.destination->pushMidi(buffer,destinationEpoch);
+        if(track.midiOutputKind==Track::MidiOutputKind::physical){if(hardware)hardware->sendBlock(buffer,callbackStartMs,sampleRate_);hardwareSent=true;}else if(track.midiOutputKind==Track::MidiOutputKind::processor)pushToProcessor(track.outputId,buffer,midiPlan,processors);else if(track.destination)track.destination->pushMidi(buffer,destinationEpoch);
         // The same block, at the same sample offsets, to every node in the
         // series. There is one hardware output however many controller nodes
         // the series reaches, so it hears the block once.
-        for(const auto& hop:track.thru){if(hop.kind==Track::MidiOutputKind::physical){if(hardware&&!hardwareSent)hardware->sendBlock(buffer,callbackStartMs,sampleRate_);hardwareSent=true;}else if(hop.kind==Track::MidiOutputKind::processor){if(midiPlan)midiPlan->pushInputBuffer(hop.id,buffer);}else if(hop.chain)hop.chain->pushMidi(buffer,hop.blockEpoch);}
+        for(const auto& hop:track.thru){if(hop.kind==Track::MidiOutputKind::physical){if(hardware&&!hardwareSent)hardware->sendBlock(buffer,callbackStartMs,sampleRate_);hardwareSent=true;}else if(hop.kind==Track::MidiOutputKind::processor)pushToProcessor(hop.id,buffer,midiPlan,processors);else if(hop.chain)hop.chain->pushMidi(buffer,hop.blockEpoch);}
         for(const auto& item:buffer){const auto message=item.getMessage();const int channel=message.getChannel();if(channel<1||channel>16)continue;auto index=[channel](int pitch){return(size_t)((channel-1)*128+pitch);};if(message.isNoteOn()){auto& held=track.activeNotes[index(message.getNoteNumber())];if(held<std::numeric_limits<uint16_t>::max())++held;}else if(message.isNoteOff()){auto& held=track.activeNotes[index(message.getNoteNumber())];if(held>0)--held;}else if(message.isAllNotesOff()||message.isAllSoundOff())for(int pitch=0;pitch<128;++pitch)track.activeNotes[index(pitch)]=0;}
     }
     if(sourceStopsThisBlock){exportSourceStopSent_.store(true,std::memory_order_release);if(midiPlan)midiPlan->panicAll(nullptr);}

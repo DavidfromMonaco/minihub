@@ -50,14 +50,36 @@ function arpeggiatorDestinations(hub, nodeId) {
   return destinations;
 }
 
+/**
+ * What a One Ring node's notes reach: what an arpeggiator's do, and the
+ * arpeggiators themselves -- the engine runs One Ring before them in the block,
+ * so it can feed one, cabled directly or through a VST. Another One Ring is
+ * left out, as an arpeggiator is for an arpeggiator.
+ */
+function oneRingDestinations(hub, nodeId) {
+  const destinations = [];
+  const add = (id) => { if (!destinations.includes(id)) destinations.push(id); };
+  for (const connection of hub.network.connectionsFrom(nodeId, 'midi-out')) {
+    const type = hub.network.getNode(connection.to.nodeId)?.type;
+    if (type !== 'vst' && type !== 'midi-output' && type !== 'arpeggiator') continue;
+    add(connection.to.nodeId);
+    if (type !== 'vst') continue;
+    for (const hop of midiThruReach(hub.network, connection.to.nodeId)) {
+      if (hop.kind !== 'one-ring') add(hop.id);
+    }
+  }
+  return destinations;
+}
+
 export function describeMidiNetwork(hub) {
-  const supported = new Set(['arpeggiator', 'vst', 'midi-output']);
+  const supported = new Set(['arpeggiator', 'one-ring', 'vst', 'midi-output']);
   return hub.network.listNodes().filter((node) => supported.has(node.type)).map((node) => {
     const incoming = hub.network.connectionsTo(node.id, 'midi-in')
       .filter((c) => hub.network.getNode(c.from.nodeId)?.outputs.find((p) => p.id === c.from.portId)?.type === 'midi')
       .map((c) => ({ sourceNodeId: c.from.nodeId, sourcePortId: c.from.portId }));
     const content = hub.nodes?.get(node.id)?.content || {};
-    const destinations = node.type === 'arpeggiator' ? arpeggiatorDestinations(hub, node.id) : [];
+    const destinations = node.type === 'arpeggiator' ? arpeggiatorDestinations(hub, node.id)
+      : node.type === 'one-ring' ? oneRingDestinations(hub, node.id) : [];
     return { id: node.id, nodeType: node.type, inputs: incoming, destinations, ...(node.type === 'arpeggiator' ? content : {}) };
   });
 }

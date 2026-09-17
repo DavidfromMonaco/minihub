@@ -114,7 +114,103 @@ void readSteps(const juce::var& list, const juce::var& blankCell, Channel& chann
     }
 }
 
+bool isWhole(const juce::var& value)
+{
+    return value.isInt() || value.isInt64() || (value.isDouble() && std::trunc(static_cast<double>(value)) == static_cast<double>(value));
+}
+
+int wholeIn(const juce::var& value, int low, int high, const char* message)
+{
+    if (!isWhole(value)) throw std::invalid_argument(message);
+    const double number = value;
+    if (number < low || number > high) throw std::invalid_argument(message);
+    return static_cast<int>(number);
+}
+
+// Part two's capture settings. A content saved before them has none, and
+// captures one bar, replacing.
+CaptureSettings readCapture(const juce::var& object)
+{
+    CaptureSettings settings;
+    if (object.isVoid() || object.isUndefined()) return settings;
+    if (!object.isObject()) throw std::invalid_argument("Invalid capture settings");
+    if (object.hasProperty("mode"))
+        settings.mode = static_cast<CaptureMode>(wholeIn(object["mode"], 0, 1, "Invalid capture mode"));
+    if (object.hasProperty("bars"))
+        settings.bars = static_cast<std::uint32_t>(wholeIn(object["bars"], 0, static_cast<int>(maximumCaptureBars),
+                                                           "A capture lasts 0 to 16 bars"));
+    return settings;
+}
+
+NoteList readNotes(const juce::var& object)
+{
+    if (!object.isObject()) throw std::invalid_argument("A note list is an object");
+    NoteList list;
+    list.length = wholeIn(object["length"], 1, maximumMaterialTicks, "A material lasts 1 tick to 64 bars");
+    const auto* notes = object["notes"].getArray();
+    if (notes == nullptr) throw std::invalid_argument("A note list needs its notes");
+    if (notes->size() > static_cast<int>(materialCapacity)) throw std::invalid_argument("A material holds at most 256 notes");
+    for (const auto& item : *notes) {
+        MaterialNote note;
+        note.pitch = static_cast<std::uint8_t>(wholeIn(item["pitch"], 0, 127, "A note's pitch is 0 to 127"));
+        note.velocity = static_cast<std::uint8_t>(wholeIn(item["velocity"], 1, 127, "A note's velocity is 1 to 127"));
+        note.channel = static_cast<std::uint8_t>(wholeIn(item["channel"], 1, 16, "A note's channel is 1 to 16"));
+        note.start = wholeIn(item["start"], 0, list.length - 1, "A note starts inside its material");
+        note.duration = wholeIn(item["duration"], 1, maximumMaterialTicks, "A note lasts 1 tick to 64 bars");
+        list.add(note);
+    }
+    list.sort();
+    return list;
+}
+
+juce::var writeNotes(const NoteList& list)
+{
+    juce::var object(new juce::DynamicObject());
+    object.getDynamicObject()->setProperty("length", list.length);
+    juce::Array<juce::var> notes;
+    for (std::uint32_t i = 0; i < list.count; ++i) {
+        const auto& note = list.notes[i];
+        juce::var item(new juce::DynamicObject());
+        auto* fields = item.getDynamicObject();
+        fields->setProperty("pitch", static_cast<int>(note.pitch));
+        fields->setProperty("velocity", static_cast<int>(note.velocity));
+        fields->setProperty("channel", static_cast<int>(note.channel));
+        fields->setProperty("start", note.start);
+        fields->setProperty("duration", note.duration);
+        notes.add(item);
+    }
+    object.getDynamicObject()->setProperty("notes", notes);
+    return object;
+}
+
 } // namespace
+
+Material readMaterial(const juce::var& object)
+{
+    if (!object.isObject()) throw std::invalid_argument("A material is an object");
+    Material material;
+    material.origin = readNotes(object["origin"]);
+    const auto& current = object["current"];
+    if (!(current.isVoid() || current.isUndefined())) {
+        material.current = readNotes(current);
+        material.hasCurrent = true;
+    }
+    material.generation = static_cast<std::uint32_t>(wholeIn(object["generation"], 0, 999999, "Invalid generation"));
+    if (!object["frozen"].isBool()) throw std::invalid_argument("A material says whether it is frozen");
+    material.frozen = object["frozen"];
+    return material;
+}
+
+juce::var writeMaterial(const Material& material)
+{
+    juce::var object(new juce::DynamicObject());
+    auto* fields = object.getDynamicObject();
+    fields->setProperty("origin", writeNotes(material.origin));
+    fields->setProperty("current", material.hasCurrent ? writeNotes(material.current) : juce::var());
+    fields->setProperty("generation", static_cast<juce::int64>(material.generation));
+    fields->setProperty("frozen", material.frozen);
+    return object;
+}
 
 Project readProject(const juce::var& state)
 {
@@ -130,6 +226,7 @@ Project readProject(const juce::var& state)
         throw std::invalid_argument("Invalid scene behavior");
     project.sceneTiming = static_cast<SceneTiming>(timing);
     project.scenePosition = static_cast<ScenePosition>(position);
+    project.capture = readCapture(state["capture"]);
     const auto* scenes = state["scenes"].getArray();
     if (scenes == nullptr || scenes->isEmpty()) throw std::invalid_argument("Missing scenes");
     for (const auto& item : *scenes) {

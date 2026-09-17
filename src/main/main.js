@@ -39,7 +39,8 @@ const {
   isValidSetControlRegistryCommand, isValidSetControlStatusCommand, isValidPluginRequestCommand
 } = require('./controlSourceCommand');
 const {
-  isValidSyncOneRingCommand, isValidSetOneRingTargetsCommand, isValidOneRingCommand, isValidRemoveOneRingCommand
+  isValidSyncOneRingCommand, isValidSetOneRingTargetsCommand, isValidOneRingCommand, isValidRemoveOneRingCommand,
+  isValidSetOneRingMaterialCommand
 } = require('./oneRingCommand');
 const { readProject, writeProjectAtomic } = require('./projectFiles');
 const { ALLOWED_ENGINE_COMMANDS } = require('./engineCommandPolicy');
@@ -778,7 +779,8 @@ ipcMain.handle('engine:command', (_event, msg) => {
   if ((type === 'syncOneRing' && !isValidSyncOneRingCommand(msg))
       || (type === 'setOneRingTargets' && !isValidSetOneRingTargetsCommand(msg))
       || (type === 'oneRingCommand' && !isValidOneRingCommand(msg))
-      || (type === 'removeOneRing' && !isValidRemoveOneRingCommand(msg))) {
+      || (type === 'removeOneRing' && !isValidRemoveOneRingCommand(msg))
+      || (type === 'setOneRingMaterial' && !isValidSetOneRingMaterialCommand(msg))) {
     return { ok: false, reason: 'invalid-request' };
   }
   if (type === 'sequencerQuiesce'

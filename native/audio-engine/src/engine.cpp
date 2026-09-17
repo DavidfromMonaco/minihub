@@ -515,6 +515,7 @@ void Engine::handleCommand(const juce::var& msg)
     else if (type == "setOneRingTargets") cmdSetOneRingTargets(msg);
     else if (type == "oneRingCommand") cmdOneRingCommand(msg);
     else if (type == "removeOneRing") cmdRemoveOneRing(msg);
+    else if (type == "setOneRingMaterial") cmdSetOneRingMaterial(msg);
     else if (type == "setTransport") cmdSetTransport(msg);
     else if (type == "getTransport") cmdGetTransport(msg);
     else if (type == "syncAudioNetwork") cmdSyncAudioNetwork(msg);
@@ -1661,8 +1662,12 @@ void Engine::cmdMidiNode(const juce::var& msg)
     const auto* arr=msg["data"].getArray(); if(!arr||arr->isEmpty())return;
     uint8_t bytes[3]{};int n=0;for(const auto&b:*arr){if(n==3)break;bytes[n++]=(uint8_t)(int)b;}
     auto* plan=activeMidiPlan_.load(std::memory_order_acquire);
-    if(plan&&!plan->pushInput(msg["nodeId"].toString().toStdString(),juce::MidiMessage(bytes,n,0.0)))
-        sendError("midi-node-not-found","Unknown MIDI processor node");
+    const auto nodeId=msg["nodeId"].toString();
+    if(plan&&plan->pushInput(nodeId.toStdString(),juce::MidiMessage(bytes,n,0.0)))return;
+    // A One Ring node takes a cabled controller's notes too: its capture hears them.
+    const auto ring=isProtocolChainId(nodeId)?oneRings_.find(nodeId):oneRings_.end();
+    if(ring!=oneRings_.end()){ring->second.runtime->pushLiveInput(bytes,n);return;}
+    if(plan)sendError("midi-node-not-found","Unknown MIDI processor node");
 }
 
 void Engine::cmdSetChainMidiEnabled(const juce::var& msg)
@@ -2514,6 +2519,14 @@ void Engine::cmdOneRingCommand(const juce::var& msg)
             if (!ok)
                 error = "unknown scene";
         }
+        else if (command == "memory")
+        {
+            one_ring::MemoryCommand memory;
+            ok = one_ring::memoryCommandNamed(msg["name"].toString().toStdString(), memory)
+                && runtime.memoryCommand(memory);
+            if (!ok)
+                error = "unknown memory command";
+        }
         else
             error = "unknown One Ring command";
     }
@@ -2545,11 +2558,39 @@ void Engine::cmdRemoveOneRing(const juce::var& msg)
     ipc_.send(out);
 }
 
+void Engine::cmdSetOneRingMaterial(const juce::var& msg)
+{
+    const juce::String nodeId = msg["nodeId"].toString();
+    juce::String error;
+    bool ok = false;
+    const auto found = isProtocolChainId(nodeId) ? oneRings_.find(nodeId) : oneRings_.end();
+    if (found == oneRings_.end())
+        error = "no such One Ring node";
+    else
+    {
+        try
+        {
+            found->second.runtime->setMaterial(one_ring::readMaterial(msg["material"]));
+            ok = true;
+        }
+        catch (const std::exception& failure)
+        {
+            error = juce::String::fromUTF8(failure.what());
+        }
+    }
+    juce::var out = makeObject();
+    setProp(out, "type", "oneRingMaterialSet");
+    setProp(out, "nodeId", nodeId);
+    setProp(out, "ok", ok);
+    setProp(out, "message", ok ? juce::String() : error);
+    ipc_.send(out);
+}
+
 void Engine::publishOneRingSet()
 {
     auto set = std::make_unique<OneRingSet>();
     for (auto& entry : oneRings_)
-        set->runtimes.push_back(entry.second.runtime.get());
+        set->entries.push_back({entry.first.toStdString(), entry.second.runtime.get()});
     auto* published = set.get();
     oneRingSets_.push_back(std::move(set));
     activeOneRingSet_.store(published, std::memory_order_release);
@@ -2592,13 +2633,31 @@ void Engine::forwardOneRings()
                 setProp(out, "events", events);
                 ipc_.send(out);
             }
+            // What the callback made of the material: a capture, a feedback, a
+            // command of the sequence. The renderer keeps it in the content.
+            if (const auto* report = node.runtime->takeMaterialReport())
+            {
+                juce::var out = makeObject();
+                setProp(out, "type", "oneRingMaterial");
+                setProp(out, "nodeId", nodeId);
+                setProp(out, "generation", node.generation);
+                setProp(out, "revision", static_cast<juce::int64>(
+                    std::min<std::uint64_t>(report->revision, static_cast<std::uint64_t>(kMaxSafeInteger))));
+                setProp(out, "material", one_ring::writeMaterial(report->material));
+                ipc_.send(out);
+            }
             const auto status = node.runtime->status();
             const auto& last = node.lastStatus;
             const bool changed = !node.statusSent || status.playing != last.playing
                 || status.scene != last.scene || status.pendingScene != last.pendingScene
                 || status.playhead != last.playhead
                 || status.active != last.active || status.rejected != last.rejected
-                || status.guarded != last.guarded;
+                || status.guarded != last.guarded
+                || status.capture != last.capture || status.captured != last.captured
+                || status.captureRefused != last.captureRefused
+                || status.originNotes != last.originNotes || status.currentNotes != last.currentNotes
+                || status.hasCurrent != last.hasCurrent || status.frozen != last.frozen
+                || status.materialGeneration != last.materialGeneration;
             // The beat moves on every block; alone, it is sent ten times a second.
             const bool beatDue = status.playing && now - node.statusSentAtMs >= 100.0;
             if (!changed && !beatDue)
@@ -2624,6 +2683,15 @@ void Engine::forwardOneRings()
                 std::min<std::uint64_t>(status.rejected, static_cast<std::uint64_t>(kMaxSafeInteger))));
             setProp(out, "guarded", static_cast<juce::int64>(
                 std::min<std::uint64_t>(status.guarded, static_cast<std::uint64_t>(kMaxSafeInteger))));
+            setProp(out, "capture", static_cast<int>(status.capture));
+            setProp(out, "captured", static_cast<juce::int64>(status.captured));
+            setProp(out, "captureRefused", static_cast<juce::int64>(
+                std::min<std::uint64_t>(status.captureRefused, static_cast<std::uint64_t>(kMaxSafeInteger))));
+            setProp(out, "originNotes", static_cast<juce::int64>(status.originNotes));
+            setProp(out, "currentNotes", static_cast<juce::int64>(status.currentNotes));
+            setProp(out, "hasCurrent", status.hasCurrent);
+            setProp(out, "frozen", status.frozen);
+            setProp(out, "materialGeneration", static_cast<juce::int64>(status.materialGeneration));
             ipc_.send(out);
             node.lastStatus = status;
             node.statusSent = true;
@@ -2974,15 +3042,18 @@ void Engine::processEngine2Block(const float* const* inputChannelData,
     }
     const double midiStartMs=juce::Time::getMillisecondCounterHiRes()+std::max(1.0,1000.0*numSamples/std::max(1.0,currentSampleRate_));
     auto* hardwareMidi = &physicalMidiOutput_;
-    sequencer_.processMidi(numSamples,blockTransport,midiPlan,hardwareMidi,midiStartMs);
-    if(midiPlan)midiPlan->process(numSamples,blockTransport,hardwareMidi,midiStartMs,currentSampleRate_);
-    // Native One Ring nodes: their commands are carried out on the control
-    // thread, so where they run in the block changes nothing but their clock.
+    // Native One Ring nodes run between the Sequencer, whose tracks they hear,
+    // and the arpeggiators. Their commands are carried out on the control
+    // thread, so where they run changes nothing for those but their clock.
     oneRingReaders_.fetch_add(1, std::memory_order_acq_rel);
-    if (auto* oneRings = activeOneRingSet_.load(std::memory_order_acquire))
-        for (auto* runtime : oneRings->runtimes)
-            runtime->process(blockTransport, numSamples, currentSampleRate_);
+    const auto* oneRings = activeOneRingSet_.load(std::memory_order_acquire);
+    OneRingInputs oneRingInputs(oneRings);
+    sequencer_.processMidi(numSamples,blockTransport,midiPlan,hardwareMidi,midiStartMs,&oneRingInputs);
+    if (oneRings != nullptr)
+        for (const auto& entry : oneRings->entries)
+            entry.runtime->process(blockTransport, numSamples, currentSampleRate_);
     oneRingReaders_.fetch_sub(1, std::memory_order_acq_rel);
+    if(midiPlan)midiPlan->process(numSamples,blockTransport,hardwareMidi,midiStartMs,currentSampleRate_);
     audioNetworkReaders_.fetch_add(1, std::memory_order_acq_rel);
     do { plan=activeAudioPlan_.load(std::memory_order_acquire); audioPlanHazard_.store(plan,std::memory_order_release); }
     while(plan!=activeAudioPlan_.load(std::memory_order_acquire));

@@ -270,7 +270,8 @@ function buildRoutingNode(instance, hub) {
       // Forward raw MIDI to the native engine for this VST chain. This only
       // fires when the MiniLab is actually connected into this node in the
       // network (the network only calls onInput for connected targets).
-      if (instance.type === 'arpeggiator') {
+      // A One Ring node hears them too: what it captures is what reaches it.
+      if (instance.type === 'arpeggiator' || instance.type === 'one-ring') {
         if (portId === 'midi-in' && data && Array.isArray(data.raw)) hub.engine?.midiNode(instance.id, data.raw);
         return;
       }

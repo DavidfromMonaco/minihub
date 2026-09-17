@@ -2718,6 +2718,426 @@ void testOneRingRuntime()
     });
 }
 
+// ---------- One Ring's material (part two) ----------
+//
+// At 120 bpm and 48 kHz a beat is 24,000 samples and a tick, 25.
+
+struct CaptureRecorder : oring::CaptureSink {
+    std::vector<oring::NoteList> lists;
+    std::vector<oring::CaptureMode> modes;
+    void captured(const oring::NoteList& list, oring::CaptureMode mode) noexcept override
+    {
+        lists.push_back(list);
+        modes.push_back(mode);
+    }
+};
+
+struct TimedMidi {
+    long long at = 0;
+    unsigned char bytes[3]{};
+};
+
+TimedMidi midiAt(long long at, int status, int pitch, int velocity)
+{
+    TimedMidi event;
+    event.at = at;
+    event.bytes[0] = static_cast<unsigned char>(status);
+    event.bytes[1] = static_cast<unsigned char>(pitch);
+    event.bytes[2] = static_cast<unsigned char>(velocity);
+    return event;
+}
+
+constexpr double oneRingBeatsPerSample = 120.0 / (60.0 * 48000.0);
+
+// A capture started at sample 0, fed `events` in blocks of `blockSize`, ended by
+// a command at `endAt` when there is one. Answers what it reported.
+std::vector<oring::NoteList> captureTimeline(const std::vector<TimedMidi>& events, int blockSize, std::uint32_t bars,
+                                             long long total, long long endAt = -1,
+                                             std::uint64_t* refused = nullptr)
+{
+    CaptureRecorder recorder;
+    oring::Capture capture(recorder);
+    std::size_t next = 0;
+    const auto feed = [&](long long block, long long until) {
+        while (next < events.size() && events[next].at < until) {
+            const int offset = static_cast<int>(events[next].at - block);
+            capture.advanceTo(offset);
+            capture.note(offset, events[next].bytes, 3);
+            ++next;
+        }
+    };
+    for (long long block = 0; block < total; block += blockSize) {
+        const int n = static_cast<int>(std::min<long long>(blockSize, total - block));
+        capture.begin(n, oneRingBeatsPerSample);
+        if (block == 0) capture.start(0, oring::CaptureMode::Replace, bars);
+        if (endAt >= block && endAt < block + n) {
+            feed(block, endAt);
+            const int offset = static_cast<int>(endAt - block);
+            capture.advanceTo(offset);
+            capture.end(offset);
+        }
+        feed(block, block + n);
+        capture.finish();
+    }
+    if (refused) *refused = capture.refused();
+    return recorder.lists;
+}
+
+bool sameNotes(const oring::NoteList& a, const oring::NoteList& b)
+{
+    if (a.count != b.count || a.length != b.length) return false;
+    for (std::uint32_t i = 0; i < a.count; ++i) {
+        const auto& x = a.notes[i];
+        const auto& y = b.notes[i];
+        if (x.start != y.start || x.duration != y.duration || x.pitch != y.pitch
+            || x.velocity != y.velocity || x.channel != y.channel) return false;
+    }
+    return true;
+}
+
+oring::MaterialNote materialNote(std::int32_t start, std::int32_t duration, int pitch, int velocity = 100, int channel = 1)
+{
+    oring::MaterialNote note;
+    note.start = start;
+    note.duration = duration;
+    note.pitch = static_cast<std::uint8_t>(pitch);
+    note.velocity = static_cast<std::uint8_t>(velocity);
+    note.channel = static_cast<std::uint8_t>(channel);
+    return note;
+}
+
+void testOneRingCapture()
+{
+    oneRingChecks("one-ring capture notes", [] {
+        const long long beat = 24000;
+        std::vector<TimedMidi> chord{
+            midiAt(0, 0x90, 67, 90), midiAt(0, 0x90, 60, 100), midiAt(0, 0x90, 64, 80),
+            midiAt(beat, 0x80, 60, 0), midiAt(beat, 0x80, 64, 0), midiAt(beat, 0x80, 67, 0)};
+        const auto chordLists = captureTimeline(chord, 480, 1, 5 * beat);
+        expect(chordLists.size() == 1, "one-ring capture: one bar, one capture reported");
+        if (chordLists.size() == 1) {
+            const auto& list = chordLists[0];
+            expect(list.count == 3 && list.length == oring::ticksPerBar, "one-ring capture: a chord is three notes in a bar");
+            expect(list.notes[0].pitch == 60 && list.notes[1].pitch == 64 && list.notes[2].pitch == 67
+                       && list.notes[0].start == 0 && list.notes[2].start == 0,
+                   "one-ring capture: notes of one start are ordered by pitch");
+            expect(list.notes[0].duration == 960 && list.notes[0].velocity == 100 && list.notes[1].velocity == 80
+                       && list.notes[0].channel == 1,
+                   "one-ring capture: a beat long, each with its velocity and channel");
+        }
+
+        std::vector<TimedMidi> same{midiAt(0, 0x92, 60, 100), midiAt(beat / 2, 0x92, 60, 70), midiAt(beat, 0x82, 60, 0)};
+        const auto sameLists = captureTimeline(same, 256, 1, 5 * beat);
+        expect(sameLists.size() == 1 && sameLists[0].count == 2
+                   && sameLists[0].notes[0].start == 0 && sameLists[0].notes[0].duration == 480
+                   && sameLists[0].notes[1].start == 480 && sameLists[0].notes[1].duration == 480
+                   && sameLists[0].notes[1].channel == 3,
+               "one-ring capture: a second Note On on a sounding key ends the first there");
+
+        std::vector<TimedMidi> zero{midiAt(0, 0x90, 62, 90), midiAt(6000, 0x90, 62, 0)};
+        const auto zeroLists = captureTimeline(zero, 480, 1, 5 * beat);
+        expect(zeroLists.size() == 1 && zeroLists[0].count == 1 && zeroLists[0].notes[0].duration == 240,
+               "one-ring capture: a Note On of velocity 0 is a Note Off");
+
+        std::vector<TimedMidi> edges{midiAt(1000, 0x80, 70, 0), midiAt(3 * beat, 0x90, 65, 100),
+                                     midiAt(96000 - 25, 0x90, 74, 100), midiAt(96000, 0x90, 72, 100)};
+        const auto edgeLists = captureTimeline(edges, 1024, 1, 5 * beat);
+        expect(edgeLists.size() == 1 && edgeLists[0].count == 2, "one-ring capture: a Note Off with no Note On, and a note at the window's end, are not taken");
+        if (edgeLists.size() == 1 && edgeLists[0].count == 2) {
+            expect(edgeLists[0].notes[0].pitch == 65 && edgeLists[0].notes[0].start == 2880 && edgeLists[0].notes[0].duration == 960,
+                   "one-ring capture: a note still held ends with the window");
+            expect(edgeLists[0].notes[1].pitch == 74 && edgeLists[0].notes[1].start == 3839 && edgeLists[0].notes[1].duration == 1,
+                   "one-ring capture: a note a tick before the end lasts a tick");
+        }
+    });
+    oneRingChecks("one-ring capture blocks", [] {
+        const long long beat = 24000;
+        std::vector<TimedMidi> phrase;
+        for (int i = 0; i < 24; ++i) {
+            const long long at = static_cast<long long>(i) * beat / 6 + (i % 5) * 7;
+            phrase.push_back(midiAt(at, 0x90 | (i % 3), 48 + (i * 7) % 36, 30 + i * 3));
+            phrase.push_back(midiAt(at + beat / 8 + i, 0x80 | (i % 3), 48 + (i * 7) % 36, 0));
+        }
+        std::sort(phrase.begin(), phrase.end(), [](const TimedMidi& a, const TimedMidi& b) { return a.at < b.at; });
+        const auto reference = captureTimeline(phrase, 480, 2, 9 * beat);
+        bool same = reference.size() == 1 && reference[0].count == 24;
+        for (const int size : {32, 256, 1024, 4096})
+            if (same) {
+                const auto other = captureTimeline(phrase, size, 2, 9 * beat);
+                same = other.size() == 1 && sameNotes(other[0], reference[0]);
+            }
+        expect(same, "one-ring capture: blocks of 32, 256, 480, 1,024 and 4,096 samples capture the same notes");
+    });
+    oneRingChecks("one-ring capture limits", [] {
+        std::vector<TimedMidi> many;
+        for (int i = 0; i < 300; ++i) many.push_back(midiAt(static_cast<long long>(i) * 25, 0x90 | (i % 16), i % 128, 100));
+        std::uint64_t refused = 0;
+        const auto lists = captureTimeline(many, 512, 4, 400000, -1, &refused);
+        expect(lists.size() == 1 && lists[0].count == oring::materialCapacity && refused == 44,
+               "one-ring capture: 256 notes are kept, the 44 more are counted");
+
+        std::vector<TimedMidi> open{midiAt(1000, 0x90, 60, 100)};
+        const auto ended = captureTimeline(open, 480, 0, 200000, 150000);
+        expect(ended.size() == 1 && ended[0].length == 2 * oring::ticksPerBar && ended[0].count == 1
+                   && ended[0].notes[0].duration == (150000 - 1000) / 25,
+               "one-ring capture: with no window, CAPTURE_END ends it, its length rounded up to a bar");
+
+        CaptureRecorder recorder;
+        oring::Capture capture(recorder);
+        capture.begin(480, oneRingBeatsPerSample);
+        capture.arm(0, oring::CaptureMode::Add, 1, 2.0);
+        expect(capture.state() == oring::CaptureState::Armed, "one-ring capture: armed, it waits");
+        capture.finish();
+        capture.begin(480, oneRingBeatsPerSample);
+        capture.end(10);
+        capture.finish();
+        expect(capture.state() == oring::CaptureState::Off && recorder.lists.empty(),
+               "one-ring capture: an armed capture ended is dropped, with nothing reported");
+
+        CaptureRecorder later;
+        oring::Capture waiting(later);
+        const std::vector<TimedMidi> around{midiAt(24000, 0x90, 60, 100), midiAt(60000, 0x90, 62, 100)};
+        std::size_t next = 0;
+        for (long long block = 0; block < 200000; block += 1000) {
+            waiting.begin(1000, oneRingBeatsPerSample);
+            if (block == 0) waiting.arm(0, oring::CaptureMode::Add, 1, 2.0);
+            while (next < around.size() && around[next].at < block + 1000) {
+                const int offset = static_cast<int>(around[next].at - block);
+                waiting.advanceTo(offset);
+                waiting.note(offset, around[next].bytes, 3);
+                ++next;
+            }
+            waiting.finish();
+        }
+        expect(later.lists.size() == 1 && later.modes[0] == oring::CaptureMode::Add && later.lists[0].count == 1
+                   && later.lists[0].notes[0].pitch == 62 && later.lists[0].notes[0].start == 480,
+               "one-ring capture: armed for two beats, it starts there and counts from there");
+    });
+    oneRingChecks("one-ring material", [] {
+        oring::NoteList into;
+        into.add(materialNote(0, 480, 60));
+        into.add(materialNote(960, 480, 64));
+        oring::NoteList from;
+        from.length = 2 * oring::ticksPerBar;
+        from.add(materialNote(0, 240, 60));
+        from.add(materialNote(0, 240, 60, 100, 2));
+        from.add(materialNote(1920, 480, 67));
+        const auto refused = oring::merge(into, from);
+        expect(refused == 0 && into.count == 4 && into.length == 2 * oring::ticksPerBar,
+               "one-ring material: Add skips a note already there, and takes the longer length");
+        expect(into.notes[0].channel == 1 && into.notes[1].channel == 2 && into.notes[3].pitch == 67,
+               "one-ring material: merged notes are ordered");
+
+        oring::Material material;
+        material.origin = into;
+        material.current.add(materialNote(10, 20, 72, 64, 5));
+        material.current.length = 960;
+        material.hasCurrent = true;
+        material.generation = 3;
+        material.frozen = true;
+        const auto back = oring::readMaterial(juce::JSON::parse(juce::JSON::toString(oring::writeMaterial(material))));
+        expect(sameNotes(back.origin, material.origin) && sameNotes(back.current, material.current)
+                   && back.hasCurrent && back.generation == 3 && back.frozen,
+               "one-ring material: written and read back unchanged");
+        const auto plain = oring::readMaterial(juce::JSON::parse(
+            R"({"origin":{"length":3840,"notes":[]},"current":null,"generation":0,"frozen":false})"));
+        expect(!plain.hasCurrent && plain.origin.count == 0, "one-ring material: no current generation reads as none");
+        const char* broken[] = {
+            R"({"origin":{"length":3840,"notes":[{"pitch":60,"velocity":100,"channel":1,"start":3840,"duration":10}]},"current":null,"generation":0,"frozen":false})",
+            R"({"origin":{"length":3840,"notes":[{"pitch":128,"velocity":100,"channel":1,"start":0,"duration":10}]},"current":null,"generation":0,"frozen":false})",
+            R"({"origin":{"length":3840,"notes":[{"pitch":60,"velocity":0,"channel":1,"start":0,"duration":10}]},"current":null,"generation":0,"frozen":false})",
+            R"({"origin":{"length":3840,"notes":[]},"current":null,"generation":0})",
+            R"({"origin":{"length":0,"notes":[]},"current":null,"generation":0,"frozen":false})"};
+        bool refusedAll = true;
+        for (const auto* text : broken) refusedAll = oneRingThrows([&] { oring::readMaterial(juce::JSON::parse(text)); }) && refusedAll;
+        juce::Array<juce::var> tooMany;
+        for (int i = 0; i < 257; ++i)
+            tooMany.add(juce::JSON::parse(R"({"pitch":60,"velocity":100,"channel":1,"start":0,"duration":10})"));
+        auto crowded = juce::JSON::parse(R"({"origin":{"length":3840,"notes":[]},"current":null,"generation":0,"frozen":false})");
+        crowded["origin"].getDynamicObject()->setProperty("notes", tooMany);
+        refusedAll = oneRingThrows([&] { oring::readMaterial(crowded); }) && refusedAll;
+        expect(refusedAll, "one-ring material: a note outside its limits, a missing field or 257 notes are refused");
+
+        auto state = juce::JSON::parse(R"({"version":1,"seed":"1","mutation":"0","selectedScene":0,"sceneTiming":0,"scenePosition":0,"scenes":[]})");
+        const auto withCapture = [&](const char* capture) {
+            auto copy = juce::JSON::parse(juce::JSON::toString(state));
+            juce::Array<juce::var> scenes;
+            juce::var scene(new juce::DynamicObject());
+            scene.getDynamicObject()->setProperty("id", "A");
+            scene.getDynamicObject()->setProperty("name", "Scene A");
+            juce::Array<juce::var> channels;
+            for (int i = 0; i < 16; ++i)
+                channels.add(juce::JSON::parse(R"({"target":{"target":"","command":""},"length":16,"numerator":1,"denominator":16,"mode":0,"repeats":0,"enabled":true,"offset":0,"swing":0,"humanize":0,"mutableFields":7,"steps":[]})"));
+            scene.getDynamicObject()->setProperty("channels", channels);
+            scenes.add(scene);
+            copy.getDynamicObject()->setProperty("scenes", scenes);
+            if (capture != nullptr) copy.getDynamicObject()->setProperty("capture", juce::JSON::parse(capture));
+            return copy;
+        };
+        const auto defaults = oring::readProject(withCapture(nullptr));
+        const auto set = oring::readProject(withCapture(R"({"mode":1,"bars":4})"));
+        expect(defaults.capture.mode == oring::CaptureMode::Replace && defaults.capture.bars == 1
+                   && set.capture.mode == oring::CaptureMode::Add && set.capture.bars == 4,
+               "one-ring material: capture settings read, and a content without them captures a bar, replacing");
+        expect(oneRingThrows([&] { oring::readProject(withCapture(R"({"mode":0,"bars":17})")); }),
+               "one-ring material: a capture longer than 16 bars is refused");
+        const auto registry = oring::withInternalCommands(oring::CommandRegistry{}, defaults);
+        const auto* capture = registry.find("one-ring:memory", "CAPTURE_REPLACE");
+        expect(capture != nullptr && capture->releaseCommand && *capture->releaseCommand == "CAPTURE_END"
+                   && registry.find("one-ring:memory", "REVERT") != nullptr,
+               "one-ring material: the memory's commands are One Ring's own targets, a capture releasing to its end");
+    });
+    oneRingChecks("one-ring runtime capture", [] {
+        OneRingBench bench;
+        auto project = oneRingRuntimeProject();
+        project.scenes[0].channels[0].enabled = false;
+        expect(bench.load(project) && bench.aim(), "one-ring capture: loaded");
+        const auto blockWith = [&](std::initializer_list<std::pair<int, juce::MidiMessage>> events) {
+            juce::MidiBuffer buffer;
+            for (const auto& [offset, message] : events) buffer.addEvent(message, offset);
+            bench.runtime->pushInput(buffer);
+            bench.blocks(1);
+        };
+        expect(bench.runtime->memoryCommand(oring::MemoryCommand::CaptureReplace), "one-ring capture: queued from outside");
+        bench.blocks(1);
+        expect(bench.runtime->status().capture == oring::CaptureState::Capturing,
+               "one-ring capture: with nothing playing, a capture from outside starts at once");
+        bench.blocks(49);
+        blockWith({{0, juce::MidiMessage::noteOn(1, 60, (juce::uint8)100)}});
+        bench.blocks(24);
+        blockWith({{0, juce::MidiMessage::noteOff(1, 60)}});
+        bench.blocks(24);
+        expect(bench.runtime->takeMaterialReport() == nullptr && bench.runtime->status().captured == 1,
+               "one-ring capture: nothing is reported while it runs");
+        bench.runtime->memoryCommand(oring::MemoryCommand::CaptureEnd);
+        bench.blocks(1);
+        const auto* report = bench.runtime->takeMaterialReport();
+        expect(report != nullptr && report->revision == 1 && report->material.origin.count == 1
+                   && report->material.origin.notes[0].start == 960 && report->material.origin.notes[0].duration == 480
+                   && report->material.origin.length == oring::ticksPerBar,
+               "one-ring capture: CAPTURE_END reports the material, the note where it was played");
+        const auto status = bench.runtime->status();
+        expect(status.capture == oring::CaptureState::Off && status.originNotes == 1 && status.materialRevision == 1,
+               "one-ring capture: the status says what the material holds");
+        expect(bench.runtime->takeMaterialReport() == nullptr, "one-ring capture: a report is taken once");
+
+        oring::Material given;
+        given.origin.add(materialNote(0, 960, 48));
+        given.origin.add(materialNote(0, 960, 55));
+        bench.runtime->setMaterial(given);
+        bench.blocks(1);
+        expect(bench.runtime->status().originNotes == 2 && bench.runtime->takeMaterialReport() == nullptr,
+               "one-ring capture: material given by the node's content replaces it and is not echoed back");
+        bench.runtime->memoryCommand(oring::MemoryCommand::Freeze);
+        bench.runtime->memoryCommand(oring::MemoryCommand::Clear);
+        bench.runtime->memoryCommand(oring::MemoryCommand::CaptureAdd);
+        bench.blocks(1);
+        const auto frozen = bench.runtime->status();
+        const auto* frozenReport = bench.runtime->takeMaterialReport();
+        expect(frozen.frozen && frozen.originNotes == 2 && frozen.capture == oring::CaptureState::Off
+                   && frozen.captureRefused == 2 && frozenReport != nullptr && frozenReport->material.frozen,
+               "one-ring capture: frozen material refuses a clear and a capture, and says it is frozen");
+        bench.runtime->memoryCommand(oring::MemoryCommand::Unfreeze);
+        bench.runtime->memoryCommand(oring::MemoryCommand::Clear);
+        bench.blocks(1);
+        const auto* cleared = bench.runtime->takeMaterialReport();
+        expect(cleared != nullptr && cleared->material.origin.count == 0 && !cleared->material.frozen
+                   && bench.runtime->status().originNotes == 0,
+               "one-ring capture: unfrozen, CLEAR empties it");
+    });
+    oneRingChecks("one-ring sequence capture", [] {
+        OneRingBench bench;
+        auto project = oneRingEmptyProject();
+        auto& channel = project.scenes[0].channels[0];
+        channel.enabled = true;
+        channel.target = {"one-ring:memory", "CAPTURE_ADD", {}};
+        channel.length = 4;
+        channel.resolution = {1, 4};
+        channel.repeats = 1;
+        channel.steps[0].enabled = true;
+        expect(bench.load(project) && bench.aim(), "one-ring capture: a sequence that captures is taken");
+        oring::Material given;
+        given.origin.add(materialNote(0, 480, 60));
+        bench.runtime->setMaterial(given);
+        juce::MidiBuffer first;
+        first.addEvent(juce::MidiMessage::noteOn(1, 60, (juce::uint8)100), 0);
+        bench.runtime->pushInput(first);
+        bench.runtime->run();
+        bench.blocks(1);
+        expect(bench.runtime->status().capture == oring::CaptureState::Capturing,
+               "one-ring capture: the step starts the capture on its own beat");
+        bench.blocks(49);
+        juce::MidiBuffer second;
+        second.addEvent(juce::MidiMessage::noteOff(1, 60), 0);
+        bench.runtime->pushInput(second);
+        bench.blocks(50);
+        juce::MidiBuffer third;
+        third.addEvent(juce::MidiMessage::noteOn(1, 64, (juce::uint8)90), 0);
+        bench.runtime->pushInput(third);
+        bench.blocks(120);
+        const auto* report = bench.runtime->takeMaterialReport();
+        expect(report != nullptr && report->material.origin.count == 2
+                   && report->material.origin.notes[0].pitch == 60 && report->material.origin.notes[0].duration == 480
+                   && report->material.origin.notes[1].pitch == 64 && report->material.origin.notes[1].start == 1920,
+               "one-ring capture: the bar ends it, and Add keeps the note already there once");
+    });
+    oneRingChecks("one-ring capture loop", [] {
+        OneRingBench bench;
+        auto project = oneRingRuntimeProject();
+        project.scenes[0].channels[0].enabled = false;
+        project.capture.bars = 2;
+        expect(bench.load(project) && bench.aim(), "one-ring capture: loaded");
+        bench.transport.setLoop(true, 0.0, 1.0);
+        bench.transport.setPlaying(true);
+        bench.runtime->memoryCommand(oring::MemoryCommand::CaptureReplace);
+        juce::MidiBuffer at;
+        at.addEvent(juce::MidiMessage::noteOn(1, 60, (juce::uint8)100), 0);
+        bench.runtime->pushInput(at);
+        bench.blocks(1);
+        bench.blocks(49);
+        juce::MidiBuffer again;
+        again.addEvent(juce::MidiMessage::noteOn(1, 62, (juce::uint8)100), 0);
+        bench.runtime->pushInput(again);
+        bench.blocks(1);
+        expect(bench.transport.ppqPosition() < 0.1, "one-ring capture: the arrangement wrapped");
+        bench.blocks(400);
+        const auto* report = bench.runtime->takeMaterialReport();
+        expect(report != nullptr && report->material.origin.count == 2
+                   && report->material.origin.notes[0].start == 0 && report->material.origin.notes[1].start == 960
+                   && report->material.origin.length == 2 * oring::ticksPerBar,
+               "one-ring capture: a loop wrap does not fold the second note onto the first");
+    });
+}
+
+struct RecordingProcessors final : mlh::MidiProcessorInput {
+    std::vector<std::pair<std::string, int>> received;
+    bool pushInputBuffer(const std::string& nodeId, const juce::MidiBuffer& buffer) noexcept override
+    {
+        for (const auto& event : buffer)
+            if (event.getMessage().isNoteOn()) received.emplace_back(nodeId, event.getMessage().getNoteNumber());
+        return true;
+    }
+};
+
+void testSequencerFeedsOneRing()
+{
+    // A track whose Destination is a One Ring node plays into that node's
+    // capture, at its samples, as a track plays into an arpeggiator.
+    mlh::SequencerEngine sequencer;sequencer.prepare(48000,1024);
+    auto track=midiTrack("track-ring","one-ring-7");mlh::setProp(track,"outputKind","one-ring");
+    juce::Array<juce::var> notes;notes.add(midiNote(0,.5,57));replaceMidiNotes(track,notes);
+    juce::Array<juce::var> tracks;tracks.add(track);juce::Array<juce::var> info;std::string error;
+    int chains=0;
+    expect(sequencer.sync(makeSequencerProject(tracks),[&](const std::string&){++chains;return (mlh::Chain*)nullptr;},48000,1024,info,error),
+           "a track aimed at a One Ring node compiles");
+    expect(chains==0,"a One Ring destination is not taken for a plugin chain");
+    mlh::Transport transport;transport.setSampleRate(48000);transport.setPlaying(true);transport.beginBlock();
+    RecordingProcessors processors;
+    sequencer.processMidi(1024,transport,nullptr,nullptr,0,&processors);
+    expect(processors.received.size()==1&&processors.received[0].first=="one-ring-7"&&processors.received[0].second==57,
+           "the track's notes reach the One Ring node by its id");
+}
+
 } // namespace
 
 int main(int argc, char** argv)
@@ -2824,6 +3244,10 @@ int main(int argc, char** argv)
     testOneRingStateJson();
     std::cerr << "[core] one-ring-runtime\n";
     testOneRingRuntime();
+    std::cerr << "[core] one-ring-capture\n";
+    testOneRingCapture();
+    std::cerr << "[core] sequencer-feeds-one-ring\n";
+    testSequencerFeedsOneRing();
     }
     if (runVst3) testRealVst3SequencerPlaybackArpAndMasterExport();
     if (runCrossTrack) crossTrackLevelIsolation();

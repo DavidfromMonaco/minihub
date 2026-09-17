@@ -26,6 +26,9 @@ class EventSink {
 public:
     virtual ~EventSink() = default;
     virtual bool send(const Event&) noexcept = 0;
+    // The clock is about to play what falls on `beat`: what the sink keeps in
+    // time with it -- the notes a capture takes -- is brought up to there first.
+    virtual void reach(double) noexcept {}
 };
 
 struct ChannelState {
@@ -97,7 +100,10 @@ private:
 };
 
 // The external registry plus One Ring's own targets: each channel's START,
-// STOP, RESTART, RESET, TOGGLE, ENABLE and DISABLE, and the scene recall.
+// STOP, RESTART, RESET, TOGGLE, ENABLE and DISABLE, the scene recall, and the
+// material's commands (`one-ring:memory`).
 CommandRegistry withInternalCommands(const CommandRegistry&, const Project&);
+
+extern const std::string memoryTarget;
 
 } // namespace mlh::one_ring

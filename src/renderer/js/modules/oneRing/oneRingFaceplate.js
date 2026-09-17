@@ -1,7 +1,7 @@
 import { escapeHtml } from '../../core/html.js';
 import { VALUE_TYPE } from '../../core/commandRegistry.js';
 import {
-  CHANNEL_COUNT, CHANNEL_TARGET_PREFIX, LENGTHS, MAX_STEPS, MUTABLE, OFFSET_LIMIT, REPEATS, RESOLUTIONS,
+  CHANNEL_COUNT, CHANNEL_TARGET_PREFIX, LENGTHS, MAX_STEPS, MEMORY_TARGET, MUTABLE, OFFSET_LIMIT, REPEATS, RESOLUTIONS,
   SCENES_TARGET, SCENE_POSITION, SCENE_TIMING, STEP_MODE, VALUE_MODE, cellsOf
 } from '../../core/oneRingSequence.js';
 import {
@@ -35,13 +35,17 @@ const glyphs = {
 const pad2 = (n) => String(n).padStart(2, '0');
 export const channelName = (index) => `CH ${pad2(index + 1)}`;
 const act = (name, arg) => `data-ring-act="${name}"${arg === undefined ? '' : ` data-ring-arg="${escapeHtml(arg)}"`}`;
-const titleCase = (text) => String(text).charAt(0).toUpperCase() + String(text).slice(1).toLowerCase();
+const titleCase = (text) => {
+  const words = String(text).replace(/_/g, ' ');
+  return words.charAt(0).toUpperCase() + words.slice(1).toLowerCase();
+};
 
 // ---------- targets ----------
 
 /** How the page names a target: One Ring's own the way its panel reads, the others by their node. */
 export function targetLabel(target) {
   if (target.id === SCENES_TARGET) return 'One Ring · Scenes';
+  if (target.id === MEMORY_TARGET) return 'One Ring · Memory';
   if (target.id.startsWith(CHANNEL_TARGET_PREFIX)) {
     return `One Ring · ${channelName(Number(target.id.slice(CHANNEL_TARGET_PREFIX.length)) - 1)}`;
   }
@@ -49,7 +53,7 @@ export function targetLabel(target) {
 }
 
 export function commandLabel(target, descriptor) {
-  return target && (target.id === SCENES_TARGET || target.id.startsWith(CHANNEL_TARGET_PREFIX))
+  return target && (target.id === SCENES_TARGET || target.id === MEMORY_TARGET || target.id.startsWith(CHANNEL_TARGET_PREFIX))
     ? titleCase(descriptor.label)
     : descriptor.label;
 }
