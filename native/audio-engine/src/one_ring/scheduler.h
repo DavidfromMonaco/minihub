@@ -70,6 +70,8 @@ public:
     bool playing() const noexcept { return playing_; }
     std::uint64_t rejected() const noexcept { return rejected_; }
     std::uint64_t cycleGuards() const noexcept { return cycleGuards_; }
+    // How many recalls have played: a recall of the scene already playing counts.
+    std::uint64_t recalls() const noexcept { return recalls_; }
 
 private:
     const Project* project_ = nullptr;
@@ -86,7 +88,7 @@ private:
     double barBeats_ = 4;
     std::size_t pendingScene_ = 0;
     double pendingSceneBeat_ = -1;
-    std::uint64_t rejected_ = 0, cycleGuards_ = 0;
+    std::uint64_t rejected_ = 0, cycleGuards_ = 0, recalls_ = 0;
 
     const Channel& channel(std::size_t i) const noexcept;
     void beginTick(double) noexcept;
@@ -105,5 +107,7 @@ private:
 CommandRegistry withInternalCommands(const CommandRegistry&, const Project&);
 
 extern const std::string memoryTarget;
+// `one-ring:voice:1` to `one-ring:voice:4`: the voice, from 0, or false.
+bool voiceTarget(const std::string& target, std::size_t& voice) noexcept;
 
 } // namespace mlh::one_ring

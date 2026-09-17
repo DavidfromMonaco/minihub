@@ -296,13 +296,29 @@ private:
     // callback reads an immutable list of the same runtimes, republished when a
     // node comes or goes. A removed runtime waits in `retiredOneRings_` until an
     // interval with no reader, like an old audio plan.
+    // Where a node's MIDI OUT is cabled, as the MIDI network names it.
+    struct OneRingOutput {
+        enum class Kind { chain, processor, hardware };
+        std::string id;
+        Kind kind = Kind::chain;
+        bool operator==(const OneRingOutput& other) const noexcept { return id == other.id && kind == other.kind; }
+    };
     struct OneRingNode {
         std::unique_ptr<one_ring::Runtime> runtime;
         juce::int64 generation = 0;
         one_ring::Status lastStatus;
         bool statusSent = false;
         double statusSentAtMs = 0.0;
+        std::vector<OneRingOutput> outputs;
+        bool outputsSent = false;
     };
+    // A removed node plays on until the callback has ended its notes.
+    struct DrainingOneRing {
+        std::string id;
+        std::unique_ptr<one_ring::Runtime> runtime;
+        double sinceMs = 0.0;
+    };
+    void applyOneRingOutputs(const juce::String& nodeId, OneRingNode& node);
     struct OneRingSet {
         struct Entry {
             std::string id;
@@ -328,6 +344,8 @@ private:
         const OneRingSet* set_;
     };
     std::map<juce::String, OneRingNode> oneRings_;
+    std::vector<DrainingOneRing> drainingOneRings_;
+    std::map<juce::String, std::vector<OneRingOutput>> oneRingOutputs_;
     std::vector<std::unique_ptr<OneRingSet>> oneRingSets_;
     std::vector<std::unique_ptr<one_ring::Runtime>> retiredOneRings_;
     std::atomic<OneRingSet*> activeOneRingSet_ { nullptr };

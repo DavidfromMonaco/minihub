@@ -13,6 +13,43 @@ const char* channelPrefix = "one-ring:channel:";
 
 const std::string memoryTarget = "one-ring:memory";
 
+namespace {
+const char* voicePrefix = "one-ring:voice:";
+const char* rootNames[] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
+const char* scaleNames[] = {"Chromatic", "Major / Ionian", "Natural Minor / Aeolian", "Harmonic Minor", "Dorian",
+                            "Phrygian", "Lydian", "Mixolydian", "Locrian", "Major Pentatonic", "Minor Pentatonic"};
+
+CommandDescriptor whole(const char* id, int minimum, int maximum)
+{
+    CommandDescriptor command;
+    command.id = command.label = id;
+    command.type = ValueType::Integer;
+    command.minimum = minimum;
+    command.maximum = maximum;
+    command.domain = ExecutionDomain::Audio;
+    return command;
+}
+
+CommandDescriptor named(const char* id, const char* const* labels, int count)
+{
+    CommandDescriptor command;
+    command.id = command.label = id;
+    command.type = ValueType::Enumeration;
+    command.domain = ExecutionDomain::Audio;
+    for (int i = 0; i < count; ++i) command.choices.push_back({EnumValue{i}, labels[i]});
+    return command;
+}
+} // namespace
+
+bool voiceTarget(const std::string& target, std::size_t& voice) noexcept
+{
+    if (target.size() != 16 || target.compare(0, 15, voicePrefix) != 0) return false;
+    const char digit = target[15];
+    if (digit < '1' || digit > '0' + static_cast<char>(voiceCount)) return false;
+    voice = static_cast<std::size_t>(digit - '1');
+    return true;
+}
+
 CommandRegistry withInternalCommands(const CommandRegistry& external, const Project& project)
 {
     CommandRegistry registry = external;
@@ -49,6 +86,28 @@ CommandRegistry withInternalCommands(const CommandRegistry& external, const Proj
     memory.commands[0].releaseCommand = "CAPTURE_END";
     memory.commands[1].releaseCommand = "CAPTURE_END";
     registry.registerModule(std::move(memory));
+    for (std::size_t v = 0; v < voiceCount; ++v) {
+        ModuleDescriptor voice;
+        voice.id = std::string(voicePrefix) + std::to_string(v + 1);
+        voice.label = "One Ring Voice " + std::to_string(v + 1);
+        voice.commands.push_back(whole("PLAY", -1, 63));
+        auto note = whole("NOTE", 0, 255);
+        // A Legato channel ties a note over the steps that repeat its value.
+        note.releaseCommand = "NOTE_OFF";
+        voice.commands.push_back(note);
+        CommandDescriptor off;
+        off.id = off.label = "NOTE_OFF";
+        off.domain = ExecutionDomain::Audio;
+        voice.commands.push_back(off);
+        voice.commands.push_back(whole("TRANSPOSE", -48, 48));
+        voice.commands.push_back(whole("OCTAVE", -3, 3));
+        voice.commands.push_back(named("ROOT", rootNames, 12));
+        voice.commands.push_back(named("SCALE", scaleNames, 11));
+        voice.commands.push_back(whole("VELOCITY", 0, 200));
+        voice.commands.push_back(whole("GATE", 5, 400));
+        voice.commands.push_back(whole("DENSITY", 0, 100));
+        registry.registerModule(std::move(voice));
+    }
     return registry;
 }
 
@@ -312,6 +371,7 @@ void Scheduler::applyScene(std::size_t index, double beat) noexcept
 {
     if (sceneChangedThisTick_) { ++cycleGuards_; return; }
     sceneChangedThisTick_ = true;
+    ++recalls_;
     std::array<double, channelCount> remaining{};
     for (std::size_t i = 0; i < channelCount; ++i) {
         remaining[i] = std::max(0.0, states_[i].due - beat) / channel(i).resolution.beats();

@@ -15,7 +15,8 @@ namespace mlh::one_ring {
 constexpr std::size_t channelCount = 16;
 constexpr std::size_t maximumSteps = 64;
 
-enum class RandomStream : std::uint64_t { Probability = 1, Value, Mutation, Humanize };
+// Part two's streams come after the VST's four, so a saved seed draws what it drew.
+enum class RandomStream : std::uint64_t { Probability = 1, Value, Mutation, Humanize, Voice, Order };
 
 struct RandomKey {
     std::uint64_t seed = 0;

@@ -69,7 +69,8 @@ function oneRingStatusOf(hub, nodeId) {
     refused: status?.rejected ?? 0,
     guarded: status?.guarded ?? 0,
     lastRefusal: hub.oneRing?.refusalOf?.(nodeId) ?? '',
-    capture: status?.capture ?? 'off'
+    capture: status?.capture ?? 'off',
+    sounding: status?.sounding ?? [0, 0, 0, 0]
   };
 }
 

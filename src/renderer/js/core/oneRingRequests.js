@@ -1,7 +1,8 @@
 import { VALUE_TYPE } from './commandRegistry.js';
 import {
   CAPTURE_MODE, CHANNEL_COMMANDS, CHANNEL_COUNT, CONDITION, LENGTHS, MAX_CAPTURE_BARS, MAX_MATERIAL_TICKS, MAX_STEPS,
-  MUTABLE, OFFSET_LIMIT, REPEATS, RESOLUTIONS, SCENE_POSITION, SCENE_TIMING, STEP_MODE, TICKS_PER_BEAT, VALUE_MODE,
+  MUTABLE, NOTE_ORDER, OFFSET_LIMIT, REPEATS, RESOLUTIONS, ROOT_NAMES, SCALE_NAMES, SCENE_POSITION, SCENE_TIMING,
+  STEP_MODE, TICKS_PER_BEAT, VALUE_MODE, VOICE_COUNT, VOICE_RULES, setVoice, voiceValid,
   cellsOf, clearCells, clearMaterial, defaultSource, emptyCell, loadMaterial, mutateSequence, noteListFromClip,
   oneRingTargets, parseSeed, readNoteList, readSequence, reseed, retarget, revertMaterial, sequenceErrors,
   setCaptureSettings, setFrozen, storeScene
@@ -40,11 +41,18 @@ import {
  * does, whatever the engine is doing. `capture` and `capture-end` go to the
  * runtime: a capture asked here waits for the next bar of what plays. Notes are
  * written in quarter notes, as a clip's are; the node keeps them in ticks.
+ *
+ * THE VOICES
+ * ----------
+ * `voices` reads a scene's four voices' rules, and what the running node plays
+ * by now; `set-voice` edits one voice's rules as the page does. A channel plays
+ * notes by aiming at `one-ring:voice:N`, through `set`, like any command.
  */
 
 export const REQUEST_KINDS = Object.freeze([
   'describe', 'status', 'targets', 'get', 'set', 'run', 'stop', 'channel', 'scene', 'copy-scene', 'mutate', 'new-seed',
-  'material', 'set-material', 'capture', 'capture-end', 'clear', 'freeze', 'unfreeze', 'revert'
+  'material', 'set-material', 'capture', 'capture-end', 'clear', 'freeze', 'unfreeze', 'revert',
+  'voices', 'set-voice'
 ]);
 
 const TYPE_NAMES = Object.freeze(['none', 'boolean', 'integer', 'number', 'choice']);
@@ -52,6 +60,12 @@ const FIELD_BITS = Object.freeze({ enabled: MUTABLE.enabled, probability: MUTABL
 const TIMING_NAMES = Object.freeze({ [SCENE_TIMING.immediate]: 'immediate', [SCENE_TIMING.nextBar]: 'next-bar' });
 const POSITION_NAMES = Object.freeze({ [SCENE_POSITION.restart]: 'restart', [SCENE_POSITION.keep]: 'keep' });
 const CAPTURE_NAMES = Object.freeze({ [CAPTURE_MODE.replace]: 'replace', [CAPTURE_MODE.add]: 'add' });
+const ORDER_NAMES = Object.freeze({
+  [NOTE_ORDER.asPlayed]: 'as-played', [NOTE_ORDER.rising]: 'rising',
+  [NOTE_ORDER.falling]: 'falling', [NOTE_ORDER.shuffled]: 'shuffled'
+});
+// A voice as a request writes it: names where the page shows names, durations in quarter notes.
+const TICK_RULES = new Set(['shortest', 'longest']);
 // Far beyond any loop a sequence reaches, and far inside the engine's 32 bits.
 const MAX_INTERVAL = 9999;
 
@@ -65,6 +79,11 @@ const VALUES = Object.freeze({
     + 'material\'s start; a material lasts lengthPpq, at most 256 quarter notes, and keeps at most 256 notes',
   capture: '{"mode": "replace" or "add", "bars": 1-16, or 0 until capture-end}; a capture asked here starts at '
     + 'the next bar of what plays, or at once when nothing plays',
+  voice: 'channel 0-16 (0 keeps each note\'s own), root "C".."B", scale by name, transpose -48..48, octave -3..3, '
+    + 'octaveSpread 0-3, octaveChance 0-100, low/high 0-127, velocityScale 0-200, velocitySpread 0-127, '
+    + 'velocityLow/velocityHigh 1-127, gateScale 5-400, gateSpread 0-100, shortestPpq/longestPpq 0.0625-64, '
+    + 'order "as-played" "rising" "falling" "shuffled", density 0-100; a channel aimed at one-ring:voice:1-4 '
+    + 'plays notes: PLAY -1..63 (a slot of the material, -1 its own), NOTE 0-255 (a note, in the voice\'s order)',
   channel: 'channel 1-16, target, command, length 4/8/16/32/64, resolution "1/4" "1/8" "1/16" "1/32", '
     + 'repeats 1/2/3/4/8 or "loop", mode "trigger" or "legato", enabled, offset -64 to 64 steps, '
     + 'swing 0-95 and humanize 0-45 (percent), mutable ["enabled", "probability", "value"], '
@@ -356,6 +375,54 @@ function materialAnswer(content, status) {
     frozen: material.frozen,
     refused: status?.captureRefused ?? 0
   };
+}
+
+function voiceOut(voice) {
+  const out = {};
+  for (const rule of Object.keys(VOICE_RULES)) {
+    if (rule === 'root') out.root = ROOT_NAMES[voice.root];
+    else if (rule === 'scale') out.scale = SCALE_NAMES[voice.scale];
+    else if (rule === 'order') out.order = ORDER_NAMES[voice.order];
+    else if (TICK_RULES.has(rule)) out[`${rule}Ppq`] = voice[rule] / TICKS_PER_BEAT;
+    else out[rule] = voice[rule];
+  }
+  return out;
+}
+
+function voiceFrom(raw, current, path) {
+  if (!isObject(raw)) refuse(path, VALUES.voice);
+  const next = { ...current };
+  const named = (key, names) => {
+    const index = typeof raw[key] === 'string'
+      ? names.findIndex((name) => name.toLowerCase() === raw[key].toLowerCase()) : raw[key];
+    if (!Number.isInteger(index) || index < 0 || index >= names.length) {
+      refuse(`${path}.${key}`, `one of ${names.map((name) => JSON.stringify(name)).join(', ')}`);
+    }
+    return index;
+  };
+  for (const key of Object.keys(raw)) {
+    if (key === 'voice' || key === 'scene' || key === 'kind') continue;
+    if (key === 'root') next.root = named('root', ROOT_NAMES);
+    else if (key === 'scale') next.scale = named('scale', SCALE_NAMES);
+    else if (key === 'order') next.order = named('order', Object.values(ORDER_NAMES));
+    else if (key === 'shortestPpq' || key === 'longestPpq') {
+      const rule = key.slice(0, -3);
+      if (!Number.isFinite(raw[key])) refuse(`${path}.${key}`, 'a duration in quarter notes');
+      next[rule] = Math.round(raw[key] * TICKS_PER_BEAT);
+      const { min, max } = VOICE_RULES[rule];
+      if (next[rule] < min || next[rule] > max) refuse(`${path}.${key}`, `from ${min / TICKS_PER_BEAT} to ${max / TICKS_PER_BEAT}`);
+    } else if (Object.hasOwn(VOICE_RULES, key) && !TICK_RULES.has(key)) {
+      const { min, max } = VOICE_RULES[key];
+      if (!Number.isInteger(raw[key]) || raw[key] < min || raw[key] > max) {
+        refuse(`${path}.${key}`, `a whole number from ${min} to ${max}`);
+      }
+      next[key] = raw[key];
+    } else {
+      refuse(`${path}.${key}`, `not a voice rule: ${VALUES.voice}`);
+    }
+  }
+  if (!voiceValid(next)) refuse(path, 'a lowest above its highest');
+  return next;
 }
 
 function statusAnswer(hub, nodeId, context) {
@@ -681,6 +748,31 @@ export async function handleOneRingRequest(hub, nodeId, body) {
           freeze: (held) => setFrozen(held, true), unfreeze: (held) => setFrozen(held, false) }[kind];
         write(hub, nodeId, context, edit(content));
         return materialAnswer(hub.nodes.get(nodeId).content, context.status);
+      }
+      case 'voices': {
+        const scene = body.scene === undefined ? context.scene : sceneAt(content, body.scene, 'scene');
+        const live = context.status?.voices ?? null;
+        return {
+          ok: true,
+          scene: sceneOut(content, scene),
+          voices: content.scenes[scene].voices.map(voiceOut),
+          playing: live && scene === context.scene ? live.map(voiceOut) : null,
+          sounding: context.status?.sounding ?? Array(VOICE_COUNT).fill(0),
+          refused: context.status?.notesRefused ?? 0
+        };
+      }
+      case 'set-voice': {
+        const scene = body.scene === undefined ? context.scene : sceneAt(content, body.scene, 'scene');
+        const index = Number.isInteger(body.voice) && body.voice >= 1 && body.voice <= VOICE_COUNT
+          ? body.voice - 1 : refuse('voice', `a voice from 1 to ${VOICE_COUNT}`);
+        const next = voiceFrom(body, content.scenes[scene].voices[index], 'voice');
+        const written = write(hub, nodeId, context, setVoice(content, scene, index, next));
+        return {
+          ok: true,
+          changed: written,
+          scene: sceneOut(content, scene),
+          voice: voiceOut(hub.nodes.get(nodeId).content.scenes[scene].voices[index])
+        };
       }
       case 'new-seed': {
         let seed;

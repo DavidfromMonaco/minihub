@@ -21,6 +21,8 @@ Project readProject(const juce::var& state);
 // one. Throws std::invalid_argument naming what it cannot read.
 Material readMaterial(const juce::var& material);
 juce::var writeMaterial(const Material& material);
+// A scene's four voices, as the content keeps them.
+juce::var writeVoices(const std::array<VoiceRules, voiceCount>& voices);
 
 // What a node's CTRL OUT is cabled to, as CommandBus publishes it:
 // `{ version: 1, revision, modules: [{ id, label, commands: [...] }] }`.

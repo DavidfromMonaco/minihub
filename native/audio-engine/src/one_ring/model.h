@@ -6,6 +6,7 @@
 
 #include "generative.h"
 #include "material.h"
+#include "voices.h"
 
 #include <string>
 
@@ -56,6 +57,8 @@ struct Scene {
     std::string id;
     std::string name;
     std::array<Channel, channelCount> channels{};
+    // Part two: what each voice does to the material while this scene plays.
+    std::array<VoiceRules, voiceCount> voices{};
 };
 
 struct Project {

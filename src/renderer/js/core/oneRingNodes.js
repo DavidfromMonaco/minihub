@@ -1,4 +1,4 @@
-import { CHANNEL_COMMANDS, CHANNEL_COUNT, MEMORY_COMMANDS, readMaterial } from './oneRingSequence.js';
+import { CHANNEL_COMMANDS, CHANNEL_COUNT, MEMORY_COMMANDS, VOICE_COUNT, readMaterial, voiceValid } from './oneRingSequence.js';
 
 /**
  * The project's One Ring nodes, as the engine runs them.
@@ -40,7 +40,7 @@ const MAX_REFUSALS_LOGGED = 20;
 const sentKey = (content) => JSON.stringify({ ...content, selectedScene: null, material: null });
 const CAPTURE_STATES = Object.freeze(['off', 'armed', 'capturing']);
 
-function readStatus(msg) {
+function readStatus(msg, previous) {
   const list = (value, check, fallback) => Array.from({ length: CHANNEL_COUNT },
     (_, i) => (Array.isArray(value) && check(value[i]) ? value[i] : fallback));
   const count = (value) => (Number.isSafeInteger(value) && value >= 0 ? value : 0);
@@ -62,7 +62,12 @@ function readStatus(msg) {
     currentNotes: count(msg.currentNotes),
     hasCurrent: msg.hasCurrent === true,
     frozen: msg.frozen === true,
-    materialGeneration: count(msg.materialGeneration)
+    materialGeneration: count(msg.materialGeneration),
+    sounding: Array.from({ length: VOICE_COUNT }, (_, v) => count(msg.sounding?.[v])),
+    notesRefused: count(msg.notesRefused),
+    // Sent only when they moved: otherwise the ones last sent still hold.
+    voices: Array.isArray(msg.voices) && msg.voices.length === VOICE_COUNT && msg.voices.every(voiceValid)
+      ? msg.voices : previous?.voices ?? null
   };
 }
 
@@ -274,7 +279,7 @@ export class OneRingNodes {
 
   _acceptStatus(msg) {
     if (!this.isOneRing(msg?.nodeId) || msg.generation !== this._generations.get(msg.nodeId)) return;
-    const status = readStatus(msg);
+    const status = readStatus(msg, this._statuses.get(msg.nodeId));
     this._statuses.set(msg.nodeId, status);
     this.hub.events.emit('oneRing:status', { nodeId: msg.nodeId, status });
     this._keepScene(msg.nodeId, status.scene);

@@ -1,4 +1,5 @@
 import { VALUE_TYPE } from './commandRegistry.js';
+import { ARP_SCALES } from './arpeggiatorState.js';
 import { OneRingRandom, RANDOM_STREAM } from './oneRingRandom.js';
 
 /**
@@ -34,6 +35,10 @@ import { OneRingRandom, RANDOM_STREAM } from './oneRingRandom.js';
  * in ticks, 960 to the quarter as the Sequencer counts, and a list is ordered
  * by start, pitch and channel, as the engine orders it, so the same notes read
  * the same on both sides. None of it is in the VST's state.
+ *
+ * Each scene also holds four voices' rules (native one_ring/voices.h): what a
+ * voice does to the material's notes while the scene plays. A channel aimed at
+ * `one-ring:voice:N` plays notes through that voice.
  */
 
 export const CHANNEL_COUNT = 16;
@@ -69,6 +74,45 @@ export const MATERIAL_CAPACITY = 256;
 export const MAX_MATERIAL_TICKS = 64 * TICKS_PER_BAR;
 export const MAX_CAPTURE_BARS = 16;
 export const CAPTURE_MODE = Object.freeze({ replace: 0, add: 1 });
+
+export const VOICE_COUNT = 4;
+export const VOICE_TARGET_PREFIX = 'one-ring:voice:';
+export const NOTE_ORDER = Object.freeze({ asPlayed: 0, rising: 1, falling: 2, shuffled: 3 });
+export const ROOT_NAMES = Object.freeze(['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']);
+/** The Arpeggiator's scales, in its order: one table for both. */
+export const SCALE_NAMES = Object.freeze(Object.keys(ARP_SCALES));
+export const SHORTEST_DURATION = TICKS_PER_BEAT / 16;
+export const LONGEST_DURATION = 64 * TICKS_PER_BEAT;
+
+/**
+ * A voice's rules, their ranges and what changes nothing, in the order the
+ * engine writes them.
+ */
+export const VOICE_RULES = Object.freeze({
+  channel: { min: 0, max: 16, neutral: 0 },
+  root: { min: 0, max: 11, neutral: 0 },
+  scale: { min: 0, max: SCALE_NAMES.length - 1, neutral: 0 },
+  transpose: { min: -48, max: 48, neutral: 0 },
+  octave: { min: -3, max: 3, neutral: 0 },
+  octaveSpread: { min: 0, max: 3, neutral: 0 },
+  octaveChance: { min: 0, max: 100, neutral: 0 },
+  low: { min: 0, max: 127, neutral: 0 },
+  high: { min: 0, max: 127, neutral: 127 },
+  velocityScale: { min: 0, max: 200, neutral: 100 },
+  velocitySpread: { min: 0, max: 127, neutral: 0 },
+  velocityLow: { min: 1, max: 127, neutral: 1 },
+  velocityHigh: { min: 1, max: 127, neutral: 127 },
+  gateScale: { min: 5, max: 400, neutral: 100 },
+  gateSpread: { min: 0, max: 100, neutral: 0 },
+  shortest: { min: SHORTEST_DURATION, max: LONGEST_DURATION, neutral: SHORTEST_DURATION },
+  longest: { min: SHORTEST_DURATION, max: LONGEST_DURATION, neutral: LONGEST_DURATION },
+  order: { min: 0, max: 3, neutral: NOTE_ORDER.asPlayed },
+  density: { min: 0, max: 100, neutral: 100 }
+});
+
+export const VOICE_COMMANDS = Object.freeze([
+  'PLAY', 'NOTE', 'NOTE_OFF', 'TRANSPOSE', 'OCTAVE', 'ROOT', 'SCALE', 'VELOCITY', 'GATE', 'DENSITY'
+]);
 
 const UINT64_MAX = (1n << 64n) - 1n;
 const INT32_MIN = -2147483648;
@@ -110,6 +154,12 @@ export function emptyMaterial() {
 
 export const defaultCapture = () => ({ mode: CAPTURE_MODE.replace, bars: 1 });
 
+export function defaultVoice() {
+  return Object.fromEntries(Object.entries(VOICE_RULES).map(([rule, { neutral }]) => [rule, neutral]));
+}
+
+export const defaultVoices = () => Array.from({ length: VOICE_COUNT }, defaultVoice);
+
 /** What One Ring holds when it is first loaded: four empty scenes, seed 1. */
 export function createSequence() {
   return {
@@ -122,7 +172,8 @@ export function createSequence() {
     scenes: SCENE_IDS.map((id) => ({
       id,
       name: `Scene ${id}`,
-      channels: Array.from({ length: CHANNEL_COUNT }, emptyChannel)
+      channels: Array.from({ length: CHANNEL_COUNT }, emptyChannel),
+      voices: defaultVoices()
     })),
     capture: defaultCapture(),
     material: emptyMaterial()
@@ -284,6 +335,28 @@ export function readMaterial(raw) {
   };
 }
 
+/** Is every rule of `voice` in its range, the lows under the highs? */
+export function voiceValid(voice) {
+  return isObject(voice)
+    && Object.entries(VOICE_RULES).every(([rule, { min, max }]) => wholeIn(voice[rule], min, max))
+    && voice.low <= voice.high && voice.velocityLow <= voice.velocityHigh && voice.shortest <= voice.longest;
+}
+
+function readVoices(raw, path) {
+  if (raw === undefined) return defaultVoices();
+  if (!Array.isArray(raw) || raw.length !== VOICE_COUNT) fail(`${path}: a scene has four voices`);
+  return raw.map((item, v) => {
+    if (!isObject(item)) fail(`${path}[${v}]: a voice is an object`);
+    const voice = Object.fromEntries(Object.entries(VOICE_RULES).map(([rule, { min, max, neutral }]) => {
+      const value = item[rule] ?? neutral;
+      if (!wholeIn(value, min, max)) fail(`${path}[${v}].${rule}: a whole number from ${min} to ${max}`);
+      return [rule, value];
+    }));
+    if (!voiceValid(voice)) fail(`${path}[${v}]: a lowest above its highest`);
+    return voice;
+  });
+}
+
 function readCapture(raw) {
   if (raw === undefined) return defaultCapture();
   if (!isObject(raw)) fail('capture: an object');
@@ -321,7 +394,8 @@ export function readSequence(raw) {
     return {
       id: String(scene.id ?? ''),
       name: String(scene.name ?? ''),
-      channels: scene.channels.map((channel, c) => readChannel(channel, `scenes[${s}].channels[${c}]`))
+      channels: scene.channels.map((channel, c) => readChannel(channel, `scenes[${s}].channels[${c}]`)),
+      voices: readVoices(scene.voices, `scenes[${s}].voices`)
     };
   });
   const selectedScene = Number(raw.selectedScene);
@@ -472,10 +546,31 @@ export function oneRingTargets(content) {
     id, label: id, type: VALUE_TYPE.none,
     ...(id === 'CAPTURE_REPLACE' || id === 'CAPTURE_ADD' ? { releaseCommand: 'CAPTURE_END' } : {})
   }]));
+  const whole = (id, minimum, maximum, extra = {}) => ({ id, label: id, type: VALUE_TYPE.integer, minimum, maximum, ...extra });
+  const named = (id, names) => ({ id, label: id, type: VALUE_TYPE.choice, choices: names.map((label, i) => ({ id: i, label })) });
+  const voiceCommands = () => new Map([
+    whole('PLAY', -1, 63),
+    // A Legato channel ties a note over the steps that repeat its value.
+    whole('NOTE', 0, 255, { releaseCommand: 'NOTE_OFF' }),
+    { id: 'NOTE_OFF', label: 'NOTE_OFF', type: VALUE_TYPE.none },
+    whole('TRANSPOSE', -48, 48),
+    whole('OCTAVE', -3, 3),
+    named('ROOT', ROOT_NAMES),
+    named('SCALE', SCALE_NAMES),
+    whole('VELOCITY', 0, 200),
+    whole('GATE', 5, 400),
+    whole('DENSITY', 0, 100)
+  ].map((command) => [command.id, command]));
+  const voices = Array.from({ length: VOICE_COUNT }, (_, v) => ({
+    id: `${VOICE_TARGET_PREFIX}${v + 1}`,
+    label: `One Ring Voice ${v + 1}`,
+    commands: voiceCommands()
+  }));
   return [
     ...channels,
     { id: SCENES_TARGET, label: 'One Ring Scenes', commands: new Map([['RECALL', recall]]) },
-    { id: MEMORY_TARGET, label: 'One Ring Memory', commands: memory }
+    { id: MEMORY_TARGET, label: 'One Ring Memory', commands: memory },
+    ...voices
   ];
 }
 
@@ -568,6 +663,9 @@ export function sequenceErrors(content, find) {
       for (const action of channel.follow) {
         if (!actionValid(action, action.value)) errors.add('Invalid follow action');
       }
+    }
+    for (const voice of scene.voices ?? []) {
+      if (!voiceValid(voice)) errors.add('Invalid voice rules');
     }
   }
   return [...errors];
@@ -703,15 +801,38 @@ export function reseed(content, seed) {
   return { ...content, seed: value, mutation: '0' };
 }
 
-/** STORE SCENE: one scene's sixteen channels copied into another; ids and names stay. */
+/** STORE SCENE: one scene's sixteen channels and four voices copied into another; ids and names stay. */
 export function storeScene(content, from, to) {
   if (!content.scenes[from] || !content.scenes[to]) throw new RangeError('no such scene');
   if (from === to) return content;
   const channels = clone(content.scenes[from].channels);
+  const voices = clone(content.scenes[from].voices);
   return {
     ...content,
-    scenes: content.scenes.map((scene, s) => (s === to ? { ...scene, channels } : scene))
+    scenes: content.scenes.map((scene, s) => (s === to ? { ...scene, channels, voices } : scene))
   };
+}
+
+/** One voice of a scene given whole rules, checked; the content unchanged when they do not fit. */
+export function setVoice(content, scene, voice, rules) {
+  const current = content.scenes[scene]?.voices?.[voice];
+  if (!current || !voiceValid(rules)) return content;
+  const next = Object.fromEntries(Object.keys(VOICE_RULES).map((rule) => [rule, rules[rule]]));
+  if (JSON.stringify(next) === JSON.stringify(current)) return content;
+  return {
+    ...content,
+    scenes: content.scenes.map((item, s) => (s !== scene ? item : {
+      ...item,
+      voices: item.voices.map((each, v) => (v === voice ? next : each))
+    }))
+  };
+}
+
+/** One rule of one voice of a scene, as the page turns it. */
+export function setVoiceRule(content, scene, voice, rule, value) {
+  const current = content.scenes[scene]?.voices?.[voice];
+  if (!current || !Object.hasOwn(VOICE_RULES, rule)) return content;
+  return setVoice(content, scene, voice, { ...current, [rule]: value });
 }
 
 // ---------- the material ----------

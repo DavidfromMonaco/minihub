@@ -40,6 +40,8 @@ std::vector<std::string> validate(const Project& project, const CommandRegistry&
         if (scene.id.empty() || std::find(ids.begin(), ids.end(), scene.id) != ids.end())
             errors.push_back("Missing or duplicate scene ID");
         ids.push_back(scene.id);
+        for (const auto& voice : scene.voices)
+            if (!valid(voice)) errors.push_back("Invalid voice rules");
         for (const auto& channel : scene.channels) {
             if (channel.mode != StepMode::Trigger && channel.mode != StepMode::Legato) errors.push_back("Invalid step mode");
             if (channel.length != 4 && channel.length != 8 && channel.length != 16

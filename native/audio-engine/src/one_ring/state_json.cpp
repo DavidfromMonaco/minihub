@@ -183,6 +183,49 @@ juce::var writeNotes(const NoteList& list)
     return object;
 }
 
+int ruleIn(const juce::var& object, const char* key, int fallback, int low, int high)
+{
+    if (!object.hasProperty(key)) return fallback;
+    return wholeIn(object[key], low, high, "Invalid voice rules");
+}
+
+// Part two's voices. A scene saved before them has none: every voice changes nothing.
+std::array<VoiceRules, voiceCount> readVoices(const juce::var& list)
+{
+    std::array<VoiceRules, voiceCount> voices{};
+    if (list.isVoid() || list.isUndefined()) return voices;
+    const auto* items = list.getArray();
+    if (items == nullptr || items->size() != static_cast<int>(voiceCount))
+        throw std::invalid_argument("A scene has four voices");
+    for (int i = 0; i < static_cast<int>(voiceCount); ++i) {
+        const auto& item = items->getReference(i);
+        if (!item.isObject()) throw std::invalid_argument("Invalid voice rules");
+        auto& r = voices[static_cast<std::size_t>(i)];
+        const VoiceRules d;
+        r.channel = ruleIn(item, "channel", d.channel, 0, 16);
+        r.root = ruleIn(item, "root", d.root, 0, 11);
+        r.scale = ruleIn(item, "scale", d.scale, 0, 10);
+        r.transpose = ruleIn(item, "transpose", d.transpose, -48, 48);
+        r.octave = ruleIn(item, "octave", d.octave, -3, 3);
+        r.octaveSpread = ruleIn(item, "octaveSpread", d.octaveSpread, 0, 3);
+        r.octaveChance = ruleIn(item, "octaveChance", d.octaveChance, 0, 100);
+        r.low = ruleIn(item, "low", d.low, 0, 127);
+        r.high = ruleIn(item, "high", d.high, 0, 127);
+        r.velocityScale = ruleIn(item, "velocityScale", d.velocityScale, 0, 200);
+        r.velocitySpread = ruleIn(item, "velocitySpread", d.velocitySpread, 0, 127);
+        r.velocityLow = ruleIn(item, "velocityLow", d.velocityLow, 1, 127);
+        r.velocityHigh = ruleIn(item, "velocityHigh", d.velocityHigh, 1, 127);
+        r.gateScale = ruleIn(item, "gateScale", d.gateScale, 5, 400);
+        r.gateSpread = ruleIn(item, "gateSpread", d.gateSpread, 0, 100);
+        r.shortest = ruleIn(item, "shortest", d.shortest, shortestDuration, longestDuration);
+        r.longest = ruleIn(item, "longest", d.longest, shortestDuration, longestDuration);
+        r.order = static_cast<NoteOrder>(ruleIn(item, "order", static_cast<int>(d.order), 0, 3));
+        r.density = ruleIn(item, "density", d.density, 0, 100);
+        if (!valid(r)) throw std::invalid_argument("Invalid voice rules");
+    }
+    return voices;
+}
+
 } // namespace
 
 Material readMaterial(const juce::var& object)
@@ -199,6 +242,36 @@ Material readMaterial(const juce::var& object)
     if (!object["frozen"].isBool()) throw std::invalid_argument("A material says whether it is frozen");
     material.frozen = object["frozen"];
     return material;
+}
+
+juce::var writeVoices(const std::array<VoiceRules, voiceCount>& voices)
+{
+    juce::Array<juce::var> list;
+    for (const auto& r : voices) {
+        juce::var item(new juce::DynamicObject());
+        auto* f = item.getDynamicObject();
+        f->setProperty("channel", r.channel);
+        f->setProperty("root", r.root);
+        f->setProperty("scale", r.scale);
+        f->setProperty("transpose", r.transpose);
+        f->setProperty("octave", r.octave);
+        f->setProperty("octaveSpread", r.octaveSpread);
+        f->setProperty("octaveChance", r.octaveChance);
+        f->setProperty("low", r.low);
+        f->setProperty("high", r.high);
+        f->setProperty("velocityScale", r.velocityScale);
+        f->setProperty("velocitySpread", r.velocitySpread);
+        f->setProperty("velocityLow", r.velocityLow);
+        f->setProperty("velocityHigh", r.velocityHigh);
+        f->setProperty("gateScale", r.gateScale);
+        f->setProperty("gateSpread", r.gateSpread);
+        f->setProperty("shortest", r.shortest);
+        f->setProperty("longest", r.longest);
+        f->setProperty("order", static_cast<int>(r.order));
+        f->setProperty("density", r.density);
+        list.add(item);
+    }
+    return list;
 }
 
 juce::var writeMaterial(const Material& material)
@@ -256,6 +329,7 @@ Project readProject(const juce::var& state)
             if (const auto* follow = source["follow"].getArray())
                 for (const auto& action : *follow) channel.follow.push_back(readAction(action));
         }
+        scene.voices = readVoices(item["voices"]);
         project.scenes.push_back(std::move(scene));
     }
     return project;

@@ -1,21 +1,13 @@
 #include "midi_network.h"
+#include "scales.h"
 #include <algorithm>
 #include <cmath>
 #include <unordered_set>
 
 namespace mlh {
-namespace {
-constexpr std::array<std::array<int,12>,11> scales{{
- {{0,1,2,3,4,5,6,7,8,9,10,11}},{{0,2,4,5,7,9,11,-1,-1,-1,-1,-1}},{{0,2,3,5,7,8,10,-1,-1,-1,-1,-1}},
- {{0,2,3,5,7,8,11,-1,-1,-1,-1,-1}},{{0,2,3,5,7,9,10,-1,-1,-1,-1,-1}},{{0,1,3,5,7,8,10,-1,-1,-1,-1,-1}},
- {{0,2,4,6,7,9,11,-1,-1,-1,-1,-1}},{{0,2,4,5,7,9,10,-1,-1,-1,-1,-1}},{{0,1,3,5,6,8,10,-1,-1,-1,-1,-1}},
- {{0,2,4,7,9,-1,-1,-1,-1,-1,-1,-1}},{{0,3,5,7,10,-1,-1,-1,-1,-1,-1,-1}}
-}};
-int scaleSize(int s){int n=0;for(int v:scales[(size_t)std::clamp(s,0,10)])if(v>=0)++n;return n;}
-}
 ArpeggiatorRuntime::ArpeggiatorRuntime(ArpConfig c):config_(c),random_(c.randomSeed){output_.ensureSize(8192);}
 double ArpeggiatorRuntime::stepQuarterNotes(int rate) noexcept { static constexpr double v[]={1,.5,.25,.125};return v[std::clamp(rate,0,3)]; }
-int ArpeggiatorRuntime::degreeToMidi(int root,int scale,int degree,int octave,int baseOctave) noexcept {const int s=std::clamp(scale,0,10),n=scaleSize(s),i=std::max(0,degree-1);return std::clamp(12*(baseOctave+1+octave+i/n)+std::clamp(root,0,11)+scales[(size_t)s][(size_t)(i%n)],0,127);}
+int ArpeggiatorRuntime::degreeToMidi(int root,int scale,int degree,int octave,int baseOctave) noexcept {const int s=std::clamp(scale,0,10),n=scaleSize(s),i=std::max(0,degree-1);return std::clamp(12*(baseOctave+1+octave+i/n)+std::clamp(root,0,11)+kScales[(size_t)s][(size_t)(i%n)],0,127);}
 int ArpeggiatorRuntime::semitoneOffsetToMidi(int root,int semitoneOffset,int baseOctave) noexcept {return std::clamp(12*(baseOctave+1)+std::clamp(root,0,11)+std::clamp(semitoneOffset,-127,127),0,127);}
 void ArpeggiatorRuntime::pushInput(const juce::MidiMessage& m) noexcept {const int n=m.getRawDataSize();if(n<1||n>3)return;int a,b,c,d;fifo_.prepareToWrite(1,a,b,c,d);if(b+d==0)return;auto& e=input_[(size_t)(b?a:c)];e.size=n;std::copy_n(m.getRawData(),n,e.bytes);fifo_.finishedWrite(1);}
 void ArpeggiatorRuntime::setConfig(const ArpConfig& c) noexcept {configSlots_[configBack_]=c;configBack_=(uint8_t)(configMiddle_.exchange((uint8_t)(configBack_|4u),std::memory_order_acq_rel)&3u);}
@@ -24,7 +16,7 @@ void ArpeggiatorRuntime::adoptPendingConfig() noexcept {if(!(configMiddle_.load(
  // runtime would, rather than firing between two.
  if(next.rate!=config_.rate)lastStep_=std::numeric_limits<int64_t>::min();if(next.randomSeed!=config_.randomSeed)random_=next.randomSeed;config_=next;}
 void ArpeggiatorRuntime::applyInput(const juce::MidiMessage& m) noexcept {if(m.isNoteOn()){int note=m.getNoteNumber();auto it=std::find(held_.begin(),held_.begin()+heldCount_,note);if(it==held_.begin()+heldCount_&&heldCount_<128)held_[(size_t)heldCount_++]=note;}else if(m.isNoteOff()){int note=m.getNoteNumber();auto it=std::find(held_.begin(),held_.begin()+heldCount_,note);if(it!=held_.begin()+heldCount_){std::move(it+1,held_.begin()+heldCount_,it);--heldCount_;}}}
-int ArpeggiatorRuntime::quantize(int note) const noexcept {int best=note,dist=128;for(int n=0;n<128;++n){const int pc=(n-config_.root+120)%12;bool ok=false;for(int i=0;i<scaleSize(config_.scale);++i)ok|=scales[(size_t)config_.scale][(size_t)i]==pc;if(ok&&std::abs(n-note)<dist){best=n;dist=std::abs(n-note);}}return best;}
+int ArpeggiatorRuntime::quantize(int note) const noexcept {return quantizeToScale(note,config_.root,config_.scale);}
 int ArpeggiatorRuntime::presetNote(int64_t step) noexcept {if(!heldCount_)return -1;std::array<int,128> notes=held_;if(config_.mode!=3)std::sort(notes.begin(),notes.begin()+heldCount_);int i=(int)(step%std::max(1,config_.patternLength));if(config_.mode==1)i=heldCount_-1-(i%heldCount_);else if(config_.mode==2){int span=std::max(1,heldCount_*2-2),p=i%span;i=p<heldCount_?p:span-p;}else if(config_.mode==4){random_=random_*1664525u+1013904223u;i=(int)(random_%((uint32_t)heldCount_));}else i%=heldCount_;return quantize(notes[(size_t)i]);}
 void ArpeggiatorRuntime::emit(const juce::MidiMessage& m,int sample) noexcept {output_.addEvent(m,std::max(0,sample));}
 void ArpeggiatorRuntime::flush(const std::vector<MidiDestination>& dest,MidiOutputSink* hardware,double startMs,double sampleRate) noexcept {if(output_.isEmpty())return;bool hardwareUsed=false;for(const auto& d:dest){if(d.kind==MidiDestinationKind::physicalOutput)hardwareUsed=true;else if(d.chain)d.chain->pushMidi(output_,d.blockEpoch);}if(hardwareUsed&&hardware)hardware->sendBlock(output_,startMs,sampleRate);}

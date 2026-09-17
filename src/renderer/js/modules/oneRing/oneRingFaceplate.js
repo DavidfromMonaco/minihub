@@ -2,7 +2,7 @@ import { escapeHtml } from '../../core/html.js';
 import { VALUE_TYPE } from '../../core/commandRegistry.js';
 import {
   CHANNEL_COUNT, CHANNEL_TARGET_PREFIX, LENGTHS, MAX_STEPS, MEMORY_TARGET, MUTABLE, OFFSET_LIMIT, REPEATS, RESOLUTIONS,
-  SCENES_TARGET, SCENE_POSITION, SCENE_TIMING, STEP_MODE, VALUE_MODE, cellsOf
+  SCENES_TARGET, SCENE_POSITION, SCENE_TIMING, STEP_MODE, VALUE_MODE, VOICE_TARGET_PREFIX, cellsOf
 } from '../../core/oneRingSequence.js';
 import {
   pearlDragKnob, pearlKeycap, pearlLcd, pearlLed, pearlLegend, pearlScribble, pearlSelector
@@ -46,6 +46,7 @@ const titleCase = (text) => {
 export function targetLabel(target) {
   if (target.id === SCENES_TARGET) return 'One Ring · Scenes';
   if (target.id === MEMORY_TARGET) return 'One Ring · Memory';
+  if (target.id.startsWith(VOICE_TARGET_PREFIX)) return `One Ring · Voice ${target.id.slice(VOICE_TARGET_PREFIX.length)}`;
   if (target.id.startsWith(CHANNEL_TARGET_PREFIX)) {
     return `One Ring · ${channelName(Number(target.id.slice(CHANNEL_TARGET_PREFIX.length)) - 1)}`;
   }
@@ -53,7 +54,8 @@ export function targetLabel(target) {
 }
 
 export function commandLabel(target, descriptor) {
-  return target && (target.id === SCENES_TARGET || target.id === MEMORY_TARGET || target.id.startsWith(CHANNEL_TARGET_PREFIX))
+  return target && (target.id === SCENES_TARGET || target.id === MEMORY_TARGET
+    || target.id.startsWith(CHANNEL_TARGET_PREFIX) || target.id.startsWith(VOICE_TARGET_PREFIX))
     ? titleCase(descriptor.label)
     : descriptor.label;
 }

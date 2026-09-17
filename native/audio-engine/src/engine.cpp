@@ -1045,6 +1045,7 @@ void Engine::releaseAllMidi()
     // chain, and cut every voice and every release at the loop point.
     sequencer_.release();
     midiReleasePending_.store(true,std::memory_order_release);
+    for(auto& entry:oneRings_)entry.second.runtime->releaseNotes();
 }
 
 void Engine::panicAllMidi()
@@ -1056,6 +1057,10 @@ void Engine::panicAllMidi()
     // only the mutable plan state is reset at the next callback.
     for(auto& chain:chains_)chain.second->panic();
     midiPanicPending_.store(true,std::memory_order_release);
+    // A One Ring's notes were in those chains: it forgets them rather than
+    // send Note Offs the panic already gave.
+    for(auto& entry:oneRings_)entry.second.runtime->panic();
+    for(auto& draining:drainingOneRings_)draining.runtime->panic();
     // PhysicalMidiOutput::panic clears a scheduler and sends 32 immediate
     // messages. Keep that potentially blocking work off the real-time audio
     // thread. Its active JUCE port is atomically published and retained, so it
@@ -1863,6 +1868,25 @@ void Engine::cmdSyncMidiNetwork(const juce::var& msg)
 {
     const auto reject=[this](const juce::String& message){clearMidiNetwork();sendError("midi-network-invalid",message);};
     MidiNetworkSpec spec;const auto* nodes=msg["nodes"].getArray();if(!nodes){reject("nodes must be an array");return;}if(nodes->size()>64){reject("too many MIDI nodes");return;}
+    {
+        // Where each One Ring's MIDI OUT goes. The node outlives the MIDI plan,
+        // so its outputs are handed to it here, and only when they changed: a
+        // new list ends the notes it sounds.
+        std::map<std::string,OneRingOutput::Kind> kinds;
+        for(const auto&v:*nodes){const auto type=v["nodeType"].toString();const auto id=v["id"].toString().toStdString();if(type=="midi-output")kinds[id]=OneRingOutput::Kind::hardware;else if(type=="arpeggiator")kinds[id]=OneRingOutput::Kind::processor;}
+        oneRingOutputs_.clear();
+        for(const auto&v:*nodes){
+            if(v["nodeType"].toString()!="one-ring")continue;
+            std::vector<OneRingOutput> outputs;
+            if(const auto* destinations=v["destinations"].getArray())for(const auto& destination:*destinations){
+                const auto id=destination.toString().toStdString();if(id.empty()||outputs.size()>=64)continue;
+                const auto kind=kinds.find(id);
+                outputs.push_back({id,kind==kinds.end()?OneRingOutput::Kind::chain:kind->second});
+            }
+            oneRingOutputs_[v["id"].toString()]=std::move(outputs);
+        }
+        for(auto& entry:oneRings_)applyOneRingOutputs(entry.first,entry.second);
+    }
     const juce::StringArray scaleNames{"Chromatic","Major / Ionian","Natural Minor / Aeolian","Harmonic Minor","Dorian","Phrygian","Lydian","Mixolydian","Locrian","Major Pentatonic","Minor Pentatonic"};
     const juce::StringArray modeNames{"Up","Down","Up / Down","As Played","Random","Custom"};const juce::StringArray rateNames{"1/4","1/8","1/16","1/32"};
     for(const auto&v:*nodes){
@@ -2409,7 +2433,8 @@ void Engine::cmdSyncOneRing(const juce::var& msg)
             if (ok)
             {
                 generation = node.generation;
-                oneRings_.emplace(nodeId, std::move(node));
+                auto& added = oneRings_.emplace(nodeId, std::move(node)).first->second;
+                applyOneRingOutputs(nodeId, added);
                 publishOneRingSet();
                 created = true;
             }
@@ -2547,7 +2572,10 @@ void Engine::cmdRemoveOneRing(const juce::var& msg)
     const bool removed = found != oneRings_.end();
     if (removed)
     {
-        retiredOneRings_.push_back(std::move(found->second.runtime));
+        // It stays in the callback's list until it has ended its notes.
+        found->second.runtime->retire();
+        drainingOneRings_.push_back({found->first.toStdString(), std::move(found->second.runtime),
+                                     juce::Time::getMillisecondCounterHiRes()});
         oneRings_.erase(found);
         publishOneRingSet();
     }
@@ -2586,11 +2614,32 @@ void Engine::cmdSetOneRingMaterial(const juce::var& msg)
     ipc_.send(out);
 }
 
+void Engine::applyOneRingOutputs(const juce::String& nodeId, OneRingNode& node)
+{
+    const auto found = oneRingOutputs_.find(nodeId);
+    const std::vector<OneRingOutput> none;
+    const auto& outputs = found != oneRingOutputs_.end() ? found->second : none;
+    if (node.outputsSent && node.outputs == outputs)
+        return;
+    one_ring::OutputTargets targets;
+    for (const auto& output : outputs)
+    {
+        if (output.kind == OneRingOutput::Kind::hardware) targets.hardware = true;
+        else if (output.kind == OneRingOutput::Kind::processor) targets.processors.push_back(output.id);
+        else if (auto* chain = getOrCreateChain(juce::String(output.id))) targets.chains.push_back(chain);
+    }
+    node.runtime->setOutputs(std::move(targets));
+    node.outputs = outputs;
+    node.outputsSent = true;
+}
+
 void Engine::publishOneRingSet()
 {
     auto set = std::make_unique<OneRingSet>();
     for (auto& entry : oneRings_)
         set->entries.push_back({entry.first.toStdString(), entry.second.runtime.get()});
+    for (auto& draining : drainingOneRings_)
+        set->entries.push_back({draining.id, draining.runtime.get()});
     auto* published = set.get();
     oneRingSets_.push_back(std::move(set));
     activeOneRingSet_.store(published, std::memory_order_release);
@@ -2598,6 +2647,23 @@ void Engine::publishOneRingSet()
 
 void Engine::forwardOneRings()
 {
+    if (!drainingOneRings_.empty())
+    {
+        // Ended by the callback -- or, with no callback running, after a while.
+        const double now = juce::Time::getMillisecondCounterHiRes();
+        const auto before = drainingOneRings_.size();
+        for (auto it = drainingOneRings_.begin(); it != drainingOneRings_.end();)
+        {
+            if (it->runtime->retired() || now - it->sinceMs > 2000.0)
+            {
+                retiredOneRings_.push_back(std::move(it->runtime));
+                it = drainingOneRings_.erase(it);
+            }
+            else ++it;
+        }
+        if (drainingOneRings_.size() != before)
+            publishOneRingSet();
+    }
     if (!oneRings_.empty() && !shutdownRequested_)
     {
         const double now = juce::Time::getMillisecondCounterHiRes();
@@ -2657,7 +2723,9 @@ void Engine::forwardOneRings()
                 || status.captureRefused != last.captureRefused
                 || status.originNotes != last.originNotes || status.currentNotes != last.currentNotes
                 || status.hasCurrent != last.hasCurrent || status.frozen != last.frozen
-                || status.materialGeneration != last.materialGeneration;
+                || status.materialGeneration != last.materialGeneration
+                || status.sounding != last.sounding || status.notesRefused != last.notesRefused
+                || status.voices != last.voices;
             // The beat moves on every block; alone, it is sent ten times a second.
             const bool beatDue = status.playing && now - node.statusSentAtMs >= 100.0;
             if (!changed && !beatDue)
@@ -2692,6 +2760,15 @@ void Engine::forwardOneRings()
             setProp(out, "hasCurrent", status.hasCurrent);
             setProp(out, "frozen", status.frozen);
             setProp(out, "materialGeneration", static_cast<juce::int64>(status.materialGeneration));
+            juce::Array<juce::var> sounding;
+            for (const auto count : status.sounding) sounding.add(static_cast<juce::int64>(count));
+            setProp(out, "sounding", sounding);
+            setProp(out, "notesRefused", static_cast<juce::int64>(
+                std::min<std::uint64_t>(status.notesRefused, static_cast<std::uint64_t>(kMaxSafeInteger))));
+            // The voices' live rules, only when they moved: they change at a
+            // step, not ten times a second.
+            if (!node.statusSent || status.voices != last.voices)
+                setProp(out, "voices", one_ring::writeVoices(status.voices));
             ipc_.send(out);
             node.lastStatus = status;
             node.statusSent = true;
@@ -3051,7 +3128,7 @@ void Engine::processEngine2Block(const float* const* inputChannelData,
     sequencer_.processMidi(numSamples,blockTransport,midiPlan,hardwareMidi,midiStartMs,&oneRingInputs);
     if (oneRings != nullptr)
         for (const auto& entry : oneRings->entries)
-            entry.runtime->process(blockTransport, numSamples, currentSampleRate_);
+            entry.runtime->process(blockTransport, numSamples, currentSampleRate_, midiPlan, hardwareMidi, midiStartMs);
     oneRingReaders_.fetch_sub(1, std::memory_order_acq_rel);
     if(midiPlan)midiPlan->process(numSamples,blockTransport,hardwareMidi,midiStartMs,currentSampleRate_);
     audioNetworkReaders_.fetch_add(1, std::memory_order_acq_rel);

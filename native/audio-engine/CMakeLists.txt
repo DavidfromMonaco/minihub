@@ -124,6 +124,7 @@ add_executable(mlh_audio_engine
     src/master_output.cpp
     src/sequencer.h
     src/sequencer.cpp
+    src/scales.h
     src/midi_network.h
     src/midi_network.cpp
     src/midi_output.h
@@ -134,6 +135,8 @@ add_executable(mlh_audio_engine
     src/one_ring/material.cpp
     src/one_ring/capture.h
     src/one_ring/capture.cpp
+    src/one_ring/voices.h
+    src/one_ring/voices.cpp
     src/one_ring/generative.h
     src/one_ring/generative.cpp
     src/one_ring/model.h
@@ -209,6 +212,7 @@ if(BUILD_TESTING)
         src/master_output.cpp
         src/sequencer.h
         src/sequencer.cpp
+        src/scales.h
         src/midi_network.h
         src/midi_network.cpp
         src/one_ring/commands.h
@@ -217,6 +221,8 @@ if(BUILD_TESTING)
         src/one_ring/material.cpp
         src/one_ring/capture.h
         src/one_ring/capture.cpp
+        src/one_ring/voices.h
+        src/one_ring/voices.cpp
         src/one_ring/generative.h
         src/one_ring/generative.cpp
         src/one_ring/model.h

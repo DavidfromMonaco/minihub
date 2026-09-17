@@ -34,8 +34,10 @@ bool memoryCommandNamed(const std::string& name, MemoryCommand& command) noexcep
 
 Runtime::Runtime() : scheduler_(std::make_unique<Scheduler>())
 {
-    // The Sequencer's block for this node, at its sample offsets: sized once.
+    // The Sequencer's block for this node, at its sample offsets, and the
+    // notes it plays: sized once.
     scheduledInput_.ensureSize(8192);
+    out_.ensureSize(32768);
 }
 
 Runtime::~Runtime() = default;
@@ -107,6 +109,20 @@ void Runtime::reclaim() noexcept
     plans_.erase(std::remove_if(plans_.begin(), plans_.end(), [&](const auto& plan) {
         return plan.get() != keepPending && plan.get() != keepActive;
     }), plans_.end());
+    const auto* keepOutputs = outputs_.load(std::memory_order_acquire);
+    const auto* keepPlaying = activeOutputs_.load(std::memory_order_acquire);
+    outputPlans_.erase(std::remove_if(outputPlans_.begin(), outputPlans_.end(), [&](const auto& targets) {
+        return targets.get() != keepOutputs && targets.get() != keepPlaying;
+    }), outputPlans_.end());
+}
+
+void Runtime::setOutputs(OutputTargets targets)
+{
+    auto owned = std::make_unique<OutputTargets>(std::move(targets));
+    auto* published = owned.get();
+    outputPlans_.push_back(std::move(owned));
+    outputs_.store(published, std::memory_order_release);
+    reclaim();
 }
 
 bool Runtime::channelCommand(std::size_t channel, const std::string& command) noexcept
@@ -202,6 +218,87 @@ double Runtime::nextBarWait() const noexcept
     return 0.0;
 }
 
+void Runtime::noteOn(int offset, int channel, int pitch, int velocity) noexcept
+{
+    out_.addEvent(juce::MidiMessage::noteOn(channel, pitch, static_cast<juce::uint8>(velocity)), offset);
+}
+
+void Runtime::noteOff(int offset, int channel, int pitch) noexcept
+{
+    out_.addEvent(juce::MidiMessage::noteOff(channel, pitch), offset);
+}
+
+void Runtime::flush(const OutputTargets* targets, bool blockEpochs) noexcept
+{
+    if (out_.isEmpty()) return;
+    if (targets != nullptr) {
+        for (std::size_t i = 0; i < targets->chains.size(); ++i) {
+            auto* chain = targets->chains[i];
+            // The block's epochs, taken before it made anything: a Stop in
+            // between refuses a Note On that was already on its way.
+            chain->pushMidi(out_, blockEpochs && i < epochs_.size() ? epochs_[i] : chain->midiEpoch());
+        }
+        if (arpeggiators_ != nullptr)
+            for (const auto& id : targets->processors) arpeggiators_->pushInputBuffer(id, out_);
+        if (targets->hardware && hardware_ != nullptr) hardware_->sendBlock(out_, callbackStartMs_, sampleRate_);
+    }
+    out_.clear();
+}
+
+void Runtime::materialChanged() noexcept
+{
+    voices_.setMaterial(material_.playing());
+}
+
+void Runtime::syncRules(bool force) noexcept
+{
+    // The scene's rules again: at a recall, at STOP, and when the sequence
+    // itself changed.
+    const auto* plan = active_.load(std::memory_order_acquire);
+    if (plan == nullptr) return;
+    const auto scene = scheduler_->currentScene();
+    const auto recalls = scheduler_->recalls();
+    if (!force && rulesKnown_ && scene == rulesScene_ && recalls == rulesRecalls_
+        && plan->projectVersion == rulesVersion_) return;
+    if (scene < plan->project.scenes.size()) voices_.setRules(plan->project.scenes[scene].voices);
+    rulesScene_ = scene;
+    rulesRecalls_ = recalls;
+    rulesVersion_ = plan->projectVersion;
+    rulesKnown_ = true;
+}
+
+bool Runtime::voice(std::size_t index, const Event& event) noexcept
+{
+    const auto* plan = active_.load(std::memory_order_acquire);
+    if (plan == nullptr || event.source >= channelCount) return false;
+    syncRules(false);
+    const auto& name = event.release ? *event.descriptor->releaseCommand : event.action->command;
+    const auto scene = scheduler_->currentScene();
+    if (scene >= plan->project.scenes.size()) return false;
+    const auto& channel = plan->project.scenes[scene].channels[event.source];
+    const auto& state = scheduler_->states()[event.source];
+    const RandomKey key{plan->project.seed, state.execution, state.loop, static_cast<std::uint32_t>(event.source),
+                        static_cast<std::uint32_t>(std::max(0, state.playhead))};
+    std::int32_t value = 0;
+    if (const auto* whole = std::get_if<std::int32_t>(&event.value)) value = *whole;
+    else if (const auto* choice = std::get_if<EnumValue>(&event.value)) value = choice->id;
+    const double stepBeats = channel.resolution.beats();
+    if (name == "PLAY") voices_.play(index, value, stepBeats, event.beat, key);
+    else if (name == "NOTE")
+        voices_.note(index, value, stepBeats, event.beat, key,
+                     channel.mode == StepMode::Legato ? static_cast<int>(event.source) : -1);
+    else if (name == "NOTE_OFF") voices_.release(index, event.release ? static_cast<int>(event.source) : -1, event.beat);
+    else if (name == "TRANSPOSE") voices_.setRule(index, VoiceRule::Transpose, value);
+    else if (name == "OCTAVE") voices_.setRule(index, VoiceRule::Octave, value);
+    else if (name == "ROOT") voices_.setRule(index, VoiceRule::Root, value);
+    else if (name == "SCALE") voices_.setRule(index, VoiceRule::Scale, value);
+    else if (name == "VELOCITY") voices_.setRule(index, VoiceRule::Velocity, value);
+    else if (name == "GATE") voices_.setRule(index, VoiceRule::Gate, value);
+    else if (name == "DENSITY") voices_.setRule(index, VoiceRule::Density, value);
+    else return false;
+    return true;
+}
+
 void Runtime::report() noexcept
 {
     outgoing_.revision = ++materialRevision_;
@@ -221,6 +318,7 @@ void Runtime::captured(const NoteList& notes, CaptureMode mode) noexcept
     else materialRefused_ += merge(material_.origin, notes);
     material_.hasCurrent = false;
     material_.generation = 0;
+    materialChanged();
     report();
 }
 
@@ -254,6 +352,7 @@ void Runtime::memory(MemoryCommand command, int offset, bool fromOutside) noexce
         material_.current.clear();
         material_.hasCurrent = false;
         material_.generation = 0;
+        materialChanged();
         report();
         return;
     case MemoryCommand::Freeze:
@@ -272,14 +371,45 @@ void Runtime::memory(MemoryCommand command, int offset, bool fromOutside) noexce
         if (!material_.hasCurrent && material_.generation == 0) return;
         material_.hasCurrent = false;
         material_.generation = 0;
+        materialChanged();
         report();
         return;
     }
 }
 
-void Runtime::process(const Transport& transport, int numSamples, double sampleRate) noexcept
+void Runtime::process(const Transport& transport, int numSamples, double sampleRate,
+                      MidiExecutionPlan* arpeggiators, MidiOutputSink* hardware, double callbackStartMs) noexcept
 {
     readers_.fetch_add(1, std::memory_order_acq_rel);
+    arpeggiators_ = arpeggiators;
+    hardware_ = hardware;
+    callbackStartMs_ = callbackStartMs;
+    sampleRate_ = sampleRate > 0 ? sampleRate : 48000.0;
+    out_.clear();
+    // The instruments were silenced for us: nothing is sounding any more.
+    if (panicRequest_.exchange(false, std::memory_order_acq_rel)) voices_.drop();
+    auto* outputs = activeOutputs_.load(std::memory_order_relaxed);
+    if (auto* next = outputs_.load(std::memory_order_acquire); next != outputs) {
+        voices_.releaseAll(*this, 0);
+        flush(outputs, false);
+        outputs = next;
+        activeOutputs_.store(next, std::memory_order_release);
+    }
+    if (retireRequest_.load(std::memory_order_acquire)) {
+        if (!retired_.load(std::memory_order_acquire)) {
+            voices_.releaseAll(*this, 0);
+            flush(outputs, false);
+            retired_.store(true, std::memory_order_release);
+        }
+        scheduledInput_.clear();
+        LiveNote dropped;
+        while (liveNotes_.pop(dropped)) {}
+        readers_.fetch_sub(1, std::memory_order_acq_rel);
+        return;
+    }
+    if (outputs != nullptr)
+        for (std::size_t i = 0; i < outputs->chains.size() && i < epochs_.size(); ++i)
+            epochs_[i] = outputs->chains[i]->midiEpoch();
     auto* plan = pending_.load(std::memory_order_acquire);
     if (plan == nullptr) {
         scheduledInput_.clear();
@@ -294,16 +424,23 @@ void Runtime::process(const Transport& transport, int numSamples, double sampleR
                          previous != nullptr && previous->projectVersion == plan->projectVersion);
         active_.store(plan, std::memory_order_release);
     }
-    if (const auto* given = materialIn_.take()) material_ = *given;
+    if (const auto* given = materialIn_.take()) {
+        material_ = *given;
+        materialChanged();
+    }
+    syncRules(false);
+    if (releaseRequest_.exchange(false, std::memory_order_acq_rel)) voices_.releaseAll(*this, 0);
     auto& scheduler = *scheduler_;
     const double beatsPerSample = transport.quarterNotesPerSample();
     const bool hostPlaying = transport.processingPlaying();
     const double hostBeat = transport.ppqPosition();
     // A seek or a loop wrap while both play: the sequence moves with the
-    // arrangement instead of drifting away from it.
+    // arrangement instead of drifting away from it, and what sounds rings out.
     if (hostPlaying && scheduler.playing() && std::isfinite(hostBeat)
         && std::abs(hostBeat - beat_) > 2.0 * beatsPerSample) {
         scheduler.shiftTimeline(hostBeat - beat_);
+        voices_.shift(hostBeat - beat_);
+        voices_.releaseAll(*this, 0);
         beat_ = hostBeat;
     }
     const bool clockValid = numSamples > 0 && std::isfinite(beatsPerSample) && beatsPerSample > 0;
@@ -323,6 +460,8 @@ void Runtime::process(const Transport& transport, int numSamples, double sampleR
     if (request == 0) {
         scheduler.beginCommand(beat_);
         scheduler.stop(beat_);
+        voices_.releaseAll(*this, 0);
+        syncRules(true);
     }
     // Play starts it. The transport stopping does not stop it: it keeps its
     // own time at the current tempo, as the VST did after a host stop, so a
@@ -351,7 +490,12 @@ void Runtime::process(const Transport& transport, int numSamples, double sampleR
         const double end = beat_ + static_cast<double>(numSamples) * beatsPerSample;
         scheduler.advance(beat_, end);
         beat_ = end;
+        voices_.render(blockBegin_, beatsPerSample, numSamples, *this);
+    } else if (!scheduler.playing()) {
+        // A STOP from the sequence itself, inside the advance.
+        voices_.releaseAll(*this, 0);
     }
+    flush(outputs, true);
     drainTo(blockSamples_);
     capture_.finish();
     scheduledInput_.clear();
@@ -377,6 +521,9 @@ void Runtime::process(const Transport& transport, int numSamples, double sampleR
     status.frozen = material_.frozen;
     status.materialGeneration = material_.generation;
     status.materialRevision = materialRevision_;
+    status.sounding = voices_.sounding();
+    status.notesRefused = voices_.refused();
+    status.voices = voices_.rules();
     status_.write(status);
     liveScene_.store(status.scene, std::memory_order_release);
     readers_.fetch_sub(1, std::memory_order_acq_rel);
@@ -384,6 +531,7 @@ void Runtime::process(const Transport& transport, int numSamples, double sampleR
 
 bool Runtime::send(const Event& event) noexcept
 {
+    if (std::size_t index = 0; voiceTarget(event.action->target, index)) return voice(index, event);
     if (event.action->target == memoryTarget) {
         const auto& name = event.release ? *event.descriptor->releaseCommand : event.action->command;
         MemoryCommand command;

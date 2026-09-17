@@ -607,7 +607,7 @@ comes after its design is approved (steps 14 and 15).
       C, E, G and D, the four notes reported at their ticks (0, 0, 0, 1920),
       a frozen material refusing CLEAR, the node removed -- 12 checks. Not
       seen in MiniHub: the page shows none of it until step 15.
-- [ ] 12. MIDI OUT and the voices: `PLAY`, `NOTE`, the rule commands and the
+- [x] 12. MIDI OUT and the voices: `PLAY`, `NOTE`, the rule commands and the
       per-scene rules, their draws, notes sent at their sample to the
       destinations, One Ring run before the arpeggiators, the registry of
       sounding notes and every row of the table; their requests.
@@ -620,6 +620,31 @@ comes after its design is approved (steps 14 and 15).
       release, a destination change and a node removed; the polyphony cap
       counts what it refuses + `npm test` + `npm run sync:dist` + the real
       engine over stdio: the notes reach a chain's MIDI.
+      Done 2026-09-17. Native: `one_ring/voices.*` (the rules, the notes waiting
+      and sounding, rendered block by block in time order, a note landing on
+      the sample nearest its beat whatever the block size), `scales.h` (the
+      Arpeggiator's table, now read by both), the voices' targets among One
+      Ring's own, the rules per scene in the sequence, the runtime's outputs
+      (chains, arpeggiators, hardware) handed over by `syncMidiNetwork` only
+      when they change, and taken over with a Note Off on the old ones; a
+      node removed plays on until the callback has ended its notes; a panic
+      makes it forget them, a seek releases them. New random streams (Voice,
+      Order) after the VST's four. Renderer: the voices in each scene, their
+      targets (the engine's, range for range), `setVoice` and
+      `setVoiceRule`, STORE SCENE copying them, the status's `sounding`,
+      `notesRefused` and live rules, the requests `voices` and `set-voice`.
+      Build 0 errors 0 warnings; `--core` (1647 checks, `one-ring-voices`
+      among them), `--vst3-e2e` (99), `--cross-track-isolation` (27),
+      `mlh_realtime_output_tests` (2535); `npm test` (1205,
+      `oneRingVoices.test.mjs` among them), `npm run check`,
+      `npm run sync:dist`. The real engine over stdio, with MiniHub's
+      deterministic test instrument and the master turned down to -100 dB:
+      silent before RUN, a pre-master peak of 0.95 once the voice plays,
+      two notes counted sounding, nothing refused; STOP leaves nothing
+      sounding and the instrument silent; a node removed while it plays
+      leaves the instrument silent -- 12 checks. Found while testing: a
+      note ending exactly on a block boundary was sent a sample early;
+      a note now belongs to the block its rounded sample falls in.
 - [ ] 13. The writer and feedback: `WRITE`, the take, `oneRingWrite`, New,
       Replace and Add through `SequencerController`, the model's operation to
       replace a clip's notes, refusals, `FEEDBACK_ON` and `FEEDBACK_OFF` with

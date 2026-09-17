@@ -3109,6 +3109,408 @@ void testOneRingCapture()
     });
 }
 
+// ---------- One Ring's voices (part two) ----------
+
+struct PlayedNote {
+    long long sample = 0;
+    bool on = false;
+    int channel = 0, pitch = 0, velocity = 0;
+    bool operator==(const PlayedNote& other) const noexcept
+    {
+        return sample == other.sample && on == other.on && channel == other.channel && pitch == other.pitch
+            && velocity == other.velocity;
+    }
+};
+
+// A runtime playing into one plugin chain, block by block, what it sent kept
+// with the sample it lands on.
+struct VoiceBench {
+    mlh::Transport transport;
+    std::unique_ptr<oring::Runtime> runtime = std::make_unique<oring::Runtime>();
+    mlh::Chain chain{"vst-voices"};
+    mlh::Chain other{"vst-other"};
+    std::vector<PlayedNote> played, elsewhere;
+    int blockSize = 480;
+    long long sample = 0;
+
+    explicit VoiceBench(int size = 480) : blockSize(size)
+    {
+        transport.setSampleRate(48000.0);
+        transport.setBpm(120.0);
+        chain.setMidiEnabled(true);
+        other.setMidiEnabled(true);
+        oring::OutputTargets targets;
+        targets.chains.push_back(&chain);
+        runtime->setOutputs(std::move(targets));
+    }
+    bool load(oring::Project project, bool restore = true)
+    {
+        std::string error;
+        const bool ok = runtime->setProject(std::move(project), restore, error);
+        if (!ok) std::cerr << "one-ring voices: " << error << "\n";
+        return ok;
+    }
+    static void collect(mlh::Chain& from, long long at, int size, std::vector<PlayedNote>& into)
+    {
+        juce::MidiBuffer midi;
+        from.pullMidi(midi, size);
+        for (const auto& event : midi) {
+            const auto message = event.getMessage();
+            if (!message.isNoteOnOrOff()) continue;
+            into.push_back({at + event.samplePosition, message.isNoteOn(), message.getChannel(),
+                            message.getNoteNumber(), message.isNoteOn() ? message.getVelocity() : 0});
+        }
+    }
+    void blocks(long long count)
+    {
+        for (long long i = 0; i < count; ++i) {
+            transport.beginBlock();
+            runtime->process(transport, blockSize, 48000.0);
+            transport.advance(blockSize);
+            collect(chain, sample, blockSize, played);
+            collect(other, sample, blockSize, elsewhere);
+            sample += blockSize;
+        }
+    }
+    // Until `until` samples have passed.
+    void until(long long until) { while (sample < until) blocks(1); }
+    std::vector<PlayedNote> ons() const
+    {
+        std::vector<PlayedNote> result;
+        for (const auto& note : played) if (note.on) result.push_back(note);
+        return result;
+    }
+    // Every Note On has its Note Off, key by key.
+    static bool balanced(const std::vector<PlayedNote>& notes)
+    {
+        std::map<int, int> open;
+        for (const auto& note : notes) open[note.channel * 128 + note.pitch] += note.on ? 1 : -1;
+        return std::all_of(open.begin(), open.end(), [](const auto& entry) { return entry.second == 0; });
+    }
+};
+
+// What was played, on stderr, when a check of it fails.
+void printPlayed(const char* label, const std::vector<PlayedNote>& notes)
+{
+    std::cerr << label << ":";
+    for (const auto& note : notes)
+        std::cerr << " " << (note.on ? "on" : "off") << note.pitch << "@" << note.sample << "c" << note.channel
+                  << "v" << note.velocity;
+    std::cerr << std::endl;
+}
+
+oring::Material chordMaterial()
+{
+    oring::Material material;
+    material.origin.add(materialNote(0, 960, 60, 100));
+    material.origin.add(materialNote(0, 960, 64, 90));
+    material.origin.add(materialNote(0, 960, 67, 80));
+    material.origin.add(materialNote(1920, 480, 62, 70));
+    return material;
+}
+
+// CH1 aimed at voice 1: sixteen sixteenths, each its own slot, or `command` with `value`.
+oring::Project voiceProject(const char* command = "PLAY", std::int32_t value = -1, std::size_t length = 16,
+                            std::uint32_t denominator = 16)
+{
+    auto project = oneRingEmptyProject();
+    for (auto& scene : project.scenes) {
+        auto& channel = scene.channels[0];
+        channel.enabled = true;
+        channel.target = {"one-ring:voice:1", command, {}};
+        channel.length = length;
+        channel.resolution = {1, denominator};
+        // Every cell holds a value the command takes, as choosing a command
+        // gives them all; the first `length` play.
+        for (std::size_t i = 0; i < oring::maximumSteps; ++i) {
+            channel.steps[i].enabled = i < length;
+            channel.steps[i].value.mode = oring::ValueMode::Fixed;
+            channel.steps[i].value.fixed = value;
+        }
+    }
+    return project;
+}
+
+std::vector<PlayedNote> playFor(oring::Project project, const oring::Material& material, int blockSize,
+                                long long samples, std::uint64_t seed = 7)
+{
+    VoiceBench bench(blockSize);
+    project.seed = seed;
+    bench.load(std::move(project));
+    bench.runtime->setMaterial(material);
+    bench.runtime->run();
+    bench.until(samples);
+    return bench.played;
+}
+
+void testOneRingVoices()
+{
+    oneRingChecks("one-ring voices replay", [] {
+        VoiceBench bench;
+        expect(bench.load(voiceProject()), "one-ring voices: a channel aimed at a voice is taken");
+        bench.runtime->setMaterial(chordMaterial());
+        bench.runtime->run();
+        bench.until(96000);
+        const std::vector<PlayedNote> firstBar{
+            {0, true, 1, 60, 100}, {0, true, 1, 64, 90}, {0, true, 1, 67, 80},
+            {24000, false, 1, 60, 0}, {24000, false, 1, 64, 0}, {24000, false, 1, 67, 0},
+            {48000, true, 1, 62, 70}, {60000, false, 1, 62, 0}};
+        expect(bench.played == firstBar, "one-ring voices: sixteen sixteenths of PLAY -1 replay a bar note for note");
+        if (bench.played != firstBar) printPlayed("replay", bench.played);
+        bench.until(192000);
+        bool again = bench.played.size() == 2 * firstBar.size();
+        for (std::size_t i = 0; again && i < firstBar.size(); ++i) {
+            auto next = firstBar[i];
+            next.sample += 96000;
+            again = bench.played[firstBar.size() + i] == next;
+        }
+        expect(again, "one-ring voices: and the next loop replays it again");
+        bench.runtime->stop();
+        bench.blocks(2);
+        expect(VoiceBench::balanced(bench.played), "one-ring voices: every note ended");
+    });
+    oneRingChecks("one-ring voices rules", [] {
+        auto project = voiceProject();
+        auto& rules = project.scenes[0].voices[0];
+        rules.transpose = 2;
+        rules.scale = 1; // Major / Ionian, C
+        rules.velocityScale = 50;
+        rules.gateScale = 50;
+        rules.channel = 5;
+        const auto played = playFor(project, chordMaterial(), 480, 96000);
+        std::vector<int> pitches;
+        std::vector<int> velocities;
+        for (const auto& note : played) if (note.on) { pitches.push_back(note.pitch); velocities.push_back(note.velocity); }
+        expect(pitches == std::vector<int>({62, 65, 69, 64}),
+               "one-ring voices: transposed by 2 and held in C major, F# goes to the lower F");
+        expect(velocities == std::vector<int>({50, 45, 40, 35}), "one-ring voices: velocity at 50 percent");
+        const bool halved = played.size() == 8 && played[3].sample == 12000 && played[7].sample == 54000 && played[0].channel == 5;
+        expect(halved, "one-ring voices: gate at 50 percent halves each note, on the voice's channel");
+        if (!halved) printPlayed("gate", played);
+
+        auto folded = voiceProject();
+        folded.scenes[0].voices[0].low = 60;
+        folded.scenes[0].voices[0].high = 71;
+        folded.scenes[0].voices[0].octave = -1;
+        oring::Material low;
+        low.origin.add(materialNote(0, 240, 60));
+        low.origin.add(materialNote(0, 240, 84));
+        const auto foldedPlayed = playFor(folded, low, 480, 24000);
+        std::vector<int> foldedPitches;
+        for (const auto& note : foldedPlayed) if (note.on) foldedPitches.push_back(note.pitch);
+        expect(foldedPitches == std::vector<int>({60, 60}) || foldedPitches == std::vector<int>({60, 60, 60}),
+               "one-ring voices: an octave down, each note folded back between 60 and 71");
+
+        auto silent = voiceProject();
+        silent.scenes[0].voices[0].density = 0;
+        expect(playFor(silent, chordMaterial(), 480, 96000).empty(), "one-ring voices: density 0 plays nothing");
+
+        auto clamped = voiceProject();
+        clamped.scenes[0].voices[0].velocityScale = 200;
+        clamped.scenes[0].voices[0].velocityHigh = 110;
+        std::vector<int> loud;
+        for (const auto& note : playFor(clamped, chordMaterial(), 480, 96000)) if (note.on) loud.push_back(note.velocity);
+        expect(loud == std::vector<int>({110, 110, 110, 110}), "one-ring voices: velocity doubled, held under its highest");
+    });
+    oneRingChecks("one-ring voices determinism", [] {
+        auto project = voiceProject();
+        auto& rules = project.scenes[0].voices[0];
+        rules.octaveSpread = 2;
+        rules.octaveChance = 50;
+        rules.velocitySpread = 20;
+        rules.gateSpread = 60;
+        rules.density = 70;
+        project.scenes[0].channels[0].swing = 0.3;
+        project.scenes[0].channels[0].humanize = 0.2;
+        const auto reference = playFor(project, chordMaterial(), 480, 384000, 11);
+        const auto sameSeed = playFor(project, chordMaterial(), 480, 384000, 11);
+        expect(!reference.empty() && reference == sameSeed, "one-ring voices: the same seed plays the same notes");
+        bool sizes = true;
+        for (const int size : {64, 256, 1024})
+            sizes = sizes && playFor(project, chordMaterial(), size, 384000, 11) == reference;
+        expect(sizes, "one-ring voices: blocks of 64, 256, 480 and 1,024 samples play the same notes at the same samples");
+        expect(playFor(project, chordMaterial(), 480, 384000, 12) != reference, "one-ring voices: another seed plays otherwise");
+    });
+    oneRingChecks("one-ring voices scenes and commands", [] {
+        auto project = voiceProject();
+        project.scenes[1].voices[0].transpose = 12;
+        VoiceBench bench;
+        expect(bench.load(project), "one-ring voices: loaded");
+        bench.runtime->setMaterial(chordMaterial());
+        bench.runtime->run();
+        bench.until(96000);
+        bench.runtime->recallScene(1);
+        bench.until(192000);
+        std::vector<int> second;
+        for (const auto& note : bench.played) if (note.on && note.sample >= 96000) second.push_back(note.pitch);
+        expect(second == std::vector<int>({72, 76, 79, 74}), "one-ring voices: a recalled scene plays by its own rules");
+
+        // CH1 moves the voice, CH2 plays it: a channel's commands go before
+        // the next channel's within a step.
+        auto commanded = voiceProject("PLAY", -1);
+        commanded.scenes[0].channels[1] = commanded.scenes[0].channels[0];
+        commanded.scenes[0].channels[0].target = {"one-ring:voice:1", "TRANSPOSE", {}};
+        for (auto& step : commanded.scenes[0].channels[0].steps) step.value.fixed = std::int32_t{-5};
+        const auto transposed = playFor(commanded, chordMaterial(), 480, 96000);
+        std::vector<int> down;
+        for (const auto& note : transposed) if (note.on) down.push_back(note.pitch);
+        expect(down == std::vector<int>({55, 59, 62, 57}),
+               "one-ring voices: a TRANSPOSE on a lower channel moves the notes of the same step");
+    });
+    oneRingChecks("one-ring voices note order and legato", [] {
+        oring::Material scale;
+        scale.origin.add(materialNote(0, 240, 67));
+        scale.origin.add(materialNote(240, 240, 60));
+        scale.origin.add(materialNote(480, 240, 64));
+        auto rising = voiceProject("NOTE", 0, 4, 4);
+        for (std::int32_t i = 0; i < 4; ++i) rising.scenes[0].channels[0].steps[static_cast<std::size_t>(i)].value.fixed = i;
+        rising.scenes[0].voices[0].order = oring::NoteOrder::Rising;
+        std::vector<int> up;
+        for (const auto& note : playFor(rising, scale, 480, 96000)) if (note.on) up.push_back(note.pitch);
+        expect(up == std::vector<int>({60, 64, 67, 60}), "one-ring voices: NOTE counts the material by pitch, round it");
+        rising.scenes[0].voices[0].order = oring::NoteOrder::Falling;
+        std::vector<int> fall;
+        for (const auto& note : playFor(rising, scale, 480, 96000)) if (note.on) fall.push_back(note.pitch);
+        expect(fall == std::vector<int>({67, 64, 60, 67}), "one-ring voices: and falling");
+        rising.scenes[0].voices[0].order = oring::NoteOrder::Shuffled;
+        std::vector<int> shuffled;
+        for (const auto& note : playFor(rising, scale, 480, 96000)) if (note.on) shuffled.push_back(note.pitch);
+        auto sorted = shuffled;
+        if (sorted.size() >= 3) std::sort(sorted.begin(), sorted.begin() + 3);
+        expect(shuffled.size() == 4 && std::vector<int>(sorted.begin(), sorted.begin() + 3) == std::vector<int>({60, 64, 67})
+                   && shuffled[3] == shuffled[0],
+               "one-ring voices: shuffled once per loop, every note once");
+
+        auto legato = voiceProject("NOTE", 0, 4, 4);
+        legato.scenes[0].channels[0].mode = oring::StepMode::Legato;
+        legato.scenes[0].channels[0].steps[2].value.fixed = std::int32_t{1};
+        legato.scenes[0].channels[0].steps[3].value.fixed = std::int32_t{1};
+        VoiceBench bench;
+        expect(bench.load(legato), "one-ring voices: a Legato channel of NOTE is taken");
+        bench.runtime->setMaterial(scale);
+        bench.runtime->run();
+        bench.until(96000 - 480);
+        const std::vector<PlayedNote> tied{{0, true, 1, 67, 100}, {48000, false, 1, 67, 0}, {48000, true, 1, 60, 100}};
+        expect(bench.played == tied, "one-ring voices: the same value ties a note over steps, a new one takes over");
+        bench.runtime->stop();
+        bench.blocks(1);
+        expect(VoiceBench::balanced(bench.played) && bench.played.back().pitch == 60 && !bench.played.back().on,
+               "one-ring voices: STOP ends the tied note");
+    });
+    oneRingChecks("one-ring voices stops", [] {
+        const auto sounding = [](VoiceBench& bench) {
+            oring::Material held;
+            held.origin.add(materialNote(0, 960, 48));
+            auto project = voiceProject("NOTE", 0, 4, 4);
+            project.scenes[0].voices[0].gateScale = 400;
+            bench.load(project);
+            bench.runtime->setMaterial(held);
+            bench.runtime->run();
+            bench.blocks(10);
+        };
+        {
+            VoiceBench bench;
+            sounding(bench);
+            expect(bench.played.size() == 1 && bench.played[0].on, "one-ring voices: a note sounds");
+            bench.runtime->releaseNotes();
+            bench.blocks(1);
+            expect(VoiceBench::balanced(bench.played) && bench.runtime->status().playing,
+                   "one-ring voices: a seek's release ends it, and the sequence plays on");
+        }
+        {
+            VoiceBench bench;
+            sounding(bench);
+            bench.runtime->retire();
+            bench.blocks(1);
+            expect(VoiceBench::balanced(bench.played) && bench.runtime->retired(),
+                   "one-ring voices: a node removed ends its notes, then says it is done");
+            bench.blocks(100);
+            expect(bench.played.size() == 2, "one-ring voices: and plays nothing more");
+        }
+        {
+            VoiceBench bench;
+            sounding(bench);
+            oring::OutputTargets elsewhere;
+            elsewhere.chains.push_back(&bench.other);
+            bench.runtime->setOutputs(std::move(elsewhere));
+            bench.blocks(60);
+            expect(VoiceBench::balanced(bench.played) && !bench.elsewhere.empty() && bench.elsewhere[0].on,
+                   "one-ring voices: a new MIDI OUT ends the notes on the old one, and plays on the new one");
+        }
+        {
+            VoiceBench bench;
+            sounding(bench);
+            bench.runtime->panic();
+            bench.blocks(1);
+            expect(bench.played.size() == 1, "one-ring voices: after a panic, nothing is sent for what the panic silenced");
+            bench.runtime->stop();
+            bench.blocks(1);
+            expect(bench.played.size() == 1, "one-ring voices: nor at STOP");
+        }
+        {
+            VoiceBench bench;
+            sounding(bench);
+            bench.transport.setPlaying(true);
+            bench.blocks(1);
+            bench.transport.seekPpq(8.0);
+            bench.blocks(1);
+            bool released = false;
+            for (const auto& note : bench.played) released |= !note.on && note.pitch == 48;
+            expect(released, "one-ring voices: a seek while both play ends what sounds");
+        }
+    });
+    oneRingChecks("one-ring voices polyphony", [] {
+        oring::Material crowd;
+        for (int i = 0; i < 40; ++i) crowd.origin.add(materialNote(0, 960, 30 + i));
+        VoiceBench bench;
+        expect(bench.load(voiceProject()), "one-ring voices: loaded");
+        bench.runtime->setMaterial(crowd);
+        bench.runtime->run();
+        bench.blocks(2);
+        expect(bench.ons().size() == oring::voicePolyphony && bench.runtime->status().notesRefused == 8
+                   && bench.runtime->status().sounding[0] == oring::voicePolyphony,
+               "one-ring voices: a voice sounds 32 notes, and counts the 8 it refused");
+        bench.runtime->stop();
+        bench.blocks(1);
+        expect(VoiceBench::balanced(bench.played), "one-ring voices: STOP ends all 32");
+    });
+    oneRingChecks("one-ring voices json", [] {
+        std::array<oring::VoiceRules, oring::voiceCount> voices{};
+        voices[2].transpose = -7;
+        voices[2].scale = 10;
+        voices[2].order = oring::NoteOrder::Shuffled;
+        voices[3].low = 40;
+        voices[3].high = 50;
+        const auto list = juce::JSON::parse(juce::JSON::toString(oring::writeVoices(voices)));
+        auto state = juce::JSON::parse(R"({"version":1,"seed":"1","mutation":"0","selectedScene":0,"sceneTiming":0,"scenePosition":0,"scenes":[]})");
+        juce::Array<juce::var> scenes;
+        juce::var scene(new juce::DynamicObject());
+        scene.getDynamicObject()->setProperty("id", "A");
+        scene.getDynamicObject()->setProperty("name", "Scene A");
+        juce::Array<juce::var> channels;
+        for (int i = 0; i < 16; ++i)
+            channels.add(juce::JSON::parse(R"({"target":{"target":"","command":""},"length":16,"numerator":1,"denominator":16,"mode":0,"repeats":0,"enabled":true,"offset":0,"swing":0,"humanize":0,"mutableFields":7,"steps":[]})"));
+        scene.getDynamicObject()->setProperty("channels", channels);
+        scene.getDynamicObject()->setProperty("voices", list);
+        scenes.add(scene);
+        state.getDynamicObject()->setProperty("scenes", scenes);
+        const auto read = oring::readProject(state);
+        expect(read.scenes[0].voices == voices, "one-ring voices: a scene's voices are written and read back unchanged");
+        auto broken = juce::JSON::parse(juce::JSON::toString(state));
+        broken["scenes"][0]["voices"][1].getDynamicObject()->setProperty("low", 90);
+        broken["scenes"][0]["voices"][1].getDynamicObject()->setProperty("high", 80);
+        expect(oneRingThrows([&] { oring::readProject(broken); }), "one-ring voices: a lowest pitch above the highest is refused");
+        const auto registry = oring::withInternalCommands(oring::CommandRegistry{}, read);
+        const auto* play = registry.find("one-ring:voice:4", "PLAY");
+        const auto* note = registry.find("one-ring:voice:1", "NOTE");
+        const auto* scale = registry.find("one-ring:voice:2", "SCALE");
+        expect(play && play->minimum == -1 && play->maximum == 63 && note && note->releaseCommand
+                   && *note->releaseCommand == "NOTE_OFF" && scale && scale->choices.size() == 11
+                   && scale->choices[10].label == "Minor Pentatonic" && !registry.find("one-ring:voice:5", "PLAY"),
+               "one-ring voices: four voices are One Ring's own targets");
+    });
+}
+
 struct RecordingProcessors final : mlh::MidiProcessorInput {
     std::vector<std::pair<std::string, int>> received;
     bool pushInputBuffer(const std::string& nodeId, const juce::MidiBuffer& buffer) noexcept override
@@ -3246,6 +3648,8 @@ int main(int argc, char** argv)
     testOneRingRuntime();
     std::cerr << "[core] one-ring-capture\n";
     testOneRingCapture();
+    std::cerr << "[core] one-ring-voices\n";
+    testOneRingVoices();
     std::cerr << "[core] sequencer-feeds-one-ring\n";
     testSequencerFeedsOneRing();
     }
