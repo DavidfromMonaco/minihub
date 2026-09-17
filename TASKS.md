@@ -11,16 +11,14 @@ finished, delete its entry**, in the same commit. What was done lives in git and
 of the Matrix node (ROADMAP item 7). One Ring becomes a node of MiniHub with
 every function of the VST, its clock in the engine, its commands through the
 same CTRL OUT path, and a new page after hardware sequencers.
-Steps 0 to 6 of 18 done: the node runs in MiniHub, tried by the author on
-2026-09-17, and its page's design is approved. The page itself (steps 7 and 8)
-is built and was tried in a browser on a fake engine; the author reported the
-same day, after tests with Codex, that everything works — whether that covers
-the page was not said.
-- Part two, asked 2026-09-17 and planned, not started: One Ring plays notes —
-  it captures what reaches a new MIDI IN, varies it through its channels and
-  scenes, plays instruments, and writes its generations into Sequencer clips,
-  which can feed the next. Three questions wait for the author before the
-  writing step (the plan, *Part two — design*).
+Steps 0 to 8 of 18 done: the node runs in MiniHub and its page works, both
+tried by the author on 2026-09-17.
+- Part two, asked 2026-09-17: One Ring plays notes — it captures what reaches
+  a new MIDI IN, varies it through its channels and scenes, plays instruments,
+  and writes its generations into new Sequencer tracks, which can feed the
+  next. The author answered its three questions the same day and asked for
+  every change that can be made in the meantime; its page waits for a design
+  the author approves.
 - Found while planning it: every Sequencer sync panics every chain, so a note
   edited during playback cuts every instrument. Part two fixes it first
   (step 10).

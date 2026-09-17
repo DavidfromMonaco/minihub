@@ -16,10 +16,12 @@ Part two: asked by the author on 2026-09-17, in a brief written with Codex
 after trying the node ("tout fonctionne bien, mais je voudrais des fonctions
 en plus") — One Ring as the generative engine of a piece. The author's
 instruction for that day: check that it is possible and prepare it, no code.
-**Status** — **in progress, 2026-09-17.** Steps 0 to 6 done; the page (steps 7
-and 8) built and tried in a browser, waiting for the author's word. Part two
-(steps 10 to 16) designed and planned, not started; step 13 waits on three
-answers from the author (*Part two — design*, open questions).
+**Status** — **in progress, 2026-09-17.** Steps 0 to 8 done: the page works,
+the author says. Part two (steps 10 to 16) designed and planned; the author
+answered its three questions the same day and asked for every change that can
+be made while away ("fais toutes les modifications que tu peux, je reviens
+check dans quelques heures"): steps 9 to 13, each checked and committed; the
+design still of step 14 and what follows wait for the author.
 
 ## Context
 
@@ -245,7 +247,7 @@ Part two leaves out:
 
 - What One Ring plays live, in an offline export. The export plays the clips,
   generations written into them included; making it run One Ring is the dual
-  runtime above (open question 2).
+  runtime above. The author's answer: an audio track records it (answer 2).
 - An arpeggiator, or another One Ring, feeding a One Ring's MIDI IN: not
   routed, as an arpeggiator feeding an arpeggiator is not today. One Ring's
   MIDI OUT into the Sequencer's MIDI IN is not a recording path either; WRITE
@@ -340,20 +342,29 @@ the seed.
   play, not before they are written.
 - The engine sends the generation to the renderer (`oneRingWrite`: node,
   generation number, notes, length), which writes it through
-  `SequencerController`, where a take becomes a clip. *New* adds a clip to the
-  named track (where: open question 1). *Replace* and *Add* change the notes of
-  the named clip, *Add* skipping duplicates. `SequencerModel` gains the one
+  `SequencerController`, where a take becomes a clip. *New* adds a MIDI track
+  for each generation, named after the node and the generation number, with
+  the generation as its one clip, where it was heard — the transport's
+  position at the step, less the window, never before zero; with the transport
+  at rest, at the playhead. The track has no Destination unless the writer
+  names a node of the Patch Bay; a new track is where the author gives a
+  generation an instrument of its own (answer 1). At the Sequencer's 64 tracks,
+  *New* is refused and reported. *Replace* and *Add* change the notes of the
+  named clip, *Add* skipping duplicates. `SequencerModel` gains the one
   operation it lacks — replace a clip's notes — used here and offered to the
   Clip Editor's protocol. Each write is one undo step and marks the project
-  modified, as a take does (open question 3).
+  modified, as a take does (answer 3).
 - A clip being played is rewritten one timer tick and one IPC round after its
   step, tens of milliseconds: a note of the new content that starts inside
   that gap is not heard in that pass.
-- `FEEDBACK_ON` and `FEEDBACK_OFF` (and a setting): with feedback on, a written
-  generation replaces or joins the current generation (a setting), no sooner
-  than the delay after the previous one (0 to 64 bars), and no more times than
-  the limit (1 to 999). At the limit, feedback turns itself off and the status
-  says so. The origin is never touched, and frozen material takes nothing.
+- `FEEDBACK_ON` and `FEEDBACK_OFF` (and a setting): with feedback on, a
+  generation replaces or joins the current generation (a setting) in the
+  engine, at its `WRITE`, no sooner than the delay after the previous one (0 to
+  64 bars), and no more times than the limit (1 to 999). The material takes the
+  generation the engine sent, whether or not the renderer could write it; a
+  refused write is reported. At the limit, feedback turns itself off and the
+  status says so. The origin is never touched, and frozen material takes
+  nothing.
 - No instant loop: a generation reaches the voices at their next steps, never
   inside the tick that wrote it, and the scheduler's per-tick guards cover the
   new targets as they cover the old.
@@ -394,16 +405,23 @@ so a scene can change the harmony; the origin kept beside the current
 generation; a generation is what was heard over the window; loading a clip is
 done from the page or the agent, not from a step.
 
-**Open questions for the author** — to answer before step 13:
+**The author's answers, 2026-09-17** — to the three questions asked that day:
 
-1. Where a *New* generation goes on its track: after the track's last clip
-   (proposed: the track becomes the tape of the piece's generations), or where
-   it was played in the arrangement.
-2. The export: it holds what the clips hold, not what One Ring plays live.
-   Enough for now?
-3. Each generation is one undo step, as a take is: an hour of generations
-   every few bars pushes the author's own edits out of the 50-step history.
-   Proposed: accept it, as for takes.
+1. *Where a New generation goes*: "Dans une nouvelle piste, ce qui permet
+   ainsi même de créer de nouveaux Omniboxes avec de nouveau VST" — a track of
+   its own, which can then be given a new VST node. Whether One Ring should
+   create that node itself is not asked for, and not planned: the author, or
+   an agent, cables it.
+2. *The export, which holds the clips and not what One Ring plays live*: "on
+   peut imaginer une piste audio qui enregistre tout depuis le début". That
+   exists: an audio track armed on a node cabled into the Sequencer's AUDIO IN
+   (a Mixer gathering the instruments One Ring plays) records from the start,
+   and the export plays the take. A Sequencer sync keeps an audio take going
+   (the track's writer is the same object across plans). Step 16 checks it.
+   What follows from it: the take ends when the transport stops, a sequence's
+   STOP included; a later playback sounds the take and One Ring together.
+3. *One undo step per generation*: "Ne te soucie pas des étapes
+   d'annulation" — as proposed, nothing special.
 
 ## Steps
 
@@ -490,18 +508,19 @@ done from the page or the agent, not from a step.
       author's screen, with `omni-pearl.css` and a proposed section of new
       tokens and parts. The author's go, the same day: "c'est bon, écris la
       vraie page". The still is `docs/design-references/one-ring-faceplate.png`.
-- [ ] 7. The page, playing half: channels, the grid with playheads and its four
+- [x] 7. The page, playing half: channels, the grid with playheads and its four
       cell appearances, the channel's settings, RUN and STOP, RESTART CH and
       STOP CH, scenes.
       Check: `npm test` (domShim) + `npm run check` + `npm run sync:dist` + seen
       Built with step 8, 2026-09-17 (log). `npm test` (1176), `npm run check`,
       `npm run sync:dist` — green; tried in a browser on a fake engine.
-      **Waiting for the author's trial in MiniHub.**
-- [ ] 8. The page, authoring half: the cell (active, probability, value modes,
+      The author, 2026-09-17, after trying it: "Oui la nouvelle page de One
+      Ring fonctionne bien". **Done.**
+- [x] 8. The page, authoring half: the cell (active, probability, value modes,
       conditions, locks), Follow Actions, seed, NEW SEED, MUTATE, STORE SCENE,
       scene timing and position.
       Check: same as step 7
-      Built with step 7; same checks, same wait.
+      Built with step 7; same checks, the same word from the author. **Done.**
 - [ ] 9. Requests: the node answers the VST's vocabulary (describe, status,
       targets, get, set, run, stop, channel, scene, copy-scene, mutate,
       new-seed) from its content, so what programmed the VST programs it; its
@@ -558,8 +577,8 @@ comes after its design is approved (steps 14 and 15).
 - [ ] 13. The writer and feedback: `WRITE`, the take, `oneRingWrite`, New,
       Replace and Add through `SequencerController`, the model's operation to
       replace a clip's notes, refusals, `FEEDBACK_ON` and `FEEDBACK_OFF` with
-      their bounds, STOP dropping what is not written; their requests. Needs
-      the author's answers to the open questions.
+      their bounds, STOP dropping what is not written; their requests, with
+      the author's answers (*Part two — design*).
       Check: build 0/0 + the four binaries — the take holds exactly what was
       played in its window; the caps hold; feedback respects its delay, stops
       at its limit and leaves the origin + `npm test` — a write changes only
@@ -580,7 +599,8 @@ comes after its design is approved (steps 14 and 15).
       the author's trial in MiniHub
 - [ ] 16. The demonstration, with the author: a project made for it (a short
       source clip and no arrangement, a One Ring, an instrument, a track for
-      the generations) and the brief's eight points, each seen or heard.
+      the generations, an audio track recording from the start) and the
+      brief's eight points, each seen or heard; the export holds the take.
       Check: the eight points written in the log, each with how it was seen,
       and what was not
 - [ ] 17. Documents: a DECISIONS entry (where the clock runs, why the content
@@ -615,7 +635,7 @@ proves:
 - a sequence copied from the VST, seen commanding the same targets at the same
   steps in the native node;
 - the page, approved by the author;
-- the three open questions answered, and the answers written into the design;
+- the author's three answers built as the design records them;
 - the brief's eight points, seen or heard with the author in the demonstration
   project (step 16).
 
