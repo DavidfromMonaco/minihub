@@ -107,6 +107,7 @@ private:
 CommandRegistry withInternalCommands(const CommandRegistry&, const Project&);
 
 extern const std::string memoryTarget;
+extern const std::string writerTarget;
 // `one-ring:voice:1` to `one-ring:voice:4`: the voice, from 0, or false.
 bool voiceTarget(const std::string& target, std::size_t& voice) noexcept;
 

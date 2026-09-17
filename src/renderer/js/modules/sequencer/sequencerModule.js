@@ -277,7 +277,7 @@ function trackDestinations(hub, track) {
   if (track.type === 'midi') return hub.network.listNodes().filter((node) => ['vst', 'arpeggiator', 'one-ring'].includes(node.type)).map((node) => ({
     id: node.id,
     name: node.type === 'vst' ? `${node.name} — ${chainLabel(hub, node.id)}`
-      : `${node.name} — Arpeggiator`
+      : node.type === 'arpeggiator' ? `${node.name} — Arpeggiator` : node.name
   }));
   return hub.network.listNodes().filter((node) => ['mixer', 'morpher', 'audio-output', 'vst'].includes(node.type)
     && node.inputs.some((port) => port.type === 'audio')

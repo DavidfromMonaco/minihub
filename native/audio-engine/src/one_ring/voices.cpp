@@ -213,12 +213,13 @@ void Voices::removeSounding(std::size_t index) noexcept
     sounding_[index] = sounding_[--soundingCount_];
 }
 
-void Voices::render(double blockBegin, double beatsPerSample, int numSamples, NoteSink& sink) noexcept
+void Voices::render(double blockBegin, double beatsPerSample, int numSamples, NoteSink& sink, int upto) noexcept
 {
     if (numSamples <= 0 || !(beatsPerSample > 0) || !std::isfinite(blockBegin)) return;
+    if (upto < 0 || upto > numSamples) upto = numSamples;
     // What rounds to a sample of this block is this block's: a note lands on
     // the sample nearest its beat whatever the size of the blocks.
-    const double blockEnd = blockBegin + (numSamples - 0.5) * beatsPerSample;
+    const double blockEnd = blockBegin + (upto - 0.5) * beatsPerSample;
     const auto offsetOf = [&](double beat) {
         const double samples = std::round((beat - blockBegin) / beatsPerSample);
         if (!(samples > 0)) return 0;

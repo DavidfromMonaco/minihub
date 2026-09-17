@@ -321,6 +321,7 @@ export class EngineClient {
       case 'oneRingRemoved':
       case 'oneRingMaterial':
       case 'oneRingMaterialSet':
+      case 'oneRingWrite':
         this.events.emit(`engine:${msg.type}`, msg);
         break;
       case 'pluginRequestResult': {
@@ -852,12 +853,12 @@ export class EngineClient {
     return Promise.resolve(this.command({ type: 'setOneRingTargets', nodeId, generation, registry }));
   }
 
-  /** RUN, STOP, a channel command, a scene recall or a memory command for a One Ring node's runtime. */
+  /** RUN, STOP, a channel command, a scene recall, a memory or a writer command for a One Ring node's runtime. */
   oneRingCommand(nodeId, generation, command, { channel, name, scene } = {}) {
     if (this.state !== 'running') return Promise.resolve({ ok: false, reason: 'engine-not-running' });
     const fields = command === 'channel' ? { channel, name }
       : command === 'scene' ? { scene }
-        : command === 'memory' ? { name } : {};
+        : command === 'memory' || command === 'writer' ? { name } : {};
     return Promise.resolve(this.command({ type: 'oneRingCommand', nodeId, generation, command, ...fields }));
   }
 

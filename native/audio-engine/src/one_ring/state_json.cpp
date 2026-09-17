@@ -163,7 +163,7 @@ NoteList readNotes(const juce::var& object)
     return list;
 }
 
-juce::var writeNotes(const NoteList& list)
+juce::var notesToVar(const NoteList& list)
 {
     juce::var object(new juce::DynamicObject());
     object.getDynamicObject()->setProperty("length", list.length);
@@ -187,6 +187,30 @@ int ruleIn(const juce::var& object, const char* key, int fallback, int low, int 
 {
     if (!object.hasProperty(key)) return fallback;
     return wholeIn(object[key], low, high, "Invalid voice rules");
+}
+
+// Part two's writer. A content saved before it has none: four bars, no feedback.
+WriterSettings readWriter(const juce::var& object)
+{
+    WriterSettings settings;
+    if (object.isVoid() || object.isUndefined()) return settings;
+    if (!object.isObject()) throw std::invalid_argument("Invalid writer settings");
+    if (object.hasProperty("bars"))
+        settings.bars = static_cast<std::uint32_t>(wholeIn(object["bars"], 1, static_cast<int>(maximumWriterBars),
+                                                           "A generation lasts 1 to 16 bars"));
+    if (object.hasProperty("feedback")) {
+        if (!object["feedback"].isBool()) throw std::invalid_argument("Invalid writer settings");
+        settings.feedback = object["feedback"];
+    }
+    if (object.hasProperty("feedbackMode"))
+        settings.feedbackMode = static_cast<CaptureMode>(wholeIn(object["feedbackMode"], 0, 1, "Invalid feedback mode"));
+    if (object.hasProperty("delayBars"))
+        settings.delayBars = static_cast<std::uint32_t>(wholeIn(object["delayBars"], 0,
+            static_cast<int>(maximumFeedbackDelayBars), "A feedback delay is 0 to 64 bars"));
+    if (object.hasProperty("limit"))
+        settings.limit = static_cast<std::uint32_t>(wholeIn(object["limit"], 1,
+            static_cast<int>(maximumFeedbackGenerations), "A feedback limit is 1 to 999 generations"));
+    return settings;
 }
 
 // Part two's voices. A scene saved before them has none: every voice changes nothing.
@@ -242,6 +266,11 @@ Material readMaterial(const juce::var& object)
     if (!object["frozen"].isBool()) throw std::invalid_argument("A material says whether it is frozen");
     material.frozen = object["frozen"];
     return material;
+}
+
+juce::var writeNotes(const NoteList& list)
+{
+    return notesToVar(list);
 }
 
 juce::var writeVoices(const std::array<VoiceRules, voiceCount>& voices)
@@ -300,6 +329,7 @@ Project readProject(const juce::var& state)
     project.sceneTiming = static_cast<SceneTiming>(timing);
     project.scenePosition = static_cast<ScenePosition>(position);
     project.capture = readCapture(state["capture"]);
+    project.writer = readWriter(state["writer"]);
     const auto* scenes = state["scenes"].getArray();
     if (scenes == nullptr || scenes->isEmpty()) throw std::invalid_argument("Missing scenes");
     for (const auto& item : *scenes) {

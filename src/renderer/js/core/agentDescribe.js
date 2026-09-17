@@ -70,7 +70,10 @@ function oneRingStatusOf(hub, nodeId) {
     guarded: status?.guarded ?? 0,
     lastRefusal: hub.oneRing?.refusalOf?.(nodeId) ?? '',
     capture: status?.capture ?? 'off',
-    sounding: status?.sounding ?? [0, 0, 0, 0]
+    sounding: status?.sounding ?? [0, 0, 0, 0],
+    feedback: status?.feedback === true,
+    written: hub.oneRing?.writesOf?.(nodeId)?.written ?? 0,
+    writesRefused: hub.oneRing?.writesOf?.(nodeId)?.refused ?? 0
   };
 }
 

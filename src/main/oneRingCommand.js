@@ -16,6 +16,7 @@ const MAX_REGISTRY_CHARS = 4 * 1024 * 1024;
 const NODE_ID = /^[A-Za-z][A-Za-z0-9_-]*$/;
 const CHANNEL_COMMANDS = new Set(['START', 'STOP', 'RESTART', 'RESET', 'TOGGLE', 'ENABLE', 'DISABLE']);
 const MEMORY_COMMANDS = new Set(['CAPTURE_REPLACE', 'CAPTURE_ADD', 'CAPTURE_END', 'CLEAR', 'FREEZE', 'UNFREEZE', 'REVERT']);
+const WRITER_COMMANDS = new Set(['WRITE', 'FEEDBACK_ON', 'FEEDBACK_OFF']);
 // Two lists of at most 256 notes: far below this.
 const MAX_MATERIAL_CHARS = 256 * 1024;
 const CHANNELS = 16;
@@ -70,6 +71,8 @@ function isValidOneRingCommand(msg) {
       return Number.isInteger(msg.scene) && msg.scene >= 0 && msg.scene <= MAX_SCENE_INDEX;
     case 'memory':
       return MEMORY_COMMANDS.has(msg.name);
+    case 'writer':
+      return WRITER_COMMANDS.has(msg.name);
     default:
       return false;
   }

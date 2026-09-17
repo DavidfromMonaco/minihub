@@ -26,6 +26,20 @@ struct CaptureSettings {
     std::uint32_t bars = 1;
 };
 
+// What a WRITE keeps of what the voices played, and what feedback does with it.
+// Where a generation is written is the renderer's business.
+constexpr std::uint32_t maximumWriterBars = 16;
+constexpr std::uint32_t maximumFeedbackDelayBars = 64;
+constexpr std::uint32_t maximumFeedbackGenerations = 999;
+
+struct WriterSettings {
+    std::uint32_t bars = 4;
+    bool feedback = false;
+    CaptureMode feedbackMode = CaptureMode::Replace;
+    std::uint32_t delayBars = 0;
+    std::uint32_t limit = 16;
+};
+
 struct MaterialNote {
     // Ticks from the material's start.
     std::int32_t start = 0;

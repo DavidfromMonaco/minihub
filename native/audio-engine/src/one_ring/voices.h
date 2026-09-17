@@ -89,8 +89,10 @@ public:
     // The notes `holdChannel` holds on this voice end at `beat`; -1 ends all of the voice's.
     void release(std::size_t voice, int holdChannel, double beat) noexcept;
 
-    // One block: every Note On and Note Off falling in it, in time order.
-    void render(double blockBegin, double beatsPerSample, int numSamples, NoteSink&) noexcept;
+    // One block: every Note On and Note Off falling in it before sample
+    // `upto` (the whole block by default), in time order. Called again with a
+    // later `upto`, it goes on from there.
+    void render(double blockBegin, double beatsPerSample, int numSamples, NoteSink&, int upto = -1) noexcept;
     // Every sounding note ends at `offset`; nothing waiting starts.
     void releaseAll(NoteSink&, int offset) noexcept;
     // Everything forgotten and nothing sent: a panic silenced the instruments.

@@ -307,16 +307,22 @@ export class SequencerModel {
     return track;
   }
 
-  addTrack(type = 'midi') {
+  /**
+   * `focus: false` is for a track nobody asked for at that moment -- a One Ring
+   * generation's -- which must not pull the inspector away from the one being
+   * worked on.
+   */
+  addTrack(type = 'midi', { name = '', focus = true } = {}) {
     if (this.state.tracks.length >= SEQUENCER_LIMITS.tracks) return null;
     const normalizedType = type === 'audio' ? 'audio' : 'midi';
     const family = this.state.tracks.filter((track) => track.type === normalizedType).length + 1;
-    const track = normalizeTrack({ id: uid('track'), type: normalizedType, name: `${normalizedType === 'midi' ? 'MIDI' : 'Audio'} ${family}`, volume: 1 }, this.state.tracks.length);
+    const fallback = `${normalizedType === 'midi' ? 'MIDI' : 'Audio'} ${family}`;
+    const track = normalizeTrack({ id: uid('track'), type: normalizedType, name: name || fallback, volume: 1 }, this.state.tracks.length);
     this.state.tracks.push(track);
     // A track is created to be worked on, so it takes the focus and the
     // toolbar inspector opens on its routing. Arming is left alone: adding a
     // track must not disarm the one a take is running on.
-    this.state.focusedTrackId = track.id;
+    if (focus) this.state.focusedTrackId = track.id;
     return track;
   }
 
@@ -349,12 +355,18 @@ export class SequencerModel {
     return track;
   }
 
-  addMidiClip(trackId, startPpq = 0, lengthPpq = 4, notes = []) {
+  /**
+   * A clip drawn by hand lands on the grid and is selected. A clip the music
+   * wrote -- a One Ring generation -- keeps the position it was heard at
+   * (`snap: false`) and leaves the selection alone (`select: false`).
+   */
+  addMidiClip(trackId, startPpq = 0, lengthPpq = 4, notes = [], { name = '', snap = true, select = true } = {}) {
     const track = this._track(trackId);
     if (!track || track.type !== 'midi' || track.clips.length >= SEQUENCER_LIMITS.clipsPerTrack) return null;
-    const clip = normalizeClip({ id: uid('clip'), startPpq: snapPpq(startPpq, this.state.snap), lengthPpq, notes }, 'midi');
+    const start = snap ? snapPpq(startPpq, this.state.snap) : Math.max(0, finite(startPpq));
+    const clip = normalizeClip({ id: uid('clip'), name, startPpq: start, lengthPpq, notes }, 'midi');
     track.clips.push(clip);
-    this.selectClip(clip.id);
+    if (select) this.selectClip(clip.id);
     return clip;
   }
 
@@ -613,6 +625,62 @@ export class SequencerModel {
     found.clip.notes.push(...copies);
     found.clip.notes.sort((a, b) => a.startPpq - b.startPpq || a.pitch - b.pitch);
     return copies;
+  }
+
+  /**
+   * Every note of a MIDI clip replaced by `notes`, placed from the clip's first
+   * visible quarter (`startPpq` 0). The clip keeps its place and its length: a
+   * note starting past its end is left out, one ringing past it is cut there.
+   * The same notes again leave the clip's own, ids and all, untouched: a
+   * generation that repeats the last one changes nothing. Answers how many
+   * notes the clip now holds, or -1 when it takes none.
+   */
+  replaceMidiNotes(clipId, notes = []) {
+    const found = this._clip(clipId);
+    if (!found || found.track.type !== 'midi' || !Array.isArray(notes)) return -1;
+    const fitted = this._fitNotes(found.clip, notes);
+    const current = found.clip.notes;
+    const same = fitted.length === current.length && fitted.every((note, i) => ['pitch', 'startPpq', 'durationPpq', 'velocity', 'channel']
+      .every((field) => note[field] === current[i][field]));
+    if (!same) found.clip.notes = fitted;
+    return found.clip.notes.length;
+  }
+
+  /**
+   * `notes` joined to a MIDI clip's, placed as `replaceMidiNotes` places them.
+   * A note the clip already has -- same channel, pitch and start tick -- is not
+   * added twice. Answers how many were added, or -1 when the clip takes none.
+   */
+  addMidiNotes(clipId, notes = []) {
+    const found = this._clip(clipId);
+    if (!found || found.track.type !== 'midi' || !Array.isArray(notes)) return -1;
+    const key = (note) => `${note.channel}:${note.pitch}:${ppqToTicks(note.startPpq)}`;
+    const present = new Set(found.clip.notes.map(key));
+    let room = SEQUENCER_LIMITS.notesPerClip - found.clip.notes.length;
+    const added = [];
+    for (const note of this._fitNotes(found.clip, notes)) {
+      if (room <= 0) break;
+      if (present.has(key(note))) continue;
+      present.add(key(note));
+      added.push(note);
+      room -= 1;
+    }
+    if (!added.length) return 0;
+    found.clip.notes.push(...added);
+    found.clip.notes.sort((a, b) => a.startPpq - b.startPpq || a.pitch - b.pitch);
+    return added.length;
+  }
+
+  _fitNotes(clip, notes) {
+    const startBound = clip.sourceOffsetPpq;
+    const endBound = startBound + clip.lengthPpq;
+    const fitted = [];
+    for (const note of notes.slice(0, SEQUENCER_LIMITS.notesPerClip)) {
+      const startPpq = startBound + finite(note?.startPpq, -1);
+      if (startPpq < startBound || startPpq > endBound - MIN_NOTE_PPQ) continue;
+      fitted.push(normalizeNote({ ...note, id: uid('note'), startPpq }, endBound));
+    }
+    return fitted.sort((a, b) => a.startPpq - b.startPpq || a.pitch - b.pitch);
   }
 
   removeMidiNotes(clipId, noteIds = []) {

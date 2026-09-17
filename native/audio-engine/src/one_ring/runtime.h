@@ -14,6 +14,7 @@
 
 #include "capture.h"
 #include "scheduler.h"
+#include "take.h"
 #include "voices.h"
 #include "../midi_network.h"
 #include "../transport.h"
@@ -128,6 +129,23 @@ struct Status {
     std::uint64_t notesRefused = 0;
     // What the voices play by, live: the scene's rules and the commands since.
     std::array<VoiceRules, voiceCount> voices{};
+    // The writer: generations sent, and those that found no room or no note.
+    std::uint64_t writes = 0;
+    std::uint64_t writesDropped = 0;
+    std::uint64_t writesEmpty = 0;
+    bool feedback = false;
+    // Feedback turned itself off at its limit.
+    bool feedbackStopped = false;
+};
+
+// A WRITE: what the voices played over the writer's window, numbered, with
+// where the arrangement stood.
+struct Generation {
+    std::uint64_t number = 0;
+    double beat = 0;
+    double transportBeat = 0;
+    bool transportPlaying = false;
+    NoteList notes;
 };
 
 // Where a node's notes go: plugin chains, arpeggiators by id, the hardware output.
@@ -145,6 +163,8 @@ struct MaterialReport {
 
 enum class MemoryCommand : std::uint8_t { CaptureReplace, CaptureAdd, CaptureEnd, Clear, Freeze, Unfreeze, Revert };
 bool memoryCommandNamed(const std::string& name, MemoryCommand& command) noexcept;
+enum class WriterCommand : std::uint8_t { Write, FeedbackOn, FeedbackOff };
+bool writerCommandNamed(const std::string& name, WriterCommand& command) noexcept;
 
 class Runtime final : private EventSink, private CaptureSink, private NoteSink {
 public:
@@ -175,6 +195,10 @@ public:
     void setMaterial(const Material&) noexcept;
     // A note from a controller cabled to MIDI IN, taken at the next block.
     bool pushLiveInput(const unsigned char* bytes, int size) noexcept;
+    // A WRITE, or feedback turned on or off, from outside the sequence.
+    bool writerCommand(WriterCommand) noexcept;
+    // The next generation the callback wrote, or false.
+    bool takeGeneration(Generation& out) noexcept { return generations_.pop(out); }
     // Where MIDI OUT is cabled. The notes sounding on the old ones end there first.
     void setOutputs(OutputTargets);
     // The instruments were silenced (a Stop, a new wiring): what sounds is forgotten.
@@ -208,7 +232,7 @@ private:
         std::uint64_t revision = 0;
         std::uint64_t projectVersion = 0;
     };
-    enum class CommandKind : std::uint8_t { Channel, Scene, Memory };
+    enum class CommandKind : std::uint8_t { Channel, Scene, Memory, Writer };
     struct Command {
         CommandKind kind = CommandKind::Channel;
         std::uint8_t name = 0;
@@ -230,6 +254,8 @@ private:
     void syncRules(bool force) noexcept;
     void materialChanged() noexcept;
     void flush(const OutputTargets*, bool blockEpochs) noexcept;
+    void writer(WriterCommand, int offset) noexcept;
+    void render(int upto) noexcept;
     void memory(MemoryCommand, int offset, bool fromOutside) noexcept;
     void drainTo(int offset) noexcept;
     int offsetOf(double beat) const noexcept;
@@ -260,6 +286,7 @@ private:
     Latest<Status> status_;
     Latest<Material> materialIn_;
     Latest<MaterialReport> materialOut_;
+    Queue<Generation, 8> generations_;
 
     // Audio thread only.
     std::unique_ptr<Scheduler> scheduler_;
@@ -273,6 +300,13 @@ private:
     std::uint64_t materialRefused_ = 0;
     Capture capture_{*this};
     Voices voices_;
+    Take take_;
+    Generation generation_;
+    std::uint64_t writes_ = 0, writesDropped_ = 0, writesEmpty_ = 0;
+    bool feedback_ = false, feedbackStopped_ = false, feedbackKnown_ = false;
+    std::uint64_t feedbackVersion_ = 0;
+    double lastFeedback_ = -1.0e300;
+    bool rendering_ = false;
     juce::MidiBuffer out_;
     std::array<std::uint32_t, 64> epochs_{};
     MidiExecutionPlan* arpeggiators_ = nullptr;

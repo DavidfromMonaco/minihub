@@ -39,6 +39,15 @@ import { OneRingRandom, RANDOM_STREAM } from './oneRingRandom.js';
  * Each scene also holds four voices' rules (native one_ring/voices.h): what a
  * voice does to the material's notes while the scene plays. A channel aimed at
  * `one-ring:voice:N` plays notes through that voice.
+ *
+ * THE WRITER
+ * ----------
+ * A step aimed at `one-ring:writer` WRITEs: the engine turns what the voices
+ * played over the last `bars` into a generation, and the renderer writes it
+ * into the Sequencer. The engine reads the window and feedback's settings;
+ * where a generation goes -- `mode`, `clipId`, `destination` -- and how many
+ * were written are the renderer's alone, and changing them publishes nothing
+ * (`ENGINE_WRITER_FIELDS`).
  */
 
 export const CHANNEL_COUNT = 16;
@@ -114,6 +123,16 @@ export const VOICE_COMMANDS = Object.freeze([
   'PLAY', 'NOTE', 'NOTE_OFF', 'TRANSPOSE', 'OCTAVE', 'ROOT', 'SCALE', 'VELOCITY', 'GATE', 'DENSITY'
 ]);
 
+export const WRITER_TARGET = 'one-ring:writer';
+export const WRITER_COMMANDS = Object.freeze(['WRITE', 'FEEDBACK_ON', 'FEEDBACK_OFF']);
+/** Where a generation goes: a track of its own, or the notes of a named clip replaced or joined. */
+export const WRITE_MODE = Object.freeze({ newTrack: 0, replace: 1, add: 2 });
+export const MAX_WRITER_BARS = 16;
+export const MAX_FEEDBACK_DELAY_BARS = 64;
+export const MAX_FEEDBACK_LIMIT = 999;
+/** The writer's settings the engine reads; a change to any other publishes nothing. */
+export const ENGINE_WRITER_FIELDS = Object.freeze(['bars', 'feedback', 'feedbackMode', 'delayBars', 'limit']);
+
 const UINT64_MAX = (1n << 64n) - 1n;
 const INT32_MIN = -2147483648;
 const INT32_MAX = 2147483647;
@@ -160,6 +179,16 @@ export function defaultVoice() {
 
 export const defaultVoices = () => Array.from({ length: VOICE_COUNT }, defaultVoice);
 
+/**
+ * `clipId` names the clip Replace and Add write into; `destination`, the node a
+ * new track plays, or none. `written` counts the generations written, and
+ * numbers the next one's track.
+ */
+export const defaultWriter = () => ({
+  mode: WRITE_MODE.newTrack, clipId: '', destination: '', bars: 4,
+  feedback: false, feedbackMode: CAPTURE_MODE.replace, delayBars: 0, limit: 16, written: 0
+});
+
 /** What One Ring holds when it is first loaded: four empty scenes, seed 1. */
 export function createSequence() {
   return {
@@ -176,7 +205,8 @@ export function createSequence() {
       voices: defaultVoices()
     })),
     capture: defaultCapture(),
-    material: emptyMaterial()
+    material: emptyMaterial(),
+    writer: defaultWriter()
   };
 }
 
@@ -367,6 +397,26 @@ function readCapture(raw) {
   return { mode, bars };
 }
 
+// A clip's id is whatever its file gave it; a node's is the application's own.
+const idText = (value) => typeof value === 'string' && value.length <= 256;
+
+function readWriter(raw) {
+  const settings = defaultWriter();
+  if (raw === undefined) return settings;
+  if (!isObject(raw)) fail('writer: an object');
+  for (const key of Object.keys(settings)) if (raw[key] !== undefined) settings[key] = raw[key];
+  if (!Object.values(WRITE_MODE).includes(settings.mode)) fail('writer.mode: new track, replace or add');
+  if (!idText(settings.clipId)) fail('writer.clipId: a clip id');
+  if (!idText(settings.destination)) fail('writer.destination: a node id');
+  if (!wholeIn(settings.bars, 1, MAX_WRITER_BARS)) fail(`writer.bars: 1 to ${MAX_WRITER_BARS} bars`);
+  if (typeof settings.feedback !== 'boolean') fail('writer.feedback: true or false');
+  if (!Object.values(CAPTURE_MODE).includes(settings.feedbackMode)) fail('writer.feedbackMode: replace or add');
+  if (!wholeIn(settings.delayBars, 0, MAX_FEEDBACK_DELAY_BARS)) fail(`writer.delayBars: 0 to ${MAX_FEEDBACK_DELAY_BARS} bars`);
+  if (!wholeIn(settings.limit, 1, MAX_FEEDBACK_LIMIT)) fail(`writer.limit: 1 to ${MAX_FEEDBACK_LIMIT} generations`);
+  if (!wholeIn(settings.written, 0, Number.MAX_SAFE_INTEGER)) fail('writer.written: a whole number');
+  return settings;
+}
+
 function readSeed(raw, path) {
   const text = String(raw ?? '');
   if (!/^\d{1,20}$/.test(text) || BigInt(text) > UINT64_MAX) fail(`${path}: a seed below 18446744073709551616`);
@@ -408,7 +458,8 @@ export function readSequence(raw) {
     scenePosition,
     scenes,
     capture: readCapture(raw.capture),
-    material: readMaterial(raw.material)
+    material: readMaterial(raw.material),
+    writer: readWriter(raw.writer)
   };
 }
 
@@ -526,7 +577,11 @@ export function setCell(channel, index, cell) {
 
 // ---------- targets and checks ----------
 
-/** One Ring's own targets: each channel's seven commands, the scene recall, and the material's commands. */
+/**
+ * One Ring's own targets: each channel's seven commands, the scene recall, the
+ * material's commands, the four voices and the writer -- the engine's, range for
+ * range (native one_ring/scheduler.cpp).
+ */
 export function oneRingTargets(content) {
   const channels = Array.from({ length: CHANNEL_COUNT }, (_, i) => ({
     id: `${CHANNEL_TARGET_PREFIX}${i + 1}`,
@@ -566,11 +621,13 @@ export function oneRingTargets(content) {
     label: `One Ring Voice ${v + 1}`,
     commands: voiceCommands()
   }));
+  const writer = new Map(WRITER_COMMANDS.map((id) => [id, { id, label: id, type: VALUE_TYPE.none }]));
   return [
     ...channels,
     { id: SCENES_TARGET, label: 'One Ring Scenes', commands: new Map([['RECALL', recall]]) },
     { id: MEMORY_TARGET, label: 'One Ring Memory', commands: memory },
-    ...voices
+    ...voices,
+    { id: WRITER_TARGET, label: 'One Ring Writer', commands: writer }
   ];
 }
 
@@ -666,6 +723,13 @@ export function sequenceErrors(content, find) {
     }
     for (const voice of scene.voices ?? []) {
       if (!voiceValid(voice)) errors.add('Invalid voice rules');
+    }
+  }
+  if (content?.writer !== undefined) {
+    try {
+      readWriter(content.writer);
+    } catch {
+      errors.add('Invalid writer settings');
     }
   }
   return [...errors];
@@ -833,6 +897,30 @@ export function setVoiceRule(content, scene, voice, rule, value) {
   const current = content.scenes[scene]?.voices?.[voice];
   if (!current || !Object.hasOwn(VOICE_RULES, rule)) return content;
   return setVoice(content, scene, voice, { ...current, [rule]: value });
+}
+
+// ---------- the writer ----------
+
+/**
+ * The writer's settings changed, checked whole: the content unchanged when they
+ * do not fit, or change nothing.
+ */
+export function setWriterSettings(content, changes = {}) {
+  const current = content.writer ?? defaultWriter();
+  let next;
+  try {
+    next = readWriter({ ...current, ...changes });
+  } catch {
+    return content;
+  }
+  return JSON.stringify(next) === JSON.stringify(current) ? content : { ...content, writer: next };
+}
+
+/** What the engine is sent of a content: all of it but its material and the writer's renderer-only fields. */
+export function engineSequence(content) {
+  const { material: _material, writer, ...sequence } = content;
+  if (writer === undefined) return sequence;
+  return { ...sequence, writer: Object.fromEntries(ENGINE_WRITER_FIELDS.map((field) => [field, writer[field]])) };
 }
 
 // ---------- the material ----------

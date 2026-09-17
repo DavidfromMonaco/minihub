@@ -108,6 +108,18 @@ test("a memory command is one of the material's seven, for one runtime generatio
   }
 });
 
+test("a writer command is WRITE or feedback's two, for one runtime generation", () => {
+  const command = (name) => ({ ...node, type: 'oneRingCommand', command: 'writer', name });
+  for (const name of ['WRITE', 'FEEDBACK_ON', 'FEEDBACK_OFF']) {
+    assert.equal(isValidOneRingCommand(command(name)), true, name);
+  }
+  for (const name of ['write', 'CLEAR', 'CAPTURE_END', '', undefined]) {
+    assert.equal(isValidOneRingCommand(command(name)), false, String(name));
+  }
+  assert.equal(isValidOneRingCommand({ ...node, type: 'oneRingCommand', command: 'memory', name: 'WRITE' }), false,
+    'each command keeps its own words');
+});
+
 test('the material goes to the engine as an object with its origin, and a bounded size', () => {
   const material = { origin: { length: 3840, notes: [] }, current: null, generation: 0, frozen: false };
   const set = { v: 1, type: 'setOneRingMaterial', nodeId: 'one-ring-2', material };

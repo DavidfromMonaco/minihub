@@ -4,7 +4,8 @@ const CLIP_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/;
 const PROJECT_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/;
 const OPERATIONS = new Set([
   'quantize', 'add-note', 'update-note', 'move-notes', 'set-notes',
-  'duplicate-notes', 'delete-notes', 'set-snap', 'update-audio'
+  'duplicate-notes', 'delete-notes', 'set-snap', 'update-audio',
+  'replace-notes', 'add-notes'
 ]);
 const SNAP_DIVISIONS = new Set(['1 bar', '1/2', '1/4', '1/8', '1/16', '1/32']);
 
@@ -78,6 +79,14 @@ function validPayload(operation, value) {
       && fields.every((key) => value[key] === undefined || finite(value[key]));
   }
   if (operation === 'duplicate-notes') return validIdList(value.noteIds) && value.noteIds.length > 0;
+  if (operation === 'replace-notes' || operation === 'add-notes') {
+    // A clip's notes written whole, as a One Ring generation is written. How
+    // many is bounded by the payload's size above.
+    const fields = ['startPpq', 'durationPpq', 'pitch', 'velocity', 'channel'];
+    return Object.keys(value).length === 1 && Array.isArray(value.notes)
+      && value.notes.every((note) => note && typeof note === 'object' && !Array.isArray(note)
+        && Object.keys(note).every((key) => fields.includes(key)) && fields.every((key) => finite(note[key])));
+  }
   if (operation === 'set-snap') {
     return Object.keys(value).length === 1 && SNAP_DIVISIONS.has(value.snap);
   }

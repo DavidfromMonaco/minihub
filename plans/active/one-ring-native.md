@@ -20,8 +20,9 @@ instruction for that day: check that it is possible and prepare it, no code.
 the author says. Part two (steps 10 to 16) designed and planned; the author
 answered its three questions the same day and asked for every change that can
 be made while away ("fais toutes les modifications que tu peux, je reviens
-check dans quelques heures"): steps 9 to 13, each checked and committed; the
-design still of step 14 and what follows wait for the author.
+check dans quelques heures"): steps 9, 11, 12 and 13 are done, each checked
+and committed, and step 10 is built and waits to be heard. The design still of
+step 14 and what follows wait for the author.
 
 ## Context
 
@@ -337,11 +338,16 @@ the seed.
 
 - `WRITE`: what the voices played in the last 1 to 16 bars before the step
   (the writer's window; the take holds at most 1,024 notes) becomes a
-  generation of at most 512 notes. A step at the start of a bar is the musical
-  boundary. What is written is what was heard: density thins notes before they
-  play, not before they are written.
+  generation of at most 256 notes — what a material keeps, since feedback
+  makes one of it. A step at the start of a bar is the musical boundary. What
+  is written is what was heard: density thins notes before they play, not
+  before they are written, and a note a panic cut is written cut. The voices
+  render up to the WRITE's sample first, so the window ends there exactly; at
+  the same step, a lower channel acts before a higher one, so a WRITE on CH1
+  hands its feedback to a PLAY on CH2 in that same step.
 - The engine sends the generation to the renderer (`oneRingWrite`: node,
-  generation number, notes, length), which writes it through
+  runtime generation, number, notes and length, and where the arrangement
+  stood at the step), which writes it through
   `SequencerController`, where a take becomes a clip. *New* adds a MIDI track
   for each generation, named after the node and the generation number, with
   the generation as its one clip, where it was heard — the transport's
@@ -645,7 +651,7 @@ comes after its design is approved (steps 14 and 15).
       leaves the instrument silent -- 12 checks. Found while testing: a
       note ending exactly on a block boundary was sent a sample early;
       a note now belongs to the block its rounded sample falls in.
-- [ ] 13. The writer and feedback: `WRITE`, the take, `oneRingWrite`, New,
+- [x] 13. The writer and feedback: `WRITE`, the take, `oneRingWrite`, New,
       Replace and Add through `SequencerController`, the model's operation to
       replace a clip's notes, refusals, `FEEDBACK_ON` and `FEEDBACK_OFF` with
       their bounds, STOP dropping what is not written; their requests, with
@@ -659,6 +665,39 @@ comes after its design is approved (steps 14 and 15).
       writer + `npm run check` + `npm run sync:dist` + the real engine and the
       renderer together: a generation written while the transport plays, and
       no All Sound Off in the engine's log.
+      Done 2026-09-17. Native: `one_ring/take.*` (the last 1,024 notes the
+      voices played, on a clock of their own), the writer's target and
+      commands, generations queued to the timer and sent as `oneRingWrite`,
+      feedback in the engine with its mode, delay and limit, the writer's
+      settings read from the sequence, the status's writer fields. Renderer:
+      the writer's settings in the content (`mode`, `clipId`, `destination`,
+      `bars`, feedback's four, `written`), of which the engine is sent only
+      its own (`engineSequence`), so choosing where generations go publishes
+      nothing; `one-ring:writer` among the node's targets;
+      `SequencerModel.replaceMidiNotes` and `addMidiNotes`, also the Clip
+      Editor's `replace-notes` and `add-notes`;
+      `SequencerController.writeGeneration`; the node writing a generation
+      and counting it in the same turn, refusals counted with their reason;
+      the requests `writer`, `set-writer`, `write`, `feedback`, and the writer
+      in `set` and `status`. Build 0 errors 0 warnings; `--core` (1689 checks:
+      `one-ring-writer` among them, whose generations across blocks of 32 to
+      1,024 samples differ once the take puts a note at its block's start),
+      `--vst3-e2e` (99),
+      `--cross-track-isolation` (27), `mlh_realtime_output_tests` (2535);
+      `npm test` (1219, `oneRingWriter.test.mjs` among them),
+      `npm run check`, `npm run sync:dist`. The real engine driven by the
+      renderer's own modules in Node (the hub, the node, the Sequencer
+      controller, main's validators on every command), 26 checks: a voice
+      transposing by 2 and a WRITE on every bar, feedback limited to two --
+      four generations written as four tracks at beats 0, 4, 8 and 12, note
+      for note (62 66 69 74, 64 68 71 76, then 66 70 73 78 twice, feedback
+      having stopped at its limit), the origin untouched; every Sequencer sync
+      a write made kept the routing, so nothing was silenced, a new track's
+      Destination cabled on the way included; the writer turned to Replace
+      while playing, the next generation replaced the first clip's notes and
+      nothing else, with no sequence republished; nothing written after Stop;
+      undo gave the first clip its notes back. **Not heard by the author; the
+      page shows none of it until step 15.**
 - [ ] 14. The design of part two, before its page: a still of what the page
       gains — MIDI IN and the capture, the material (origin and current
       generation), the four voices and their rules, the writer and feedback —
@@ -929,3 +968,28 @@ arrangement, so a capture keeps its own count. The old steps 9 and 10 became
 9 and 17, so that requests serve Codex's tests from the start and the documents
 are written once. Whether "tout fonctionne bien" covers the page (steps 7 and 8)
 was not said; they stay unticked until it is.
+
+2026-09-17 — Steps 9 to 13, built while the author was away, each committed
+alone. What was settled on the way, beyond what each step records:
+
+- A new plan releases what Legato holds, so everything a node's content holds
+  that the engine does not run travels apart or not at all: the scene the
+  engine reports, the material (its own command, both ways), and where the
+  writer puts generations and how many it wrote.
+- The engine's `WRITE` renders the voices up to its own sample before it takes
+  the window, and a note belongs to the block its rounded sample falls in; the
+  same material and sequence then write the same generation whatever the block
+  size. A note ending exactly on a block boundary was sent one sample early
+  before this (step 12).
+- A generation is written and counted in the same turn, with whatever material
+  feedback made of it, so undo takes both back. The same notes written again
+  into a clip change nothing, so a loop that has settled publishes nothing.
+- A new track for a generation takes neither the focus nor the selection: it
+  arrives while the author works on something else.
+- The bench that drove the engine from the renderer's modules first returned
+  `stdin.write`'s back-pressure as the command's result, where main.js answers
+  `ok` once written; the node then believed its sends lost and sent them again,
+  the old material with them. Main was right; the bench was fixed. The same
+  bench, before the Sequencer had ever been synced, saw the first write's sync
+  change the routing: the panic cut the note sounding, and the generation kept
+  it cut, as heard.

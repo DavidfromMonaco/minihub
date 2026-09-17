@@ -71,6 +71,7 @@ struct Project {
     ScenePosition scenePosition = ScenePosition::Restart;
     // Part two. The material itself travels apart (Runtime::setMaterial).
     CaptureSettings capture;
+    WriterSettings writer;
 };
 
 Project makeProject(SceneTiming, ScenePosition);

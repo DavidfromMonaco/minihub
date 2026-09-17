@@ -1,11 +1,12 @@
 import { VALUE_TYPE } from './commandRegistry.js';
 import {
-  CAPTURE_MODE, CHANNEL_COMMANDS, CHANNEL_COUNT, CONDITION, LENGTHS, MAX_CAPTURE_BARS, MAX_MATERIAL_TICKS, MAX_STEPS,
-  MUTABLE, NOTE_ORDER, OFFSET_LIMIT, REPEATS, RESOLUTIONS, ROOT_NAMES, SCALE_NAMES, SCENE_POSITION, SCENE_TIMING,
-  STEP_MODE, TICKS_PER_BEAT, VALUE_MODE, VOICE_COUNT, VOICE_RULES, setVoice, voiceValid,
-  cellsOf, clearCells, clearMaterial, defaultSource, emptyCell, loadMaterial, mutateSequence, noteListFromClip,
-  oneRingTargets, parseSeed, readNoteList, readSequence, reseed, retarget, revertMaterial, sequenceErrors,
-  setCaptureSettings, setFrozen, storeScene
+  CAPTURE_MODE, CHANNEL_COMMANDS, CHANNEL_COUNT, CONDITION, LENGTHS, MAX_CAPTURE_BARS, MAX_FEEDBACK_DELAY_BARS,
+  MAX_FEEDBACK_LIMIT, MAX_MATERIAL_TICKS, MAX_STEPS, MAX_WRITER_BARS, MUTABLE, NOTE_ORDER, OFFSET_LIMIT, REPEATS,
+  RESOLUTIONS, ROOT_NAMES, SCALE_NAMES, SCENE_POSITION, SCENE_TIMING, STEP_MODE, TICKS_PER_BEAT, VALUE_MODE,
+  VOICE_COUNT, VOICE_RULES, WRITE_MODE, setVoice, voiceValid,
+  cellsOf, clearCells, clearMaterial, defaultSource, defaultWriter, emptyCell, loadMaterial, mutateSequence,
+  noteListFromClip, oneRingTargets, parseSeed, readNoteList, readSequence, reseed, retarget, revertMaterial,
+  sequenceErrors, setCaptureSettings, setFrozen, setWriterSettings, storeScene
 } from './oneRingSequence.js';
 import {
   HUMANIZE_PERCENT, SWING_PERCENT,
@@ -47,12 +48,20 @@ import {
  * `voices` reads a scene's four voices' rules, and what the running node plays
  * by now; `set-voice` edits one voice's rules as the page does. A channel plays
  * notes by aiming at `one-ring:voice:N`, through `set`, like any command.
+ *
+ * THE WRITER
+ * ----------
+ * `writer` reads where generations go and what became of them; `set-writer`
+ * edits the writer's settings -- a clip it names must be a MIDI clip, a
+ * destination a node that takes a track's notes. `write` and `feedback` go to
+ * the runtime, as a step aimed at `one-ring:writer` does: `write` writes what
+ * the voices played over the window, now.
  */
 
 export const REQUEST_KINDS = Object.freeze([
   'describe', 'status', 'targets', 'get', 'set', 'run', 'stop', 'channel', 'scene', 'copy-scene', 'mutate', 'new-seed',
   'material', 'set-material', 'capture', 'capture-end', 'clear', 'freeze', 'unfreeze', 'revert',
-  'voices', 'set-voice'
+  'voices', 'set-voice', 'writer', 'set-writer', 'write', 'feedback'
 ]);
 
 const TYPE_NAMES = Object.freeze(['none', 'boolean', 'integer', 'number', 'choice']);
@@ -60,6 +69,11 @@ const FIELD_BITS = Object.freeze({ enabled: MUTABLE.enabled, probability: MUTABL
 const TIMING_NAMES = Object.freeze({ [SCENE_TIMING.immediate]: 'immediate', [SCENE_TIMING.nextBar]: 'next-bar' });
 const POSITION_NAMES = Object.freeze({ [SCENE_POSITION.restart]: 'restart', [SCENE_POSITION.keep]: 'keep' });
 const CAPTURE_NAMES = Object.freeze({ [CAPTURE_MODE.replace]: 'replace', [CAPTURE_MODE.add]: 'add' });
+const WRITE_NAMES = Object.freeze({
+  [WRITE_MODE.newTrack]: 'new-track', [WRITE_MODE.replace]: 'replace', [WRITE_MODE.add]: 'add'
+});
+// What a Sequencer track's Destination may be (sequencerModule.js).
+const MIDI_DESTINATION_TYPES = Object.freeze(['vst', 'arpeggiator', 'one-ring']);
 const ORDER_NAMES = Object.freeze({
   [NOTE_ORDER.asPlayed]: 'as-played', [NOTE_ORDER.rising]: 'rising',
   [NOTE_ORDER.falling]: 'falling', [NOTE_ORDER.shuffled]: 'shuffled'
@@ -84,6 +98,10 @@ const VALUES = Object.freeze({
     + 'velocityLow/velocityHigh 1-127, gateScale 5-400, gateSpread 0-100, shortestPpq/longestPpq 0.0625-64, '
     + 'order "as-played" "rising" "falling" "shuffled", density 0-100; a channel aimed at one-ring:voice:1-4 '
     + 'plays notes: PLAY -1..63 (a slot of the material, -1 its own), NOTE 0-255 (a note, in the voice\'s order)',
+  writer: '{"mode": "new-track", "replace" or "add"; "clipId": the MIDI clip replace and add write into; '
+    + '"destination": the node a new track plays, or ""; "bars": 1-16, the window a WRITE takes; "feedback": '
+    + 'true or false; "feedbackMode": "replace" or "add"; "delayBars": 0-64 between two feedbacks; "limit": '
+    + '1-999 feedbacks}; a channel aimed at one-ring:writer plays WRITE, FEEDBACK_ON and FEEDBACK_OFF',
   channel: 'channel 1-16, target, command, length 4/8/16/32/64, resolution "1/4" "1/8" "1/16" "1/32", '
     + 'repeats 1/2/3/4/8 or "loop", mode "trigger" or "legato", enabled, offset -64 to 64 steps, '
     + 'swing 0-95 and humanize 0-45 (percent), mutable ["enabled", "probability", "value"], '
@@ -208,6 +226,67 @@ function captureFrom(raw, content, path) {
   const bars = raw.bars === undefined ? content.capture.bars : raw.bars;
   if (!Number.isInteger(bars) || bars < 0 || bars > MAX_CAPTURE_BARS) refuse(`${path}.bars`, `0 to ${MAX_CAPTURE_BARS} bars`);
   return { mode, bars };
+}
+
+function nameIn(names, value, path) {
+  const found = Object.keys(names).map(Number).find((key) => names[key] === value);
+  return found === undefined ? refuse(path, Object.values(names).map((name) => JSON.stringify(name)).join(', ')) : found;
+}
+
+function wholeIn(value, min, max, path, unit) {
+  return Number.isInteger(value) && value >= min && value <= max ? value : refuse(path, `${min} to ${max} ${unit}`);
+}
+
+function writerFrom(hub, raw, current, path) {
+  if (!isObject(raw)) refuse(path, VALUES.writer);
+  const next = { ...current };
+  for (const [key, value] of Object.entries(raw)) {
+    const at = `${path}.${key}`;
+    switch (key) {
+      case 'kind':
+        break;
+      case 'mode':
+        next.mode = nameIn(WRITE_NAMES, value, at);
+        break;
+      case 'feedbackMode':
+        next.feedbackMode = nameIn(CAPTURE_NAMES, value, at);
+        break;
+      case 'clipId': {
+        if (typeof value !== 'string') refuse(at, 'a clip id, or ""');
+        if (value) {
+          const found = hub.sequencer?.model?._clip?.(value);
+          if (!found) refuse(at, `no clip ${JSON.stringify(value)}`);
+          if (found.track?.type !== 'midi') refuse(at, 'not a MIDI clip');
+        }
+        next.clipId = value;
+        break;
+      }
+      case 'destination': {
+        if (typeof value !== 'string') refuse(at, 'a node id, or ""');
+        if (value && !MIDI_DESTINATION_TYPES.includes(hub.nodes?.get?.(value)?.type)) {
+          refuse(at, `no node ${JSON.stringify(value)} a track can play: a VST, an arpeggiator or a One Ring`);
+        }
+        next.destination = value;
+        break;
+      }
+      case 'bars':
+        next.bars = wholeIn(value, 1, MAX_WRITER_BARS, at, 'bars');
+        break;
+      case 'delayBars':
+        next.delayBars = wholeIn(value, 0, MAX_FEEDBACK_DELAY_BARS, at, 'bars');
+        break;
+      case 'limit':
+        next.limit = wholeIn(value, 1, MAX_FEEDBACK_LIMIT, at, 'feedbacks');
+        break;
+      case 'feedback':
+        if (typeof value !== 'boolean') refuse(at, 'true or false');
+        next.feedback = value;
+        break;
+      default:
+        refuse(at, `not a writer setting: ${VALUES.writer}`);
+    }
+  }
+  return next;
 }
 
 const ticksOf = (ppq) => Math.round(ppq * TICKS_PER_BEAT);
@@ -377,6 +456,39 @@ function materialAnswer(content, status) {
   };
 }
 
+function writerAnswer(hub, nodeId, content, status) {
+  const writer = content.writer ?? defaultWriter();
+  const session = hub.oneRing?.writesOf?.(nodeId) ?? { written: 0, refused: 0, lastRefusal: '', last: null };
+  return {
+    ok: true,
+    writer: {
+      mode: WRITE_NAMES[writer.mode],
+      clipId: writer.clipId,
+      destination: writer.destination,
+      bars: writer.bars,
+      feedback: writer.feedback,
+      feedbackMode: CAPTURE_NAMES[writer.feedbackMode],
+      delayBars: writer.delayBars,
+      limit: writer.limit,
+      written: writer.written
+    },
+    // What the running node did: generations sent, those lost on the way or
+    // made of nothing, and feedback as it stands now.
+    engine: {
+      writes: status?.writes ?? 0,
+      dropped: status?.writesDropped ?? 0,
+      empty: status?.writesEmpty ?? 0,
+      feedback: status?.feedback ?? false,
+      feedbackStopped: status?.feedbackStopped ?? false
+    },
+    // What this session wrote into the Sequencer, and what it could not.
+    written: session.written,
+    refused: session.refused,
+    lastRefusal: session.lastRefusal,
+    last: session.last
+  };
+}
+
 function voiceOut(voice) {
   const out = {};
   for (const rule of Object.keys(VOICE_RULES)) {
@@ -428,6 +540,7 @@ function voiceFrom(raw, current, path) {
 function statusAnswer(hub, nodeId, context) {
   const { content, status } = context;
   const ready = Number.isSafeInteger(hub.oneRing?.generationOf?.(nodeId));
+  const writing = writerAnswer(hub, nodeId, content, status);
   return {
     ok: true,
     ready,
@@ -450,6 +563,15 @@ function statusAnswer(hub, nodeId, context) {
       currentNotes: content.material.current ? content.material.current.notes.length : null,
       generation: content.material.generation,
       frozen: content.material.frozen
+    },
+    writer: {
+      mode: writing.writer.mode,
+      feedback: writing.engine.feedback,
+      feedbackStopped: writing.engine.feedbackStopped,
+      writes: writing.engine.writes,
+      written: writing.written,
+      refused: writing.refused,
+      lastRefusal: writing.lastRefusal
     }
   };
 }
@@ -650,6 +772,7 @@ export async function handleOneRingRequest(hub, nodeId, body) {
           next = setScenePosition(next, Number(position));
         }
         if ('capture' in body) next = setCaptureSettings(next, captureFrom(body.capture, next, 'capture'));
+        if ('writer' in body) next = setWriterSettings(next, writerFrom(hub, body.writer, next.writer ?? defaultWriter(), 'writer'));
         const changed = [];
         if ('channels' in body) {
           if (!Array.isArray(body.channels)) refuse('channels', 'a list of channels');
@@ -773,6 +896,19 @@ export async function handleOneRingRequest(hub, nodeId, body) {
           scene: sceneOut(content, scene),
           voice: voiceOut(hub.nodes.get(nodeId).content.scenes[scene].voices[index])
         };
+      }
+      case 'writer':
+        return writerAnswer(hub, nodeId, content, context.status);
+      case 'set-writer': {
+        const next = writerFrom(hub, body, content.writer ?? defaultWriter(), 'writer');
+        const written = write(hub, nodeId, context, setWriterSettings(content, next));
+        return { ...writerAnswer(hub, nodeId, hub.nodes.get(nodeId).content, context.status), changed: written };
+      }
+      case 'write':
+        return await playResult(hub.oneRing.writer(nodeId, 'WRITE'));
+      case 'feedback': {
+        if (typeof body.on !== 'boolean') refuse('on', 'true to turn feedback on, false to turn it off');
+        return await playResult(hub.oneRing.writer(nodeId, body.on ? 'FEEDBACK_ON' : 'FEEDBACK_OFF'));
       }
       case 'new-seed': {
         let seed;

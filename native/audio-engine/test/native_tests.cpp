@@ -3511,6 +3511,251 @@ void testOneRingVoices()
     });
 }
 
+// ---------- One Ring's writer (part two) ----------
+
+// CH1 writing once a bar, and CH2 replaying the chord: a channel's commands go
+// before the next channel's, so a generation fed back plays from its own bar.
+oring::Project writerProject(std::uint32_t bars = 1)
+{
+    auto project = voiceProject();
+    for (auto& scene : project.scenes) {
+        scene.channels[1] = scene.channels[0];
+        auto& channel = scene.channels[0];
+        channel.enabled = true;
+        channel.target = {"one-ring:writer", "WRITE", {}};
+        channel.length = 4;
+        channel.resolution = {1, 1};
+        for (std::size_t i = 0; i < oring::maximumSteps; ++i) {
+            channel.steps[i].enabled = i < 4;
+            channel.steps[i].value = {};
+        }
+    }
+    project.writer.bars = bars;
+    return project;
+}
+
+std::vector<oring::Generation> drainGenerations(oring::Runtime& runtime)
+{
+    std::vector<oring::Generation> made;
+    for (oring::Generation generation; runtime.takeGeneration(generation);) made.push_back(generation);
+    return made;
+}
+
+std::vector<int> pitchesFrom(const std::vector<PlayedNote>& played, long long from, long long to)
+{
+    std::vector<int> pitches;
+    for (const auto& note : played) if (note.on && note.sample >= from && note.sample < to) pitches.push_back(note.pitch);
+    return pitches;
+}
+
+void testOneRingWriter()
+{
+    oneRingChecks("one-ring writer take", [] {
+        VoiceBench bench;
+        expect(bench.load(writerProject()), "one-ring writer: a channel that writes is taken");
+        bench.runtime->setMaterial(chordMaterial());
+        bench.runtime->run();
+        bench.blocks(1);
+        expect(drainGenerations(*bench.runtime).empty() && bench.runtime->status().writesEmpty == 1,
+               "one-ring writer: a WRITE with nothing heard sends nothing, and says so");
+        bench.until(96000 + 480);
+        const auto made = drainGenerations(*bench.runtime);
+        expect(made.size() == 1 && made[0].number == 1 && std::abs(made[0].beat - 4.0) < 1e-9 && !made[0].transportPlaying,
+               "one-ring writer: the WRITE on the next bar sends generation 1");
+        if (made.size() == 1) {
+            const auto expected = chordMaterial().origin;
+            expect(sameNotes(made[0].notes, expected),
+                   "one-ring writer: the generation is what was heard over the bar, where and as long as it sounded");
+        }
+        expect(bench.runtime->status().writes == 1 && !bench.runtime->status().feedback,
+               "one-ring writer: the status counts it, feedback off by default");
+    });
+    oneRingChecks("one-ring writer transport", [] {
+        VoiceBench bench;
+        expect(bench.load(writerProject(2)), "one-ring writer: loaded");
+        bench.runtime->setMaterial(chordMaterial());
+        bench.transport.seekPpq(16.0);
+        bench.transport.setPlaying(true);
+        bench.until(192000 + 480);
+        const auto made = drainGenerations(*bench.runtime);
+        expect(made.size() == 2 && made[0].notes.count == 4 && made[1].transportPlaying
+                   && std::abs(made[1].transportBeat - 24.0) < 1e-6
+                   && made[1].notes.length == 2 * oring::ticksPerBar && made[1].notes.count == 8,
+               "one-ring writer: a window of two bars, and where the arrangement stood when it was written");
+    });
+    oneRingChecks("one-ring writer feedback", [] {
+        auto project = writerProject();
+        project.scenes[0].voices[0].transpose = 12;
+        project.writer.feedback = true;
+        project.writer.limit = 2;
+        VoiceBench bench;
+        expect(bench.load(project), "one-ring writer: feedback on is taken");
+        bench.runtime->setMaterial(chordMaterial());
+        bench.runtime->run();
+        bench.until(96000 * 3 + 480);
+        expect(pitchesFrom(bench.played, 0, 96000) == std::vector<int>({72, 76, 79, 74}),
+               "one-ring writer: the first bar plays the material, an octave up");
+        expect(pitchesFrom(bench.played, 96000, 192000) == std::vector<int>({84, 88, 91, 86}),
+               "one-ring writer: the next plays the generation heard, an octave up again");
+        expect(pitchesFrom(bench.played, 192000, 288000) == std::vector<int>({96, 100, 103, 98}),
+               "one-ring writer: and the next, the second generation");
+        const auto status = bench.runtime->status();
+        expect(!status.feedback && status.feedbackStopped && status.materialGeneration == 2 && status.hasCurrent
+                   && status.originNotes == 4,
+               "one-ring writer: at its limit feedback turns itself off, the origin untouched");
+        const auto* report = bench.runtime->takeMaterialReport();
+        expect(report != nullptr && report->material.generation == 2 && report->material.current.notes[0].pitch == 84,
+               "one-ring writer: the material with its generations is reported");
+        bench.until(96000 * 4 + 480);
+        expect(pitchesFrom(bench.played, 288000, 384000) == std::vector<int>({96, 100, 103, 98}),
+               "one-ring writer: past the limit the voices keep the last generation");
+        // Written on beats 4, 8, 12 and 16.
+        expect(drainGenerations(*bench.runtime).size() == 4, "one-ring writer: every bar is still written");
+        bench.runtime->memoryCommand(oring::MemoryCommand::Revert);
+        bench.until(96000 * 6 + 480);
+        expect(pitchesFrom(bench.played, 480000, 576000) == std::vector<int>({72, 76, 79, 74}),
+               "one-ring writer: REVERT plays the origin again");
+        bench.runtime->writerCommand(oring::WriterCommand::FeedbackOn);
+        bench.blocks(1);
+        expect(bench.runtime->status().feedback && !bench.runtime->status().feedbackStopped,
+               "one-ring writer: FEEDBACK_ON from outside turns it on again");
+    });
+    oneRingChecks("one-ring writer feedback bounds", [] {
+        auto delayed = writerProject();
+        delayed.scenes[0].voices[0].transpose = 1;
+        delayed.writer.feedback = true;
+        delayed.writer.delayBars = 2;
+        delayed.writer.limit = 99;
+        VoiceBench bench;
+        expect(bench.load(delayed), "one-ring writer: a delayed feedback is taken");
+        bench.runtime->setMaterial(chordMaterial());
+        bench.runtime->run();
+        bench.until(96000 * 4 + 480);
+        const auto first = [&](long long bar) { const auto p = pitchesFrom(bench.played, bar * 96000, (bar + 1) * 96000); return p.empty() ? -1 : p[0]; };
+        expect(first(0) == 61 && first(1) == 62 && first(2) == 62 && first(3) == 63,
+               "one-ring writer: a generation feeds back no sooner than two bars after the last");
+
+        auto added = writerProject();
+        added.writer.feedback = true;
+        added.writer.feedbackMode = oring::CaptureMode::Add;
+        added.scenes[0].voices[0].transpose = 5;
+        VoiceBench adding;
+        expect(adding.load(added), "one-ring writer: feedback that adds is taken");
+        adding.runtime->setMaterial(chordMaterial());
+        adding.runtime->run();
+        adding.until(96000 + 480);
+        const auto status = adding.runtime->status();
+        expect(status.hasCurrent && status.currentNotes == 8 && status.originNotes == 4,
+               "one-ring writer: added, the generation joins what the voices played");
+
+        auto frozen = writerProject();
+        frozen.writer.feedback = true;
+        frozen.scenes[0].voices[0].transpose = 5;
+        VoiceBench still;
+        expect(still.load(frozen), "one-ring writer: loaded");
+        auto material = chordMaterial();
+        material.frozen = true;
+        still.runtime->setMaterial(material);
+        still.runtime->run();
+        still.until(96000 * 2 + 480);
+        expect(!still.runtime->status().hasCurrent && pitchesFrom(still.played, 96000, 192000) == std::vector<int>({65, 69, 72, 67}),
+               "one-ring writer: frozen material takes no generation");
+
+        VoiceBench off;
+        auto offProject = writerProject();
+        offProject.writer.feedback = true;
+        expect(off.load(offProject), "one-ring writer: loaded");
+        off.runtime->setMaterial(chordMaterial());
+        off.runtime->writerCommand(oring::WriterCommand::FeedbackOff);
+        off.runtime->run();
+        off.until(96000 * 2 + 480);
+        expect(!off.runtime->status().hasCurrent && !off.runtime->status().feedback,
+               "one-ring writer: FEEDBACK_OFF keeps the material as it is");
+    });
+    oneRingChecks("one-ring writer limits", [] {
+        oring::Material dense;
+        for (int i = 0; i < 64; ++i) dense.origin.add(materialNote(i * 60, 30, 36 + i % 48));
+        auto project = writerProject(8);
+        VoiceBench bench;
+        expect(bench.load(project), "one-ring writer: loaded");
+        bench.runtime->setMaterial(dense);
+        bench.runtime->run();
+        bench.until(96000 * 8 + 480);
+        const auto made = drainGenerations(*bench.runtime);
+        bool capped = !made.empty();
+        for (const auto& generation : made) capped = capped && generation.notes.count <= oring::materialCapacity;
+        expect(capped && made.back().notes.count == oring::materialCapacity,
+               "one-ring writer: a generation keeps at most 256 notes");
+
+        auto crowded = writerProject();
+        crowded.scenes[0].channels[0].resolution = {1, 16};
+        crowded.scenes[0].channels[0].length = 16;
+        for (std::size_t i = 0; i < 16; ++i) crowded.scenes[0].channels[0].steps[i].enabled = true;
+        VoiceBench busy;
+        expect(busy.load(crowded), "one-ring writer: a WRITE every sixteenth is taken");
+        busy.runtime->setMaterial(chordMaterial());
+        busy.runtime->run();
+        busy.until(96000 * 2);
+        expect(busy.runtime->status().writesDropped > 0 && drainGenerations(*busy.runtime).size() == 7,
+               "one-ring writer: generations nobody drained are counted, not queued without end");
+    });
+    oneRingChecks("one-ring writer block sizes", [] {
+        // Random gates and velocities, fed back: the same generations whatever the block size.
+        auto project = writerProject();
+        project.scenes[0].voices[0].transpose = 12;
+        project.scenes[0].voices[0].gateSpread = 40;
+        project.scenes[0].voices[0].velocitySpread = 30;
+        project.writer.feedback = true;
+        project.writer.limit = 3;
+        std::vector<std::vector<oring::Generation>> runs;
+        for (const int size : {480, 32, 256, 1024}) {
+            VoiceBench bench(size);
+            expect(bench.load(project), "one-ring writer: loaded");
+            bench.runtime->setMaterial(chordMaterial());
+            bench.runtime->run();
+            bench.until(96000 * 4 + 2048);
+            runs.push_back(drainGenerations(*bench.runtime));
+        }
+        bool same = runs[0].size() == 4;
+        for (const auto& run : runs) {
+            same = same && run.size() == runs[0].size();
+            for (std::size_t i = 0; same && i < run.size(); ++i)
+                same = run[i].number == runs[0][i].number && sameNotes(run[i].notes, runs[0][i].notes);
+        }
+        expect(same, "one-ring writer: blocks of 32, 256, 480 and 1,024 samples write the same generations");
+    });
+    oneRingChecks("one-ring writer json", [] {
+        auto state = juce::JSON::parse(R"({"version":1,"seed":"1","mutation":"0","selectedScene":0,"sceneTiming":0,"scenePosition":0,"scenes":[]})");
+        juce::Array<juce::var> scenes;
+        juce::var scene(new juce::DynamicObject());
+        scene.getDynamicObject()->setProperty("id", "A");
+        scene.getDynamicObject()->setProperty("name", "Scene A");
+        juce::Array<juce::var> channels;
+        for (int i = 0; i < 16; ++i)
+            channels.add(juce::JSON::parse(R"({"target":{"target":"","command":""},"length":16,"numerator":1,"denominator":16,"mode":0,"repeats":0,"enabled":true,"offset":0,"swing":0,"humanize":0,"mutableFields":7,"steps":[]})"));
+        scene.getDynamicObject()->setProperty("channels", channels);
+        scenes.add(scene);
+        state.getDynamicObject()->setProperty("scenes", scenes);
+        const auto defaults = oring::readProject(state);
+        expect(defaults.writer.bars == 4 && !defaults.writer.feedback && defaults.writer.limit == 16 && defaults.writer.delayBars == 0,
+               "one-ring writer: a content without a writer writes four bars, feedback off");
+        state.getDynamicObject()->setProperty("writer", juce::JSON::parse(
+            R"({"mode":1,"clipId":"clip-1","bars":2,"feedback":true,"feedbackMode":1,"delayBars":8,"limit":3,"written":5})"));
+        const auto set = oring::readProject(state);
+        expect(set.writer.bars == 2 && set.writer.feedback && set.writer.feedbackMode == oring::CaptureMode::Add
+                   && set.writer.delayBars == 8 && set.writer.limit == 3,
+               "one-ring writer: the engine reads the writer's bars and feedback, and leaves the rest to the page");
+        for (const char* broken : {R"({"bars":0})", R"({"bars":17})", R"({"delayBars":65})", R"({"limit":1000})", R"({"feedback":1})"}) {
+            auto copy = juce::JSON::parse(juce::JSON::toString(state));
+            copy.getDynamicObject()->setProperty("writer", juce::JSON::parse(broken));
+            expect(oneRingThrows([&] { oring::readProject(copy); }), juce::String("one-ring writer: refused ") + broken);
+        }
+        const auto registry = oring::withInternalCommands(oring::CommandRegistry{}, defaults);
+        expect(registry.find("one-ring:writer", "WRITE") && registry.find("one-ring:writer", "FEEDBACK_OFF"),
+               "one-ring writer: the writer is One Ring's own target");
+    });
+}
+
 struct RecordingProcessors final : mlh::MidiProcessorInput {
     std::vector<std::pair<std::string, int>> received;
     bool pushInputBuffer(const std::string& nodeId, const juce::MidiBuffer& buffer) noexcept override
@@ -3650,6 +3895,8 @@ int main(int argc, char** argv)
     testOneRingCapture();
     std::cerr << "[core] one-ring-voices\n";
     testOneRingVoices();
+    std::cerr << "[core] one-ring-writer\n";
+    testOneRingWriter();
     std::cerr << "[core] sequencer-feeds-one-ring\n";
     testSequencerFeedsOneRing();
     }

@@ -132,8 +132,8 @@ test('the IPC grid allow-list is exactly the grid table the model declares', asy
     assert.equal(validPayload('quantize', { grid }), true, `${grid} is accepted over IPC`);
   }
   assert.deepEqual([...OPERATIONS].sort(), [
-    'add-note', 'delete-notes', 'duplicate-notes', 'move-notes', 'quantize',
-    'set-notes', 'set-snap', 'update-audio', 'update-note'
+    'add-note', 'add-notes', 'delete-notes', 'duplicate-notes', 'move-notes', 'quantize',
+    'replace-notes', 'set-notes', 'set-snap', 'update-audio', 'update-note'
   ], 'the operation allow-list is enumerated, never inferred');
   assert.equal(validPayload('quantize', { grid: '1/6' }), false);
 
@@ -143,6 +143,15 @@ test('the IPC grid allow-list is exactly the grid table the model declares', asy
   assert.equal(validPayload('set-notes', { noteIds: ['note-1'] }), false);
   assert.equal(validPayload('duplicate-notes', { noteIds: ['note-1'] }), true);
   assert.equal(validPayload('duplicate-notes', { noteIds: [] }), false);
+  const note = { startPpq: 0, durationPpq: 0.5, pitch: 60, velocity: 100, channel: 1 };
+  for (const operation of ['replace-notes', 'add-notes']) {
+    assert.equal(validPayload(operation, { notes: [note] }), true);
+    assert.equal(validPayload(operation, { notes: [] }), true, 'replacing with nothing empties the clip');
+    assert.equal(validPayload(operation, { notes: [{ ...note, pitch: 'C' }] }), false);
+    assert.equal(validPayload(operation, { notes: [{ ...note, id: 'note-1' }] }), false, 'a written note has no id yet');
+    assert.equal(validPayload(operation, { notes: [note], noteIds: [] }), false);
+    assert.equal(validPayload(operation, { notes: Array(2000).fill(note) }), false, 'the payload stays bounded');
+  }
 
   const { SNAP_STEPS } = await import('../src/renderer/js/core/sequencerModel.js');
   for (const snap of Object.keys(SNAP_STEPS)) {

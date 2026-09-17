@@ -2544,6 +2544,14 @@ void Engine::cmdOneRingCommand(const juce::var& msg)
             if (!ok)
                 error = "unknown scene";
         }
+        else if (command == "writer")
+        {
+            one_ring::WriterCommand writer;
+            ok = one_ring::writerCommandNamed(msg["name"].toString().toStdString(), writer)
+                && runtime.writerCommand(writer);
+            if (!ok)
+                error = "unknown writer command";
+        }
         else if (command == "memory")
         {
             one_ring::MemoryCommand memory;
@@ -2699,6 +2707,22 @@ void Engine::forwardOneRings()
                 setProp(out, "events", events);
                 ipc_.send(out);
             }
+            // The generations a WRITE made, each to be written into the
+            // Sequencer by the renderer.
+            for (one_ring::Generation made; node.runtime->takeGeneration(made);)
+            {
+                juce::var out = makeObject();
+                setProp(out, "type", "oneRingWrite");
+                setProp(out, "nodeId", nodeId);
+                setProp(out, "generation", node.generation);
+                setProp(out, "number", static_cast<juce::int64>(
+                    std::min<std::uint64_t>(made.number, static_cast<std::uint64_t>(kMaxSafeInteger))));
+                setProp(out, "beat", made.beat);
+                setProp(out, "transportBeat", made.transportBeat);
+                setProp(out, "transportPlaying", made.transportPlaying);
+                setProp(out, "notes", one_ring::writeNotes(made.notes));
+                ipc_.send(out);
+            }
             // What the callback made of the material: a capture, a feedback, a
             // command of the sequence. The renderer keeps it in the content.
             if (const auto* report = node.runtime->takeMaterialReport())
@@ -2725,7 +2749,9 @@ void Engine::forwardOneRings()
                 || status.hasCurrent != last.hasCurrent || status.frozen != last.frozen
                 || status.materialGeneration != last.materialGeneration
                 || status.sounding != last.sounding || status.notesRefused != last.notesRefused
-                || status.voices != last.voices;
+                || status.voices != last.voices || status.writes != last.writes
+                || status.writesDropped != last.writesDropped || status.writesEmpty != last.writesEmpty
+                || status.feedback != last.feedback || status.feedbackStopped != last.feedbackStopped;
             // The beat moves on every block; alone, it is sent ten times a second.
             const bool beatDue = status.playing && now - node.statusSentAtMs >= 100.0;
             if (!changed && !beatDue)
@@ -2765,6 +2791,14 @@ void Engine::forwardOneRings()
             setProp(out, "sounding", sounding);
             setProp(out, "notesRefused", static_cast<juce::int64>(
                 std::min<std::uint64_t>(status.notesRefused, static_cast<std::uint64_t>(kMaxSafeInteger))));
+            const auto safe = [](std::uint64_t value) {
+                return static_cast<juce::int64>(std::min<std::uint64_t>(value, static_cast<std::uint64_t>(kMaxSafeInteger)));
+            };
+            setProp(out, "writes", safe(status.writes));
+            setProp(out, "writesDropped", safe(status.writesDropped));
+            setProp(out, "writesEmpty", safe(status.writesEmpty));
+            setProp(out, "feedback", status.feedback);
+            setProp(out, "feedbackStopped", status.feedbackStopped);
             // The voices' live rules, only when they moved: they change at a
             // step, not ten times a second.
             if (!node.statusSent || status.voices != last.voices)

@@ -13,6 +13,7 @@ const std::array<std::string, 7> channelCommands{
     "START", "STOP", "RESTART", "RESET", "TOGGLE", "ENABLE", "DISABLE"};
 const std::array<std::string, 7> memoryCommands{
     "CAPTURE_REPLACE", "CAPTURE_ADD", "CAPTURE_END", "CLEAR", "FREEZE", "UNFREEZE", "REVERT"};
+const std::array<std::string, 3> writerCommands{"WRITE", "FEEDBACK_ON", "FEEDBACK_OFF"};
 
 template <std::size_t N>
 void copyText(char (&out)[N], const std::string& text) noexcept
@@ -29,6 +30,14 @@ bool memoryCommandNamed(const std::string& name, MemoryCommand& command) noexcep
     const auto found = std::find(memoryCommands.begin(), memoryCommands.end(), name);
     if (found == memoryCommands.end()) return false;
     command = static_cast<MemoryCommand>(found - memoryCommands.begin());
+    return true;
+}
+
+bool writerCommandNamed(const std::string& name, WriterCommand& command) noexcept
+{
+    const auto found = std::find(writerCommands.begin(), writerCommands.end(), name);
+    if (found == writerCommands.end()) return false;
+    command = static_cast<WriterCommand>(found - writerCommands.begin());
     return true;
 }
 
@@ -142,6 +151,11 @@ bool Runtime::recallScene(std::size_t scene) noexcept
     return input_.push({CommandKind::Scene, 0, static_cast<std::uint16_t>(scene)});
 }
 
+bool Runtime::writerCommand(WriterCommand command) noexcept
+{
+    return input_.push({CommandKind::Writer, static_cast<std::uint8_t>(command), 0});
+}
+
 bool Runtime::memoryCommand(MemoryCommand command) noexcept
 {
     return input_.push({CommandKind::Memory, static_cast<std::uint8_t>(command), 0});
@@ -203,7 +217,10 @@ void Runtime::drainTo(int offset) noexcept
 
 void Runtime::reach(double beat) noexcept
 {
-    drainTo(offsetOf(beat));
+    const int offset = offsetOf(beat);
+    drainTo(offset);
+    // What sounded before this tick is in the take when the tick writes.
+    render(offset);
 }
 
 double Runtime::nextBarWait() const noexcept
@@ -221,11 +238,67 @@ double Runtime::nextBarWait() const noexcept
 void Runtime::noteOn(int offset, int channel, int pitch, int velocity) noexcept
 {
     out_.addEvent(juce::MidiMessage::noteOn(channel, pitch, static_cast<juce::uint8>(velocity)), offset);
+    take_.on(offset, channel, pitch, velocity);
 }
 
 void Runtime::noteOff(int offset, int channel, int pitch) noexcept
 {
     out_.addEvent(juce::MidiMessage::noteOff(channel, pitch), offset);
+    take_.off(offset, channel, pitch);
+}
+
+void Runtime::render(int upto) noexcept
+{
+    // Only inside the block's advance, where the voices' notes are due.
+    if (rendering_) voices_.render(blockBegin_, blockBeatsPerSample_, blockSamples_, *this, upto);
+}
+
+void Runtime::writer(WriterCommand command, int offset) noexcept
+{
+    const auto* plan = active_.load(std::memory_order_acquire);
+    if (plan == nullptr) return;
+    const auto& settings = plan->project.writer;
+    if (command == WriterCommand::FeedbackOn || command == WriterCommand::FeedbackOff) {
+        feedback_ = command == WriterCommand::FeedbackOn;
+        feedbackStopped_ = false;
+        return;
+    }
+    // WRITE: what was heard over the window, up to this sample.
+    const double until = take_.at(offset);
+    const double window = static_cast<double>(settings.bars) * beatsPerBar;
+    take_.generation(until, window, generation_.notes);
+    if (generation_.notes.count == 0) {
+        ++writesEmpty_;
+        return;
+    }
+    generation_.number = ++writes_;
+    generation_.beat = blockBegin_ + offset * blockBeatsPerSample_;
+    generation_.transportPlaying = hostPlaying_;
+    generation_.transportBeat = hostBeat_ + (hostPlaying_ ? offset * blockBeatsPerSample_ : 0.0);
+    if (!generations_.push(generation_)) ++writesDropped_;
+    // Feedback: the generation becomes the voices' material, within its bounds.
+    if (!feedback_ || material_.frozen) return;
+    if (material_.generation >= settings.limit) {
+        feedback_ = false;
+        feedbackStopped_ = true;
+        return;
+    }
+    if (until - lastFeedback_ < static_cast<double>(settings.delayBars) * beatsPerBar - 1.0e-9) return;
+    lastFeedback_ = until;
+    if (settings.feedbackMode == CaptureMode::Replace) {
+        material_.current = generation_.notes;
+    } else {
+        if (!material_.hasCurrent) material_.current = material_.origin;
+        materialRefused_ += merge(material_.current, generation_.notes);
+    }
+    material_.hasCurrent = true;
+    ++material_.generation;
+    materialChanged();
+    report();
+    if (material_.generation >= settings.limit) {
+        feedback_ = false;
+        feedbackStopped_ = true;
+    }
 }
 
 void Runtime::flush(const OutputTargets* targets, bool blockEpochs) noexcept
@@ -387,7 +460,10 @@ void Runtime::process(const Transport& transport, int numSamples, double sampleR
     sampleRate_ = sampleRate > 0 ? sampleRate : 48000.0;
     out_.clear();
     // The instruments were silenced for us: nothing is sounding any more.
-    if (panicRequest_.exchange(false, std::memory_order_acq_rel)) voices_.drop();
+    if (panicRequest_.exchange(false, std::memory_order_acq_rel)) {
+        voices_.drop();
+        take_.closeAll(0);
+    }
     auto* outputs = activeOutputs_.load(std::memory_order_relaxed);
     if (auto* next = outputs_.load(std::memory_order_acquire); next != outputs) {
         voices_.releaseAll(*this, 0);
@@ -429,6 +505,14 @@ void Runtime::process(const Transport& transport, int numSamples, double sampleR
         materialChanged();
     }
     syncRules(false);
+    if (plan->projectVersion != feedbackVersion_ || !feedbackKnown_) {
+        // The authored setting, again whenever the sequence changes.
+        feedback_ = plan->project.writer.feedback;
+        feedbackStopped_ = false;
+        feedbackVersion_ = plan->projectVersion;
+        feedbackKnown_ = true;
+    }
+    take_.begin(transport.quarterNotesPerSample());
     if (releaseRequest_.exchange(false, std::memory_order_acq_rel)) voices_.releaseAll(*this, 0);
     auto& scheduler = *scheduler_;
     const double beatsPerSample = transport.quarterNotesPerSample();
@@ -481,16 +565,20 @@ void Runtime::process(const Transport& transport, int numSamples, double sampleR
             scheduler.command(command.index, channelCommands[command.name], beat_);
         else if (command.kind == CommandKind::Scene)
             scheduler.scene(command.index, beat_);
-        else if (command.name < memoryCommands.size()) {
+        else if (command.kind == CommandKind::Memory && command.name < memoryCommands.size()) {
             drainTo(0);
             memory(static_cast<MemoryCommand>(command.name), 0, true);
+        } else if (command.kind == CommandKind::Writer && command.name < writerCommands.size()) {
+            writer(static_cast<WriterCommand>(command.name), 0);
         }
     }
     if (scheduler.playing() && clockValid) {
         const double end = beat_ + static_cast<double>(numSamples) * beatsPerSample;
+        rendering_ = true;
         scheduler.advance(beat_, end);
         beat_ = end;
-        voices_.render(blockBegin_, beatsPerSample, numSamples, *this);
+        render(numSamples);
+        rendering_ = false;
     } else if (!scheduler.playing()) {
         // A STOP from the sequence itself, inside the advance.
         voices_.releaseAll(*this, 0);
@@ -498,6 +586,7 @@ void Runtime::process(const Transport& transport, int numSamples, double sampleR
     flush(outputs, true);
     drainTo(blockSamples_);
     capture_.finish();
+    take_.finish(blockSamples_);
     scheduledInput_.clear();
 
     Status status;
@@ -524,6 +613,11 @@ void Runtime::process(const Transport& transport, int numSamples, double sampleR
     status.sounding = voices_.sounding();
     status.notesRefused = voices_.refused();
     status.voices = voices_.rules();
+    status.writes = writes_;
+    status.writesDropped = writesDropped_;
+    status.writesEmpty = writesEmpty_;
+    status.feedback = feedback_;
+    status.feedbackStopped = feedbackStopped_;
     status_.write(status);
     liveScene_.store(status.scene, std::memory_order_release);
     readers_.fetch_sub(1, std::memory_order_acq_rel);
@@ -532,6 +626,13 @@ void Runtime::process(const Transport& transport, int numSamples, double sampleR
 bool Runtime::send(const Event& event) noexcept
 {
     if (std::size_t index = 0; voiceTarget(event.action->target, index)) return voice(index, event);
+    if (event.action->target == writerTarget) {
+        const auto& name = event.release ? *event.descriptor->releaseCommand : event.action->command;
+        WriterCommand command;
+        if (!writerCommandNamed(name, command)) return false;
+        writer(command, offsetOf(event.beat));
+        return true;
+    }
     if (event.action->target == memoryTarget) {
         const auto& name = event.release ? *event.descriptor->releaseCommand : event.action->command;
         MemoryCommand command;

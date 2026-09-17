@@ -12,6 +12,7 @@ const char* channelPrefix = "one-ring:channel:";
 }
 
 const std::string memoryTarget = "one-ring:memory";
+const std::string writerTarget = "one-ring:writer";
 
 namespace {
 const char* voicePrefix = "one-ring:voice:";
@@ -108,6 +109,16 @@ CommandRegistry withInternalCommands(const CommandRegistry& external, const Proj
         voice.commands.push_back(whole("DENSITY", 0, 100));
         registry.registerModule(std::move(voice));
     }
+    ModuleDescriptor writer;
+    writer.id = writerTarget;
+    writer.label = "One Ring Writer";
+    for (const auto* name : {"WRITE", "FEEDBACK_ON", "FEEDBACK_OFF"}) {
+        CommandDescriptor command;
+        command.id = command.label = name;
+        command.domain = ExecutionDomain::Audio;
+        writer.commands.push_back(command);
+    }
+    registry.registerModule(std::move(writer));
     return registry;
 }
 

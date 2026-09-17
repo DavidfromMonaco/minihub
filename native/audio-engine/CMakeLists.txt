@@ -137,6 +137,8 @@ add_executable(mlh_audio_engine
     src/one_ring/capture.cpp
     src/one_ring/voices.h
     src/one_ring/voices.cpp
+    src/one_ring/take.h
+    src/one_ring/take.cpp
     src/one_ring/generative.h
     src/one_ring/generative.cpp
     src/one_ring/model.h
@@ -223,6 +225,8 @@ if(BUILD_TESTING)
         src/one_ring/capture.cpp
         src/one_ring/voices.h
         src/one_ring/voices.cpp
+        src/one_ring/take.h
+        src/one_ring/take.cpp
         src/one_ring/generative.h
         src/one_ring/generative.cpp
         src/one_ring/model.h

@@ -1,4 +1,4 @@
-import { SequencerModel, defaultSequencerState, initialSequencerState } from './sequencerModel.js';
+import { SEQUENCER_LIMITS, SequencerModel, defaultSequencerState, initialSequencerState } from './sequencerModel.js';
 import { normalizeTempo } from './tempoControl.js';
 import { AUDIO_INPUT_NODE_ID, SEQUENCER_NODE_ID } from './systemNodes.js';
 import { isControllerNode, controllerName } from './controllerNode.js';
@@ -681,6 +681,12 @@ export class SequencerController {
       applied = this.model.setMidiNotes(clipId, payload.noteIds, payload);
     } else if (request.operation === 'duplicate-notes' && found.track.type === 'midi') {
       applied = this.model.duplicateMidiNotes(clipId, payload.noteIds).length;
+    } else if (request.operation === 'replace-notes' && found.track.type === 'midi') {
+      const before = found.clip.notes;
+      this.model.replaceMidiNotes(clipId, payload.notes);
+      applied = found.clip.notes === before ? 0 : 1;
+    } else if (request.operation === 'add-notes' && found.track.type === 'midi') {
+      applied = Math.max(0, this.model.addMidiNotes(clipId, payload.notes));
     } else if (request.operation === 'set-snap') {
       // Snap belongs to the project, not to a window. Editing it from the
       // Clip Editor moves the arrangement's grid too, which is the point:
@@ -1207,6 +1213,58 @@ export class SequencerController {
     const clip = this.model.addMidiClip(trackId, startPpq, lengthPpq, notes);
     if (clip) this.changed();
     return clip;
+  }
+
+  /**
+   * A generation a One Ring node wrote (plans/active/one-ring-native.md, part
+   * two), written where its writer says.
+   *
+   * `mode` 'new-track' makes a MIDI track of its own, named `name`, with the
+   * generation as its one clip at `startPpq` -- where it was heard; at the
+   * playhead when none is given -- and `destination` as its Destination when
+   * one is named and can be cabled. 'replace' and 'add' write into the clip
+   * `clipId` names, and nowhere else. `notes` are in quarter notes from the
+   * generation's start, `lengthPpq` its window.
+   *
+   * WHY IT IS AN EDIT
+   * -----------------
+   * What the music wrote becomes authored the way a take does (D-032): one
+   * `changed()`, so the project is modified and the history takes one step --
+   * with whatever the node wrote in the same turn. Answers where it went, or
+   * why it could not: a project changing, the track limit, a clip gone or not
+   * MIDI.
+   */
+  writeGeneration({ mode, name = '', destination = '', clipId = '', startPpq = null, lengthPpq = 4, notes = [] } = {}) {
+    if (this.hub.project?._transitionPending || this._projectTransitionState !== 'idle') {
+      return { ok: false, reason: 'project-transition', message: 'the project is changing' };
+    }
+    if (!Array.isArray(notes)) return { ok: false, reason: 'invalid-generation', message: 'a generation is a list of notes' };
+    if (mode === 'new-track') {
+      if (this.model.state.tracks.length >= SEQUENCER_LIMITS.tracks) {
+        return { ok: false, reason: 'track-limit', message: `the Sequencer already has ${SEQUENCER_LIMITS.tracks} tracks` };
+      }
+      const at = Number.isFinite(startPpq) ? Math.max(0, startPpq) : this.playheadPpq;
+      const track = this.model.addTrack('midi', { name, focus: false });
+      const clip = this.model.addMidiClip(track.id, at, lengthPpq, notes, { name, snap: false, select: false });
+      let routed = false;
+      if (destination && this.hub.network.getNode(destination)) {
+        this.model.updateTrack(track.id, { outputId: destination });
+        routed = this.ensureRoute(track);
+        if (!routed) this.model.updateTrack(track.id, { outputId: '' });
+      }
+      this.changed();
+      return { ok: true, trackId: track.id, clipId: clip.id, notes: clip.notes.length, routed };
+    }
+    if (mode !== 'replace' && mode !== 'add') return { ok: false, reason: 'invalid-generation', message: `no write mode ${mode}` };
+    if (!clipId) return { ok: false, reason: 'no-clip', message: 'the writer names no clip' };
+    const found = this.model._clip(clipId);
+    if (!found) return { ok: false, reason: 'clip-not-found', message: 'the clip the writer names is gone' };
+    if (found.track.type !== 'midi') return { ok: false, reason: 'clip-type-mismatch', message: 'the clip the writer names is not MIDI' };
+    const before = found.clip.notes;
+    const written = mode === 'replace' ? this.model.replaceMidiNotes(clipId, notes) : this.model.addMidiNotes(clipId, notes);
+    const changed = mode === 'replace' ? found.clip.notes !== before : written > 0;
+    if (changed) this.changed();
+    return { ok: true, trackId: found.track.id, clipId, notes: written, changed };
   }
 
   removeTrack(trackId) {
