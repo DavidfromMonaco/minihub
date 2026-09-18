@@ -7,57 +7,6 @@ finished, delete its entry**, in the same commit. What was done lives in git and
 
 ## Started, not finished
 
-**A transport at the top of MiniHub — built, not seen in the application yet** —
-asked 2026-09-18: "basic navigation commands at the very top, because when you
-are inside One Ring you need them". D-048. Back to the start, back a bar,
-Play/Pause, Stop, forward a bar, to the end, and the position as `bar.beat`.
-Pause holds the arrangement and leaves a One Ring running; Stop stops both,
-and does not rewind — returning to the start is its own button.
-- Not seen yet: any of it on screen, and in particular whether the cluster is
-  comfortable at the 960px minimum window, where it fits with ~30px to spare.
-- Gap, outside this repository: `../minihub-agent/AGENTS.md` does not describe
-  the three new transport operations (`pause`, `go-end`, `bars`) — the
-  author's to update.
-- Not asked, not built: Record in the header. It refuses unless a track is
-  armed and routed, and the shell has nowhere to say why — a button that
-  silently does nothing is worse than no button.
-
-**Two canvases that ended — built, not seen in the application yet** — from the
-author's own use on 2026-09-18: Align on twelve nodes "reached the limits" of
-the Patch Bay, and the sequencer's timeline "loses the tracks after a fairly
-short while". Both are D-047. The zoom floor is 0.05 instead of 0.25 and a node
-sheds its legends and grows its name as the canvas pulls back; the timeline
-always keeps a screenful of empty bars ahead of the view.
-- Found while reproducing the second one, and the real cause of the tracks
-  emptying: `bind()` is a sibling of `render()` in `sequencerModule.js`, so the
-  scroll listener closed over nothing and **every scroll event threw**
-  `visibleStart is not defined`. The repaint that draws the clips you scroll
-  towards was therefore never queued. Fixed (`drawnWindow`,
-  `outsideDrawnWindow`) and nothing in the suite had scrolled: the shim had no
-  `requestAnimationFrame` and its events carried no `currentTarget`, so the
-  handler could not even run. Both added.
-- Also fixed: the vertical scroll was not put back after a render -- only
-  `scrollLeft` was -- so past the thirteenth track every repaint threw the view
-  to the top, and "+ MIDI Track" made a track below the fold and showed you the
-  first ones. It is kept now, and a new track is brought to the screen.
-- Not seen yet: any of it on screen. 1251 tests and the 15 rules pass, and the
-  regression test was checked to fail without the fix -- no one has looked at
-  the canvas at 10%, at the name that grows, or at a timeline past bar 64.
-- Left alone on purpose: `alignPositions`. A rank stays one column, which is
-  what every other node editor draws and what makes the layout readable.
-- Also from his testing, 2026-09-18: a right-drag pan ended by opening the
-  context menu. The drag/click distinction was already there (4px); what was
-  wrong is that the suppression was armed when the pan STARTED, behind an
-  800 ms timer, so every pan held longer than that expired before the release.
-  Armed on release now, and nothing but the release-to-`contextmenu` gap is
-  timed. Not seen yet on screen.
-- Also asked, 2026-09-18: a clock ruler above the bars, in minutes and
-  seconds. Built: whole seconds at the finest (tenths were tried and the
-  default zoom lands on them, which is the bar ruler's job done twice), marks
-  clickable like a bar's, and repainted on its own when the tempo moves. Seen
-  in a static render of the real markup and `base.css` — the two rows align,
-  bar 2 sits under 0:02 at 120 BPM — but not in the application.
-
 **One Ring, made native** — started 2026-09-16 on the author's word, in place
 of the Matrix node (ROADMAP item 7). One Ring becomes a node of MiniHub with
 every function of the VST, its clock in the engine, its commands through the
@@ -125,6 +74,9 @@ the author tests).
   redraw an open bindings bar.
 - Gap: the sequencer's Loop, From and To cannot be set through the channel,
   nor read in `describe` (reported by Codex for Metamorphose).
+- Gap, outside this repository: `../minihub-agent/AGENTS.md` does not describe
+  the transport operations added on 2026-09-18 (`pause`, `go-end`, `bars`) —
+  the author's to update.
 
 **Splice asks to log in again — in the author's test** — diagnosed 2026-09-16. Splice keeps its login
 in its own folder under AppData, and Windows files that folder inside a
