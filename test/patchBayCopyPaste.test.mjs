@@ -276,6 +276,44 @@ test('right-drag empty canvas pans and does not open a menu afterward', () => {
   mod.unmount();
 });
 
+/**
+ * The pan that took a moment, which is every pan.
+ *
+ * The suppression used to be armed when the pan STARTED, behind an 800 ms
+ * timer. A test that dragged and released in the same tick could not see it:
+ * hold the button down for a second, as anyone reading their patch does, and
+ * the flag had expired before the release -- so the menu opened at the end of
+ * the movement. The clock is out of the gesture now; only the release arms it.
+ */
+test('a pan held for a second still ends without a context menu', (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  try {
+    const hub = setupHub({ withMinilab: false });
+    const { container, svg, mod } = mount(hub);
+    const vbBefore = svg.getAttribute('viewBox');
+    fire(svg, 'pointerdown', { button: 2, target: svg, clientX: 100, clientY: 100 });
+    fire(svg, 'pointermove', { clientX: 160, clientY: 140 });
+    t.mock.timers.tick(5000); // a slow, deliberate drag across the canvas
+    fire(svg, 'pointermove', { clientX: 300, clientY: 260 });
+    fire(svg, 'pointerup', {});
+    assert.notEqual(svg.getAttribute('viewBox'), vbBefore, 'it panned');
+    fire(svg, 'contextmenu', { target: svg, clientX: 300, clientY: 260 });
+    assert.ok(!findClass(container, 'node-context-menu'), 'and no menu followed it');
+
+    // The click is still a click: pressed and released without crossing the
+    // threshold, the menu is the whole point of the right button.
+    fire(svg, 'pointerdown', { button: 2, target: svg, clientX: 300, clientY: 260 });
+    fire(svg, 'pointermove', { clientX: 302, clientY: 261 });
+    fire(svg, 'pointerup', {});
+    fire(svg, 'contextmenu', { target: svg, clientX: 302, clientY: 261 });
+    assert.ok(findClass(container, 'node-context-menu'), 'a right-click still opens the menu');
+
+    mod.unmount();
+  } finally {
+    t.mock.timers.reset();
+  }
+});
+
 test('Paste is disabled when the clipboard is empty', () => {
   const hub = setupHub({ withMinilab: false });
   const { container, svg, mod } = mount(hub);

@@ -45,6 +45,18 @@ always keeps a screenful of empty bars ahead of the view.
   the canvas at 10%, at the name that grows, or at a timeline past bar 64.
 - Left alone on purpose: `alignPositions`. A rank stays one column, which is
   what every other node editor draws and what makes the layout readable.
+- Also from his testing, 2026-09-18: a right-drag pan ended by opening the
+  context menu. The drag/click distinction was already there (4px); what was
+  wrong is that the suppression was armed when the pan STARTED, behind an
+  800 ms timer, so every pan held longer than that expired before the release.
+  Armed on release now, and nothing but the release-to-`contextmenu` gap is
+  timed. Not seen yet on screen.
+- Also asked, 2026-09-18: a clock ruler above the bars, in minutes and
+  seconds. Built: whole seconds at the finest (tenths were tried and the
+  default zoom lands on them, which is the bar ruler's job done twice), marks
+  clickable like a bar's, and repainted on its own when the tempo moves. Seen
+  in a static render of the real markup and `base.css` — the two rows align,
+  bar 2 sits under 0:02 at 120 BPM — but not in the application.
 
 **One Ring, made native** — started 2026-09-16 on the author's word, in place
 of the Matrix node (ROADMAP item 7). One Ring becomes a node of MiniHub with

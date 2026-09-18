@@ -910,14 +910,31 @@ export function createRoutingModule(hub) {
     };
     svg.setPointerCapture(pointerId);
     svg.classList.add('panning');
-    // A right-drag pan must not open a context menu when released, so suppress
-    // the context menu event that follows the pan.
+  }
+
+  /**
+   * Swallow the context menu Windows sends when the right button comes back up
+   * after a pan.
+   *
+   * Armed on RELEASE, and that is the whole repair. It used to be armed in
+   * `startPan` behind an 800 ms safety timer, and every pan a person actually
+   * makes lasts longer than that: the flag had already expired by the time
+   * they let go, so the menu opened at the end of the movement. The clock was
+   * racing the gesture it was meant to protect.
+   *
+   * Nothing here times the gesture any more. The only thing still timed is the
+   * gap between the release and the `contextmenu` that follows it -- the same
+   * tick -- and the timer exists solely so that a button released outside the
+   * window, where no `contextmenu` ever arrives, cannot swallow the NEXT
+   * right-click instead.
+   */
+  function armContextMenuSuppression() {
     suppressContextMenu = true;
     if (suppressTimer) clearTimeout(suppressTimer);
     suppressTimer = setTimeout(() => {
       suppressContextMenu = false;
       suppressTimer = null;
-    }, 800);
+    }, 300);
   }
 
   function movePan(e) {
@@ -933,6 +950,7 @@ export function createRoutingModule(hub) {
     svg.classList.remove('panning');
     viewportStore.save(viewport.x, viewport.y, viewport.zoom);
     drag = null;
+    armContextMenuSuppression();
   }
 
   // --- node drag ---

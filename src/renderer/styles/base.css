@@ -1873,9 +1873,18 @@ body ::-webkit-scrollbar-corner { background:transparent; }
 .seq-rail.dragging { cursor:grabbing; }
 .seq-scroll.panning { cursor:grabbing; }
 .seq-canvas { position:relative; background:#15171a; }
-.seq-corner { position:sticky; left:0; top:0; z-index:9; width:var(--seq-head,260px); height:30px; padding:8px 12px; box-sizing:border-box; background:#22262b; border-right:1px solid var(--border); border-bottom:1px solid var(--border); color:var(--text-faint); font:10px var(--mono); letter-spacing:.12em; }
-.seq-ruler { position:absolute; top:0; height:30px; z-index:3; background-color:#1b1e22; background-image:repeating-linear-gradient(to right,transparent 0,transparent calc(var(--seq-beat) - 1px),rgba(255,255,255,.07) var(--seq-beat)); border-bottom:1px solid var(--border); }
-.seq-ruler-mark { position:absolute; top:0; height:30px; border:0; border-left:1px solid #444a52; background:transparent; color:var(--text-dim); text-align:left; padding:3px 5px; cursor:pointer; }
+/* The corner covers BOTH ruler rows: their heights come from the module
+   (`--seq-time-ruler`, `--seq-bar-ruler`), never spelled here. */
+.seq-corner { position:sticky; left:0; top:0; z-index:9; width:var(--seq-head,260px); height:calc(var(--seq-time-ruler,18px) + var(--seq-bar-ruler,30px)); padding:8px 12px; box-sizing:border-box; background:#22262b; border-right:1px solid var(--border); border-bottom:1px solid var(--border); color:var(--text-faint); font:10px var(--mono); letter-spacing:.12em; display:grid; align-content:end; }
+/* Minutes and seconds, above the bars. Dimmer and shorter on purpose: the
+   bars are where the work happens, the clock says where you are in the piece.
+   It carries the same `data-seek` as a bar mark, so it can be clicked. */
+.seq-time-ruler { position:absolute; top:0; height:var(--seq-time-ruler,18px); z-index:3; background-color:#191c20; border-bottom:1px solid #2a2f35; }
+.seq-time-mark { position:absolute; top:0; height:var(--seq-time-ruler,18px); border:0; border-left:1px solid #3a4048; background:transparent; color:var(--text-faint); text-align:left; padding:0 4px; cursor:pointer; overflow:hidden; white-space:nowrap; }
+.seq-time-mark strong { font:10px var(--mono); font-weight:500; }
+.seq-time-mark:hover { background:rgba(79,140,255,.12); color:var(--text-dim); }
+.seq-ruler { position:absolute; top:var(--seq-time-ruler,18px); height:var(--seq-bar-ruler,30px); z-index:3; background-color:#1b1e22; background-image:repeating-linear-gradient(to right,transparent 0,transparent calc(var(--seq-beat) - 1px),rgba(255,255,255,.07) var(--seq-beat)); border-bottom:1px solid var(--border); }
+.seq-ruler-mark { position:absolute; top:0; height:var(--seq-bar-ruler,30px); border:0; border-left:1px solid #444a52; background:transparent; color:var(--text-dim); text-align:left; padding:3px 5px; cursor:pointer; }
 .seq-ruler-mark:hover { background:rgba(79,140,255,.12); }
 .seq-ruler-mark strong { font:10px var(--mono); }
 .seq-ruler-mark i { position:absolute; bottom:0; height:6px; border-left:1px solid #333840; }

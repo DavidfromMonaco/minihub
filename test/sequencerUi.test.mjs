@@ -58,6 +58,8 @@ function captureContainer() {
   // new one starts at scroll zero. A stub that survived would hide the very
   // thing this models -- that putting the scroll back is the module's job.
   let scroller = null;
+  // The clock ruler is the one row redrawn on its own, when the tempo moves.
+  let timeRuler = null;
   container.clientWidth = 1200;
   Object.defineProperty(container, 'innerHTML', {
     get: () => markup,
@@ -67,6 +69,30 @@ function captureContainer() {
       controls.clear();
       clips.length = 0;
       metronomeLight = null;
+      timeRuler = makeEl('div');
+      timeRuler.dataset.seqTimeScale = '';
+      // The shim's own `innerHTML` is a sink that reads back empty. This row
+      // is redrawn on its own when the tempo moves, so the test has to read
+      // what that redraw wrote -- and to hand back the marks it wrote, or the
+      // repaint's own `querySelectorAll` finds nothing to re-bind and the
+      // event bus swallows the failure (it catches every handler).
+      let rowMarkup = '';
+      let rowMarks = [];
+      Object.defineProperty(timeRuler, 'innerHTML', {
+        get: () => rowMarkup,
+        set: (value) => {
+          rowMarkup = String(value);
+          timeRuler.children.length = 0;
+          rowMarks = [...rowMarkup.matchAll(/data-seek="([^"]+)"/g)].map(([, seek]) => {
+            const mark = makeEl('button');
+            mark.dataset.seek = seek;
+            return mark;
+          });
+        },
+        configurable: true
+      });
+      timeRuler.querySelectorAll = (selector) => (selector === '[data-seek]' ? rowMarks : []);
+      timeRuler.marks = () => rowMarks;
       scroller = makeEl('div');
       scroller.dataset.timelineScroll = '';
       scroller.scrollTop = 0;
@@ -116,13 +142,14 @@ function captureContainer() {
     if (controlMatch) return controls.get(controlMatch[1]) || null;
     if (selector === '[data-metronome-light]') return metronomeLight;
     if (selector === '[data-timeline-scroll]') return scroller;
+    if (selector === '[data-seq-time-scale]') return timeRuler;
     return null;
   };
   container.querySelectorAll = (selector) => selector === '.seq-clip' ? clips : [];
   return {
     container, markup: () => markup, action: (name) => actions.get(name),
     control: (name) => controls.get(name), light: () => metronomeLight, clips: () => clips,
-    scroller: () => scroller
+    scroller: () => scroller, timeRuler: () => timeRuler
   };
 }
 
@@ -732,6 +759,99 @@ test('the arrangement stays where you scrolled it, and a new track comes to you'
   const top = 30 + 20 * 64; // RULER_HEIGHT + index * TRACK_HEIGHT
   assert.ok(view.scroller().scrollTop > 0, 'the view followed the new track');
   assert.ok(top + 64 <= view.scroller().scrollTop + 600, 'and the whole row is on screen');
+});
+
+test('the arrangement is measured in minutes as well as bars', async () => {
+  const { formatClock, secondsPerQuarter, timeStride } =
+    await import('../src/renderer/js/modules/sequencer/sequencerModule.js');
+
+  assert.equal(secondsPerQuarter(120), 0.5);
+  assert.equal(secondsPerQuarter(60), 1);
+  assert.equal(secondsPerQuarter(0), 0.5, 'a tempo that cannot be read falls back to 120');
+
+  // A clock reads in ones, fives, quarter minutes and minutes. A mark every 7
+  // seconds is arithmetically fine and nobody counts in sevens.
+  // Whole seconds at the finest: this row says where you are in the piece,
+  // and a `0:01.5` next to a bar ruler is the bar ruler's job done twice.
+  const ladder = [1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 1800, 3600];
+  for (const pxPerSecond of [0.5, 2, 6, 16, 48, 144, 480, 2000]) {
+    const stride = timeStride(pxPerSecond, 600);
+    assert.ok(ladder.includes(stride), `${stride}s is not a number a clock is divided into`);
+    assert.ok(stride * pxPerSecond >= 62 || stride === 1 || stride === 3600,
+      `marks ${(stride * pxPerSecond).toFixed(0)}px apart at ${pxPerSecond}px/s are unreadable`);
+  }
+  // Zoomed all the way in the visible span is seconds, not minutes, and a
+  // second is as fine as this ruler gets.
+  assert.equal(timeStride(2000, 20), 1);
+  // Pulled far out, the ruler thins rather than emitting a mark per second.
+  assert.ok(600 / timeStride(2, 600) <= 512);
+  assert.ok(36000 / timeStride(480, 36000) <= 512, 'ten hours stays bounded');
+
+  assert.equal(formatClock(0), '0:00');
+  assert.equal(formatClock(62), '1:02');
+  assert.equal(formatClock(125), '2:05');
+  assert.equal(formatClock(3725), '1:02:05', 'past the hour the hour is written');
+  // Rounded before it is split, or a 59.6 prints `:60` and an hour prints 60:00.
+  assert.equal(formatClock(59.6), '1:00');
+  assert.equal(formatClock(3599.6), '1:00:00');
+  assert.equal(formatClock(-1), '0:00');
+  assert.equal(formatClock(Number.NaN), '0:00');
+});
+
+test('the clock ruler sits above the bars, seeks like them, and follows the tempo', async () => {
+  const { hub } = await runtime({ transportBpm: 120 });
+  hub.nodes.create('sequencer');
+  hub.modules.register(createSequencerModule(hub));
+  const view = captureContainer();
+  hub.modules.activate('sequencer', view.container);
+
+  // Two rows, the clock first: it is drawn before the bar ruler and the bar
+  // ruler is offset by its height, which the module publishes rather than the
+  // stylesheet spelling it.
+  assert.match(view.markup(), /data-seq-time-ruler="18"[^>]*data-seq-bar-ruler="30"/);
+  const clockAt = view.markup().indexOf('class="seq-time-ruler"');
+  const barsAt = view.markup().indexOf('class="seq-ruler"');
+  assert.ok(clockAt > 0 && clockAt < barsAt, 'the clock row comes first');
+
+  // Its marks are clickable positions, in quarters, like a bar mark.
+  const marks = [...view.markup().matchAll(/<button class="seq-time-mark" data-seek="([^"]+)"[^>]*><strong>([^<]+)</g)]
+    .map(([, seek, label]) => [Number(seek), label]);
+  assert.ok(marks.length >= 2, 'the ruler has marks');
+  assert.deepEqual(marks[0], [0, '0:00']);
+  // At 120 BPM a quarter is half a second, so a mark at 0:30 is quarter 60.
+  const thirty = marks.find(([, label]) => label === '0:30');
+  if (thirty) assert.equal(thirty[0], 60, '0:30 at 120 BPM is quarter 60');
+  // Tracks and the playhead hang below BOTH rows.
+  assert.match(view.markup(), /class="seq-playhead"[^>]*data-seq-height="(\d+)"/);
+  assert.ok(Number(/class="seq-playhead"[^>]*data-seq-height="(\d+)"/.exec(view.markup())[1]) >= 48,
+    'the playhead spans the two rulers plus the tracks');
+
+  // 64 bars are 64 bars at any tempo; two minutes are not. Halving the tempo
+  // doubles the seconds a bar takes, so the same mark moves to a new bar.
+  const before = view.timeRuler().innerHTML;
+  hub.sequencer.setTempo(60);
+  const after = view.timeRuler().innerHTML;
+  assert.notEqual(after, before, 'a tempo change redraws the clock');
+  const seekAt = (html, label) => {
+    const hit = [...html.matchAll(/data-seek="([^"]+)"[^>]*><strong>([^<]+)</g)]
+      .find(([, , text]) => text === label);
+    return hit ? Number(hit[1]) : null;
+  };
+  const quarters120 = seekAt(before, '0:30');
+  const quarters60 = seekAt(after, '0:30');
+  if (quarters120 !== null && quarters60 !== null) {
+    assert.equal(quarters60, quarters120 / 2, 'at half the tempo, 0:30 is half as many quarters');
+  }
+
+  // And the repainted marks still answer. Rebuilding a row's markup throws its
+  // listeners away with the old elements, so a mark that is redrawn and not
+  // re-bound is a ruler that silently stops seeking until the next full render.
+  const repainted = view.timeRuler().marks();
+  const target = repainted.at(-1);
+  assert.ok(target, 'the repainted row has marks');
+  fire(target, 'click');
+  assert.equal(hub.sequencer.playheadPpq, Number(target.dataset.seek),
+    'clicking a mark drawn by the tempo repaint seeks to it');
 });
 
 test('the timeline always keeps a screenful of empty bars ahead of the view', async () => {

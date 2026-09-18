@@ -26,6 +26,25 @@ import { sequencerCommands } from '../../core/sequencerCommands.js';
 const TRACK_HEADER = 260;
 const TRACK_HEIGHT = 64;
 const RULER_HEIGHT = 30;
+/**
+ * The clock ruler, above the bars.
+ *
+ * Shorter than the bar ruler because it answers a different question and is
+ * read less often: the bars are where you work, the minutes are where you are
+ * in the piece. 18px holds a 10px label with room above and below.
+ */
+const TIME_RULER_HEIGHT = 18;
+/**
+ * Everything in the arrangement hangs below both rulers.
+ *
+ * Named, because it is the offset of the tracks, of the playhead, of the loop
+ * range, of the empty-state line, of the canvas height and of the marquee's
+ * track arithmetic -- six places that must agree, and that all used to spell
+ * `RULER_HEIGHT` when there was one row. `base.css` reads the two heights back
+ * through `--seq-time-ruler` and `--seq-bar-ruler`, so the corner and the
+ * marks cannot disagree with them either.
+ */
+const HEAD_HEIGHT = TIME_RULER_HEIGHT + RULER_HEIGHT;
 const TIMELINE_BEATS = 256;
 
 /**
@@ -229,11 +248,20 @@ function applyDynamicStyles(root) {
   root.querySelectorAll('[data-seq-width-pct]').forEach((element) => { element.style.width = `${Number(element.dataset.seqWidthPct) || 0}%`; });
   root.querySelectorAll('[data-seq-height-pct]').forEach((element) => { element.style.height = `${Number(element.dataset.seqHeightPct) || 0}%`; });
   root.querySelectorAll('[data-seq-bottom-pct]').forEach((element) => { element.style.bottom = `${Number(element.dataset.seqBottomPct) || 0}%`; });
-  root.querySelectorAll('[data-seq-beat]').forEach((element) => { element.style.setProperty('--seq-beat', `${Number(element.dataset.seqBeat) || 0}px`); });
-  // `.seq-corner` and `.seq-empty` both need the header width and used to
-  // spell it themselves, in two different values. One declaration, published
-  // to the stylesheet.
-  root.querySelectorAll('[data-seq-head]').forEach((element) => { element.style.setProperty('--seq-head', `${Number(element.dataset.seqHead) || 0}px`); });
+  // Lengths the stylesheet needs but must not spell itself. `.seq-corner` and
+  // `.seq-empty` both need the header width and used to hold it themselves, in
+  // two different values; the two ruler heights are the same trap, now that
+  // there are two rows and the corner has to cover both.
+  const customProperties = {
+    seqBeat: '--seq-beat',
+    seqHead: '--seq-head',
+    seqTimeRuler: '--seq-time-ruler',
+    seqBarRuler: '--seq-bar-ruler'
+  };
+  for (const [key, property] of Object.entries(customProperties)) {
+    root.querySelectorAll(`[data-${key.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)}]`)
+      .forEach((element) => { element.style.setProperty(property, `${Number(element.dataset[key]) || 0}px`); });
+  }
 }
 
 const options = (items, selected, empty = '— Select —') => {
@@ -462,10 +490,89 @@ export function gridPx(zoom) {
   return 64 * step;
 }
 
+/**
+ * The spacings a clock ruler is allowed to step through, in seconds.
+ *
+ * A ladder and not a formula: a mark every 7 seconds is arithmetically fine
+ * and unreadable, because nobody counts in sevens. These are the intervals a
+ * clock is divided into -- a second, two, five, a quarter minute, a minute,
+ * five, and up to the hour.
+ *
+ * It stops AT the second. Half-second rungs were tried and the default zoom
+ * lands on them, so the row read `0:00.5  0:01.0  0:01.5` across the screen --
+ * precision the bar ruler already provides, in the units this row exists to
+ * escape. This one answers "where am I in the piece"; a thirty-second note is
+ * the other ruler's business.
+ */
+const TIME_STRIDES = Object.freeze([1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 1800, 3600]);
+/** Wider than the bar ruler's: `0:00` is a longer label than `17`. */
+const TIME_MIN_MARK_PX = 62;
+
+/** Seconds per quarter at this tempo. The only place the two units meet. */
+export function secondsPerQuarter(bpm) {
+  const tempo = Number(bpm);
+  return Number.isFinite(tempo) && tempo > 0 ? 60 / tempo : 0.5;
+}
+
+/**
+ * How many seconds one mark of the clock ruler covers.
+ *
+ * Two floors, like `rulerStride`'s: the marks stay far enough apart to be read,
+ * and a long arrangement never emits more than 512 of them however far out you
+ * are -- an hour at one mark a second is 3,600 buttons nobody will click.
+ */
+export function timeStride(pxPerSecond, totalSeconds = 0) {
+  const scale = Number(pxPerSecond);
+  const span = Math.max(0, Number(totalSeconds) || 0);
+  if (!Number.isFinite(scale) || scale <= 0) return TIME_STRIDES.at(-1);
+  for (const stride of TIME_STRIDES) {
+    if (stride * scale >= TIME_MIN_MARK_PX && span / stride <= 512) return stride;
+  }
+  return TIME_STRIDES.at(-1);
+}
+
+/**
+ * A duration as a clock reads it: `m:ss`, and `h:mm:ss` once there is an hour
+ * to write. Whole seconds, because that is the finest rung of the ladder.
+ */
+export function formatClock(seconds) {
+  const total = Number(seconds);
+  if (!Number.isFinite(total) || total < 0) return '0:00';
+  // Rounded FIRST, then split. Rounding each field after the split is what
+  // prints `:60`, and what turns 59:59.6 into `60:00` instead of the hour it
+  // has just reached.
+  const rounded = Math.round(total);
+  const hours = Math.floor(rounded / 3600);
+  const minutes = Math.floor((rounded % 3600) / 60);
+  const pad = (value) => String(value).padStart(2, '0');
+  const secs = pad(rounded % 60);
+  return hours > 0 ? `${hours}:${pad(minutes)}:${secs}` : `${minutes}:${secs}`;
+}
+
 export function rulerStride(bars, zoom) {
   const barPx = Math.max(0.01, 4 * (Number(zoom) || 0));
   const wanted = Math.max(RULER_MIN_MARK_PX / barPx, Math.max(1, Number(bars) || 1) / 512, 1);
   return 2 ** Math.ceil(Math.log2(wanted));
+}
+
+/**
+ * The clock ruler's marks.
+ *
+ * Positioned in pixels like the bar ruler's, and carrying the same `data-seek`
+ * in quarters -- clicking 1:30 seeks there, which is the point of a ruler you
+ * can read. The mapping is linear because MiniHub has one tempo and no tempo
+ * map: seconds are quarters times 60 over the BPM. The day there is a tempo
+ * map, this is the function that has to walk it.
+ */
+function timeRulerMarkup(endPpq, zoom, bpm) {
+  const perQuarter = secondsPerQuarter(bpm);
+  const totalSeconds = Math.max(0, Number(endPpq) || 0) * perQuarter;
+  const pxPerSecond = Math.max(0.0001, (Number(zoom) || 0) / perQuarter);
+  const stride = timeStride(pxPerSecond, totalSeconds);
+  const count = Math.max(1, Math.ceil(totalSeconds / stride));
+  return Array.from({ length: count }, (_, index) => index * stride)
+    .map((seconds) => `<button class="seq-time-mark" data-seek="${seconds / perQuarter}" data-seq-left="${seconds * pxPerSecond}" data-seq-width="${stride * pxPerSecond}"><strong>${formatClock(seconds)}</strong></button>`)
+    .join('');
 }
 
 function rulerMarkup(endPpq, zoom) {
@@ -750,11 +857,11 @@ export function createSequencerModule(hub) {
     // spelling of 14px here is one that would go stale the day the rail grows.
     const padding = parseFloat(globalThis.getComputedStyle?.(scroller)?.paddingBottom);
     scrollTopPx = revealScrollTop({
-      top: RULER_HEIGHT + index * TRACK_HEIGHT,
+      top: HEAD_HEIGHT + index * TRACK_HEIGHT,
       height: TRACK_HEIGHT,
       scrollTop: scrollTopPx,
       viewHeight: (scroller.clientHeight || 0) - (Number.isFinite(padding) ? padding : 0),
-      stickyTop: RULER_HEIGHT
+      stickyTop: HEAD_HEIGHT
     });
     scroller.scrollTop = scrollTopPx;
   }
@@ -864,10 +971,10 @@ export function createSequencerModule(hub) {
       </section>
       <section class="panel seq-arrangement">
         <div class="seq-scroll" data-timeline-scroll>
-          <div class="seq-canvas" data-seq-canvas data-seq-head="${TRACK_HEADER}" data-seq-width="${TRACK_HEADER + timelineWidth}" data-seq-height="${RULER_HEIGHT + Math.max(1, state.tracks.length) * TRACK_HEIGHT}">
-            <div class="seq-corner">TRACKS</div><div class="seq-ruler" data-seq-left="${TRACK_HEADER}" data-seq-width="${timelineWidth}" data-seq-beat="${gridLinePx}">${rulerMarkup(endPpq, zoom)}</div>
-            <div class="seq-loop-range ${state.loop.enabled ? 'enabled' : ''}" data-seq-left="${TRACK_HEADER + state.loop.startPpq * zoom}" data-seq-width="${(state.loop.endPpq - state.loop.startPpq) * zoom}" data-seq-height="${RULER_HEIGHT + Math.max(1, state.tracks.length) * TRACK_HEIGHT}"></div>
-            ${state.tracks.length ? state.tracks.map((track, index) => `<div class="seq-track ${state.focusedTrackId === track.id ? 'focused' : ''}" data-track-id="${track.id}" data-seq-top="${RULER_HEIGHT + index * TRACK_HEIGHT}" data-seq-height="${TRACK_HEIGHT}">
+          <div class="seq-canvas" data-seq-canvas data-seq-head="${TRACK_HEADER}" data-seq-time-ruler="${TIME_RULER_HEIGHT}" data-seq-bar-ruler="${RULER_HEIGHT}" data-seq-width="${TRACK_HEADER + timelineWidth}" data-seq-height="${HEAD_HEIGHT + Math.max(1, state.tracks.length) * TRACK_HEIGHT}">
+            <div class="seq-corner">TRACKS</div><div class="seq-time-ruler" data-seq-time-scale data-seq-left="${TRACK_HEADER}" data-seq-width="${timelineWidth}">${timeRulerMarkup(endPpq, zoom, controller.tempo)}</div><div class="seq-ruler" data-seq-left="${TRACK_HEADER}" data-seq-width="${timelineWidth}" data-seq-beat="${gridLinePx}">${rulerMarkup(endPpq, zoom)}</div>
+            <div class="seq-loop-range ${state.loop.enabled ? 'enabled' : ''}" data-seq-left="${TRACK_HEADER + state.loop.startPpq * zoom}" data-seq-width="${(state.loop.endPpq - state.loop.startPpq) * zoom}" data-seq-height="${HEAD_HEIGHT + Math.max(1, state.tracks.length) * TRACK_HEIGHT}"></div>
+            ${state.tracks.length ? state.tracks.map((track, index) => `<div class="seq-track ${state.focusedTrackId === track.id ? 'focused' : ''}" data-track-id="${track.id}" data-seq-top="${HEAD_HEIGHT + index * TRACK_HEIGHT}" data-seq-height="${TRACK_HEIGHT}">
               <div class="seq-track-head" data-seq-width="${TRACK_HEADER}">
                 <button class="seq-track-select" data-track-action="select" title="Select ${escapeHtml(track.name)}" aria-label="Select ${escapeHtml(track.name)}" aria-pressed="${state.focusedTrackId === track.id}"></button>
                 <button class="seq-arm ${track.armed ? 'active' : ''}" data-track-action="arm" title="Arm">R</button>
@@ -879,8 +986,8 @@ export function createSequencerModule(hub) {
                 ${routeDots(routeStates(hub, track, sequencerNode.id))}
               </div>
               <div class="seq-track-lane" data-seq-left="${TRACK_HEADER}" data-seq-width="${timelineWidth}" data-seq-beat="${gridLinePx}">${track.clips.filter((clip) => clip.startPpq + clip.lengthPpq >= visibleStart && clip.startPpq <= visibleEnd).map((clip) => clipMarkup(track, clip, zoom, selectedClipIds.has(clip.id))).join('')}</div>
-            </div>`).join('') : `<div class="seq-empty" data-seq-top="${RULER_HEIGHT}">Create a MIDI or audio track to begin.</div>`}
-            <div class="seq-playhead" data-playhead data-seq-left="${TRACK_HEADER + controller.playheadPpq * zoom}" data-seq-height="${RULER_HEIGHT + Math.max(1, state.tracks.length) * TRACK_HEIGHT}"></div>
+            </div>`).join('') : `<div class="seq-empty" data-seq-top="${HEAD_HEIGHT}">Create a MIDI or audio track to begin.</div>`}
+            <div class="seq-playhead" data-playhead data-seq-left="${TRACK_HEADER + controller.playheadPpq * zoom}" data-seq-height="${HEAD_HEIGHT + Math.max(1, state.tracks.length) * TRACK_HEIGHT}"></div>
           </div>
         </div>
         <div class="seq-rail" data-seq-rail hidden><div class="seq-rail-thumb" data-seq-rail-thumb></div></div>
@@ -966,7 +1073,7 @@ export function createSequencerModule(hub) {
         if (trackId) controller.setTrack(trackId, { [field === 'input' ? 'inputId' : 'outputId']: event.target.value });
       });
     }
-    container.querySelectorAll('[data-seek]').forEach((element) => element.addEventListener('click', () => controller.seek(Number(element.dataset.seek))));
+    bindSeeks(container);
     container.querySelectorAll('.seq-track').forEach(bindTrack);
     container.querySelectorAll('.seq-clip').forEach(bindClip);
     bindRail();
@@ -976,6 +1083,37 @@ export function createSequencerModule(hub) {
   function renderTempoValue(tempo) {
     const input = container?.querySelector('[data-control="tempo"]');
     if (input && input.value !== String(tempo)) input.value = String(tempo);
+    // The clock ruler is the one thing on this page a tempo change redraws:
+    // 64 bars are 64 bars at any tempo, two minutes are not. That row alone
+    // rather than the arrangement -- this arrives on every notch of a drag.
+    repaintTimeRuler();
+  }
+
+  /**
+   * Every mark that names a position seeks to it: a bar on the bar ruler, a
+   * time on the clock. Taken out of `bind()` because the clock row is redrawn
+   * on its own when the tempo moves, and marks rebuilt without their listener
+   * are marks that stop answering until the next full render.
+   */
+  function bindSeeks(root) {
+    root?.querySelectorAll('[data-seek]')
+      .forEach((element) => element.addEventListener('click', () => controller.seek(Number(element.dataset.seek))));
+  }
+
+  /** Redraw the clock ruler in place, for a tempo that moved under it. */
+  function repaintTimeRuler() {
+    const row = container?.querySelector('[data-seq-time-scale]');
+    if (!row) return;
+    const { zoom, scrollPpq } = controller.model.state;
+    const endPpq = timelineEndPpq({
+      minimumPpq: TIMELINE_BEATS,
+      contentEndPpq: controller.model.compositionEndPpq(),
+      scrollPpq,
+      viewportPpq: Math.max(16, ((container?.clientWidth || 0) - TRACK_HEADER) / zoom)
+    });
+    row.innerHTML = timeRulerMarkup(endPpq, zoom, controller.tempo);
+    applyDynamicStyles(row);
+    bindSeeks(row);
   }
 
   function renderMetronomeState(enabled) {
@@ -1283,8 +1421,8 @@ export function createSequencerModule(hub) {
     const covered = clipsInSpan(controller.model.state.tracks, {
       startPpq: (left - TRACK_HEADER) / zoom,
       endPpq: (left + width - TRACK_HEADER) / zoom,
-      fromTrack: Math.floor((top - RULER_HEIGHT) / TRACK_HEIGHT),
-      toTrack: Math.floor((top + height - RULER_HEIGHT) / TRACK_HEIGHT)
+      fromTrack: Math.floor((top - HEAD_HEIGHT) / TRACK_HEIGHT),
+      toTrack: Math.floor((top + height - HEAD_HEIGHT) / TRACK_HEIGHT)
     });
     marquee.ids = [...new Set([...(marquee.additive ? marquee.baseIds : []), ...covered])];
     // Highlighted live, committed once: a re-render per pixel of the band
