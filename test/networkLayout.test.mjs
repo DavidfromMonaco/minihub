@@ -170,3 +170,79 @@ test('a cable to a node that is not on the canvas is ignored', () => {
   const at = alignPositions([box('vst', 0, 0, 200, 150)], [edge('ghost', 'vst'), edge('vst', 'ghost')]);
   assert.deepEqual(at.get('vst'), { x: 80, y: 80 });
 });
+
+test('a rank too tall for the drawing folds into a block instead of a ribbon', () => {
+  // The author's canvas, 2026-09-18: seven plugin nodes hanging off one
+  // sequencer. As one column that is a ribbon 1,570 units tall beside a
+  // drawing 680 wide -- correct, and a thing you scroll rather than read.
+  const boxes = [
+    box('minilab-3', 0, 0, 200, 262),
+    box('sequencer', 0, 0, 200, 190),
+    ...Array.from({ length: 7 }, (_, i) => box(`vst-${i + 1}`, 0, 0, 200, 190)),
+    box('audio-output', 0, 0, 200, 160)
+  ];
+  const edges = [
+    ...Array.from({ length: 7 }, (_, i) => edge('sequencer', `vst-${i + 1}`)),
+    edge('minilab-3', 'vst-1'),
+    ...Array.from({ length: 7 }, (_, i) => edge(`vst-${i + 1}`, 'audio-output'))
+  ];
+  const at = alignPositions(boxes, edges);
+  const rects = boxes.map((item) => ({ ...item, ...at.get(item.id) }));
+  const plugins = rects.filter((item) => item.id.startsWith('vst-'));
+
+  assert.ok(new Set(plugins.map((item) => item.x)).size > 1, 'the rank is folded into several columns');
+  const width = Math.max(...rects.map((item) => item.x + item.width));
+  const height = Math.max(...rects.map((item) => item.y + item.height));
+  assert.ok(width > height, `the drawing comes out landscape, not a ribbon (${width} x ${height})`);
+
+  // What the fold may not cost, and what D-047 was protecting when it refused
+  // one: the signal still reads left to right. A rank's block is contiguous and
+  // the next rank starts after it ends.
+  for (const link of edges) {
+    const from = rects.find((item) => item.id === link.from);
+    const to = rects.find((item) => item.id === link.to);
+    assert.ok(from.x + from.width <= to.x, `${link.from} -> ${link.to} points right`);
+  }
+  for (let i = 0; i < rects.length; i += 1) {
+    for (let j = i + 1; j < rects.length; j += 1) {
+      assert.equal(overlaps(rects[i], rects[j]), false, `${rects[i].id} and ${rects[j].id} overlap`);
+    }
+  }
+
+  // Filled left to right then down, which is the order a second press reads
+  // back -- so pressing Align on a folded canvas is still a no-op.
+  assert.equal(plugins[0].y, plugins[1].y, 'the first two sit side by side');
+  assert.ok(plugins[0].x < plugins[1].x);
+  const second = alignPositions(rects, edges);
+  for (const id of at.keys()) assert.deepEqual(second.get(id), at.get(id));
+});
+
+test('a rank short enough to be read stays the single column it always was', () => {
+  // The fold is for a fan-out, not for every graph: three nodes in a rank are
+  // shorter than the drawing is wide, so nothing moves sideways.
+  const at = alignPositions([
+    box('minilab-3', 0, 0, 200, 262),
+    box('vst-a', 0, 0, 200, 190),
+    box('vst-b', 0, 0, 200, 190),
+    box('vst-c', 0, 0, 200, 190),
+    box('audio-output', 0, 0, 200, 160)
+  ], [
+    edge('minilab-3', 'vst-a'), edge('minilab-3', 'vst-b'), edge('minilab-3', 'vst-c'),
+    edge('vst-a', 'audio-output'), edge('vst-b', 'audio-output'), edge('vst-c', 'audio-output')
+  ]);
+  assert.equal(at.get('vst-a').x, at.get('vst-b').x);
+  assert.equal(at.get('vst-b').x, at.get('vst-c').x);
+});
+
+test('one node taller than the drawing is wide keeps its own column', () => {
+  // The clamp: a fold cannot cut a node in half, so a rank never gets more
+  // columns than it has nodes -- it would reserve room for a block it cannot
+  // fill, and push the rest of the graph off to the right for nothing.
+  const at = alignPositions([
+    box('tall', 0, 0, 200, 2000),
+    box('audio-output', 0, 0, 200, 160)
+  ], [edge('tall', 'audio-output')]);
+
+  assert.deepEqual(at.get('tall'), { x: 80, y: 80 });
+  assert.equal(at.get('audio-output').x, 80 + 200 + NODE_GAP, 'and the next rank still follows it');
+});

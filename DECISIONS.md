@@ -2444,7 +2444,7 @@ opens"), `test/homeStartup.test.mjs`.
 ## D-047 — Neither canvas ends: distance changes how much is drawn, not how far you can go
 
 **Status**: in force · 2026-09-18 · **implemented**, not seen in the
-application yet
+application yet · its "Align is not touched" is superseded by D-050
 
 **Context** — The author reported two limits on 2026-09-18, from his own use.
 Pressing Align in the Patch Bay on twelve nodes "reached its limits", and the
@@ -2638,3 +2638,68 @@ area in `buildPort`, `src/renderer/js/modules/routing/routingModule.js`. Tests:
 with the second inside the first", "the drawing and the cable layer put every
 socket in the same place", "a second function nests in the nearest control of
 its family").
+
+---
+
+## D-050 — A rank folds into a block rather than growing a ribbon
+
+**Status**: in force · 2026-09-18 · **implemented**, not seen in the
+application yet · supersedes the "Align is not touched" bullet of D-047
+
+**Context** — D-047 was written the same morning, and its third bullet refused
+exactly this: "A rank stays one column. Folding a tall one into sub-columns
+would draw a tidier picture and destroy the thing the command is for." That
+refusal was an agent's reasoning in this register, not the author's. Shown the
+result on his own canvas -- a MiniLab and a Sequencer feeding seven plugin
+nodes, all seven into Audio Output -- he asked for the opposite, in his own
+words: less vertical, more compact. Measured, the refusal produced a rank 1,570
+world units tall beside a drawing 680 wide: the ranking was right and the
+drawing was a ribbon, read by scrolling.
+
+**Decision** — A rank is drawn as one column until that column would be taller
+than the whole drawing is wide; past that it folds into a block, filled left to
+right then down.
+
+- The budget is the drawing's own width **before any fold**, so no number is
+  chosen by anyone: a window is wider than it is tall, and so is a patch that
+  can be read in one. Measured before folding because a fold trades height for
+  width, and a budget that grew with it would chase its own tail. The tallest
+  single node is the floor -- nothing folds a node in half.
+- A rank never gets more columns than it has nodes. Otherwise one very tall
+  node would reserve room for a block it cannot fill.
+- The author's canvas comes out 1,160 x 650 instead of 680 x 1,570: the seven
+  plugins are a three-by-three block, and the drawing is landscape.
+
+**Consequences**
+
+- What is lost is the rule "one column, one rank". After a fold, x no longer
+  names a distance from the sources on its own.
+- What is kept is the reason that rule existed, and it is kept by construction:
+  a rank's block is contiguous, the next rank starts only after it ends, so
+  every cable still points right -- a test asserts it on every edge of the
+  folded case. Inside a block nothing can bend either, since two nodes of the
+  same rank are never cabled to each other: an edge between them would put one
+  of them a rank further along.
+- A fan-out's cables now cross the block to reach its right-hand columns. That
+  is the trade the author asked for: a ribbon has no crossings and cannot be
+  read either.
+- Whether a rank folds depends on the rest of the graph, since the budget is
+  the whole drawing's width. Adding a node downstream can unfold one. Align is
+  a command about the whole canvas, so its criterion is the whole canvas.
+- Pressing Align twice still moves nothing. The fold fills in reading order,
+  which is exactly the order the tie-break reads back -- a block filled column
+  by column would have shuffled on the second press.
+
+**What would justify revisiting** — A canvas where the fan-out's crossings cost
+more than the height did, which is the day the rank needs an order of its own
+(minimising crossings) rather than the one the author's canvas already has. Or
+a patch so wide that the budget lets a rank grow taller than a screen anyway,
+at which point the reference is the viewport rather than the drawing -- and a
+layout that depends on the window is one that changes when the window does.
+
+**Proof in the code** — `alignPositions` in
+`src/renderer/js/core/networkLayout.js`. Tests:
+`test/networkLayout.test.mjs` ("a rank too tall for the drawing folds into a
+block instead of a ribbon", "a rank short enough to be read stays the single
+column it always was", "one node taller than the drawing is wide keeps its own
+column", "aligning an already aligned canvas changes nothing").

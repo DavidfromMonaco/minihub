@@ -62,9 +62,9 @@ export function gridPositions(sizes, { startX = DEFAULT_X, startY = DEFAULT_Y, g
  *
  * WHAT "ALIGNED" MEANS HERE
  * -------------------------
- * A column is a distance from the sources: a node sits one column to the right
- * of the furthest-left node that feeds it. Controllers have nothing upstream so
- * they open the graph; Audio Output is fed by everything so it closes it. The
+ * A rank is a distance from the sources: a node sits to the right of the
+ * furthest-left node that feeds it. Controllers have nothing upstream so they
+ * open the graph; Audio Output is fed by everything so it closes it. The
  * insertion order the default grid uses says nothing about the signal, which is
  * what made the old arrangement tidy rather than readable.
  *
@@ -72,9 +72,24 @@ export function gridPositions(sizes, { startX = DEFAULT_X, startY = DEFAULT_Y, g
  * `controller -> vst -> output` and `controller -> output`, ranking the output
  * by its shortest path would put it beside the VST and draw a cable backwards.
  *
- * Within a column the current vertical order is kept. Reordering rows to
- * minimise crossings is a better drawing and a worse command: the point of
- * pressing this is to recognise your own patch afterwards.
+ * A rank is drawn as ONE column until that column would be taller than the
+ * whole drawing is wide; past that it FOLDS into a block, filled left to right
+ * then down. Seven plugins hanging off one sequencer were a ribbon 1,400 units
+ * tall beside a drawing 680 wide: correct, and a thing you scroll rather than
+ * read. D-050, which supersedes D-047's "Align is not touched".
+ *
+ * What a fold costs is the rule "one column, one rank". What it keeps is the
+ * reason that rule existed: a rank's block is contiguous, and the next rank
+ * starts only after it ends, so every cable still points right. Inside the
+ * block nothing can bend either -- two nodes of the same rank are never cabled
+ * to each other, since an edge between them would put one of them a rank
+ * further along.
+ *
+ * Within a rank the current vertical order is kept, read left to right then
+ * down. Reordering to minimise crossings is a better drawing and a worse
+ * command: the point of pressing this is to recognise your own patch
+ * afterwards. Reading order is also what keeps a second press a no-op, since
+ * the tie-break below sorts on the position each node already has.
  *
  * `edges` are node-to-node, direction included; a cycle cannot loop forever
  * because the relaxation is bounded by the node count.
@@ -102,21 +117,57 @@ export function alignPositions(boxes, edges = [], { startX = DEFAULT_X, startY =
   const ordered = [...boxes].sort((a, b) => column.get(a.id) - column.get(b.id)
     || a.y - b.y || a.x - b.x || (a.id < b.id ? -1 : 1));
 
+  const sizeOf = (box, side) => (Number.isFinite(box[side]) ? box[side] : 0);
+  const widest = (list) => Math.max(0, ...list.map((box) => sizeOf(box, 'width')));
+  const stacked = (list) => list.reduce((total, box) => total + sizeOf(box, 'height'), 0)
+    + gap * Math.max(0, list.length - 1);
+
+  // The ranks, in reading order, each one the group of nodes at the same
+  // distance from the sources.
+  const ranks = [];
+  for (const box of ordered) {
+    const at = column.get(box.id);
+    const last = ranks[ranks.length - 1];
+    if (last && last.at === at) last.boxes.push(box);
+    else ranks.push({ at, boxes: [box] });
+  }
+
+  /**
+   * How tall a column may grow: the width this drawing would have WITHOUT any
+   * fold, so the answer is the graph's own and not a number someone chose.
+   *
+   * A window is wider than it is tall, and so is a patch that is readable in
+   * one: this budget is what turns a fan-out into a block instead of a ribbon.
+   * Measured before folding on purpose -- folding trades height for width, so a
+   * budget that grew with it would chase its own tail.
+   *
+   * The tallest single node is the floor. Nothing can fold a node in half, and
+   * a budget below one node's height would ask for a column per node.
+   */
+  const budget = Math.max(
+    ranks.reduce((total, rank) => total + widest(rank.boxes), 0) + gap * Math.max(0, ranks.length - 1),
+    ...boxes.map((box) => sizeOf(box, 'height'))
+  );
+
   const positions = new Map();
   let x = startX;
-  let index = 0;
-  while (index < ordered.length) {
-    const at = column.get(ordered[index].id);
+  for (const rank of ranks) {
+    const width = widest(rank.boxes);
+    // Never more columns than there are nodes: one node taller than the whole
+    // drawing is wide would otherwise reserve room for a block it cannot fill.
+    const columns = budget > 0
+      ? Math.max(1, Math.min(rank.boxes.length, Math.ceil(stacked(rank.boxes) / budget)))
+      : 1;
+    const rows = Math.ceil(rank.boxes.length / columns);
     let y = startY;
-    let width = 0;
-    while (index < ordered.length && column.get(ordered[index].id) === at) {
-      const box = ordered[index];
-      positions.set(box.id, { x, y });
-      y += (Number.isFinite(box.height) ? box.height : 0) + gap;
-      width = Math.max(width, Number.isFinite(box.width) ? box.width : 0);
-      index += 1;
+    for (let row = 0; row < rows; row += 1) {
+      const inRow = rank.boxes.slice(row * columns, (row + 1) * columns);
+      inRow.forEach((box, index) => positions.set(box.id, { x: x + index * (width + gap), y }));
+      // The row is as tall as its tallest node, so a block of mixed sizes
+      // stays a block instead of overlapping on the row below.
+      y += Math.max(0, ...inRow.map((box) => sizeOf(box, 'height'))) + gap;
     }
-    x += width + gap;
+    x += columns * (width + gap);
   }
   return positions;
 }
