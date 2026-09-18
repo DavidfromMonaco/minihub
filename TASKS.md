@@ -7,6 +7,28 @@ finished, delete its entry**, in the same commit. What was done lives in git and
 
 ## Started, not finished
 
+**Templates, and a Home that says what MiniHub is** — built 2026-09-18 on the
+author's word, replacing the "Basic template" placeholder, which only ever made
+an empty project under another name.
+- File > Save as Template writes the open project into
+  `Documents/MiniHub/Templates`, beside Projects and with its own folder memory,
+  and moves nothing about the project: not its file, not its name, not its
+  dirty flag, not the recent-project keys Home reads.
+- Home's Templates card and File > New from Template both open that folder. A
+  project started from a template has no file and a fresh identity, so the
+  first Ctrl+S goes to the projects folder and the template is never
+  overwritten. Changing a template means Save as Template again.
+- An empty templates folder opens no dialog: MiniHub says how one is made.
+- The controller node's input port is called MIDI In. "Hardware" narrowed it to
+  an external machine, which it never was.
+- Home now opens on the sentence that MiniHub works with any MIDI controller,
+  in bold and in the mixer accent, above what the four cards do.
+- Not seen yet, any of it, in the application: the author has not tried the two
+  dialogs, and nobody has looked at the Home sentence on screen.
+- Left as found: a cable into the controller's MIDI In is dropped in silence
+  when no MIDI output is selected on its page (`midiManager.send` answers
+  `false` and nothing says so). Reported to the author, not acted on.
+
 **One Ring, made native** — started 2026-09-16 on the author's word, in place
 of the Matrix node (ROADMAP item 7). One Ring becomes a node of MiniHub with
 every function of the VST, its clock in the engine, its commands through the

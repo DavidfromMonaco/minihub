@@ -13,7 +13,8 @@ import { escapeHtml } from '../core/html.js';
 const FOLDER_ROWS = [
   { purpose: 'audioRecordings', label: 'Recordings', hint: 'Recorded takes are filed here.' },
   { purpose: 'audioExport', label: 'Audio exports', hint: 'Where the export dialog opens.' },
-  { purpose: 'project', label: 'Projects', hint: 'Where the project dialogs open.' }
+  { purpose: 'project', label: 'Projects', hint: 'Where the project dialogs open.' },
+  { purpose: 'template', label: 'Templates', hint: 'Where Save as Template writes, and where templates are listed.' }
 ];
 
 /**

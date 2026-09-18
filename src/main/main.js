@@ -454,11 +454,19 @@ function projectsDirectory() {
   return path.join(app.getPath('documents'), 'MiniHub', 'Projects');
 }
 
+// Templates sit BESIDE projects, never inside them: a project dialog opened on
+// a folder holding both would offer templates as projects to be overwritten,
+// which is the one thing "Save as Template" exists to prevent.
+function templatesDirectory() {
+  return path.join(app.getPath('documents'), 'MiniHub', 'Templates');
+}
+
 // Where MiniHub puts a kind of file when the user has never said otherwise.
 // These are starting points, not destinations: every one of them is replaced by
 // the user's own folder as soon as they choose one.
 function fallbackDirectory(purpose) {
   if (purpose === 'project') return projectsDirectory();
+  if (purpose === 'template') return templatesDirectory();
   if (purpose === 'audioRecordings') return path.join(app.getPath('music'), 'MiniHub Recordings');
   return app.getPath('music');
 }
@@ -468,6 +476,33 @@ function fallbackDirectory(purpose) {
 // when the remembered one has since been deleted or unplugged.
 function effectiveDirectory(purpose) {
   return rememberedDirectory(loadSettings(), purpose) || fallbackDirectory(purpose);
+}
+
+/**
+ * The two template dialogs.
+ *
+ * They are `project:pick-*` with one difference that is the whole point: they
+ * remember their folder under `template`, so saving a template never moves
+ * where the PROJECT dialogs open. A template written into the projects folder
+ * -- or a project saved into the templates folder because the last dialog went
+ * there -- is exactly the confusion this separation removes.
+ *
+ * Both create the folder before opening. Windows opens a dialog wherever it
+ * pleases when `defaultPath` names a folder that does not exist, and a first
+ * "Save as Template" would then land somewhere the template list never looks.
+ */
+function ensureDirectory(directory) {
+  try { fs.mkdirSync(directory, { recursive: true }); } catch (_) {}
+  return directory;
+}
+
+/** The templates on disk. Only the extension: a template IS a project file. */
+function templateFilesIn(directory) {
+  try {
+    return fs.readdirSync(directory).filter((entry) => entry.toLowerCase().endsWith('.minihub'));
+  } catch (_) {
+    return [];
+  }
 }
 
 // Seeing and changing those folders without having to trigger an export first:
@@ -625,6 +660,32 @@ ipcMain.handle('project:pick-save', async (_event, name) => {
   });
   if (result.canceled) return null;
   rememberDirectoryOfFile('project', result.filePath);
+  return result.filePath;
+});
+// An empty folder is answered WITHOUT opening a dialog. A file picker showing
+// nothing says only that the folder is empty; it cannot say that no template
+// has been saved yet, or how one is made. The renderer says both.
+ipcMain.handle('template:pick-open', async () => {
+  const directory = ensureDirectory(effectiveDirectory('template'));
+  if (templateFilesIn(directory).length === 0) return { empty: true, directory };
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: 'Start from a template',
+    defaultPath: directory, properties: ['openFile'],
+    filters: [{ name: 'MiniHub Template', extensions: ['minihub'] }]
+  });
+  if (result.canceled) return { cancelled: true };
+  rememberDirectoryOfFile('template', result.filePaths[0]);
+  return { filePath: result.filePaths[0] };
+});
+ipcMain.handle('template:pick-save', async (_event, name) => {
+  const safeName = String(name || 'Untitled').replace(/[<>:"/\\|?*]/g, '-');
+  const result = await dialog.showSaveDialog(mainWindow, {
+    title: 'Save as template',
+    defaultPath: path.join(ensureDirectory(effectiveDirectory('template')), `${safeName}.minihub`),
+    filters: [{ name: 'MiniHub Template', extensions: ['minihub'] }]
+  });
+  if (result.canceled) return null;
+  rememberDirectoryOfFile('template', result.filePath);
   return result.filePath;
 });
 ipcMain.handle('audio:pick-save', async (_event, name, requestedFormat) => {

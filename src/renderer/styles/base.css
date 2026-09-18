@@ -1717,6 +1717,30 @@ body {
   letter-spacing: -0.015em;
   color: #f4f6f8;
 }
+/* The one sentence the page cannot afford to have skipped. Bold and coloured
+   against a column where everything else is grey, so it is read before the
+   paragraph below it has had time to look like the start. */
+.home-about-key {
+  margin: 22px 0 0;
+  max-width: 54ch;
+  font: 600 16.5px/1.5 var(--font);
+  color: var(--accent-mixer);
+}
+/* A departure INSIDE a sentence: a button, like every other link out of
+   MiniHub, dressed to read as part of the line it sits in. `font: inherit` is
+   what stops the browser's own button font from breaking the sentence in two. */
+.home-inline-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.home-inline-link:hover { color: #7dd3fc; }
+.home-inline-link:focus-visible { outline: 2px solid var(--accent-mixer); outline-offset: 2px; }
 .home-about-lead {
   margin: 24px 0 0;
   max-width: 54ch;

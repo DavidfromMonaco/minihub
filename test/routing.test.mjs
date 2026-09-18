@@ -618,7 +618,7 @@ function controllerCard(hub) {
   const port = Object.keys(MINILAB_SURFACE.ports)[0];
   hub.network.addNode({
     id: 'minilab-3', name: 'MiniLab 3', type: 'midi-output', surface: MINILAB_SURFACE,
-    inputs: [{ id: 'midi-in', type: 'midi', label: 'Hardware MIDI In' }],
+    inputs: [{ id: 'midi-in', type: 'midi', label: 'MIDI In' }],
     outputs: [
       { id: 'midi-out', type: 'midi', label: 'MIDI Out' },
       { id: port, type: 'control', label: 'A control' }

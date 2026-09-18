@@ -142,7 +142,7 @@ test('MiniLab hardware MIDI input is a real network sink, not a hidden route', (
     midi: { send: (raw) => { delivered.push([...raw]); return true; } }
   });
   const sink = module.routingNode.inputs.find((port) => port.id === 'midi-in');
-  assert.deepEqual(sink, { id: 'midi-in', type: 'midi', label: 'Hardware MIDI In' });
+  assert.deepEqual(sink, { id: 'midi-in', type: 'midi', label: 'MIDI In' });
   module.routingNode.onInput('midi-in', { raw: [0x90, 60, 100] });
   module.routingNode.onInput('other', { raw: [0x80, 60, 0] });
   assert.deepEqual(delivered, [[0x90, 60, 100]], 'only a network delivery to MIDI IN reaches hardware');

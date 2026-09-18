@@ -27,7 +27,11 @@ const PROJECT_ITEMS = Object.freeze([
   { command: 'project:open', label: '&Open Project…', accelerator: 'CmdOrCtrl+O' },
   { separator: true },
   { command: 'project:save', label: '&Save', accelerator: 'CmdOrCtrl+S' },
-  { command: 'project:save-as', label: 'Save &As…', accelerator: 'CmdOrCtrl+Shift+S' }
+  { command: 'project:save-as', label: 'Save &As…', accelerator: 'CmdOrCtrl+Shift+S' },
+  // No accelerator, deliberately. Saving a template is a decision taken once
+  // for a setup, not a reflex like Ctrl+S, and a keystroke next to Save As is a
+  // keystroke pressed by mistake.
+  { command: 'project:save-as-template', label: 'Save as Te&mplate…' }
 ]);
 
 /**

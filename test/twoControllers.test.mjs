@@ -296,7 +296,7 @@ function makeNetwork() {
           id: source.portId, type: 'control', label: source.label
         }))
       ],
-      inputs: [{ id: 'midi-in', type: 'midi', label: 'Hardware MIDI In' }]
+      inputs: [{ id: 'midi-in', type: 'midi', label: 'MIDI In' }]
     });
   }
   network.addNode({

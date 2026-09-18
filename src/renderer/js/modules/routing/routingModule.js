@@ -326,7 +326,7 @@ export function createRoutingModule(hub) {
   function buildViewSideSwitch(portRowY, nodeW) {
     const group = svgEl('g', {
       // Below the port row, centred: it used to sit ON it, where the input
-      // port's own label ("Hardware MIDI In") is written.
+      // port's own label ("MIDI In") is written.
       class: 'view-side-switch', transform: `translate(${Math.round(nodeW / 2 - 33)} ${portRowY + 14})`,
       role: 'button', tabindex: '0', 'aria-label': 'Show rear cable view'
     });

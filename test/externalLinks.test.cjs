@@ -142,6 +142,17 @@ test('every Home button names the host it actually opens', () => {
   }
 });
 
+test('the setups link inside Home\'s opening sentence names its host too', () => {
+  // Same rule as the two tests above, for the one link that is not a button in
+  // the departures row: it sits inside a sentence, where a label that named no
+  // host would be a click out of MiniHub with no warning at all.
+  const home = read('src/renderer/js/modules/home/homeModule.js');
+  const label = home.match(/data-site="setups">([^<]+)</);
+  assert.ok(label, 'the opening sentence has no setups link');
+  const host = new URL(SITE_DESTINATIONS.setups).host;
+  assert.ok(label[1].includes(host), `"${label[1]}" does not name ${host}`);
+});
+
 test('the renderer holds no URL of its own', () => {
   for (const file of ['src/renderer/js/ui/controllerProfileSection.js',
     'src/renderer/js/modules/minilab/minilabModule.js',

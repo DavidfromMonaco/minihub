@@ -26,6 +26,13 @@ contextBridge.exposeInMainWorld('hubAPI', {
   projectDefaultDirectory: () => ipcRenderer.invoke('project:default-directory'),
   projectPickOpen: () => ipcRenderer.invoke('project:pick-open'),
   projectPickSave: (name) => ipcRenderer.invoke('project:pick-save', name),
+  // Templates are projects kept in their own folder. Their dialogs are separate
+  // from the project ones so that saving a template cannot move where a project
+  // is saved next -- see `recentDirectories.js` and main's two handlers.
+  // `templatePickOpen` answers an object rather than a path: an empty folder is
+  // reported instead of a dialog showing nothing.
+  templatePickOpen: () => ipcRenderer.invoke('template:pick-open'),
+  templatePickSave: (name) => ipcRenderer.invoke('template:pick-save', name),
   audioPickSave: (name, format) => ipcRenderer.invoke('audio:pick-save', name, format),
   audioPickOpen: () => ipcRenderer.invoke('audio:pick-open'),
   audioCommitTake: (sourcePath, name) => ipcRenderer.invoke('audio:commit-take', sourcePath, name),

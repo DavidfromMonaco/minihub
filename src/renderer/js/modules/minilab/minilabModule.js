@@ -400,7 +400,7 @@ export function createMiniLabModule(hub, profile = LOADED_PROFILE) {
       type: 'midi-output',
       surface: surfaceOfNode(NODE_ID),
       inputs: [
-        { id: 'midi-in', type: 'midi', label: 'Hardware MIDI In' }
+        { id: 'midi-in', type: 'midi', label: 'MIDI In' }
       ],
       outputs: [
         { id: 'midi-out', type: 'midi', label: 'MIDI Out' },

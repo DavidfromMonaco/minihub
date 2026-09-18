@@ -76,6 +76,7 @@ function harness({ directories, chosen = null } = {}) {
 
 const DIRECTORIES = {
   project: 'D:\\Sets',
+  template: 'D:\\Rigs',
   audioExport: 'E:\\Bounces',
   audioImport: 'C:\\Users\\me\\Music',
   audioRecordings: 'E:\\Takes'
@@ -89,15 +90,16 @@ test('Settings shows every destination folder MiniHub writes into', async () => 
   for (const [label, directory] of [
     ['Recordings', 'E:\\Takes'],
     ['Audio exports', 'E:\\Bounces'],
-    ['Projects', 'D:\\Sets']
+    ['Projects', 'D:\\Sets'],
+    ['Templates', 'D:\\Rigs']
   ]) {
     assert.ok(root.html.includes(label), `${label} is missing from Settings`);
     assert.ok(root.html.includes(directory), `the folder used for ${label} is not shown`);
   }
   assert.ok(!root.html.includes('C:\\Users\\me\\Music'),
     'the import folder is a browsing convenience, not a destination to configure');
-  assert.equal(root.querySelectorAll('[data-choose]').length, 3);
-  assert.equal(root.querySelectorAll('[data-open]').length, 3);
+  assert.equal(root.querySelectorAll('[data-choose]').length, 4);
+  assert.equal(root.querySelectorAll('[data-open]').length, 4);
 });
 
 test('choosing a folder records it and shows the new destination immediately', async () => {

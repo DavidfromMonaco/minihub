@@ -102,6 +102,32 @@ export class ProjectManager {
     return this._save({ interactive: false, filePath });
   }
   /**
+   * Bring every VST3 instance's state back into the renderer, ready to be
+   * snapshotted.
+   *
+   * Shared by Save and Save as Template because the failure they share is the
+   * one nobody sees: a file written without this holds the plugin state of
+   * whenever the last capture happened, and the difference only shows the day
+   * the file is reopened. A template carries that state exactly as a project
+   * does -- it is the same file in another folder.
+   */
+  async _capturePluginStates() {
+    let capture;
+    try {
+      capture = await this.api.capturePluginStates();
+    } catch (error) {
+      return { ok: false, message: `Could not capture VST state before saving: ${error?.message || String(error)}` };
+    }
+    if (capture !== true && capture?.ok !== true) {
+      const reason = capture?.reason || 'audio engine did not confirm state capture';
+      return { ok: false, message: `Could not capture VST state before saving: ${reason}` };
+    }
+    // Native emits every state chunk before its completion marker. Give those
+    // already-enqueued renderer events one turn before taking the snapshot.
+    await new Promise((r) => setTimeout(r, 80));
+    return { ok: true };
+  }
+  /**
    * Save the project and say what happened.
    *
    * `interactive` is what separates a Save the user asked for from the one the
@@ -119,20 +145,8 @@ export class ProjectManager {
       if (interactive) globalThis.alert?.(message);
       return { ok: false, reason: message };
     };
-    let capture;
-    try {
-      capture = await this.api.capturePluginStates();
-    } catch (error) {
-      return refuse('plugin-state-capture-failed',
-        `Could not capture VST state before saving: ${error?.message || String(error)}`);
-    }
-    if (capture !== true && capture?.ok !== true) {
-      const reason = capture?.reason || 'audio engine did not confirm state capture';
-      return refuse('plugin-state-capture-failed', `Could not capture VST state before saving: ${reason}`);
-    }
-    // Native emits every state chunk before its completion marker. Give those
-    // already-enqueued renderer events one turn before taking the snapshot.
-    await new Promise((r) => setTimeout(r, 80));
+    const captured = await this._capturePluginStates();
+    if (!captured.ok) return refuse('plugin-state-capture-failed', captured.message);
     // A caller that already knows where the file goes never reaches the picker.
     // That is what lets the agent channel save at all: a native file dialog
     // opened by a request would sit on screen waiting for a human who is not
@@ -150,6 +164,41 @@ export class ProjectManager {
     this.currentProjectPath = filePath; this.currentProjectName = nextProjectName; this.dirty = false;
     await this.hub.settings.setMany({ recentProjectPath: filePath, recentProjectName: this.currentProjectName }); this.publish();
     return { ok: true, reason: '' };
+  }
+  /**
+   * Write the current project into the templates folder, and stay on it.
+   *
+   * Deliberately NOT a Save As. A template is a starting point, not where this
+   * afternoon's work now lives, so nothing about the open project moves: not
+   * its file, not its name, not its dirty flag, and above all not
+   * `recentProjectPath` -- Home's Current Project card reads that key, and a
+   * template listed there would be reopened as the project and overwritten by
+   * the next Ctrl+S. Its folder is remembered under its own purpose in main,
+   * for the same reason in the other direction.
+   *
+   * So a template is changed the way it was made: start from it, edit it, Save
+   * as Template again over the same name. Changing one is never something that
+   * happens to somebody who only meant to save their work.
+   */
+  async saveAsTemplate() {
+    const refuse = (reason, message) => {
+      this.hub.events?.emit?.('project:save-error', { reason, message });
+      globalThis.alert?.(message);
+      return false;
+    };
+    const captured = await this._capturePluginStates();
+    if (!captured.ok) return refuse('plugin-state-capture-failed', captured.message);
+    const filePath = await this.api.templatePickSave?.(this.currentProjectName);
+    if (!filePath) return false;
+    // The template is named by its file, as a project is, and that name is what
+    // a project started from it carries into its first Save dialog.
+    const name = filePath.split(/[\\/]/).pop().replace(/\.minihub$/i, '') || this.currentProjectName;
+    const result = await this.api.projectWrite(filePath, this.snapshot({ name }));
+    if (!result?.ok) {
+      return refuse('template-write-failed', `Could not save template: ${result?.error || 'unknown error'}`);
+    }
+    this.hub.events?.emit?.('project:template-saved', { filePath, name });
+    return true;
   }
   /**
    * Answer the close-time save request from the main process.
@@ -203,11 +252,42 @@ export class ProjectManager {
     const now = new Date().toISOString();
     return this._replace({ format: 'minihub-project', version: 1, projectId: newId(), name: 'Untitled', createdAt: now, modifiedAt: now, network: { connections: [], layout: {}, viewport: null }, nodeInstances: { instances: [], idSeq: {} }, transport: { bpm: 120 }, master: { ...DEFAULT_MASTER_OUTPUT } }, null, true, { discardApproved: true });
   }
-  async newFromBasicTemplate() {
+  /**
+   * Start a project from a template: the template's content, none of its file.
+   *
+   * What comes back has never been saved, so the first Ctrl+S opens the picker
+   * in the PROJECTS folder and the template on disk is not touched -- which is
+   * the whole contract. A fresh `projectId` goes with it: two projects born of
+   * one template are two projects, and a shared identity is a bug waiting for
+   * whoever first tries to tell them apart.
+   *
+   * An empty templates folder is answered here rather than by a file dialog
+   * showing nothing, because the useful sentence is not "this folder is empty"
+   * but "here is how a template is made".
+   */
+  async newFromTemplate() {
     if (this._blockWhileRecording('create a new project')) return false;
-    if (!this._confirmDiscardChanges('create a project from the Basic template')) return false;
+    if (!this._confirmDiscardChanges('start from a template')) return false;
+    const picked = await this.api.templatePickOpen?.();
+    if (picked?.empty) {
+      const message = 'No templates yet. Open a setup you want to start from again, then use File > Save as Template.';
+      this.hub.events?.emit?.('project:blocked', { reason: 'no-templates', action: 'start from a template', message });
+      globalThis.alert?.(message);
+      return false;
+    }
+    const filePath = picked?.filePath;
+    if (!filePath) return false;
+    // Record can have started while the native dialog was open, and again while
+    // the file was being read. Reading is harmless; replacing the project is not.
+    if (this._blockWhileRecording('create a new project')) return false;
+    const result = await this.api.projectRead(filePath);
+    if (this._blockWhileRecording('create a new project')) return false;
+    if (!result?.ok) {
+      globalThis.alert?.(`Could not open template: ${result?.error || 'unknown error'}`);
+      return false;
+    }
     const now = new Date().toISOString();
-    const project = { format: 'minihub-project', version: 1, projectId: newId(), name: 'Basic', createdAt: now, modifiedAt: now, network: { connections: [], layout: {}, viewport: null }, nodeInstances: { instances: [], idSeq: {} }, transport: { bpm: 120 }, master: { ...DEFAULT_MASTER_OUTPUT } };
+    const project = { ...result.project, projectId: newId(), createdAt: now, modifiedAt: now };
     return this._replace(project, null, true, { discardApproved: true });
   }
   /**

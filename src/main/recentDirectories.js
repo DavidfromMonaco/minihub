@@ -8,21 +8,24 @@ const path = require('node:path');
  *
  * Two different needs share one mechanism:
  *
- *   - a picker (export, import, project) must reopen where the user last put
- *     that kind of file, instead of making them re-navigate on every export;
+ *   - a picker (export, import, project, template) must reopen where the user
+ *     last put that kind of file, instead of making them re-navigate on every
+ *     export;
  *   - a destination with no picker at all -- a recorded take is filed the
  *     instant the take ends -- must still be the user's choice, made once in
  *     Settings rather than answered again after every take.
  *
  * Each purpose keeps its own slot: one shared "last folder" would send the
- * next mixdown into the projects folder the moment a project was opened.
+ * next mixdown into the projects folder the moment a project was opened -- and
+ * saving one template would move every later project save into the templates
+ * folder, which is the one thing a template must never cause.
  *
  * This module is deliberately free of Electron so the rules can be tested with
  * node:test alone.
  */
 
 /** Every folder MiniHub remembers. Anything else is ignored on read and write. */
-const PURPOSES = Object.freeze(['project', 'audioExport', 'audioImport', 'audioRecordings']);
+const PURPOSES = Object.freeze(['project', 'template', 'audioExport', 'audioImport', 'audioRecordings']);
 
 /** The application-settings key holding the map above. Owned by main. */
 const SETTINGS_KEY = 'recentDirectories';

@@ -941,8 +941,8 @@ machine et survit d'un projet à l'autre :
 `recentProjectPath`, `recentProjectName`, `recentDirectories`.
 
 Toutes ces clés sont écrites par le renderer, **sauf une**.
-`recentDirectories` — le dossier utilisé pour `project`, `audioExport`,
-`audioImport` et `audioRecordings`
+`recentDirectories` — le dossier utilisé pour `project`, `template`,
+`audioExport`, `audioImport` et `audioRecordings`
 ([recentDirectories.js](src/main/recentDirectories.js)) — est produite par le
 processus principal, puisque les sélecteurs de fichiers vivent là.
 
@@ -979,6 +979,36 @@ rester unique :
   dernière session ;
 - `SettingsStore.applicationData()` les **retire** avant écriture, pour que
   l'état de projet ne fuie jamais dans les préférences machine.
+
+### Templates
+
+A template is the same `.minihub` file in another folder:
+`Documents/MiniHub/Templates`, beside `Projects` and never inside it, with its
+own `template` purpose in [recentDirectories.js](src/main/recentDirectories.js).
+
+That separation carries the entire contract, in both directions:
+
+- **Save as Template** (`project:save-as-template`, `ProjectManager.saveAsTemplate`)
+  captures the VST3 state exactly as Save does, then writes through
+  `template:pick-save`. What it does NOT do is the point: it moves neither the
+  project's file, nor its name, nor its dirty flag, nor `recentProjectPath` —
+  Home's Current Project card reads that key, and a template listed there would
+  be reopened as the project and overwritten by the next Ctrl+S.
+- **Start from a template** (`project:template`, `ProjectManager.newFromTemplate`)
+  reads the file and replaces the project **with no file path**, and with a
+  fresh `projectId` and `createdAt`. The first Ctrl+S therefore opens the
+  PROJECT picker, in the projects folder, and the template on disk is never
+  written to by an ordinary save.
+- Because the two dialogs remember **different** folders, saving a template
+  cannot move where the next project is saved, and vice versa. A single shared
+  memory would have made "Save as Template" quietly redirect every later Save.
+
+A template is therefore changed the way it was made: start from it, edit it,
+Save as Template again over the same name. An empty templates folder opens no
+dialog at all — main answers `{ empty: true }` and the renderer says how a
+template is made, which is the sentence an empty file dialog cannot say.
+
+`test/projectTemplates.test.mjs` holds the negative half of this contract.
 
 ### Fermeture d'un projet modifié
 
@@ -1046,7 +1076,7 @@ d'une capture forcée à l'extinction.
 | `recentDirectories.js` | dernier dossier retenu par sélecteur, et son report |
 | `projectFiles.js` | lecture/écriture validée des `.minihub` |
 | `projectCloseGuard.js` | fermeture : sauvegarde automatique, dialogue en dernier recours |
-| `appMenu.js` | menu de l'application ; Fichier → Nouveau / Ouvrir / Enregistrer |
+| `appMenu.js` | menu de l'application ; Fichier → Nouveau / Modèle / Ouvrir / Enregistrer / Enregistrer comme modèle |
 | `clipEditorWindows.js` | fenêtres Clip Editor et validation de leurs requêtes |
 | `clipEditorPreload.js` | pont du Clip Editor |
 | `diagnostics.js` | journal de démarrage, rotation à 4 Mo, empreintes |

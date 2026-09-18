@@ -279,7 +279,7 @@ test('a native acknowledgement reports late Record and aborts while replaying th
   ]);
 });
 
-test('New and Basic template are refused before any project transition while recording', async () => {
+test('New and Start from template are refused before any project transition while recording', async () => {
   const messages = [];
   const hub = {
     sequencer: { recording: true },
@@ -291,7 +291,7 @@ test('New and Basic template are refused before any project transition while rec
     const manager = new ProjectManager(hub, {});
     manager._replace = () => { throw new Error('replacement must not start'); };
     assert.equal(await manager.newProject(), false);
-    assert.equal(await manager.newFromBasicTemplate(), false);
+    assert.equal(await manager.newFromTemplate(), false);
   } finally {
     if (oldAlert === undefined) delete globalThis.alert;
     else Object.defineProperty(globalThis, 'alert', { configurable: true, value: oldAlert });
@@ -418,7 +418,7 @@ test('failed Save As does not partially commit the candidate name or path', asyn
   }
 });
 
-test('Cancel on a dirty New, Basic, or Load performs no picker, quiesce, staging, or reload', async () => {
+test('Cancel on a dirty New, template, or Load performs no picker, quiesce, staging, or reload', async () => {
   const oldConfirm = globalThis.confirm;
   const oldSessionStorage = globalThis.sessionStorage;
   const oldLocation = globalThis.location;
@@ -437,6 +437,7 @@ test('Cancel on a dirty New, Basic, or Load performs no picker, quiesce, staging
     };
     const api = {
       projectPickOpen() { calls.push('pick'); },
+      templatePickOpen() { calls.push('pick'); },
       projectRead() { calls.push('read'); }
     };
     const manager = new ProjectManager(hub, api);
@@ -444,7 +445,7 @@ test('Cancel on a dirty New, Basic, or Load performs no picker, quiesce, staging
     manager.dirty = true;
 
     assert.equal(await manager.newProject(), false);
-    assert.equal(await manager.newFromBasicTemplate(), false);
+    assert.equal(await manager.newFromTemplate(), false);
     assert.equal(await manager.load(), false);
   } finally {
     if (oldConfirm === undefined) delete globalThis.confirm;

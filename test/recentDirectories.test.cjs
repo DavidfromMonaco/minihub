@@ -19,10 +19,13 @@ const nowhere = () => false;
 test('each kind of file keeps its own folder', () => {
   let settings = { selectedInputId: 'port-1' };
   settings = withDirectoryOfFile(settings, 'project', 'D:/Music/Sets/Live.minihub');
+  settings = withDirectoryOfFile(settings, 'template', 'D:/Music/Rigs/Live Rig.minihub');
   settings = withDirectoryOfFile(settings, 'audioExport', 'E:/Bounces/Live Mix.wav');
   settings = withDirectory(settings, 'audioRecordings', 'E:/Takes');
 
-  assert.equal(rememberedDirectory(settings, 'project', { isDirectory: anywhere }), 'D:/Music/Sets');
+  assert.equal(rememberedDirectory(settings, 'project', { isDirectory: anywhere }), 'D:/Music/Sets',
+    'saving a template does not move where the next project is saved');
+  assert.equal(rememberedDirectory(settings, 'template', { isDirectory: anywhere }), 'D:/Music/Rigs');
   assert.equal(rememberedDirectory(settings, 'audioExport', { isDirectory: anywhere }), 'E:/Bounces');
   assert.equal(rememberedDirectory(settings, 'audioRecordings', { isDirectory: anywhere }), 'E:/Takes');
   assert.equal(rememberedDirectory(settings, 'audioImport', { isDirectory: anywhere }), null,
@@ -107,6 +110,8 @@ test('main resolves and records every folder it offers', () => {
   for (const [channel, purpose] of [
     ["ipcMain.handle('project:pick-open'", 'project'],
     ["ipcMain.handle('project:pick-save'", 'project'],
+    ["ipcMain.handle('template:pick-open'", 'template'],
+    ["ipcMain.handle('template:pick-save'", 'template'],
     ["ipcMain.handle('audio:pick-save'", 'audioExport'],
     ["ipcMain.handle('audio:pick-open'", 'audioImport']
   ]) {
@@ -132,8 +137,17 @@ test('main resolves and records every folder it offers', () => {
     'choosing a destination means choosing a folder, and being able to make one');
   assert.ok(choose.includes('rememberDirectory(purpose,'), 'the chosen folder has to outlive the dialog');
 
+  // Saving a template must not move where a PROJECT dialog opens next, which
+  // is what a template handler reaching for the project purpose would do.
+  for (const channel of ["ipcMain.handle('template:pick-open'", "ipcMain.handle('template:pick-save'"]) {
+    assert.ok(!handlerFor(channel).includes("'project'"),
+      `${channel} must not touch the folder the project dialogs remember`);
+  }
+
   // The built-in folders are starting points; each must be replaceable.
   const fallback = main.slice(main.indexOf('function fallbackDirectory'), main.indexOf('function effectiveDirectory'));
   assert.match(fallback, /'MiniHub Recordings'/, 'takes still have a sensible first-run folder');
-  assert.equal(PURPOSES.length, 4, 'a new purpose needs its handler covered above');
+  assert.match(fallback, /templatesDirectory\(\)/, 'templates fall back to a folder of their own');
+  assert.match(main, /'MiniHub', 'Templates'/, 'and that folder sits beside Projects, not inside it');
+  assert.equal(PURPOSES.length, 5, 'a new purpose needs its handler covered above');
 });

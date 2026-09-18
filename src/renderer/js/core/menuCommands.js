@@ -11,10 +11,11 @@
 
 const ACTIONS = new Map([
   ['project:new', (hub) => hub.project.newProject()],
-  ['project:template', (hub) => hub.project.newFromBasicTemplate()],
+  ['project:template', (hub) => hub.project.newFromTemplate()],
   ['project:open', (hub) => hub.project.load()],
   ['project:save', (hub) => hub.project.save(false)],
   ['project:save-as', (hub) => hub.project.save(true)],
+  ['project:save-as-template', (hub) => hub.project.saveAsTemplate()],
   // The menu accelerator and the `window` keydown are two doors on one room:
   // the menu reaches the shell, the keydown reaches a Clip Editor window the
   // menu does not own. Both end here.

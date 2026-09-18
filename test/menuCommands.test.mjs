@@ -13,9 +13,10 @@ function makeHub() {
     calls,
     project: {
       newProject: () => calls.push('newProject'),
-      newFromBasicTemplate: () => calls.push('newFromBasicTemplate'),
+      newFromTemplate: () => calls.push('newFromTemplate'),
       load: (filePath) => calls.push(`load:${filePath === undefined ? 'picker' : filePath}`),
-      save: (as) => calls.push(`save:${as === true ? 'as' : 'here'}`)
+      save: (as) => calls.push(`save:${as === true ? 'as' : 'here'}`),
+      saveAsTemplate: () => calls.push('saveAsTemplate')
     }
   };
 }
@@ -40,7 +41,7 @@ test('each command runs its project action', () => {
   bindMenuCommands(hub, api);
   MENU_COMMANDS.forEach((command) => api.send(command));
   assert.deepEqual(hub.calls, [
-    'newProject', 'newFromBasicTemplate', 'load:picker', 'save:here', 'save:as'
+    'newProject', 'newFromTemplate', 'load:picker', 'save:here', 'save:as', 'saveAsTemplate'
   ]);
 });
 

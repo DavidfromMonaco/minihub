@@ -47,6 +47,30 @@ function card({ action, accent, art, alt, icon, title, subtitle, enabled = true 
 }
 
 /**
+ * The sentence the page cannot afford to have skipped, and the only link inside
+ * a paragraph.
+ *
+ * It comes before what the four cards do because MiniHub is named after one
+ * keyboard and therefore reads as built for it alone -- the opposite of what it
+ * is. And it ends where the reader can act: the setups page lists the keyboards
+ * already mapped and sends anyone with another one to the builder.
+ *
+ * The link is a <button> for the same reason every other departure is: the
+ * renderer holds no URL of its own (`src/main/externalLinks.js`), it names a
+ * destination. Its label carries the host, the rule every outgoing label in
+ * MiniHub follows, and `test/externalLinks.test.cjs` holds this one to it too.
+ */
+function keySentence() {
+  return `
+    <p class="home-about-key">
+      Works with any MIDI controller. Setups for other keyboards live on
+      <button class="home-inline-link" type="button" data-site="setups">minihub.site/setups</button>
+      &mdash; import one and MiniHub takes its knobs, pads and faders as its
+      own. The MiniLab 3 is simply the one it comes with.
+    </p>`;
+}
+
+/**
  * One button that leaves MiniHub. It names the host it opens in its own label,
  * rather than behind a confirmation nobody wants asked twice -- the same rule
  * as the Browse setups button, and one test holds both to it. The renderer
@@ -95,6 +119,7 @@ export function createHomeModule(hub) { return {
         </div>
         <section class="home-about">
           <h1 class="home-about-title">Welcome to MiniHub</h1>
+          ${keySentence()}
           <p class="home-about-lead">
             Create something new, continue your work, load an existing project,
             or start from a template.
@@ -136,7 +161,7 @@ export function createHomeModule(hub) { return {
       if (!target) return;
       const action = target.dataset?.projectAction;
       if (action === 'new') hub.project.newProject();
-      if (action === 'template') hub.project.newFromBasicTemplate();
+      if (action === 'template') hub.project.newFromTemplate();
       if (action === 'recent' && recentPath) hub.project.load(recentPath);
       if (action === 'load') hub.project.load();
       const destination = target.dataset?.site;

@@ -10,7 +10,7 @@ test('Home first render needs only cached recent-project metadata', () => {
   let engineTouched = false;
   const hub = {
     settings: { get: (key) => ({ recentProjectName: 'Ambient', recentProjectPath: 'C:/Ambient.minihub' })[key] },
-    project: { newProject() {}, newFromBasicTemplate() {}, load() {} }
+    project: { newProject() {}, newFromTemplate() {}, load() {} }
   };
   Object.defineProperty(hub, 'engine', { get() { engineTouched = true; throw new Error('engine must not be read'); } });
   const container = { innerHTML: '', onclick: null };
@@ -27,7 +27,7 @@ test('Home recent tile does not deserialize or open the project', () => {
   let loads = 0;
   const hub = {
     settings: { get: (key) => key === 'recentProjectName' ? 'Cached Name' : 'C:/large.minihub' },
-    project: { newProject() {}, newFromBasicTemplate() {}, load() { loads += 1; } }
+    project: { newProject() {}, newFromTemplate() {}, load() { loads += 1; } }
   };
   const container = { innerHTML: '', onclick: null };
   createHomeModule(hub).mount(container);
@@ -41,7 +41,7 @@ test('a click on a tile pictogram or label still runs the tile action', () => {
     settings: { get: (key) => key === 'recentProjectName' ? 'Ambient' : 'C:/Ambient.minihub' },
     project: {
       newProject() { calls.push('new'); },
-      newFromBasicTemplate() { calls.push('template'); },
+      newFromTemplate() { calls.push('template'); },
       load(path) { calls.push(`load:${path || ''}`); }
     }
   };
@@ -73,7 +73,7 @@ test('a departure button asks main for a NAMED place, and says so when it fails'
   const error = { hidden: true, textContent: '' };
   const hub = {
     settings: { get: () => null },
-    project: { newProject() {}, newFromBasicTemplate() {}, load() {} },
+    project: { newProject() {}, newFromTemplate() {}, load() {} },
     api: { siteOpen: (destination) => { asked.push(destination); return Promise.resolve(destination !== 'site'); } }
   };
   const container = { innerHTML: '', onclick: null, querySelector: () => error };
@@ -105,7 +105,7 @@ test('a departure button asks main for a NAMED place, and says so when it fails'
 test('every picture the Home cards name is really on disk', () => {
   const hub = {
     settings: { get: () => null },
-    project: { newProject() {}, newFromBasicTemplate() {}, load() {} }
+    project: { newProject() {}, newFromTemplate() {}, load() {} }
   };
   const container = { innerHTML: '', onclick: null };
   createHomeModule(hub).mount(container);
@@ -127,6 +127,23 @@ test('staged full project handoff is consumed only by an intentional renderer re
   assert.equal(shouldConsumeStagedProject('back_forward'), false);
   assert.equal(shouldConsumeStagedProject(undefined), false);
   assert.equal(shouldConsumeStagedProject('reload'), true);
+});
+
+test('Home says MiniHub is not welded to the keyboard it is named after', () => {
+  // The page carries the product's own claim, so the claim is held by a test:
+  // a redesign that drops this sentence leaves MiniHub looking like software
+  // for one keyboard, which is what INTENT section 5 calls a defect.
+  const hub = { settings: { get: () => null }, project: {} };
+  const container = { innerHTML: '', onclick: null };
+  createHomeModule(hub).mount(container);
+
+  const key = container.innerHTML.indexOf('home-about-key');
+  assert.ok(key >= 0, 'the controller-agnostic sentence has a place of its own');
+  assert.ok(key < container.innerHTML.indexOf('home-about-lead'),
+    'and it comes first, before what the four cards do');
+  assert.match(container.innerHTML, /any MIDI controller/);
+  assert.match(container.innerHTML, /data-site="setups"/,
+    'and it ends where the reader can act on it');
 });
 
 test('new, loaded, and template projects use Routing as their workspace destination', () => {
