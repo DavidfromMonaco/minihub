@@ -2573,3 +2573,68 @@ transport cluster in `src/renderer/index.html` and its wiring in
 `src/renderer/js/core/agentRequests.js`. Tests:
 `test/musicalTime.test.mjs`, `test/sequencerUi.test.mjs` ("the shell transport
 seeks by bars, says where it is, and pauses without stopping a One Ring").
+
+---
+
+## D-049 — A control with two functions is one socket, with the second inside the first
+
+**Status**: in force · 2026-09-18 · **implemented**
+
+**Context** — The author, using MiniHub on 2026-09-18, saw two triangles on his
+MiniLab node where the panel has one control: the main encoder's socket, and
+sixteen units below it a second one with no body at all. The second socket is
+not a slip — the encoder turns (CC 114) and pushes (CC 115), two messages, two
+cables, one object under the finger — but the drawing said "a second control
+there", which the hardware does not have. `main-click` has had no body since the
+families were written ("the push of the encoder above: the same physical object,
+so no second body"), and that left its socket floating on the faceplate, half
+over the knob's outline. Hiding it was never an option: a push that cannot be
+cabled is a signal MiniHub can decode and not route.
+
+**Decision** — A control with two functions keeps **one** socket on the panel:
+the second function's jack is drawn INSIDE the first's, a triangle inside the
+triangle. The author's norm, chosen the same day, and it is a norm rather than a
+repair — any profile declaring a pair (a fader one can also press, a pad with a
+second gesture) is drawn by it. The host's jack is enlarged to 1.6 and the
+nested one to 0.66, which puts both inside the encoder's 26-unit body; the
+nested one is drawn after every other socket, since a jack is filled and the one
+underneath would paint over it; and its hit area is its own triangle and no
+more, which leaves the ring around it to the host. Which family nests in which
+is one frozen line, `SECOND_FUNCTION_OF`, and the host is the NEAREST control of
+that family, never the one declared before it: a device with two push encoders
+declares two of each, and profile order is not a promise.
+
+**Consequences**
+
+- Both cables leave the same point. Two anchors sixteen units apart said "two
+  controls"; one point says "one control, two things to cable", and the cables
+  separate as they go.
+- The nested socket is a third of a normal one across, so cabling a push wants
+  a zoom in where cabling a pad does not. Nothing else on any panel changes
+  size: only a host and what nests in it.
+- The drawing and the cable layer resolve a socket through the same function,
+  `socketOf`. They had to agree before — the file's own comment says a
+  disagreement is a cable that meets no socket — and now a test holds every
+  socket of the device to both answers being equal.
+- Saved projects are untouched: `control-main-click` is the same port id with
+  the same cables. Only where it is drawn moved.
+- The Learn panel is deliberately NOT nested. It has room for words, so the
+  push stays the labelled MAIN CLICK box under the knob, and arming the two
+  apart needs nothing new: the hardware separates them by itself, since turning
+  sends CC 114 and pressing sends CC 115, which `decodeControl.js` reads as two
+  different controls.
+
+**What would justify revisiting** — A control with three functions — a knob one
+can push and touch — which a third nested triangle would not carry; or a profile
+where the second function's host is not the nearest control of its family, at
+which point the format needs a field naming the host rather than a distance.
+
+**Proof in the code** — `SECOND_FUNCTION_OF` and `socketOf` in
+`src/renderer/js/ui/miniLabControlSurface.js`, used by both
+`miniLabPatchPortPosition` (the cable layer) and
+`appendMiniLabControlSurfaceSvg` (the drawing); `JACK_SCALE` and the nested hit
+area in `buildPort`, `src/renderer/js/modules/routing/routingModule.js`. Tests:
+`test/miniLabSurface.test.mjs` ("a control with two functions is one socket,
+with the second inside the first", "the drawing and the cable layer put every
+socket in the same place", "a second function nests in the nearest control of
+its family").

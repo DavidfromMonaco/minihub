@@ -176,3 +176,9 @@ decide. The executable's version resource says "Electron" for the product and
 the file description, "GitHub, Inc." for the company: `scripts/sync-dist.mjs`
 stamps only the icon onto it with `rcedit`. Windows likely shows that name, in
 Task Manager for one — not verified.
+
+**The Clip Editor has no rulers** — asked by the author on 2026-09-18. The piano
+grid draws its beat lines (`--ce-beat` in `src/renderer/js/clipEditor.js`) and
+nothing names them: no bar ruler along the top, no position in time, where the
+Sequencer has both (`rulerStride` in `modules/sequencer/sequencerModule.js`).
+With a clip open there is no way to say which bar is on screen. Not started.

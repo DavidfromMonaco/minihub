@@ -287,7 +287,7 @@ export function createRoutingModule(hub) {
           // the first keyboard's, painted inside the second one's box.
           controls: surfaceControlsOfNode(node.id),
           buildPort: (control, x, y) => buildPort(
-            { id: control.portId, type: 'control', label: control.label },
+            { id: control.portId, type: 'control', label: control.label, jack: control.jack },
             'output', x, y, node.id, false
           )
         });
@@ -386,6 +386,19 @@ export function createRoutingModule(hub) {
     return g;
   }
 
+  /**
+   * A control with two functions -- a knob that also pushes -- keeps ONE socket
+   * on the panel: the second function's jack is drawn INSIDE the first's rather
+   * than beside it (D-049). `ui/miniLabControlSurface.js` decides which is
+   * which and puts them on the same point; these are the two sizes that make
+   * the pair legible, and the only thing this file knows about the norm.
+   *
+   * The host is enlarged so that what nests in it is still something a mouse
+   * can take hold of, and it stays inside the 26-unit body of the encoder it is
+   * drawn on.
+   */
+  const JACK_SCALE = Object.freeze({ host: 1.6, nested: 0.66 });
+
   function buildPort(port, side, x, y, nodeId, showLabel = true) {
     const info = portTypeInfo(port.type);
     const g = svgEl('g', {
@@ -397,13 +410,19 @@ export function createRoutingModule(hub) {
     g.dataset.side = side;
     g.dataset.type = port.type;
 
+    const scale = JACK_SCALE[port.jack] ?? 1;
+    const unit = (value) => Number((value * scale).toFixed(2));
     const jack = svgEl('g', { class: 'jack' });
     if (info.shape === 'square') {
-      jack.appendChild(svgEl('rect', { x: -5, y: -5, width: 10, height: 10, rx: 2 }));
+      jack.appendChild(svgEl('rect', {
+        x: unit(-5), y: unit(-5), width: unit(10), height: unit(10), rx: 2
+      }));
     } else if (info.shape === 'triangle') {
-      jack.appendChild(svgEl('polygon', { points: '0,-6 5.5,4 -5.5,4' }));
+      jack.appendChild(svgEl('polygon', {
+        points: `0,${unit(-6)} ${unit(5.5)},${unit(4)} ${unit(-5.5)},${unit(4)}`
+      }));
     } else {
-      jack.appendChild(svgEl('circle', { r: 5 }));
+      jack.appendChild(svgEl('circle', { r: unit(5) }));
     }
     g.appendChild(jack);
 
@@ -416,13 +435,20 @@ export function createRoutingModule(hub) {
     if (showLabel) g.appendChild(label);
 
     // Larger invisible hit area so jacks are easy to grab (input endpoints).
-    const hit = svgEl('rect', {
-      class: 'port-hit',
-      x: side === 'input' ? -8 : -14,
-      y: -10,
-      width: side === 'input' ? 22 : 28,
-      height: 20
-    });
+    //
+    // A nested jack is the exception: its hit area is its own triangle and no
+    // more, so the room around it still belongs to the socket it sits in. It is
+    // drawn last, above its host, which is what makes the two grabbable at all
+    // -- clicks land on the small one only where the small one is.
+    const hit = port.jack === 'nested'
+      ? svgEl('rect', { class: 'port-hit', x: -5, y: -5, width: 10, height: 10 })
+      : svgEl('rect', {
+        class: 'port-hit',
+        x: side === 'input' ? -8 : -14,
+        y: -10,
+        width: side === 'input' ? 22 : 28,
+        height: 20
+      });
     g.appendChild(hit);
 
     return g;

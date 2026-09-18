@@ -120,6 +120,56 @@ export const MINILAB_SURFACE_LAYOUT = Object.freeze({
 });
 
 /**
+ * A control with TWO functions is one socket, with the second inside the first.
+ *
+ * The MiniLab 3's main encoder turns (CC 114) and pushes (CC 115): two signals
+ * to cable, one object under the finger. Drawn as two sockets sixteen units
+ * apart -- the push hanging below the knob with no body of its own, since the
+ * push IS the knob -- the panel showed two triangles where the hardware has one
+ * control, and the second one read as a slip rather than as a function.
+ *
+ * The norm since 2026-09-18 (D-049): the second function's socket sits ON the
+ * first's, drawn smaller, a triangle inside the triangle. It says what it is --
+ * one control, two things to cable -- and it costs the panel nothing, since a
+ * socket hung beside a body has nowhere to go on a dense device anyway, which
+ * is what the next comment measured on the BeatStep.
+ *
+ * Keyed by family, which is where this file keeps "what kind of thing is this".
+ * A profile declaring another pair -- a fader one can also press, a pad with a
+ * second gesture -- adds one line here and is drawn by the same rule.
+ */
+const SECOND_FUNCTION_OF = Object.freeze({ 'main-click': 'main' });
+
+/**
+ * Where a control's socket sits, and in whose socket it nests.
+ *
+ * `placed` is every SOCKET-BEARING control of the same device, as
+ * `{ control, family, x, y }`. Both routes to a socket resolve through this one
+ * function -- the drawing below, and `miniLabPatchPortPosition`, which is what
+ * the cable layer reads -- for the reason the next comment gives: two routes
+ * that must agree and do not is a cable that meets no socket.
+ *
+ * The host is the NEAREST control of the host family, never the one declared
+ * before it: a device with two push encoders declares two of each, and profile
+ * order is not a promise. A second function whose host is not on the panel --
+ * silent, or absent from this profile -- keeps its own coordinate rather than
+ * vanishing into one that is not there.
+ */
+function socketOf(control, placed) {
+  const hostFamily = SECOND_FUNCTION_OF[control.family];
+  let host = null;
+  if (hostFamily) {
+    let nearest = Infinity;
+    for (const other of placed) {
+      if (other.family !== hostFamily || other.control === control.control) continue;
+      const distance = Math.hypot(other.x - control.x, other.y - control.y);
+      if (distance < nearest) { nearest = distance; host = other; }
+    }
+  }
+  return host ? { x: host.x, y: host.y, host } : { x: control.x, y: control.y, host: null };
+}
+
+/**
  * Where a control's socket sits: ON the control, at its own coordinate.
  *
  * It used to hang beside it -- `+15` to the right of a knob, `+11,+10` from a
@@ -144,10 +194,18 @@ export function miniLabPatchPortPosition(portId, nodeId = FIRST_NODE_ID) {
   // has a first knob: searching the whole desk for it would return whichever
   // device loaded first, and the Patch Bay would draw one keyboard's cable onto
   // another one's panel.
-  const source = controlSourcesOfNode(nodeId).find((item) => item.portId === portId);
+  const sources = controlSourcesOfNode(nodeId);
+  const source = sources.find((item) => item.portId === portId);
   if (!source) return null;
   const layout = getMiniLabControlLayout(source.id);
-  return layout ? { x: layout.x, y: layout.y } : null;
+  if (!layout) return null;
+  // Only routable controls are candidates, which is exactly the set the drawing
+  // resolves against: a silent element has no socket for anything to nest into.
+  const placed = sources
+    .map((item) => ({ control: item, family: item.family, ...getMiniLabControlLayout(item.id) }))
+    .filter((item) => Number.isFinite(item.x) && Number.isFinite(item.y));
+  const socket = socketOf({ control: source, family: source.family, x: layout.x, y: layout.y }, placed);
+  return { x: socket.x, y: socket.y };
 }
 
 /**
@@ -465,6 +523,23 @@ export function appendMiniLabControlSurfaceSvg(parent, {
 
   const indexInFamily = new Map();
   const gaps = widthLimits(controls.filter((control) => control.layout), box ?? { width: 1, height: 1 });
+  // Where the sockets land, resolved once for the whole panel: a nested one has
+  // to know its host, and its host has to know it has one, since a socket with
+  // another inside it is drawn larger to leave room for it.
+  const placed = controls
+    .filter((control) => control.layout && !control.silent)
+    .map((control) => ({ control, family: control.family, x: control.layout.x, y: control.layout.y }));
+  const sockets = new Map();
+  const hosts = new Set();
+  for (const entry of placed) {
+    const socket = socketOf(entry, placed);
+    sockets.set(entry.control, socket);
+    if (socket.host) hosts.add(socket.host.control);
+  }
+  // Drawn after every other socket, whatever order the profile declares them
+  // in: a jack fills its triangle, so the one that nests has to come last or it
+  // is painted over by the one it sits in.
+  const nestedGroups = [];
   for (const control of controls) {
     // D-023: a profile with no coordinates is not drawn as a panel at all. The
     // node falls back to a stack of ports, which is step 9 of this workstream.
@@ -513,10 +588,16 @@ export function appendMiniLabControlSurfaceSvg(parent, {
     if (!control.silent) {
       // On the control, not beside it: see miniLabPatchPortPosition. Outside the
       // shrunk body group, so the socket keeps its size and its hit area.
-      group.appendChild(buildPort(control, x, y));
-      root.appendChild(group);
+      const socket = sockets.get(control) ?? { x, y, host: null };
+      // `jack` is the only thing the Patch Bay is told of the nesting: which of
+      // the two sizes to draw. Where the socket goes is settled here.
+      const jack = socket.host ? 'nested' : (hosts.has(control) ? 'host' : null);
+      group.appendChild(buildPort({ ...control, jack }, socket.x, socket.y));
+      if (socket.host) nestedGroups.push(group);
+      else root.appendChild(group);
     }
   }
+  for (const group of nestedGroups) root.appendChild(group);
   parent.appendChild(root);
   return root;
 }

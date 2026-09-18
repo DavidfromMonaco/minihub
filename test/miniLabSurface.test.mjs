@@ -7,7 +7,8 @@ import {
   MINILAB_SURFACE_LAYOUT,
   miniLabControlSurfaceHtml,
   appendMiniLabControlSurfaceSvg,
-  applyMiniLabSurfaceLayout
+  applyMiniLabSurfaceLayout,
+  miniLabPatchPortPosition
 } from '../src/renderer/js/ui/miniLabControlSurface.js';
 
 test('one MiniLab layout is shared by Learn HTML and Patch Bay SVG', () => {
@@ -291,4 +292,83 @@ test('the Patch Bay drawing shrinks a crowded body instead of stacking it', () =
   assert.equal(body.length, 1);
   assert.equal(Number(body[0].width), beatStepBox.width - 8);
   assert.equal(Number(body[0].height), beatStepBox.height - 8);
+});
+
+/** Every socket the panel draws, by port id, with the size it asked for. */
+function drawSockets(options = {}) {
+  installDom();
+  const parent = makeEl('g');
+  const drawn = new Map();
+  appendMiniLabControlSurfaceSvg(parent, {
+    ...options,
+    buildPort(control, x, y) {
+      drawn.set(control.portId, { x, y, jack: control.jack ?? null });
+      const el = makeEl('g');
+      el.dataset.portId = control.portId;
+      return el;
+    }
+  });
+  return { parent, drawn };
+}
+
+test('a control with two functions is one socket, with the second inside the first', () => {
+  // The MiniLab 3's main encoder turns (CC 114) and pushes (CC 115): two
+  // signals to cable, one object under the finger. Its push therefore has no
+  // socket of its own sixteen units below the knob, where two triangles said
+  // the keyboard has two controls there. D-049.
+  assert.deepEqual(miniLabPatchPortPosition('control-main-click'),
+    miniLabPatchPortPosition('control-main-encoder'),
+    'the cable layer anchors both on the same point');
+
+  const { parent, drawn } = drawSockets();
+  assert.deepEqual(drawn.get('control-main-click'), { x: 122, y: 68, jack: 'nested' });
+  assert.deepEqual(drawn.get('control-main-encoder'), { x: 122, y: 68, jack: 'host' });
+  // Only the pair is touched. A rule that fires everywhere is a rule that
+  // redraws a keyboard nobody asked it to redraw.
+  assert.deepEqual(drawn.get('control-k1'), { x: 155, y: 43, jack: null });
+  assert.deepEqual(drawn.get('control-p1'), { x: 90, y: 126, jack: null });
+
+  // And it is drawn last, whatever order the profile declares the pair in: a
+  // jack is filled, so the one underneath would paint over the one inside it.
+  const ids = parent.children[0].children
+    .map((child) => child.attributes['data-source-control-id'])
+    .filter(Boolean);
+  assert.equal(ids.at(-1), 'minilab-3:main-click');
+});
+
+test('the drawing and the cable layer put every socket in the same place', () => {
+  // The two routes the nesting could have broken. The file says what a
+  // disagreement costs: a cable that meets no socket, and a socket no cable
+  // can be pulled from.
+  const { drawn } = drawSockets();
+  for (const source of MINILAB_CONTROL_SOURCES) {
+    const { x, y } = drawn.get(source.portId);
+    assert.deepEqual({ x, y }, miniLabPatchPortPosition(source.portId), source.portId);
+  }
+});
+
+test('a second function nests in the nearest control of its family', () => {
+  const box = { width: 260, height: 140 };
+  const control = (id, family, x, y) => ({
+    id: `two:${id}`, portId: `control-${id}`, key: id, label: id,
+    printed: null, family, silent: false, layout: { x, y }
+  });
+  // Declared in the order that would trap a rule reading "the encoder above":
+  // the first push belongs to the SECOND encoder.
+  const twoEncoders = [
+    control('e1', 'main', 40, 60),
+    control('e2', 'main', 200, 60),
+    control('e2-push', 'main-click', 200, 76),
+    control('e1-push', 'main-click', 40, 76)
+  ];
+  const { drawn } = drawSockets({ controls: twoEncoders, box });
+  assert.deepEqual(drawn.get('control-e1-push'), { x: 40, y: 60, jack: 'nested' });
+  assert.deepEqual(drawn.get('control-e2-push'), { x: 200, y: 60, jack: 'nested' });
+  assert.deepEqual(drawn.get('control-e1'), { x: 40, y: 60, jack: 'host' });
+  assert.deepEqual(drawn.get('control-e2'), { x: 200, y: 60, jack: 'host' });
+
+  // A push whose encoder is not on the panel keeps its own coordinate rather
+  // than vanishing into one that is not there.
+  const lonely = drawSockets({ controls: [control('push', 'main-click', 200, 76)], box }).drawn;
+  assert.deepEqual(lonely.get('control-push'), { x: 200, y: 76, jack: null });
 });
