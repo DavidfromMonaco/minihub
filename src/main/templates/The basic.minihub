@@ -1,0 +1,103 @@
+{
+  "format": "minihub-project",
+  "version": 1,
+  "projectId": "c29aac4f-7169-45ca-9663-f34d6800ac35",
+  "name": "The basic",
+  "createdAt": "2026-09-18T17:38:00.368Z",
+  "modifiedAt": "2026-09-18T17:38:57.960Z",
+  "network": {
+    "connections": [
+      {
+        "from": {
+          "nodeId": "minilab-3",
+          "portId": "midi-out"
+        },
+        "to": {
+          "nodeId": "vst-001",
+          "portId": "midi-in"
+        }
+      },
+      {
+        "from": {
+          "nodeId": "vst-001",
+          "portId": "audio-out"
+        },
+        "to": {
+          "nodeId": "audio-output",
+          "portId": "audio-in"
+        }
+      }
+    ],
+    "layout": {
+      "audio-output": {
+        "x": 560,
+        "y": 80
+      },
+      "vst-001": {
+        "x": 320,
+        "y": 80
+      },
+      "minilab-3": {
+        "x": 80,
+        "y": 80
+      }
+    },
+    "viewport": {
+      "x": 54.177215189873436,
+      "y": -26.41772151898732,
+      "zoom": 2.323529411764706
+    }
+  },
+  "nodeInstances": {
+    "instances": [
+      {
+        "id": "vst-001",
+        "type": "vst",
+        "ordinal": 1,
+        "content": {
+          "plugins": [],
+          "controlBindings": []
+        }
+      }
+    ],
+    "idSeq": {
+      "vst": 1
+    }
+  },
+  "transport": {
+    "bpm": 120
+  },
+  "master": {
+    "gainDb": 0
+  },
+  "sequencer": {
+    "version": 1,
+    "tracks": [
+      {
+        "id": "a33357c8-f025-49bf-b5cf-43f9f309d2b6",
+        "type": "midi",
+        "name": "MIDI 1",
+        "armed": false,
+        "monitored": false,
+        "muted": false,
+        "volume": 1,
+        "inputId": "",
+        "inputPort": null,
+        "outputId": "",
+        "clips": []
+      }
+    ],
+    "loop": {
+      "enabled": false,
+      "startPpq": 0,
+      "endPpq": 16
+    },
+    "snap": "1/16",
+    "zoom": 72,
+    "scrollPpq": 0,
+    "selectedClipId": null,
+    "selectedClipIds": [],
+    "selectionAnchorClipId": null,
+    "focusedTrackId": "a33357c8-f025-49bf-b5cf-43f9f309d2b6"
+  }
+}

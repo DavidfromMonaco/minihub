@@ -23,8 +23,15 @@ an empty project under another name.
   an external machine, which it never was.
 - Home now opens on the sentence that MiniHub works with any MIDI controller,
   in bold and in the mixer accent, above what the four cards do.
-- Not seen yet, any of it, in the application: the author has not tried the two
-  dialogs, and nobody has looked at the Home sentence on screen.
+- MiniHub ships one template, made by the author on 2026-09-18: the controller
+  into an empty VST node, that node into the audio output. It is copied into
+  the user's templates folder at startup when it is not already there, so it
+  reaches the installer, the portable ZIP and an existing install alike.
+- Not seen yet: the Home sentence on screen, the two dialogs in the author's
+  hands, and the shipped template arriving on a machine that never had one.
+- Known and accepted: the shipped template's cables name the controller node of
+  the profile that ships (`minilab-3`). Opened under another profile, they stay
+  unresolved — drawn, not routed — and the user cables their own keyboard.
 - Left as found: a cable into the controller's MIDI In is dropped in silence
   when no MIDI output is selected on its page (`midiManager.send` answers
   `false` and nothing says so). Reported to the author, not acted on.

@@ -1008,7 +1008,19 @@ Save as Template again over the same name. An empty templates folder opens no
 dialog at all — main answers `{ empty: true }` and the renderer says how a
 template is made, which is the sentence an empty file dialog cannot say.
 
-`test/projectTemplates.test.mjs` holds the negative half of this contract.
+MiniHub ships one template, `src/main/templates/The basic.minihub`: the
+controller into an empty VST node, that node into the audio output. It travels
+with `src/` into the package and into the installer, and
+[shippedTemplates.js](src/main/shippedTemplates.js) copies it into the user's
+templates folder at startup — **only when it is not already there**. A native
+file dialog can show one folder and knows nothing of the application's
+resources, so a shipped template that stayed inside the package would be one
+nobody can open; and a copy that overwrote would throw away a template the user
+had edited under the same name. The cost of that rule, stated so nobody calls it
+a bug: a shipped template the user deletes comes back at the next launch.
+
+`test/projectTemplates.test.mjs` holds the negative half of this contract, and
+`test/shippedTemplates.test.cjs` the shipped copy.
 
 ### Fermeture d'un projet modifié
 
@@ -1077,6 +1089,7 @@ d'une capture forcée à l'extinction.
 | `projectFiles.js` | lecture/écriture validée des `.minihub` |
 | `projectCloseGuard.js` | fermeture : sauvegarde automatique, dialogue en dernier recours |
 | `appMenu.js` | menu de l'application ; Fichier → Nouveau / Modèle / Ouvrir / Enregistrer / Enregistrer comme modèle |
+| `shippedTemplates.js` | le modèle livré, copié au démarrage s'il manque |
 | `clipEditorWindows.js` | fenêtres Clip Editor et validation de leurs requêtes |
 | `clipEditorPreload.js` | pont du Clip Editor |
 | `diagnostics.js` | journal de démarrage, rotation à 4 Mo, empreintes |

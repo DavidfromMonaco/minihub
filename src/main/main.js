@@ -27,6 +27,7 @@ applyHandoff({ note: relaunchedFrom, app, env: process.env });
 const { FORMATS: AUDIO_EXPORT_FORMATS, audioExportFormat, audioExportFilePath } = require('./audioExportPath');
 const { loadSettings, saveSettings, rememberDirectory, rememberDirectoryOfFile, persistPluginStateChunk } = require('./settings');
 const { PURPOSES: DIRECTORY_PURPOSES, isKnownPurpose, rememberedDirectory } = require('./recentDirectories');
+const { installShippedTemplates } = require('./shippedTemplates');
 const { externalUrlFor } = require('./externalLinks');
 const controllerProfiles = require('./controllerProfiles');
 const { createEngineEventTrace } = require('./engineEventTrace');
@@ -362,6 +363,11 @@ if (hasSingleInstanceLock) Promise.all([launchPlace, app.whenReady()]).then(([pl
   nativeTheme.themeSource = 'dark';
   diagnostics.logStartupInfo();
   writeLaunchLines();
+  // Before the window, so the templates folder is already furnished by the time
+  // anyone can click Templates on Home. It writes only what is missing --
+  // `shippedTemplates.js` says why that is the whole rule.
+  const seeded = installShippedTemplates(SHIPPED_TEMPLATES_DIR, effectiveDirectory('template'));
+  if (seeded.length) diagnostics.log(`templates:shipped ${seeded.join(', ')}`);
   createWindow();
   startEngine();
   startAgentChannel();
@@ -453,6 +459,11 @@ ipcMain.on('project:save-result', (event, result) => {
 function projectsDirectory() {
   return path.join(app.getPath('documents'), 'MiniHub', 'Projects');
 }
+
+// The templates MiniHub comes with, inside the package. `__dirname` is
+// `src/main` in development and `resources/app/src/main` once packaged, and the
+// folder travels with `src/` in both -- see scripts/sync-dist.mjs.
+const SHIPPED_TEMPLATES_DIR = path.join(__dirname, 'templates');
 
 // Templates sit BESIDE projects, never inside them: a project dialog opened on
 // a folder holding both would offer templates as projects to be overwritten,
