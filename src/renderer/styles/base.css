@@ -115,12 +115,29 @@ body {
   display: flex;
   justify-content: center;
   gap: 12px;
+  /* The window goes down to 960px (`minWidth` in main.js) and the transport
+     cluster grew by four buttons and a readout. Neither this row nor the
+     status pill may squeeze the transport: a status you cannot read in full is
+     an inconvenience, a Play button 9 pixels wide is a broken instrument. */
+  min-width: 0;
 }
-.transport { display:flex; align-items:center; gap:8px; font-size:11px; color:var(--text-dim); }
+.header-center > .transport { flex: 0 0 auto; }
+.header-center > .device-status { flex: 0 1 auto; min-width: 0; overflow: hidden; }
+.transport { display:flex; align-items:center; gap:6px; font-size:11px; color:var(--text-dim); }
 .transport button,.transport input { height:26px; color:var(--text); background:var(--bg); border:1px solid var(--border); border-radius:5px; }
 .transport button { padding:0 10px; cursor:pointer; }
 .transport button.playing { color:var(--ok); border-color:rgba(62,207,126,.5); }
 .transport input { width:62px; padding:0 5px; margin-left:4px; }
+/* The four seek buttons. Square and drawn rather than written, because they
+   are the same four commands the sequencer's toolbar draws (`.seq-nav-icon`)
+   and because six named buttons across a 48px header is a wall of words. */
+.transport .nav-icon { width:26px; padding:0; display:inline-grid; place-items:center; }
+.transport .nav-icon svg { width:15px; height:15px; fill:currentColor; stroke:currentColor; stroke-width:1.5; }
+.transport .nav-icon:hover { color:var(--text); border-color:var(--border-strong); background:var(--bg-hover); }
+/* Bar and beat. Monospace and a fixed width, or the header's buttons shuffle
+   sideways every time the bar count gains a digit. */
+.transport-position { min-width:46px; padding:0 6px; font:12px var(--mono); color:var(--text); text-align:center; }
+.transport-position.playing { color:var(--ok); }
 .tempo-input { cursor:text; font-family:var(--mono); text-align:center; appearance:textfield; }
 .tempo-input[data-tempo-dragging="true"] { cursor:ns-resize; user-select:none; }
 .tempo-input::-webkit-inner-spin-button,.tempo-input::-webkit-outer-spin-button { appearance:none; margin:0; }

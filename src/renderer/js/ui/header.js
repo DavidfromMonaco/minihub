@@ -1,5 +1,6 @@
 import { bindTempoInput } from '../core/tempoControl.js';
 import { controllerName } from '../core/controllerNode.js';
+import { barBeat } from '../core/musicalTime.js';
 
 /**
  * Header device status. Reflects the controller's connection state.
@@ -31,9 +32,30 @@ export function buildHeader(hub, statusEl) {
   // already past. Read it once rather than waiting for the next edit.
   renderHistory(hub.history);
 
+  /**
+   * The transport, and why the whole cluster is in the shell.
+   *
+   * Play and Stop were here already; moving the playhead was not, and it is
+   * needed exactly where the arrangement is not on screen -- inside a One Ring
+   * node, a plugin's page, the Patch Bay. A workstation's transport bar is
+   * global for that reason, and it carries the position for the same one:
+   * "where am I" has no other answer once you have left the timeline.
+   *
+   * Play doubles as Pause while it plays, which is what every transport does
+   * and what keeps a crowded header to two text buttons. The two are not the
+   * same command: a pause holds the arrangement and leaves a One Ring running
+   * on its own clock, a Stop stops both.
+   */
   const playEl = document.getElementById('transport-play');
   const stopEl = document.getElementById('transport-stop');
   const bpmEl = document.getElementById('transport-bpm');
+  const positionEl = document.getElementById('transport-position');
+  const navEls = {
+    start: document.getElementById('transport-start'),
+    back: document.getElementById('transport-back'),
+    forward: document.getElementById('transport-forward'),
+    end: document.getElementById('transport-end')
+  };
   let playing = false;
   // A One Ring node plays on when a sequence stops the transport, and runs
   // alone from its own RUN. Stop stays pressable while one plays, and stops it.
@@ -41,8 +63,26 @@ export function buildHeader(hub, statusEl) {
   if (bpmEl) bpmEl.value = String(hub.sequencer.tempo);
   const renderTransport = () => {
     playEl?.classList.toggle('playing', playing);
-    if (playEl) playEl.textContent = 'Play';
+    if (playEl) {
+      playEl.textContent = playing ? 'Pause' : 'Play';
+      playEl.title = playing ? 'Hold here — a One Ring keeps running' : 'Play';
+      playEl.setAttribute('aria-pressed', String(playing));
+    }
     if (stopEl) stopEl.disabled = !playing && hub.sequencer?.recording !== true && !oneRingPlaying;
+    positionEl?.classList.toggle('playing', playing);
+  };
+  /**
+   * The position, at the engine's own 10 Hz, written only when it changes.
+   *
+   * `sequencer:playhead` fires on every transport event, so this runs ten
+   * times a second for as long as MiniHub is open. Comparing before writing
+   * keeps that to four writes a bar at 120 BPM -- and nothing here logs, which
+   * on a periodic event is what buries a startup log (see engineEventTrace).
+   */
+  const renderPosition = (ppq) => {
+    if (!positionEl) return;
+    const text = barBeat(ppq);
+    if (positionEl.textContent !== text) positionEl.textContent = text;
   };
   const renderOneRing = () => {
     const now = hub.oneRing?.anyPlaying?.() === true;
@@ -52,11 +92,19 @@ export function buildHeader(hub, statusEl) {
   };
   for (const name of ['oneRing:status', 'oneRing:ready', 'oneRing:gone']) hub.events.on(name, renderOneRing);
   playEl?.addEventListener('click', () => {
-    hub.sequencer?.playTransport();
+    if (playing) hub.sequencer?.pauseTransport();
+    else hub.sequencer?.playTransport();
   });
   stopEl?.addEventListener('click', () => {
     hub.sequencer?.stopTransport();
   });
+  // Seeking is allowed stopped or playing: the engine releases what it holds on
+  // a seek, so stepping through an arrangement cannot leave a note sounding.
+  navEls.start?.addEventListener('click', () => hub.sequencer?.goToStart());
+  navEls.back?.addEventListener('click', () => hub.sequencer?.nudgeBars(-1));
+  navEls.forward?.addEventListener('click', () => hub.sequencer?.nudgeBars(1));
+  navEls.end?.addEventListener('click', () => hub.sequencer?.goToEnd());
+  hub.events.on('sequencer:playhead', renderPosition);
   hub.events.on('sequencer:recording', (active) => {
     if (active === true) playing = true;
     renderTransport();
@@ -72,6 +120,9 @@ export function buildHeader(hub, statusEl) {
   });
   hub.events.on('engine:transport',(state)=>{if(typeof state?.playing!=='boolean')return;playing=state.playing;renderTransport();});
   renderTransport();
+  // The engine's first position report is 100 ms away at best, and a reload
+  // lands on whatever the transport already holds -- not necessarily bar one.
+  renderPosition(hub.sequencer?.playheadPpq ?? 0);
   // The device is named by its Patch Bay node, never by this file: a header
   // that spells a model tells every other keyboard it is not detected. It is
   // also the same string the sequencer's blocking messages use, which is the

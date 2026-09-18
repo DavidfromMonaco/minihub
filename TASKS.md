@@ -7,6 +7,21 @@ finished, delete its entry**, in the same commit. What was done lives in git and
 
 ## Started, not finished
 
+**A transport at the top of MiniHub — built, not seen in the application yet** —
+asked 2026-09-18: "basic navigation commands at the very top, because when you
+are inside One Ring you need them". D-048. Back to the start, back a bar,
+Play/Pause, Stop, forward a bar, to the end, and the position as `bar.beat`.
+Pause holds the arrangement and leaves a One Ring running; Stop stops both,
+and does not rewind — returning to the start is its own button.
+- Not seen yet: any of it on screen, and in particular whether the cluster is
+  comfortable at the 960px minimum window, where it fits with ~30px to spare.
+- Gap, outside this repository: `../minihub-agent/AGENTS.md` does not describe
+  the three new transport operations (`pause`, `go-end`, `bars`) — the
+  author's to update.
+- Not asked, not built: Record in the header. It refuses unless a track is
+  armed and routed, and the shell has nowhere to say why — a button that
+  silently does nothing is worse than no button.
+
 **Two canvases that ended — built, not seen in the application yet** — from the
 author's own use on 2026-09-18: Align on twelve nodes "reached the limits" of
 the Patch Bay, and the sequencer's timeline "loses the tracks after a fairly

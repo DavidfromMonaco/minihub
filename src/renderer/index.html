@@ -17,8 +17,13 @@
     <div class="header-center">
       <span id="device-status" class="device-status idle">Initializing MIDI…</span>
       <div class="transport" aria-label="MiniHub transport">
-        <button id="transport-play" type="button">Play</button>
+        <button id="transport-start" class="nav-icon" type="button" title="Back to the start" aria-label="Back to the start"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4v16M19 5l-10 7 10 7z"/></svg></button>
+        <button id="transport-back" class="nav-icon" type="button" title="Back one bar" aria-label="Back one bar"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5l-7 7 7 7zM20 5l-7 7 7 7z"/></svg></button>
+        <button id="transport-play" type="button" aria-pressed="false">Play</button>
         <button id="transport-stop" type="button" disabled>Stop</button>
+        <button id="transport-forward" class="nav-icon" type="button" title="Forward one bar" aria-label="Forward one bar"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 5l7 7-7 7zM4 5l7 7-7 7z"/></svg></button>
+        <button id="transport-end" class="nav-icon" type="button" title="To the end of the arrangement" aria-label="To the end of the arrangement"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 4v16M5 5l10 7-10 7z"/></svg></button>
+        <output id="transport-position" class="transport-position" title="Bar and beat" aria-label="Playhead position, bar and beat">1.1</output>
         <label>Tempo <input id="transport-bpm" class="tempo-input" type="number" min="20" max="300" step="1" value="120" aria-label="Global tempo in BPM"> BPM</label>
       </div>
     </div>

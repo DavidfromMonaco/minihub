@@ -2509,3 +2509,67 @@ screen", "the name holds its on-screen size, continuously"),
 `test/routing.test.mjs` ("the canvas publishes its level of detail to the
 stylesheet"), `test/sequencerUi.test.mjs` ("the timeline always keeps a
 screenful of empty bars ahead of the view").
+
+---
+
+## D-048 — The transport is the shell's, and Pause and Stop differ by One Ring, not by position
+
+**Status**: in force · 2026-09-18 · **implemented**, not seen in the
+application yet
+
+**Context** — The author asked for "basic navigation commands at the very top
+of MiniHub (forward, back, pause etc), because when you are inside One Ring you
+need them". Play, Stop and the tempo were already in the header; moving the
+playhead was not, and neither was reading it. Two facts shaped the answer.
+`Transport::setPlaying(false)` does not touch `ppq_`, so **nothing in MiniHub
+ever rewinds on a stop** -- Stop then Play has always resumed where it left, and
+"pause" therefore already existed under another name. And `stopTransport`
+already had two behaviours: it stops the One Ring nodes, except for the Stop a
+sequence sends over a cable (`bySequence`, D-042), which leaves them running
+because a One Ring runs on its own clock.
+
+**Decision** — The header carries the whole transport: back to the start, back
+one bar, Play/Pause, Stop, forward one bar, to the end, and the position as
+`bar.beat`.
+
+- **Pause holds the arrangement and leaves a One Ring running. Stop stops
+  both.** That is the one difference between them, and it is the behaviour the
+  code already had -- `pauseTransport()` is `stopTransport({ bySequence: true })`
+  given a name a button can mean. Stop is not changed, and does not rewind:
+  returning to the start is its own button, where you can see it.
+- Play doubles as Pause while it plays, so the cluster is two text buttons and
+  four drawn ones rather than seven names across a 48-pixel header.
+- A step is a bar, and backwards from mid-bar lands on the bar you are IN --
+  pressed twice it goes back one. `barStep` in `core/musicalTime.js`, with
+  `barBeat`, which the One Ring panel now shares instead of spelling the same
+  arithmetic itself.
+- The three new commands are in the agent vocabulary too (`pause`, `go-end`,
+  `bars`): an operation an agent may ask for is one the interface performs, and
+  these are now buttons.
+
+**Consequences**
+
+- Two buttons that look redundant are not, and the only way to tell is the
+  tooltip and this entry. Making Pause stop the One Rings would leave MiniHub
+  with two Stops; making Stop rewind would change what a Stop over a cable does
+  to an arrangement, which D-042's sequences are written against.
+- The header is ~200 px wider in the middle. At the 960 px minimum window it
+  fits with about 30 px to spare, and the status pill is the item allowed to
+  give, never the transport.
+- The position readout writes at the engine's 10 Hz cadence, guarded by a
+  comparison, so it touches the DOM four times a bar at 120 BPM.
+- `../minihub-agent/AGENTS.md`, outside this repository, does not describe the
+  three new operations yet.
+
+**What would justify revisiting** — A time signature that is not 4/4, which
+would make a "bar" a project property rather than `QUARTERS_PER_BAR`; or a
+second generator with its own clock, at which point "leaves the generators
+running" needs a name that is not One Ring's.
+
+**Proof in the code** — `pauseTransport`, `_halt` and `nudgeBars` in
+`src/renderer/js/core/sequencerController.js`; `core/musicalTime.js`; the
+transport cluster in `src/renderer/index.html` and its wiring in
+`src/renderer/js/ui/header.js`; `transport` in
+`src/renderer/js/core/agentRequests.js`. Tests:
+`test/musicalTime.test.mjs`, `test/sequencerUi.test.mjs` ("the shell transport
+seeks by bars, says where it is, and pauses without stopping a One Ring").

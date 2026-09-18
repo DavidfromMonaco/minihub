@@ -12,6 +12,8 @@ import {
   KNOBS, TABS, TAB_REGIONS, bodyMarkup, renderPage, renderRegions, shownBank, tabOf
 } from './oneRingFaceplate.js';
 import { liveRulesText } from './oneRingNotes.js';
+// The header shows a position too, and one arithmetic writes both.
+import { barBeat } from '../../core/musicalTime.js';
 
 /**
  * The One Ring node's page: the faceplate of oneRingFaceplate.js, played and
@@ -194,11 +196,6 @@ function setText(element, text) {
   if (element && element.textContent !== text) element.textContent = text;
 }
 
-function barOf(beat) {
-  if (!Number.isFinite(beat) || beat < 0) return '—';
-  return `${Math.floor(beat / 4) + 1}.${Math.floor(beat % 4) + 1}`;
-}
-
 /** Light what the runtime reports, in place. */
 export function applyStatus(container, context) {
   const { instance, hub } = context;
@@ -212,7 +209,7 @@ export function applyStatus(container, context) {
   const live = (name) => container.querySelector(`[data-ring-live="${name}"]`);
   setText(live('state'), !ready ? 'NOT IN THE ENGINE' : playing ? '▶ RUNNING' : '■ STOPPED');
   setText(live('scene'), content.scenes[scene].id);
-  setText(live('bar'), status ? barOf(status.beat) : '—');
+  setText(live('bar'), status ? barBeat(status.beat) : '—');
   setText(live('bpm'), status && status.bpm > 0 ? status.bpm.toFixed(1) : '—');
   setText(live('pending'), pending >= 0 ? `NEXT BAR → ${content.scenes[pending].id}` : '');
   setText(live('refused'), String(status?.rejected ?? 0));

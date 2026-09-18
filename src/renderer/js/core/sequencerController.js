@@ -4,6 +4,7 @@ import { AUDIO_INPUT_NODE_ID, SEQUENCER_NODE_ID } from './systemNodes.js';
 import { isControllerNode, controllerName } from './controllerNode.js';
 import { preferenceForPort, resolvePortPreference } from '../midi/portIdentity.js';
 import { midiThruReach } from './midiThru.js';
+import { barStep } from './musicalTime.js';
 
 const STATE_KEY = 'sequencerState';
 const LEGACY_DEVICE_INPUT_ID = 'device-input';
@@ -1345,14 +1346,45 @@ export class SequencerController {
    * arrangement is one of the things its sequences are written to do.
    */
   stopTransport({ bySequence = false } = {}) {
+    return this._halt(bySequence !== true);
+  }
+
+  /**
+   * Pause: hold the arrangement where it is, and leave a One Ring running.
+   *
+   * There is no rewind to undo, whatever stops the transport --
+   * `Transport::setPlaying(false)` does not touch `ppq_` -- so Play afterwards
+   * always resumes from here, and that is NOT what separates a pause from a
+   * stop. The One Rings are: a stop stops them, and a pause is about the
+   * arrangement and leaves a generator that runs on its own clock alone. It is
+   * the behaviour a Stop over a cable already asked for, given its own name so
+   * that a button can mean it.
+   */
+  pauseTransport() {
+    return this._halt(false);
+  }
+
+  /** Stop playing. `stopOneRings` is the whole difference between the two. */
+  _halt(stopOneRings) {
     this.stopRecording();
     if (this.playing) {
       this.playing = false;
       this.hub.events.emit('sequencer:transport', { playing: false });
     }
-    this.hub.engine.setTransport({ playing: false, stopOneRings: bySequence !== true });
+    this.hub.engine.setTransport({ playing: false, stopOneRings: stopOneRings === true });
     this._queueEditorTransport();
     return true;
+  }
+
+  /**
+   * Move the playhead by whole bars, backwards or forwards.
+   *
+   * A seek and not a scrub: it moves while stopped and while playing, and the
+   * engine releases the notes it was holding either way (`releaseAllMidi` on a
+   * seek), so stepping through an arrangement cannot leave a note hanging.
+   */
+  nudgeBars(bars) {
+    return this.seek(barStep(this.playheadPpq, bars));
   }
 
   seek(ppq) {

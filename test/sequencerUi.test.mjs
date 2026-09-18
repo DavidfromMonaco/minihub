@@ -513,6 +513,71 @@ test('Sequencer and header controls share one global Play/Stop transport state',
   }
 });
 
+/**
+ * The transport bar is in the shell because that is where it is needed: inside
+ * a One Ring node, a plugin's page or the Patch Bay, the arrangement is not on
+ * screen and there is no other way to move the playhead or to know where it is.
+ */
+test('the shell transport seeks by bars, says where it is, and pauses without stopping a One Ring', async () => {
+  const { api, hub } = await runtime();
+  hub.nodes.create('sequencer');
+  const track = hub.sequencer.model.addTrack('midi');
+  hub.sequencer.model.addMidiClip(track.id, 8, 4, []);
+  const ids = new Map([
+    ['project-identity', makeEl('span')], ['transport-play', makeEl('button')],
+    ['transport-stop', makeEl('button')], ['transport-bpm', makeEl('input')],
+    ['transport-start', makeEl('button')], ['transport-back', makeEl('button')],
+    ['transport-forward', makeEl('button')], ['transport-end', makeEl('button')],
+    ['transport-position', makeEl('output')]
+  ]);
+  const previousGetElementById = document.getElementById;
+  document.getElementById = (id) => ids.get(id) || null;
+  const seeks = () => api.sent
+    .filter((message) => message.type === 'setTransport' && Object.hasOwn(message, 'seekPpq'))
+    .map((message) => message.seekPpq);
+  try {
+    buildHeader(hub, makeEl('span'));
+
+    // Where am I: the readout is the only answer once the timeline is off
+    // screen, and it opens on whatever the transport already holds.
+    assert.equal(ids.get('transport-position').textContent, '1.1');
+    hub.events.emit('engine:transport', { playing: true, ppqPosition: 10 });
+    assert.equal(ids.get('transport-position').textContent, '3.3');
+    assert.equal(ids.get('transport-position').classList.contains('playing'), true);
+
+    // Back from the middle of bar three lands on bar three, then bar two.
+    fire(ids.get('transport-back'), 'click');
+    fire(ids.get('transport-back'), 'click');
+    fire(ids.get('transport-forward'), 'click');
+    assert.deepEqual(seeks(), [8, 4, 8], 'a bar at a time, from where the playhead is');
+    assert.equal(ids.get('transport-position').textContent, '3.1',
+      'and the readout follows a seek, without waiting for the engine');
+
+    fire(ids.get('transport-end'), 'click');
+    assert.equal(seeks().at(-1), 12, 'the end is the end of the last clip');
+    fire(ids.get('transport-start'), 'click');
+    assert.equal(seeks().at(-1), 0);
+    assert.equal(ids.get('transport-position').textContent, '1.1');
+
+    // Play doubles as Pause, and the two are not the same command.
+    assert.equal(ids.get('transport-play').textContent, 'Pause',
+      'the button says what pressing it does, and the transport is playing');
+    fire(ids.get('transport-play'), 'click');
+    const paused = api.sent.filter((message) => message.type === 'setTransport').at(-1);
+    assert.equal(paused.playing, false);
+    assert.equal(Object.hasOwn(paused, 'stopOneRings'), false,
+      'a pause holds the arrangement and leaves a One Ring on its own clock running');
+
+    hub.events.emit('engine:transport', { playing: false, ppqPosition: 0 });
+    assert.equal(ids.get('transport-play').textContent, 'Play');
+    fire(ids.get('transport-play'), 'click');
+    assert.equal(api.sent.filter((message) => message.type === 'setTransport').at(-1).playing, true,
+      'and pressing it again plays');
+  } finally {
+    document.getElementById = previousGetElementById;
+  }
+});
+
 test('the header Stop stays pressable while a One Ring node plays on its own, and stops it', async () => {
   const { api, hub } = await runtime();
   const ids = new Map([

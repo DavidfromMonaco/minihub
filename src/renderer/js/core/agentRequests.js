@@ -455,8 +455,15 @@ export async function handleAgentRequest(hub, request = {}) {
   if (kind === 'transport') {
     const operation = String(request.operation || '');
     if (operation === 'play') hub.sequencer?.playTransport?.();
+    // `pause`, `go-end` and `bars` arrived with the shell's transport bar
+    // (2026-09-18). The rule is the one at the top of this file: an operation
+    // an agent may ask for is one the interface already performs, and these
+    // four buttons are now up there next to Play.
+    else if (operation === 'pause') hub.sequencer?.pauseTransport?.();
     else if (operation === 'stop') hub.sequencer?.stopTransport?.();
     else if (operation === 'return-start') hub.sequencer?.goToStart?.();
+    else if (operation === 'go-end') hub.sequencer?.goToEnd?.();
+    else if (operation === 'bars') hub.sequencer?.nudgeBars?.(Number(request.bars) || 0);
     else if (operation === 'seek') hub.sequencer?.seek?.(Number(request.ppq) || 0);
     else return failed('unsupported-request');
     return { ok: true, playhead: hub.sequencer?.playheadPpq ?? null };
