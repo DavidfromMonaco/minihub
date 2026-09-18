@@ -1,0 +1,9 @@
+# Blank issues stay ON. MiniHub's own Report a bug button opens
+# `issues/new?title=&body=` with the version, the build and the Windows release
+# already written in (DECISIONS D-046); turning blank issues off would send
+# that link to the chooser and throw the body away.
+blank_issues_enabled: true
+contact_links:
+  - name: Ask a question, or say what you would want
+    url: https://github.com/DavidfromMonaco/minihub/discussions
+    about: Not a bug — anything else goes here.

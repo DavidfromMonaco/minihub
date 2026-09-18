@@ -1,0 +1,59 @@
+name: Bug report
+description: Something in MiniHub did not do what it says it does.
+title: "Bug: "
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        MiniHub is pre-alpha and this is the most useful thing you can send.
+
+        If you are reporting from inside MiniHub, use **Report a bug** on the
+        Home page instead — it fills the version and your Windows release in
+        for you.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      placeholder: What you saw, in your own words.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: false
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Even a rough sequence helps. "It happens every time I…" is a step.
+      value: |
+        1. 
+        2. 
+    validations:
+      required: false
+  - type: input
+    id: version
+    attributes:
+      label: MiniHub version
+      description: The Home page prints it, and so does the installer.
+      placeholder: "0.5.0"
+    validations:
+      required: true
+  - type: input
+    id: windows
+    attributes:
+      label: Windows version
+      placeholder: "Windows 11 23H2"
+    validations:
+      required: false
+  - type: input
+    id: controller
+    attributes:
+      label: Controller and plugins involved
+      description: The keyboard MiniHub was talking to, and any VST3 in the patch.
+      placeholder: "MiniLab 3 · Dexed, Analog Lab V"
+    validations:
+      required: false
