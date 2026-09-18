@@ -146,7 +146,7 @@ scope; here are the technical prohibitions:
 
 ```bash
 npm install              # Electron + rcedit
-npm test                 # 1241 JS tests, node:test runner, ~10 s
+npm test                 # 1283 JS tests, node:test runner, ~10 s
 npm run check            # 15 rules (Node stdlib + the profile validator, ~1 s)
 npm run build:native     # native Release build (CMake + MSBuild)
 npm run build:native:tests
