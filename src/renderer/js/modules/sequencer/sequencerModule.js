@@ -43,6 +43,66 @@ const TIMELINE_BEATS = 256;
 const FOLLOW_MARGIN = 0.12;
 const FOLLOW_LEAD = 0.18;
 
+/**
+ * How far right the timeline reaches.
+ *
+ * It used to be the content and nothing else: `max(64 bars, last clip + 4
+ * bars)`. That is a timeline that ends, and a workstation's does not -- you
+ * drop a clip at bar 200 of an empty arrangement because that is where the
+ * second half starts, and every DAW lets you, because the arrangement extends
+ * ahead of the view rather than behind the music.
+ *
+ * So: always a screenful of empty bars past the right edge of what you are
+ * looking at. Scrolling right therefore never reaches an end, which is the
+ * point; the rail's thumb shrinks as you travel, which is the price and what
+ * Reaper's does too. Rounded up to a whole bar so the ruler's last mark is a
+ * bar and not a fraction of one, and so the width does not change by a
+ * pixel-and-a-half on every scroll event.
+ *
+ * `Fit` deliberately does NOT use this -- it frames `compositionEndPpq()`,
+ * the music. Framing the empty room ahead would zoom out for nothing.
+ */
+export function timelineEndPpq({ minimumPpq = 0, contentEndPpq = 0, scrollPpq = 0, viewportPpq = 0 } = {}) {
+  const ahead = Math.max(0, scrollPpq) + Math.max(0, viewportPpq) * 2;
+  const wanted = Math.max(minimumPpq, contentEndPpq + 16, ahead);
+  return Math.ceil(Math.max(4, wanted) / 4) * 4;
+}
+
+/**
+ * Whether the view has scrolled far enough that the drawn clips no longer
+ * cover it and the lanes have to be repainted.
+ *
+ * A quarter of a screen of slack on each side: repainting exactly at the edge
+ * would repaint on every other scroll event, and repainting too late shows a
+ * band of empty lane before the clips arrive.
+ */
+export function outsideDrawnWindow(scrollPpq, { startPpq = 0, endPpq = 0, viewportPpq = 0 } = {}) {
+  // A window of no width has drawn nothing, so everything is outside it.
+  if (!(endPpq > startPpq)) return true;
+  const margin = Math.max(0, viewportPpq) * 0.25;
+  return scrollPpq < startPpq + margin || scrollPpq + viewportPpq > endPpq - margin;
+}
+
+/**
+ * The vertical scroll that brings one track row fully into view.
+ *
+ * Returns the scroll unchanged when the row is already whole on screen: a
+ * reveal that scrolls anyway would drag the arrangement under the hand every
+ * time a track is touched.
+ *
+ * `stickyTop` is the ruler, which floats over the first pixels of the
+ * scrolling area -- a row scrolled to the very top would sit underneath it.
+ */
+export function revealScrollTop({ top = 0, height = 0, scrollTop = 0, viewHeight = 0, stickyTop = 0 } = {}) {
+  const current = Math.max(0, scrollTop);
+  if (!(viewHeight > 0)) return current;
+  const above = top - stickyTop;
+  if (above < current) return Math.max(0, above);
+  const below = top + height - viewHeight;
+  if (below > current) return Math.max(0, below);
+  return current;
+}
+
 export function followScrollPpq(playheadPpq, scrollPpq, viewportPpq) {
   const head = Number(playheadPpq);
   const left = Math.max(0, Number(scrollPpq) || 0);
@@ -421,6 +481,33 @@ export function createSequencerModule(hub) {
   let unsubs = [];
   let drag = null;
   let scrollRenderQueued = false;
+  /**
+   * The vertical scroll, kept here because `render()` replaces the scrolling
+   * element itself: a new element starts at zero, and `scrollLeft` was the
+   * only one being put back. Thirteen tracks fit on a screen, so from the
+   * fourteenth on every render -- adding a track, renaming one, moving a clip,
+   * a MIDI port appearing -- threw you back to the first tracks and the ones
+   * you were working on were gone.
+   *
+   * Module state and not the model's: where you are looking is not the
+   * project. The Clip Editor keeps its own the same way (`pianoScroll`).
+   */
+  let scrollTopPx = 0;
+  /**
+   * The span of music the last render actually drew, and the width it drew it
+   * for. Only the clips inside it exist in the DOM, so the scroll listener's
+   * question -- have I left what is drawn? -- can only be answered against
+   * this, never against the live scroll position.
+   *
+   * Module state and not `render()`'s locals, which is where it was: `bind()`
+   * is a SIBLING of `render()`, so the listener it installs closed over
+   * nothing and every scroll event threw `visibleStart is not defined`. The
+   * repaint was therefore never queued, and scrolling more than a screen off
+   * the drawn window emptied every lane -- the tracks looked as though they
+   * had lost their clips. Nothing caught it because nothing scrolled: the
+   * regression test in sequencerUi.test.mjs now does.
+   */
+  let drawnWindow = { startPpq: 0, endPpq: 0, viewportPpq: 16 };
   let resizeObserver = null;
   let resizeRenderQueued = false;
   let suppressSelectionClickId = null;
@@ -637,6 +724,41 @@ export function createSequencerModule(hub) {
     renderRail();
   }
 
+  /**
+   * Add a track, then bring it to the screen it was created off.
+   *
+   * Every workstation scrolls to the track it has just made. Here it was worse
+   * than a missing convenience: with the arrangement scrolled down, the render
+   * that `addTrack` triggers put the view back at the top, so the answer to
+   * "+ MIDI Track" was a screen that had not changed and a track somewhere
+   * below. The reveal comes AFTER `controller.addTrack`, which renders
+   * synchronously -- there is a fresh scroller to measure by then.
+   */
+  function addTrack(type) {
+    const track = controller.addTrack(type);
+    if (track) revealTrack(track.id);
+    return track;
+  }
+
+  /** Scroll a track row fully into view, without moving when it already is. */
+  function revealTrack(trackId) {
+    const scroller = container?.querySelector('[data-timeline-scroll]');
+    const index = controller.model.state.tracks.findIndex((track) => track.id === trackId);
+    if (!scroller || index < 0) return;
+    // The rail floats over the bottom of the scrolling area and `.seq-scroll`
+    // reserves that band as padding. Read rather than repeated: a second
+    // spelling of 14px here is one that would go stale the day the rail grows.
+    const padding = parseFloat(globalThis.getComputedStyle?.(scroller)?.paddingBottom);
+    scrollTopPx = revealScrollTop({
+      top: RULER_HEIGHT + index * TRACK_HEIGHT,
+      height: TRACK_HEIGHT,
+      scrollTop: scrollTopPx,
+      viewHeight: (scroller.clientHeight || 0) - (Number.isFinite(padding) ? padding : 0),
+      stickyTop: RULER_HEIGHT
+    });
+    scroller.scrollTop = scrollTopPx;
+  }
+
   function resizeRender() {
     if (resizeRenderQueued || !container) return;
     resizeRenderQueued = true;
@@ -664,12 +786,18 @@ export function createSequencerModule(hub) {
     const state = controller.model.state;
     const selectedClipIds = new Set(state.selectedClipIds || (state.selectedClipId ? [state.selectedClipId] : []));
     const zoom = state.zoom;
-    const endPpq = Math.max(TIMELINE_BEATS, controller.model.compositionEndPpq() + 16);
-    const timelineWidth = endPpq * zoom;
     const gridLinePx = gridPx(zoom);
     const viewportPpq = Math.max(16, (container.clientWidth - TRACK_HEADER) / zoom);
+    const endPpq = timelineEndPpq({
+      minimumPpq: TIMELINE_BEATS,
+      contentEndPpq: controller.model.compositionEndPpq(),
+      scrollPpq: state.scrollPpq,
+      viewportPpq
+    });
+    const timelineWidth = endPpq * zoom;
     const visibleStart = Math.max(0, state.scrollPpq - viewportPpq);
     const visibleEnd = state.scrollPpq + viewportPpq * 2;
+    drawnWindow = { startPpq: visibleStart, endPpq: visibleEnd, viewportPpq };
     const atTrackLimit = state.tracks.length >= SEQUENCER_LIMITS.tracks;
     const recordBlockReason = controller.recordBlockReason();
     const status = transportStatus();
@@ -761,13 +889,17 @@ export function createSequencerModule(hub) {
     applyDynamicStyles(container);
     bind();
     const scroller = container.querySelector('[data-timeline-scroll]');
-    if (scroller) scroller.scrollLeft = state.scrollPpq * zoom;
+    if (scroller) {
+      scroller.scrollLeft = state.scrollPpq * zoom;
+      // Both axes, or the tracks below the fold vanish on every repaint.
+      scroller.scrollTop = scrollTopPx;
+    }
     renderRail();
   }
 
   function bind() {
-    container.querySelector('[data-action="add-midi"]')?.addEventListener('click', () => { controller.addTrack('midi'); });
-    container.querySelector('[data-action="add-audio"]')?.addEventListener('click', () => { controller.addTrack('audio'); });
+    container.querySelector('[data-action="add-midi"]')?.addEventListener('click', () => { addTrack('midi'); });
+    container.querySelector('[data-action="add-audio"]')?.addEventListener('click', () => { addTrack('audio'); });
     container.querySelector('[data-action="go-start"]')?.addEventListener('click', () => controller.goToStart());
     container.querySelector('[data-action="go-end"]')?.addEventListener('click', () => controller.goToEnd());
     container.querySelector('[data-action="play"]')?.addEventListener('click', () => controller.playTransport());
@@ -819,10 +951,11 @@ export function createSequencerModule(hub) {
       controller.model.setLoop({ enabled: container.querySelector('[data-control="loop-enabled"]').checked, startPpq: Number(container.querySelector('[data-control="loop-start"]').value), endPpq: Number(container.querySelector('[data-control="loop-end"]').value) }); controller.changed();
     });
     container.querySelector('[data-timeline-scroll]')?.addEventListener('scroll', (event) => {
+      scrollTopPx = event.currentTarget.scrollTop || 0;
       const next = event.currentTarget.scrollLeft / controller.model.state.zoom;
       controller.model.state.scrollPpq = next;
       renderRail();
-      if (!scrollRenderQueued && (next < visibleStart + viewportPpq * 0.25 || next + viewportPpq > visibleEnd - viewportPpq * 0.25)) {
+      if (!scrollRenderQueued && outsideDrawnWindow(next, drawnWindow)) {
         scrollRenderQueued = true;
         requestAnimationFrame(render); // layout virtualization only; native transport remains the musical clock
       }
@@ -1382,6 +1515,7 @@ export function createSequencerModule(hub) {
     resizeRenderQueued = false;
     container?.classList.remove('sequencer-workspace');
     container = null; drag = null; marquee = null; suppressLaneClick = false;
+    scrollTopPx = 0;
   }
 
   return {

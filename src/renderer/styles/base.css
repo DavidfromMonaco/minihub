@@ -934,6 +934,9 @@ body {
   stroke: #2b3036;
   stroke-width: 1;
 }
+/* A grid too fine to be a grid is a wash of grey over the canvas. Which of the
+   two tiles is still worth painting is `gridVisible`'s call. */
+.grid-bg.off { display: none; }
 
 /* --- nodes --- */
 .node {
@@ -990,10 +993,28 @@ body {
 
 .node-title {
   fill: var(--text);
-  font-size: 12px;
+  /* Grows as the canvas pulls back, so the one thing worth reading far out
+     survives the shrinking. `nodeDetail` sets it; 12 is the near-view size. */
+  font-size: var(--node-title-size, 12px);
   font-weight: 600;
   font-family: var(--font);
 }
+
+/* --- level of detail: what a node is worth drawing when it is small -------
+   Set on the SVG by `applyDetailLevel`. Far out, every legend on the card is
+   grain rather than information: two badges, a subtitle, a port name per jack
+   and the faceplate's own silkscreen, all under six pixels tall. They go; the
+   sockets and the faceplate's BODIES stay -- a cable still lands where it
+   lands, every socket is still there to be grabbed, and a controller still
+   reads as its own keyboard. `zoom-mute` is past even the name. */
+.routing-svg.zoom-far .node-badge,
+.routing-svg.zoom-far .node-subtitle,
+.routing-svg.zoom-far .node-open-control,
+.routing-svg.zoom-far .view-side-switch,
+.routing-svg.zoom-far .port-label,
+.routing-svg.zoom-far .ml-svg-label,
+.routing-svg.zoom-far .ml-svg-tiny { display: none; }
+.routing-svg.zoom-mute .node-title { display: none; }
 
 .node-subtitle {
   fill: var(--text-dim);

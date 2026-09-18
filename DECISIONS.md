@@ -2438,3 +2438,74 @@ lift for a request that leaves main.
 `test/externalLinks.test.cjs` ("a bug report is a pre-filled issue form, with
 the answers nobody remembers", "every Home button names the host it actually
 opens"), `test/homeStartup.test.mjs`.
+
+---
+
+## D-047 — Neither canvas ends: distance changes how much is drawn, not how far you can go
+
+**Status**: in force · 2026-09-18 · **implemented**, not seen in the
+application yet
+
+**Context** — The author reported two limits on 2026-09-18, from his own use.
+Pressing Align in the Patch Bay on twelve nodes "reached its limits", and the
+sequencer's timeline "loses the tracks after a fairly short while". Measured,
+the first is arithmetic: `alignPositions` puts every node at the same distance
+from the sources into one column -- which is what a rank is, and what dagre,
+Blender and Blueprints all draw -- so twelve nodes hanging off one controller
+is a column 2,560 world units tall. On a 1400 x 760 canvas that frames at
+exactly 0.250, which was `MIN_ZOOM`; fourteen nodes need 0.208, and
+`fitToNodes` was not allowed to return it. Align therefore laid the graph out
+correctly and showed two thirds of it. The timeline's was written down:
+`TIMELINE_BEATS` is 256 quarters, extended only 16 past the last clip, so an
+empty arrangement stopped at bar 64 -- two minutes and eight seconds at 120 BPM
+-- with nowhere to put a clip past it.
+
+**Decision** — Both surfaces are unbounded, and what a distance costs is
+detail, not reach.
+
+- `MIN_ZOOM` goes from 0.25 to 0.05, so "frame everything" is never a lie: a
+  fifty-node fan frames at 0.049. `nodeDetail(zoom)` then decides what a node
+  is worth drawing, and the stylesheet does it: under 50% the badges, the
+  subtitle, the port names, the OPEN chip, the rear-view switch and the
+  faceplate's own silkscreen go; the node's name grows in world units so it
+  holds about nine screen pixels from 75% down to 30%; under about 18% it goes
+  too and the node is a coloured block. `gridVisible(spacing, zoom)` drops each
+  background tile when its lines come within eight pixels of each other.
+- The timeline reaches `max(64 bars, content + 4 bars, the view + a screenful)`
+  -- `timelineEndPpq` -- rounded up to a whole bar. Scrolling right never
+  arrives anywhere.
+- **Align is not touched.** A rank stays one column. Folding a tall one into
+  sub-columns would draw a tidier picture and destroy the thing the command is
+  for: a column IS a distance from the sources, and after a fold it is nothing.
+
+**Consequences**
+
+- A graph can be framed at a zoom where nothing is readable. That is the
+  correct answer to "show me everything" and the wheel is right there; refusing
+  to zoom out is not a way to keep text readable, it is a way to lose the node.
+- What `zoom-far` hides includes two click targets, the OPEN chip and the
+  rear-view switch. Both are reachable otherwise -- double-click, the node
+  menu, the same switch on any other node -- and at that size neither could be
+  hit anyway.
+- The horizontal rail's thumb now shrinks as you travel right and never
+  reaches the end, because there is no end. Reaper's does the same. `Fit` still
+  frames `compositionEndPpq()`, the music, so it leaves that room visible to
+  its right.
+- A clip can be dropped at bar 200 of an empty arrangement, and the transport
+  can run past bar 64 with the view following it.
+
+**What would justify revisiting** — A canvas whose node count makes 0.05 as
+arbitrary as 0.25 was, which is the day the graph needs a map rather than a
+zoom. For the timeline, a project format that declares its own length, which
+would make the horizon a property of the song instead of the view.
+
+**Proof in the code** — `MIN_ZOOM`, `nodeDetail` and `gridVisible` in
+`src/renderer/js/core/viewportMath.js`; `applyDetailLevel` in
+`src/renderer/js/modules/routing/routingModule.js`; the `.zoom-far` /
+`.zoom-mute` rules in `src/renderer/styles/base.css`; `timelineEndPpq` in
+`src/renderer/js/modules/sequencer/sequencerModule.js`. Tests:
+`test/navigation.test.mjs` ("framing a column of fourteen nodes fits on
+screen", "the name holds its on-screen size, continuously"),
+`test/routing.test.mjs` ("the canvas publishes its level of detail to the
+stylesheet"), `test/sequencerUi.test.mjs` ("the timeline always keeps a
+screenful of empty bars ahead of the view").

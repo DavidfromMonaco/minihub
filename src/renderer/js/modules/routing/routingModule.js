@@ -39,7 +39,9 @@ import {
   screenToWorld,
   zoomAt,
   panFromStart,
-  fitViewport
+  fitViewport,
+  nodeDetail,
+  gridVisible
 } from '../../core/viewportMath.js';
 import {
   buildVisualNodes,
@@ -80,7 +82,7 @@ export function createRoutingModule(hub) {
   let nodeEls = new Map(); // nodeId -> <g>
   let cableEls = new Map(); // cableId -> <path> (visible)
   let cableHits = new Map(); // cableId -> <path> (invisible wide hit area)
-  let gridRects = []; // background rects that follow the viewBox
+  let gridRects = []; // background rects that follow the viewBox: [major, minor]
   let viewport = { x: 0, y: 0, zoom: 1 }; // world top-left + scale
   let placedSignature = '';               // which nodes, at which sizes, were separated
 
@@ -1459,6 +1461,30 @@ export function createRoutingModule(hub) {
       rect.setAttribute('width', w / viewport.zoom);
       rect.setAttribute('height', h / viewport.zoom);
     }
+    applyDetailLevel();
+  }
+
+  /**
+   * Publish what this zoom is worth drawing: two classes and one size.
+   *
+   * Here rather than in `render()` because zooming does not rebuild the graph
+   * -- the viewBox changes and the same nodes are seen from further away, so
+   * the level of detail has to follow the viewport, not the topology.
+   *
+   * The custom property goes through the CSSOM, like the sequencer's
+   * `--seq-beat`: the CSP drops a style ATTRIBUTE, and this is not one.
+   */
+  function applyDetailLevel() {
+    if (!svg) return;
+    const detail = nodeDetail(viewport.zoom);
+    svg.classList.toggle('zoom-far', detail.far);
+    svg.classList.toggle('zoom-mute', detail.mute);
+    svg.style.setProperty('--node-title-size', `${detail.titleSize}px`);
+    // Pulling back, the fine tile is the first to stop being a grid; at the
+    // floor the coarse one goes too and the canvas is plain.
+    const [major, minor] = gridRects;
+    if (major) major.classList.toggle('off', !gridVisible(GRID_SIZE * 5, viewport.zoom));
+    if (minor) minor.classList.toggle('off', !gridVisible(GRID_SIZE, viewport.zoom));
   }
 
   function updateZoomDisplay() {

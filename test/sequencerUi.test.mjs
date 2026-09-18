@@ -53,6 +53,11 @@ function captureContainer() {
   const clips = [];
   let metronomeLight = null;
   let markup = '';
+  // The scrolling element, REBUILT on every render exactly as the browser
+  // rebuilds it: `container.innerHTML = ...` throws the old one away, and a
+  // new one starts at scroll zero. A stub that survived would hide the very
+  // thing this models -- that putting the scroll back is the module's job.
+  let scroller = null;
   container.clientWidth = 1200;
   Object.defineProperty(container, 'innerHTML', {
     get: () => markup,
@@ -62,7 +67,14 @@ function captureContainer() {
       controls.clear();
       clips.length = 0;
       metronomeLight = null;
-      for (const action of ['open-routing', 'go-start', 'go-end', 'play', 'start-record', 'stop', 'toggle-metronome']) {
+      scroller = makeEl('div');
+      scroller.dataset.timelineScroll = '';
+      scroller.scrollTop = 0;
+      scroller.scrollLeft = 0;
+      scroller.clientHeight = 600;
+      scroller.clientWidth = 940;
+      for (const action of ['open-routing', 'go-start', 'go-end', 'play', 'start-record', 'stop',
+        'toggle-metronome', 'add-midi', 'add-audio']) {
         if (!markup.includes(`data-action="${action}"`)) continue;
         const button = makeEl('button');
         button.dataset.action = action;
@@ -103,12 +115,14 @@ function captureContainer() {
     const controlMatch = /^\[data-control="([^"]+)"\]$/.exec(selector);
     if (controlMatch) return controls.get(controlMatch[1]) || null;
     if (selector === '[data-metronome-light]') return metronomeLight;
+    if (selector === '[data-timeline-scroll]') return scroller;
     return null;
   };
   container.querySelectorAll = (selector) => selector === '.seq-clip' ? clips : [];
   return {
     container, markup: () => markup, action: (name) => actions.get(name),
-    control: (name) => controls.get(name), light: () => metronomeLight, clips: () => clips
+    control: (name) => controls.get(name), light: () => metronomeLight, clips: () => clips,
+    scroller: () => scroller
   };
 }
 
@@ -604,6 +618,130 @@ test('the timeline carries the view with the playhead instead of pinning the ope
 
   assert.equal(followScrollPpq(10, 0, 0), null, 'an unmeasured viewport is left alone');
   assert.equal(followScrollPpq(Number.NaN, 0, viewport), null);
+});
+
+/**
+ * The defect this replaces: `render()` replaces the scrolling element and put
+ * back only `scrollLeft`. Thirteen rows fit on a screen, so past the
+ * thirteenth track every repaint -- and they come from a MIDI port appearing
+ * as much as from your own edits -- threw the view back to the first tracks.
+ * Then "+ MIDI Track" made a track below the fold and showed you the top.
+ */
+test('the arrangement stays where you scrolled it, and a new track comes to you', async () => {
+  const { hub } = await runtime();
+  hub.nodes.create('sequencer');
+  for (let index = 0; index < 20; index += 1) hub.sequencer.model.addTrack('midi');
+  hub.modules.register(createSequencerModule(hub));
+  const view = captureContainer();
+  hub.modules.activate('sequencer', view.container);
+
+  // Scroll down to the rows near the bottom and let the module hear about it.
+  view.scroller().scrollTop = 900;
+  fire(view.scroller(), 'scroll');
+
+  // Anything at all repaints: renaming a track, a clip moving, a port arriving.
+  hub.sequencer.changed({ syncNative: false, invalidateEditors: false });
+  assert.equal(view.scroller().scrollTop, 900,
+    'a repaint keeps the tracks you were looking at');
+
+  // The other half of the same defect, and the one that emptied the lanes:
+  // only the clips around the current scroll are drawn, and the repaint that
+  // draws the next ones is queued by this very listener. A clip at bar 101 of
+  // a track is nowhere in the markup until the view goes near it.
+  const far = hub.sequencer.model.state.tracks[0];
+  hub.sequencer.model.addMidiClip(far.id, 400, 16, []);
+  hub.sequencer.changed({ syncNative: false, invalidateEditors: false });
+  assert.doesNotMatch(view.markup(), /data-clip-id/, 'nothing that far out is drawn yet');
+  view.scroller().scrollLeft = 400 * hub.sequencer.model.state.zoom;
+  fire(view.scroller(), 'scroll');
+  await flush();
+  assert.match(view.markup(), /data-clip-id/,
+    'scrolling to the clip repaints the lane it lives in');
+
+  // Back to the top by hand, then add a track: it is row 21, far below the
+  // fold, and the view has to go to it.
+  view.scroller().scrollTop = 0;
+  fire(view.scroller(), 'scroll');
+  view.action('add-midi')._listeners.click.forEach((fn) => fn({ preventDefault() {} }));
+  assert.equal(hub.sequencer.model.state.tracks.length, 21, 'the track was made');
+  const top = 30 + 20 * 64; // RULER_HEIGHT + index * TRACK_HEIGHT
+  assert.ok(view.scroller().scrollTop > 0, 'the view followed the new track');
+  assert.ok(top + 64 <= view.scroller().scrollTop + 600, 'and the whole row is on screen');
+});
+
+test('the timeline always keeps a screenful of empty bars ahead of the view', async () => {
+  const { timelineEndPpq } = await import('../src/renderer/js/modules/sequencer/sequencerModule.js');
+  const minimumPpq = 256; // TIMELINE_BEATS: 64 bars, what an empty project opens on
+
+  // An untouched project: the opening horizon, not a horizon of nothing.
+  assert.equal(timelineEndPpq({ minimumPpq, contentEndPpq: 4, scrollPpq: 0, viewportPpq: 40 }), 256);
+
+  // Scrolling right used to stop at that 256 whatever you did. It must not:
+  // dropping a clip at bar 200 of an empty arrangement is ordinary work.
+  const far = timelineEndPpq({ minimumPpq, contentEndPpq: 4, scrollPpq: 800, viewportPpq: 40 });
+  assert.ok(far >= 800 + 40, `the view at 800 must be reachable, got ${far}`);
+  assert.ok(far - (800 + 40) >= 40, 'with at least a screenful still ahead of it');
+
+  // The content still pushes it, and still with room to spare at the end.
+  assert.ok(timelineEndPpq({ minimumPpq, contentEndPpq: 2000, scrollPpq: 0, viewportPpq: 40 }) > 2000,
+    'a long arrangement is not cut at its last clip');
+
+  // Whole bars, so the ruler's last mark is a bar and the width does not
+  // wobble by a pixel on every scroll event.
+  for (const scrollPpq of [0, 13, 101.5, 777.25]) {
+    const end = timelineEndPpq({ minimumPpq, contentEndPpq: 4, scrollPpq, viewportPpq: 37.5 });
+    assert.equal(end % 4, 0, `${end} is a whole number of bars`);
+  }
+
+  // Monotone in the scroll: travelling right never shortens the timeline
+  // under your own view, which would snap the scroll back.
+  let previous = 0;
+  for (let scrollPpq = 0; scrollPpq < 4000; scrollPpq += 97) {
+    const end = timelineEndPpq({ minimumPpq, contentEndPpq: 4, scrollPpq, viewportPpq: 40 });
+    assert.ok(end >= previous, 'the horizon never retreats while scrolling right');
+    previous = end;
+  }
+
+  assert.ok(timelineEndPpq() >= 4, 'and an unmeasured call still returns a timeline');
+});
+
+test('the lanes are repainted before the view runs off the clips that are drawn', async () => {
+  const { outsideDrawnWindow } = await import('../src/renderer/js/modules/sequencer/sequencerModule.js');
+  // A render at scroll 100 on a 40-quarter screen draws [60, 180].
+  const drawn = { startPpq: 60, endPpq: 180, viewportPpq: 40 };
+
+  assert.equal(outsideDrawnWindow(100, drawn), false, 'where it was drawn, nothing to do');
+  assert.equal(outsideDrawnWindow(120, drawn), false, 'and a screen of slack in hand');
+  assert.equal(outsideDrawnWindow(135, drawn), true, 'approaching the right edge repaints early');
+  assert.equal(outsideDrawnWindow(55, drawn), true, 'and so does going back past the left one');
+  assert.equal(outsideDrawnWindow(4000, drawn), true, 'a jump far out is outside, not forgotten');
+  assert.equal(outsideDrawnWindow(0, {}), true, 'an unpublished window always repaints');
+});
+
+test('a track row is brought into view without dragging the arrangement around', async () => {
+  const { revealScrollTop } = await import('../src/renderer/js/modules/sequencer/sequencerModule.js');
+  // The arrangement's own numbers: a 30px ruler floating over 64px rows.
+  const row = (index) => ({ top: 30 + index * 64, height: 64, stickyTop: 30, viewHeight: 600 });
+
+  // What was broken: thirteen rows fit, so the twentieth is below the fold,
+  // and the render that follows "+ MIDI Track" put the view back at zero.
+  const twentieth = revealScrollTop({ ...row(19), scrollTop: 0 });
+  assert.ok(twentieth > 0, 'a row below the fold pulls the view down');
+  assert.ok(30 + 19 * 64 + 64 <= twentieth + 600, 'and the whole row lands on screen');
+
+  // Already visible: nothing moves. A reveal that scrolls anyway drags the
+  // arrangement under the hand every time a track is touched.
+  assert.equal(revealScrollTop({ ...row(2), scrollTop: 0 }), 0);
+  assert.equal(revealScrollTop({ ...row(19), scrollTop: twentieth }), twentieth);
+
+  // Above the fold, the ruler does not get to cover the row it reveals.
+  const back = revealScrollTop({ ...row(1), scrollTop: 900 });
+  assert.ok(back <= 30 + 64 - 30, 'scrolling back up clears the sticky ruler');
+  assert.ok(back >= 0, 'and never goes negative');
+
+  assert.equal(revealScrollTop({ ...row(19), scrollTop: 40, viewHeight: 0 }), 40,
+    'an unmeasured viewport is left alone');
+  assert.equal(revealScrollTop(), 0);
 });
 
 test('Fit and Focus are two named framings, and the ruler stays readable at the bottom of the range', async () => {

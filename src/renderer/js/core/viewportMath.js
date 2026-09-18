@@ -15,13 +15,84 @@
  * viewport's top-left corner, `zoom` is the scale.
  */
 
-export const MIN_ZOOM = 0.25; // 25%
+/**
+ * The zoom floor, and why it is this low.
+ *
+ * It was 0.25, and that number was what made the canvas feel finite. Align
+ * stacks every node at the same distance from the sources into one column --
+ * which is what a rank means, and what every other node editor draws -- so
+ * twelve nodes hanging off one controller is a column 2,560 units tall. On a
+ * 1400 x 760 canvas that frames at exactly 0.250: the floor, touched. Fourteen
+ * nodes need 0.208, and `fitToNodes` could not reach it, so Align laid the
+ * graph out correctly and then showed you the top two thirds of it.
+ *
+ * 0.05 is chosen so that "frame everything" is never a lie: a fifty-node fan
+ * frames at 0.049. What a node LOOKS like down there is `nodeDetail`'s
+ * business, not the floor's -- refusing to zoom out is not a way to keep text
+ * readable, it is a way to lose the node.
+ */
+export const MIN_ZOOM = 0.05; // 5%
 export const MAX_ZOOM = 2.5; // 250%
 export const DEFAULT_VIEWPORT = { x: 0, y: 0, zoom: 1 };
 
 // Fit-to-nodes defaults.
 export const FIT_PADDING = 60; // screen px reserved around the fitted nodes
 export const FIT_SINGLE_MAX_ZOOM = 1.5; // comfortable cap when fitting one node
+
+/** Under this, a node is drawn as a named block instead of a faceplate. */
+const DETAIL_ZOOM = 0.5;
+/** The title's normal size, in world units -- `.node-title` in base.css. */
+const TITLE_WORLD_PX = 12;
+/**
+ * How big the title is allowed to grow. A node is 200 units wide and the text
+ * starts 12 in, so about 30 is where a ten-character name still ends before
+ * the node does; past that the clip path cuts names rather than shrinking them.
+ */
+const TITLE_MAX_PX = 30;
+/** The on-screen size the name tries to hold on to while the node shrinks. */
+const TITLE_TARGET_PX = 9;
+/** The on-screen size below which a name is a smudge, not a word. */
+const TITLE_LEGIBLE_PX = 5.5;
+
+/**
+ * How much of a node to draw at this zoom.
+ *
+ * The convention every node editor lands on: far out, the ports, badges and
+ * faceplate legends stop being information and become grain, so they go, and
+ * the one thing worth keeping -- which node this is -- is drawn bigger so it
+ * survives the shrinking. Blender flattens the node, Blueprints drops its
+ * pins; both keep the name until it too is unreadable, and then drop it.
+ *
+ * `far` and `mute` are published as classes and `titleSize` as a custom
+ * property, so the decision is made once here and the stylesheet does the
+ * drawing. Nothing is removed that cannot be reached another way: what goes
+ * at `far` is the OPEN chip (double-click, and the node menu) and the rear-view
+ * switch (the same switch on every other node, and the toolbar).
+ */
+export function nodeDetail(zoom) {
+  const z = Number.isFinite(zoom) && zoom > 0 ? zoom : DEFAULT_VIEWPORT.zoom;
+  // Not gated on `far`: the size has to be continuous in the zoom, or crossing
+  // the threshold pops the name from six pixels to eleven in one wheel notch.
+  // It holds TITLE_TARGET_PX from 75% down to 30%, then decays to the cap.
+  const titleSize = Math.min(TITLE_MAX_PX, Math.max(TITLE_WORLD_PX, Math.round(TITLE_TARGET_PX / z)));
+  return { far: z < DETAIL_ZOOM, mute: titleSize * z < TITLE_LEGIBLE_PX, titleSize };
+}
+
+/**
+ * Whether a grid whose lines are `spacing` world units apart is worth painting.
+ *
+ * The background is two tiled patterns, 20 and 100 units. At 25% the fine one
+ * is five screen pixels apart, which is not a grid -- it is a grey wash over
+ * the whole canvas, and at the new floor it is solid. Coarsening as you pull
+ * back is what a grid does everywhere; eight pixels is where a line still
+ * reads as a line.
+ */
+export function gridVisible(spacing, zoom) {
+  const s = Number(spacing);
+  const z = Number(zoom);
+  if (!Number.isFinite(s) || !Number.isFinite(z)) return false;
+  return s * z >= 8;
+}
 
 export function clampZoom(zoom) {
   if (!Number.isFinite(zoom)) return DEFAULT_VIEWPORT.zoom;

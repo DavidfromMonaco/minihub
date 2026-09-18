@@ -7,6 +7,30 @@ finished, delete its entry**, in the same commit. What was done lives in git and
 
 ## Started, not finished
 
+**Two canvases that ended — built, not seen in the application yet** — from the
+author's own use on 2026-09-18: Align on twelve nodes "reached the limits" of
+the Patch Bay, and the sequencer's timeline "loses the tracks after a fairly
+short while". Both are D-047. The zoom floor is 0.05 instead of 0.25 and a node
+sheds its legends and grows its name as the canvas pulls back; the timeline
+always keeps a screenful of empty bars ahead of the view.
+- Found while reproducing the second one, and the real cause of the tracks
+  emptying: `bind()` is a sibling of `render()` in `sequencerModule.js`, so the
+  scroll listener closed over nothing and **every scroll event threw**
+  `visibleStart is not defined`. The repaint that draws the clips you scroll
+  towards was therefore never queued. Fixed (`drawnWindow`,
+  `outsideDrawnWindow`) and nothing in the suite had scrolled: the shim had no
+  `requestAnimationFrame` and its events carried no `currentTarget`, so the
+  handler could not even run. Both added.
+- Also fixed: the vertical scroll was not put back after a render -- only
+  `scrollLeft` was -- so past the thirteenth track every repaint threw the view
+  to the top, and "+ MIDI Track" made a track below the fold and showed you the
+  first ones. It is kept now, and a new track is brought to the screen.
+- Not seen yet: any of it on screen. 1251 tests and the 15 rules pass, and the
+  regression test was checked to fail without the fix -- no one has looked at
+  the canvas at 10%, at the name that grows, or at a timeline past bar 64.
+- Left alone on purpose: `alignPositions`. A rank stays one column, which is
+  what every other node editor draws and what makes the layout readable.
+
 **One Ring, made native** — started 2026-09-16 on the author's word, in place
 of the Matrix node (ROADMAP item 7). One Ring becomes a node of MiniHub with
 every function of the VST, its clock in the engine, its commands through the

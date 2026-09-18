@@ -24,7 +24,14 @@ export function makeEl(tag) {
     _listeners: {},
     textContent: '',
     parentNode: null,
-    style: {},
+    // Custom properties are how the renderer publishes a computed length to
+    // the stylesheet (`--seq-beat`, `--node-title-size`): the CSP drops a
+    // style ATTRIBUTE, and a CSSOM write is not one. Recorded, not resolved.
+    style: {
+      setProperty(name, value) { this[name] = String(value); },
+      getPropertyValue(name) { return this[name] ?? ''; },
+      removeProperty(name) { delete this[name]; }
+    },
     disabled: false,
     value: ''
   };
@@ -127,12 +134,22 @@ export function installDom() {
     addEventListener: (t, fn) => { (winListeners[t] = winListeners[t] || new Set()).add(fn); },
     removeEventListener: (t, fn) => { winListeners[t]?.delete(fn); }
   };
+  // The renderer defers a repaint to the next frame in two places -- the
+  // sequencer's scroll virtualization and its resize. Absent, both threw, and
+  // a suite that never scrolled never noticed. `setImmediate` is a frame here:
+  // asynchronous, and reached by the same `flush()` the tests already await.
+  globalThis.requestAnimationFrame = (fn) => setImmediate(() => fn(Date.now()));
+  globalThis.cancelAnimationFrame = () => {};
 }
 
 /** Dispatch a synthetic event to the listeners registered on `el`. */
 export function fire(el, type, init = {}) {
   const evt = {
     target: init.target || el,
+    // The element the listener is attached to, which for a synthetic dispatch
+    // is the one it is dispatched on. Handlers that read the scroller's own
+    // position use it rather than `target`.
+    currentTarget: init.currentTarget || el,
     button: init.button ?? 0,
     clientX: init.clientX ?? 0,
     clientY: init.clientY ?? 0,

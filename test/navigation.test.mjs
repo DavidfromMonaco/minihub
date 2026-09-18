@@ -10,6 +10,9 @@ import {
   zoomAt,
   panBy,
   panFromStart,
+  fitViewport,
+  nodeDetail,
+  gridVisible,
   DEFAULT_VIEWPORT
 } from '../src/renderer/js/core/viewportMath.js';
 import { NetworkViewport } from '../src/renderer/js/core/networkViewport.js';
@@ -18,13 +21,77 @@ import { NetworkLayout } from '../src/renderer/js/core/networkLayout.js';
 const approx = (a, b, eps = 1e-6) => assert.ok(Math.abs(a - b) < eps, `${a} ~= ${b}`);
 
 // ---- zoom limits ------------------------------------------------------------
-test('zoom is clamped to 25%..250%', () => {
-  assert.equal(clampZoom(0.1), MIN_ZOOM);
+test('zoom is clamped to 5%..250%', () => {
+  assert.equal(clampZoom(0.01), MIN_ZOOM);
   assert.equal(clampZoom(3), MAX_ZOOM);
   assert.equal(clampZoom(1), 1);
   assert.equal(clampZoom(0.5), 0.5);
+  assert.equal(clampZoom(0.1), 0.1, 'a tenth is a real zoom now, not the floor');
   assert.equal(clampZoom(NaN), 1);
   assert.equal(clampZoom(Infinity), 1); // non-finite -> default 100%
+});
+
+/**
+ * The floor was 0.25 and that is what made the canvas feel finite: Align lays
+ * a rank out in one column, and past a dozen nodes `fitViewport` was asked for
+ * a zoom it was not allowed to return, so the command worked and the result
+ * was off screen. This is the case that was broken.
+ */
+test('framing a column of fourteen nodes fits on screen', () => {
+  const rects = Array.from({ length: 14 }, (_, index) => ({
+    x: 80, y: 80 + index * 260, width: 200, height: 220
+  }));
+  const canvas = { width: 1400, height: 760 };
+  const viewport = fitViewport(rects, canvas);
+  const top = (rects[0].y - viewport.y) * viewport.zoom;
+  const bottom = (rects[13].y + rects[13].height - viewport.y) * viewport.zoom;
+  assert.ok(viewport.zoom > MIN_ZOOM, `needed ${viewport.zoom} which the floor must allow`);
+  assert.ok(top >= 0, 'the first node is on screen');
+  assert.ok(bottom <= canvas.height, `the last node ends at ${bottom} of ${canvas.height}`);
+});
+
+// ---- level of detail --------------------------------------------------------
+/**
+ * Lowering the floor is only half of it. Without these the graph fits and is
+ * a field of grey grain: five-pixel badges, port names over each other, and
+ * the node's own name at three pixels.
+ */
+test('a node sheds its legends once it is drawn small', () => {
+  assert.equal(nodeDetail(1).far, false, 'nothing is hidden at 100%');
+  assert.equal(nodeDetail(0.6).far, false);
+  assert.equal(nodeDetail(0.45).far, true, 'a node under 100px wide is a block');
+  assert.equal(nodeDetail(0.1).far, true);
+});
+
+test('the name holds its on-screen size, continuously', () => {
+  assert.equal(nodeDetail(1).titleSize, 12, 'the near view is the stylesheet value');
+  // The whole point of not gating the growth on `far`: pulling back never
+  // makes the name smaller in world units, so it never jumps on screen.
+  let previous = Infinity;
+  for (let zoom = MIN_ZOOM; zoom <= 1; zoom = Math.round((zoom + 0.01) * 100) / 100) {
+    const size = nodeDetail(zoom).titleSize;
+    assert.ok(size <= previous, `${size} at ${zoom} grew back after ${previous}`);
+    assert.ok(size >= 12 && size <= 30, `${size} at ${zoom} stays inside the node`);
+    if (zoom >= 0.3 && zoom <= 0.75) {
+      const onScreen = size * zoom;
+      assert.ok(onScreen >= 8.5 && onScreen <= 9.6, `${onScreen.toFixed(1)}px at ${zoom} holds the target`);
+    }
+    previous = size;
+  }
+});
+
+test('the name is dropped rather than drawn as a smudge', () => {
+  assert.equal(nodeDetail(0.25).mute, false, 'still a word at a quarter');
+  assert.equal(nodeDetail(0.15).mute, true);
+  assert.equal(nodeDetail(MIN_ZOOM).mute, true);
+});
+
+test('a grid too fine to read is not painted', () => {
+  assert.equal(gridVisible(20, 1), true);
+  assert.equal(gridVisible(20, 0.3), false, 'six pixels apart is a wash, not a grid');
+  assert.equal(gridVisible(100, 0.3), true, 'the coarse tile survives further out');
+  assert.equal(gridVisible(100, MIN_ZOOM), false, 'and at the floor the canvas is plain');
+  assert.equal(gridVisible(20, NaN), false);
 });
 
 test('zoomAt clamps the new zoom', () => {

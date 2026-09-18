@@ -34,6 +34,43 @@ const { NetworkViewport } = await import('../src/renderer/js/core/networkViewpor
 const { GRID_SIZE } = await import('../src/renderer/js/core/grid.js');
 const { NodeInstanceManager } = await import('../src/renderer/js/core/nodeInstances.js');
 
+/**
+ * The wiring behind `nodeDetail`: the decision is arithmetic and tested in
+ * navigation.test.mjs, but a class nobody sets and a custom property nobody
+ * publishes would leave the canvas exactly as illegible as before, with every
+ * test green. So: mount far out, and read what the canvas says about itself.
+ */
+test('the canvas publishes its level of detail to the stylesheet', () => {
+  const near = makeHub({ networkViewport: { x: 0, y: 0, zoom: 1 } });
+  seedNetwork(near);
+  const a = makeContainer();
+  const nearModule = createRoutingModule(near);
+  nearModule.mount(a.container);
+  assert.equal(a.svg._classSet.has('zoom-far'), false, 'at 100% everything is drawn');
+  assert.equal(a.svg.style['--node-title-size'], '12px', 'and the name keeps its own size');
+  nearModule.unmount();
+
+  const far = makeHub({ networkViewport: { x: 0, y: 0, zoom: 0.2 } });
+  seedNetwork(far);
+  const b = makeContainer();
+  const farModule = createRoutingModule(far);
+  farModule.mount(b.container);
+  assert.equal(b.svg._classSet.has('zoom-far'), true, 'a fifth is far: the legends go');
+  assert.equal(b.svg.style['--node-title-size'], '30px', 'and the name is drawn bigger');
+  // The fine tile is a grey wash at this distance; the coarse one still reads.
+  const grids = b.svg.children.filter((child) => child._classSet.has('grid-bg'));
+  assert.equal(grids.length, 2, 'two background tiles, [major, minor]');
+  assert.equal(grids[0]._classSet.has('off'), false, 'the coarse grid is still painted');
+  assert.equal(grids[1]._classSet.has('off'), true, 'the fine one is not');
+
+  // The classes follow the viewport, not the topology: zooming back in must
+  // undo them, or the graph stays coarse for the rest of the session.
+  fire(b.svg, 'wheel', { clientX: 10, clientY: 10, deltaY: -2000 });
+  assert.ok(far.settings.get('networkViewport').zoom > 0.2, 'the wheel zoomed in');
+  assert.equal(b.svg._classSet.has('zoom-far'), false, 'and the detail came back');
+  farModule.unmount();
+});
+
 test('Front/Rear view swaps cable layer order without changing topology', () => {
   const hub = makeHub({ networkViewport: { x: 0, y: 0, zoom: 1 } });
   seedNetwork(hub);
