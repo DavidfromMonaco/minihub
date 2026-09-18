@@ -694,22 +694,33 @@ export function createSequencerModule(hub) {
    *  the thumb's travel maps onto the scroller's. */
   function bindRail() {
     const rail = container?.querySelector('[data-seq-rail]');
-    const scroller = container?.querySelector('[data-timeline-scroll]');
-    if (!rail || !scroller) return;
+    if (!rail) return;
+    /**
+     * Every element read LIVE, never the ones this closure was born with.
+     *
+     * Scrolling far enough leaves the drawn window and queues a `render()`,
+     * which replaces `container.innerHTML` -- rail and scroller included. From
+     * that frame on, the elements a `pointerdown` captured are detached, and
+     * assigning `scrollLeft` to a node that is no longer in the document does
+     * nothing at all: the rail stopped answering after about a quarter of a
+     * screen, in either direction, with no error anywhere. `railGeometry()`
+     * already queries the page each time; the rectangle and the scroller have
+     * to come from the same place.
+     */
     const seekTo = (clientX) => {
-      const rect = rail.getBoundingClientRect?.();
       const geometry = railGeometry();
+      const rect = geometry?.rail.getBoundingClientRect?.();
       if (!rect || !geometry?.thumb) return;
-      scroller.scrollLeft = geometry.thumb.scrollFor(clientX - rect.left);
+      geometry.rail.classList.add('dragging');
+      geometry.scroller.scrollLeft = geometry.thumb.scrollFor(clientX - rect.left);
     };
     rail.addEventListener('pointerdown', (event) => {
       if (event.button !== 0) return;
       event.preventDefault();
-      rail.classList.add('dragging');
       seekTo(event.clientX);
       const move = (moveEvent) => seekTo(moveEvent.clientX);
       const up = () => {
-        rail.classList.remove('dragging');
+        container?.querySelector('[data-seq-rail]')?.classList.remove('dragging');
         document.removeEventListener('pointermove', move);
         document.removeEventListener('pointerup', up);
         document.removeEventListener('pointercancel', up);
@@ -729,17 +740,26 @@ export function createSequencerModule(hub) {
   function bindPan() {
     const scroller = container?.querySelector('[data-timeline-scroll]');
     if (!scroller) return;
+    // The live scroller on every move, for the reason `bindRail` gives: a pan
+    // that crosses the virtualization boundary re-renders the timeline under
+    // the hand, and the element this closure captured is detached from then
+    // on. `from` stays valid across that repaint -- `render()` puts the scroll
+    // back from `scrollPpq`, so the new element opens where the old one was.
+    const live = () => container?.querySelector('[data-timeline-scroll]');
     scroller.addEventListener('pointerdown', (event) => {
       if (event.button !== 1) return;
       event.preventDefault();
       const from = { x: event.clientX, y: event.clientY, left: scroller.scrollLeft, top: scroller.scrollTop };
       scroller.classList.add('panning');
       const move = (moveEvent) => {
-        scroller.scrollLeft = from.left - (moveEvent.clientX - from.x);
-        scroller.scrollTop = from.top - (moveEvent.clientY - from.y);
+        const element = live();
+        if (!element) return;
+        element.classList.add('panning');
+        element.scrollLeft = from.left - (moveEvent.clientX - from.x);
+        element.scrollTop = from.top - (moveEvent.clientY - from.y);
       };
       const up = () => {
-        scroller.classList.remove('panning');
+        live()?.classList.remove('panning');
         document.removeEventListener('pointermove', move);
         document.removeEventListener('pointerup', up);
         document.removeEventListener('pointercancel', up);

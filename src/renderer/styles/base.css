@@ -1981,7 +1981,13 @@ body ::-webkit-scrollbar-corner { background:transparent; }
 .seq-marquee { position:absolute; z-index:6; border:1px solid rgba(79,140,255,.9); border-radius:2px; background:rgba(79,140,255,.14); pointer-events:none; }
 .seq-loop-range { position:absolute; top:0; z-index:1; pointer-events:none; border-left:1px solid transparent; border-right:1px solid transparent; }
 .seq-loop-range.enabled { background:rgba(79,140,255,.055); border-color:rgba(79,140,255,.45); }
-.seq-playhead { position:absolute; top:0; z-index:8; width:1px; background:#ef6a5b; pointer-events:none; box-shadow:0 0 4px rgba(239,106,91,.8); }
+/* Under .seq-track-head (7), and that single digit is the whole rule: the
+   heads are sticky at the left edge, so a cursor scrolled out of the timeline
+   passes BEHIND them instead of being drawn across a track's own buttons and
+   faders. Above 3 and 1, which are the two rulers and the loop range -- the
+   things it has to cross -- and below the corner (9), which is the head of the
+   ruler and covers the cursor at the top left for the same reason. */
+.seq-playhead { position:absolute; top:0; z-index:6; width:1px; background:#ef6a5b; pointer-events:none; box-shadow:0 0 4px rgba(239,106,91,.8); }
 .seq-playhead::before { content:''; position:absolute; top:0; left:-4px; border-left:4px solid transparent; border-right:4px solid transparent; border-top:7px solid #ef6a5b; }
 .seq-empty { position:absolute; left:var(--seq-head,260px); right:0; padding:44px 20px; color:var(--text-faint); text-align:center; }
 .seq-editor { min-height:120px; overflow:hidden; }

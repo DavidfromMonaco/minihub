@@ -58,6 +58,9 @@ function captureContainer() {
   // new one starts at scroll zero. A stub that survived would hide the very
   // thing this models -- that putting the scroll back is the module's job.
   let scroller = null;
+  // The horizontal rail under the arrangement, and its thumb.
+  let rail = null;
+  let railThumbEl = null;
   // The clock ruler is the one row redrawn on its own, when the tempo moves.
   let timeRuler = null;
   container.clientWidth = 1200;
@@ -99,6 +102,16 @@ function captureContainer() {
       scroller.scrollLeft = 0;
       scroller.clientHeight = 600;
       scroller.clientWidth = 940;
+      // An arrangement wider than its window, or there is nothing to scroll and
+      // the rail hides itself -- which is the state every test here ran in.
+      scroller.scrollWidth = 6000;
+      // Rebuilt with everything else, for the same reason the scroller is: a
+      // drag holds these elements, and `render()` throws them away.
+      rail = makeEl('div');
+      rail.dataset.seqRail = '';
+      rail.clientWidth = 940;
+      railThumbEl = makeEl('div');
+      railThumbEl.dataset.seqRailThumb = '';
       for (const action of ['open-routing', 'go-start', 'go-end', 'play', 'start-record', 'stop',
         'toggle-metronome', 'add-midi', 'add-audio']) {
         if (!markup.includes(`data-action="${action}"`)) continue;
@@ -142,6 +155,8 @@ function captureContainer() {
     if (controlMatch) return controls.get(controlMatch[1]) || null;
     if (selector === '[data-metronome-light]') return metronomeLight;
     if (selector === '[data-timeline-scroll]') return scroller;
+    if (selector === '[data-seq-rail]') return rail;
+    if (selector === '[data-seq-rail-thumb]') return railThumbEl;
     if (selector === '[data-seq-time-scale]') return timeRuler;
     return null;
   };
@@ -149,7 +164,7 @@ function captureContainer() {
   return {
     container, markup: () => markup, action: (name) => actions.get(name),
     control: (name) => controls.get(name), light: () => metronomeLight, clips: () => clips,
-    scroller: () => scroller, timeRuler: () => timeRuler
+    scroller: () => scroller, timeRuler: () => timeRuler, rail: () => rail
   };
 }
 
@@ -1092,4 +1107,67 @@ test('the arrangement replaces the native horizontal scrollbar rather than keepi
     'the faceplate declares its own in its own sheet, and `body ` scoping is what lets it win (D-012)');
   assert.doesNotMatch(css, /^::-webkit-scrollbar/m,
     'nothing here is declared unscoped, which would beat nothing but reach everything');
+});
+
+test('a drag on the scroll rail survives the repaint it triggers', async () => {
+  const { railThumb } = await import('../src/renderer/js/modules/sequencer/sequencerModule.js');
+  const { hub } = await runtime();
+  hub.nodes.create('sequencer');
+  hub.sequencer.model.addTrack('midi');
+  hub.modules.register(createSequencerModule(hub));
+  const view = captureContainer();
+  hub.modules.activate('sequencer', view.container);
+
+  const rail = view.rail();
+  const stale = view.scroller();
+  assert.ok(rail && stale, 'the rail and the scroller are drawn');
+
+  fire(rail, 'pointerdown', { button: 0, clientX: 100 });
+  const grabbed = stale.scrollLeft;
+  assert.ok(grabbed > 0, 'grabbing the rail scrolls to the point grabbed');
+
+  // What the browser does next: the scroll leaves the drawn window, the module
+  // repaints on the following frame, and every element the pointerdown saw is
+  // replaced. The drag is still running -- its listeners are on `document`.
+  fire(stale, 'scroll', {});
+  await flush();
+  const fresh = view.scroller();
+  assert.notEqual(fresh, stale, 'the repaint replaced the scrolling element');
+
+  fire(globalThis.document, 'pointermove', { clientX: 500 });
+
+  // The defect: the move kept writing to the detached element, where assigning
+  // scrollLeft does nothing and says nothing. The rail stopped answering after
+  // about a quarter of a screen, in either direction.
+  const expected = railThumb({ scrollLeft: 0, scrollWidth: 6000, clientWidth: 940, railWidth: 940 })
+    .scrollFor(500);
+  assert.ok(Math.abs(fresh.scrollLeft - expected) < 1,
+    `the live timeline follows the thumb (${fresh.scrollLeft} vs ${expected})`);
+  assert.equal(stale.scrollLeft, grabbed, 'and the element that was thrown away is left alone');
+
+  fire(globalThis.document, 'pointerup', {});
+});
+
+test('the playhead passes under the track heads, never across them', () => {
+  const css = fs.readFileSync(new URL('../src/renderer/styles/base.css', import.meta.url), 'utf8');
+  // Each of these is one line of base.css, which is how the sheet is written.
+  const layer = (selector) => {
+    const rule = css.split('\n').find((row) => row.startsWith(`${selector} {`));
+    assert.ok(rule, `${selector} has a rule of its own`);
+    const declared = /z-index:([0-9]+)/.exec(rule);
+    assert.ok(declared, `${selector} declares which layer it is on`);
+    return Number(declared[1]);
+  };
+  // The heads are sticky at the left edge. The cursor used to be drawn over
+  // them, so scrolling the timeline away from the playhead painted a red line
+  // straight across a track's buttons and its fader.
+  assert.ok(layer('.seq-playhead') < layer('.seq-track-head'),
+    'the cursor passes behind the track heads');
+  // And still over everything it has to cross inside the timeline.
+  assert.ok(layer('.seq-playhead') > layer('.seq-ruler'));
+  assert.ok(layer('.seq-playhead') > layer('.seq-time-ruler'));
+  assert.ok(layer('.seq-playhead') > layer('.seq-loop-range'));
+  // The corner is the heads' own header: it covers the cursor for the same
+  // reason they do.
+  assert.ok(layer('.seq-corner') > layer('.seq-playhead'));
 });
