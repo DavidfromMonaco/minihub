@@ -29,9 +29,10 @@ an empty project under another name.
   reaches the installer, the portable ZIP and an existing install alike.
 - Not seen yet: the Home sentence on screen, the two dialogs in the author's
   hands, and the shipped template arriving on a machine that never had one.
-- Known and accepted: the shipped template's cables name the controller node of
-  the profile that ships (`minilab-3`). Opened under another profile, they stay
-  unresolved — drawn, not routed — and the user cables their own keyboard.
+- What it is for, the author's words: an example for somebody who has no idea
+  how to use MiniHub. Its cables name the shipped profile's controller node on
+  purpose — replacing it with one's own keyboard and saving a template, or an
+  ordinary project, is what the example is teaching.
 - Left as found: a cable into the controller's MIDI In is dropped in silence
   when no MIDI output is selected on its page (`midiManager.send` answers
   `false` and nothing says so). Reported to the author, not acted on.

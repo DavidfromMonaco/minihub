@@ -1009,8 +1009,13 @@ dialog at all — main answers `{ empty: true }` and the renderer says how a
 template is made, which is the sentence an empty file dialog cannot say.
 
 MiniHub ships one template, `src/main/templates/The basic.minihub`: the
-controller into an empty VST node, that node into the audio output. It travels
-with `src/` into the package and into the installer, and
+controller into an empty VST node, that node into the audio output. It is an
+**example**, for somebody opening MiniHub with no idea what a patch looks like
+— the shortest one that makes a sound. Its cables name the controller node of
+the profile that ships, and swapping that node for one's own keyboard and
+saving the result is the exercise, not a defect to work around.
+
+It travels with `src/` into the package and into the installer, and
 [shippedTemplates.js](src/main/shippedTemplates.js) copies it into the user's
 templates folder at startup — **only when it is not already there**. A native
 file dialog can show one folder and knows nothing of the application's
