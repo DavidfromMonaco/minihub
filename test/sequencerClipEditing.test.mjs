@@ -679,3 +679,37 @@ test('the Clip Editor can sound a note, and only through the cable the Patch Bay
   assert.equal(commands.some((command) => command.type === 'sync'), false,
     'sounding a note is a performance: it writes no state and rebuilds no native plan');
 });
+
+test('the Clip Editor carries the arrangement\'s own scroll rail, in its own window', () => {
+  const editorSource = fs.readFileSync(new URL('../src/renderer/js/clipEditor.js', import.meta.url), 'utf8');
+  const editorCss = fs.readFileSync(new URL('../src/renderer/styles/clip-editor.css', import.meta.url), 'utf8');
+  const baseCss = fs.readFileSync(new URL('../src/renderer/styles/base.css', import.meta.url), 'utf8');
+  const page = fs.readFileSync(new URL('../src/renderer/clip-editor.html', import.meta.url), 'utf8');
+
+  // One component, two windows: the mapping that draws the thumb and the one
+  // that reads a drag on it are the same function or they drift apart.
+  assert.match(editorSource, /from '\.\/ui\/scrollRail\.js'/);
+  assert.match(editorSource, /attachScrollRail\(\{ root, scroller: '\[data-piano-scroll\]' \}\)/);
+  assert.match(editorSource, /\$\{scrollRailMarkup\(\)\}\s*\n\s*<\/section>/,
+    'the rail hangs from the shell, not from inside the scroller it describes');
+
+  // Drawn after the scroll has been put back, and again whenever it moves --
+  // including while the thumb itself is being dragged.
+  assert.match(editorSource, /pianoScroll = \{ left: scroll\.scrollLeft, top: scroll\.scrollTop \};\s*\n\s*pianoRail\.render\(\);/);
+  assert.match(editorSource, /addEventListener\('resize', \(\) => pianoRail\.render\(\)\)/,
+    'a resized window shows less of the clip, so the thumb it drew is a lie');
+  assert.match(editorSource, /pianoRail\.bind\(\);/);
+
+  // An audio clip has no piano roll, so it has no rail either.
+  assert.doesNotMatch(audioMarkupSource(editorSource), /scrollRailMarkup|data-piano-scroll/);
+
+  assert.match(editorCss, /\.clip-piano-shell \{ position:relative;/,
+    'the shell is what the rail is positioned against');
+  assert.match(editorCss, /\.clip-piano-scroll::-webkit-scrollbar:horizontal \{ height:0; \}/,
+    'and the light slab it replaces is gone, as it is under the arrangement');
+
+  // The trap this window is built on: its rule lives in base.css, and a class
+  // whose sheet is not loaded here renders as nothing at all, silently.
+  assert.match(baseCss, /\.scroll-rail \{/);
+  assert.match(page, /href="styles\/base\.css"/);
+});

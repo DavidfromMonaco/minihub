@@ -131,9 +131,11 @@ scope; here are the technical prohibitions:
   Today only the arpeggiator wears the faceplate; extending it is decided editor
   by editor, not in bulk. By default, a new module uses `base.css`.
 
-  Trap: `clip-editor.html` loads **only** `base.css`. Any `op-` class landing
-  there would be unstyled, with no error message whatsoever — `npm run check`
-  now catches it.
+  Trap: `clip-editor.html` is its own window and loads `base.css` plus its own
+  `clip-editor.css` — never the faceplate. Any `op-` class landing there would
+  be unstyled, with no error message whatsoever — `npm run check` now catches
+  it. The same holds for anything shared: a class the Clip Editor uses has to
+  live in one of those two sheets.
 
 - A comment explains **why**, never **what**. The existing files
   (`core/systemNodes.js`, `core/projectKeys.js`) set the expected density: they

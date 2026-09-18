@@ -1,4 +1,5 @@
 import { escapeHtml } from './core/html.js';
+import { attachScrollRail, scrollRailMarkup } from './ui/scrollRail.js';
 import { historyIntent, isTextEditingTarget } from './ui/historyKeys.js';
 import { notesInBox, selectNoteIds } from './core/clipEditorSelection.js';
 import { MIN_NOTE_PPQ, SNAP_STEPS, clampNoteGroupDelta } from './core/sequencerModel.js';
@@ -31,6 +32,20 @@ let lasso = null;
 let reloadQueued = false;
 let reloadFrame = 0;
 let pianoScroll = null;
+/**
+ * The bar under the piano roll: where you are in the clip, how much of it is
+ * on screen, and a thumb to drag. The same object the arrangement carries
+ * (`ui/scrollRail.js`), because a clip is scrolled the same way an
+ * arrangement is and the mapping has to be its own inverse in both.
+ *
+ * `root` is looked up through, never held: every edit redraws the whole
+ * page, and a drag that outlived its own repaint would go on writing to an
+ * element that has left the document.
+ */
+const pianoRail = attachScrollRail({ root, scroller: '[data-piano-scroll]' });
+// A narrower window shows less of the clip, so the thumb it draws is a lie
+// until something redraws it. Nothing else here listens for a resize.
+globalThis.addEventListener('resize', () => pianoRail.render());
 /**
  * A scroll position the NEXT render must adopt instead of the one on screen.
  *
@@ -181,6 +196,7 @@ function midiMarkup(state) {
           <div class="clip-piano-grid" data-piano-grid data-ce-left="${KEY_WIDTH}" data-ce-width="${gridWidth}" data-ce-height="${gridHeight}" data-ce-beat="${view.ppqWidth}">${playheadMarkup()}${noteMarkup(clip)}</div>
         </div>
       </div>
+      ${scrollRailMarkup()}
     </section>`;
 }
 
@@ -311,7 +327,13 @@ function render() {
   } else {
     scrollToNotes(scroll);
   }
-  scroll.addEventListener('scroll', () => { pianoScroll = { left: scroll.scrollLeft, top: scroll.scrollTop }; });
+  scroll.addEventListener('scroll', () => {
+    pianoScroll = { left: scroll.scrollLeft, top: scroll.scrollTop };
+    pianoRail.render();
+  });
+  // Drawn last, once the scroll above has been put where it belongs: the
+  // thumb reports a position, so it is the position that comes first.
+  pianoRail.render();
 }
 
 async function applyMutation(operation, payload) {
@@ -422,6 +444,7 @@ function bind() {
     }));
     return;
   }
+  pianoRail.bind();
   const strength = root.querySelector('[data-quantize="strength"]');
   strength?.addEventListener('input', () => { root.querySelector('[data-strength-output]').textContent = `${strength.value}%`; });
   root.querySelector('[data-action="apply-quantize"]')?.addEventListener('click', () => mutate('quantize', {

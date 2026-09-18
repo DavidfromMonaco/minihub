@@ -17,8 +17,15 @@
 .clip-editor-panel select,.clip-editor-panel input { color:var(--text); background:var(--bg); border:1px solid var(--border); border-radius:5px; }
 .clip-editor-panel select,.clip-editor-panel input[type="number"] { height:27px; padding:0 6px; }
 .clip-editor-panel input[type="range"] { width:110px; }
-.clip-piano-shell { min-height:0; overflow:hidden; }
-.clip-piano-scroll { width:100%; height:100%; overflow:auto; overscroll-behavior:contain; }
+/* `position:relative` is what the rail hangs from: it sits at the bottom of
+   the shell rather than inside the scroller, where it would scroll away
+   with the notes it describes. */
+.clip-piano-shell { position:relative; min-height:0; overflow:hidden; }
+.clip-piano-scroll { width:100%; height:100%; padding-bottom:14px; box-sizing:border-box; overflow:auto; overscroll-behavior:contain; }
+/* Replaced by .scroll-rail, exactly as the arrangement's is. The vertical
+   one is kept: the keyboard is 128 rows and nothing else says where you are
+   in it. */
+.clip-piano-scroll::-webkit-scrollbar:horizontal { height:0; }
 .clip-piano-canvas { position:relative; min-width:100%; background:#131518; }
 .clip-piano-keys { position:sticky; left:0; top:0; z-index:5; background:#202328; border-right:1px solid #4a4f57; }
 /* The gutter width and the row height come from --ce-keys / --ce-row, set on

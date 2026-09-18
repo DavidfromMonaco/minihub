@@ -108,10 +108,10 @@ function captureContainer() {
       // Rebuilt with everything else, for the same reason the scroller is: a
       // drag holds these elements, and `render()` throws them away.
       rail = makeEl('div');
-      rail.dataset.seqRail = '';
+      rail.dataset.scrollRail = '';
       rail.clientWidth = 940;
       railThumbEl = makeEl('div');
-      railThumbEl.dataset.seqRailThumb = '';
+      railThumbEl.dataset.scrollRailThumb = '';
       for (const action of ['open-routing', 'go-start', 'go-end', 'play', 'start-record', 'stop',
         'toggle-metronome', 'add-midi', 'add-audio']) {
         if (!markup.includes(`data-action="${action}"`)) continue;
@@ -155,8 +155,8 @@ function captureContainer() {
     if (controlMatch) return controls.get(controlMatch[1]) || null;
     if (selector === '[data-metronome-light]') return metronomeLight;
     if (selector === '[data-timeline-scroll]') return scroller;
-    if (selector === '[data-seq-rail]') return rail;
-    if (selector === '[data-seq-rail-thumb]') return railThumbEl;
+    if (selector === '[data-scroll-rail]') return rail;
+    if (selector === '[data-scroll-rail-thumb]') return railThumbEl;
     if (selector === '[data-seq-time-scale]') return timeRuler;
     return null;
   };
@@ -1065,41 +1065,11 @@ test('a clip draws its notes in pixels, so resizing it cannot stretch them', asy
     'and a resize rebuilds them, because it moves which part of the source is shown');
 });
 
-test('the scroll rail draws and reads one mapping, and hides when everything fits', async () => {
-  const { railThumb } = await import('../src/renderer/js/modules/sequencer/sequencerModule.js');
-
-  assert.equal(railThumb({ scrollLeft: 0, scrollWidth: 800, clientWidth: 800, railWidth: 800 }), null,
-    'nothing to scroll, no rail: a full-width thumb that cannot move is furniture');
-  assert.equal(railThumb({ scrollWidth: 4000, clientWidth: 1000, railWidth: 0 }), null,
-    'and an unmeasured rail draws nothing rather than dividing by it');
-
-  const dimensions = { scrollWidth: 4000, clientWidth: 1000, railWidth: 1000 };
-  const start = railThumb({ ...dimensions, scrollLeft: 0 });
-  assert.equal(start.left, 3, 'at the left edge the thumb sits on the inset');
-  assert.ok(Math.abs(start.size - 994 * 0.25) < 1, 'the thumb is as wide a fraction as the window is');
-
-  const end = railThumb({ ...dimensions, scrollLeft: 3000 });
-  assert.ok(Math.abs(end.left + end.size - (1000 - 3)) < 1, 'and reaches the far edge at full scroll');
-  assert.equal(railThumb({ ...dimensions, scrollLeft: 99999 }).left, end.left, 'past the end clamps');
-
-  // Draw, then read back: the two directions must be inverses, or the thumb
-  // jumps out from under the pointer that grabbed it.
-  for (const scrollLeft of [0, 250, 1500, 3000]) {
-    const thumb = railThumb({ ...dimensions, scrollLeft });
-    const centre = thumb.left + thumb.size / 2;
-    assert.ok(Math.abs(thumb.scrollFor(centre) - scrollLeft) < 1,
-      `grabbing the thumb at ${scrollLeft} asks for ${scrollLeft}`);
-  }
-  const thumb = railThumb({ ...dimensions, scrollLeft: 0 });
-  assert.equal(thumb.scrollFor(-500), 0, 'dragging past either end clamps rather than overscrolling');
-  assert.equal(thumb.scrollFor(99999), 3000);
-});
-
 test('the arrangement replaces the native horizontal scrollbar rather than keeping it', () => {
   const css = fs.readFileSync(new URL('../src/renderer/styles/base.css', import.meta.url), 'utf8');
   assert.match(css, /\.seq-scroll::-webkit-scrollbar:horizontal \{ height:0; \}/,
     'the light slab under the arrangement is gone');
-  assert.match(css, /\.seq-rail \{/, 'and a four-pixel rail says the same thing in its place');
+  assert.match(css, /\.scroll-rail \{/, 'and a four-pixel rail says the same thing in its place');
   assert.match(css, /body ::-webkit-scrollbar \{/,
     'the shell dresses its remaining scrollbars instead of leaving them white');
   const faceplate = fs.readFileSync(new URL('../src/renderer/styles/omni-pearl.css', import.meta.url), 'utf8');
@@ -1110,7 +1080,7 @@ test('the arrangement replaces the native horizontal scrollbar rather than keepi
 });
 
 test('a drag on the scroll rail survives the repaint it triggers', async () => {
-  const { railThumb } = await import('../src/renderer/js/modules/sequencer/sequencerModule.js');
+  const { railThumb } = await import('../src/renderer/js/ui/scrollRail.js');
   const { hub } = await runtime();
   hub.nodes.create('sequencer');
   hub.sequencer.model.addTrack('midi');

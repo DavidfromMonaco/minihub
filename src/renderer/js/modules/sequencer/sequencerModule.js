@@ -1,4 +1,5 @@
 import { escapeHtml } from '../../core/html.js';
+import { attachScrollRail, scrollRailMarkup } from '../../ui/scrollRail.js';
 import { SEQUENCER_LIMITS, SNAP_STEPS, ZOOM_MAX, ZOOM_MIN, snapStep } from '../../core/sequencerModel.js';
 import { bindTempoInput } from '../../core/tempoControl.js';
 import { isCanonicalMidiIngress } from '../../core/sequencerController.js';
@@ -171,31 +172,6 @@ export const sliderToZoom = (value) => {
   const step = Math.max(0, Math.min(ZOOM_SLIDER_STEPS, Number(value) || 0));
   return Math.round(ZOOM_MIN * (ZOOM_MAX / ZOOM_MIN) ** (step / ZOOM_SLIDER_STEPS) * 100) / 100;
 };
-
-/**
- * The rail thumb, and the scroll position a point on the rail asks for.
- *
- * One function for both directions, because they are inverses: drawing the
- * thumb and reading a drag on it have to use the same mapping, or the thumb
- * jumps out from under the pointer that grabbed it. `null` means the whole
- * arrangement already fits, and a full-width thumb that cannot move is
- * furniture -- the rail hides itself instead.
- */
-export function railThumb({
-  scrollLeft = 0, scrollWidth = 0, clientWidth = 0, railWidth = 0, inset = 3, minSize = 22
-} = {}) {
-  const travel = (Number(scrollWidth) || 0) - (Number(clientWidth) || 0);
-  if (!(travel > 1) || !(clientWidth > 0) || !(railWidth > 0)) return null;
-  const width = Math.max(minSize, railWidth - inset * 2);
-  const size = Math.max(minSize, Math.min(width, width * clientWidth / scrollWidth));
-  const room = Math.max(1, width - size);
-  const ratio = Math.max(0, Math.min(1, scrollLeft / travel));
-  return {
-    size,
-    left: inset + room * ratio,
-    scrollFor: (x) => travel * Math.max(0, Math.min(1, (x - inset - size / 2) / room))
-  };
-}
 
 /**
  * Which clips a rubber band covers.
@@ -644,92 +620,31 @@ export function createSequencerModule(hub) {
   }
 
   /**
-   * The horizontal scroll rail.
+   * The horizontal scroll rail, which `ui/scrollRail.js` owns for both the
+   * arrangement and the Clip Editor's piano roll -- two windows, one mapping,
+   * because a thumb drawn by one rule and read by another jumps out from
+   * under the pointer that grabbed it.
    *
-   * Chromium's own horizontal scrollbar is a wide light slab under the
-   * arrangement, and it was the first thing the author pointed at. This draws
-   * the same information as four dark pixels: where you are, how much of the
-   * arrangement you can see, and it is draggable. It lives OUTSIDE
-   * `.seq-scroll` on purpose -- inside it, it would scroll away with the
-   * content it describes.
+   * It lives OUTSIDE `.seq-scroll` on purpose: inside it, it would scroll
+   * away with the content it describes. Every part of it is resolved through
+   * `container` on each call and never held, because a render replaces the
+   * whole page under a drag that is still running.
    *
-   * It hides itself when everything already fits, because a full-width thumb
-   * that cannot move is furniture.
+   * The position comes from the model, not from `scroller.scrollLeft`.
+   * `render()` assigns that property and then draws the rail, and an
+   * assignment made on freshly inserted DOM can still be clamped to zero when
+   * it is read back -- which drew the thumb at the far left while the view sat
+   * in the middle of the arrangement. `scrollPpq` is the value the render is
+   * applying, so it is the value the rail must agree with. The two
+   * measurements stay measurements.
    */
-  function railGeometry() {
-    const rail = container?.querySelector('[data-seq-rail]');
-    const scroller = container?.querySelector('[data-timeline-scroll]');
-    if (!rail || !scroller) return null;
-    // The position comes from the model, not from `scroller.scrollLeft`.
-    // `render()` assigns that property and then draws the rail, and an
-    // assignment made on freshly inserted DOM can still be clamped to zero
-    // when it is read back -- which drew the thumb at the far left while the
-    // view sat in the middle of the arrangement. `scrollPpq` is the value the
-    // render is applying, so it is the value the rail must agree with. The two
-    // measurements stay measurements.
-    const thumb = railThumb({
-      scrollLeft: controller.model.state.scrollPpq * controller.model.state.zoom,
-      scrollWidth: scroller.scrollWidth,
-      clientWidth: scroller.clientWidth,
-      railWidth: rail.clientWidth
-    });
-    return { rail, scroller, thumb };
-  }
-
-  function renderRail() {
-    const rail = container?.querySelector('[data-seq-rail]');
-    const element = container?.querySelector('[data-seq-rail-thumb]');
-    if (!rail || !element) return;
-    // Laid out BEFORE it is measured. `hidden` collapses the rail to zero
-    // width, and deciding whether to show it from that width is a deadlock:
-    // hidden, therefore unmeasurable, therefore hidden.
-    rail.hidden = false;
-    const geometry = railGeometry();
-    if (!geometry?.thumb) { rail.hidden = true; return; }
-    element.style.width = `${geometry.thumb.size}px`;
-    element.style.left = `${geometry.thumb.left}px`;
-  }
-
-  /** Drag the rail, or click a point on it. Both land on the same arithmetic:
-   *  the thumb's travel maps onto the scroller's. */
-  function bindRail() {
-    const rail = container?.querySelector('[data-seq-rail]');
-    if (!rail) return;
-    /**
-     * Every element read LIVE, never the ones this closure was born with.
-     *
-     * Scrolling far enough leaves the drawn window and queues a `render()`,
-     * which replaces `container.innerHTML` -- rail and scroller included. From
-     * that frame on, the elements a `pointerdown` captured are detached, and
-     * assigning `scrollLeft` to a node that is no longer in the document does
-     * nothing at all: the rail stopped answering after about a quarter of a
-     * screen, in either direction, with no error anywhere. `railGeometry()`
-     * already queries the page each time; the rectangle and the scroller have
-     * to come from the same place.
-     */
-    const seekTo = (clientX) => {
-      const geometry = railGeometry();
-      const rect = geometry?.rail.getBoundingClientRect?.();
-      if (!rect || !geometry?.thumb) return;
-      geometry.rail.classList.add('dragging');
-      geometry.scroller.scrollLeft = geometry.thumb.scrollFor(clientX - rect.left);
-    };
-    rail.addEventListener('pointerdown', (event) => {
-      if (event.button !== 0) return;
-      event.preventDefault();
-      seekTo(event.clientX);
-      const move = (moveEvent) => seekTo(moveEvent.clientX);
-      const up = () => {
-        container?.querySelector('[data-seq-rail]')?.classList.remove('dragging');
-        document.removeEventListener('pointermove', move);
-        document.removeEventListener('pointerup', up);
-        document.removeEventListener('pointercancel', up);
-      };
-      document.addEventListener('pointermove', move);
-      document.addEventListener('pointerup', up, { once: true });
-      document.addEventListener('pointercancel', up, { once: true });
-    });
-  }
+  const rail = attachScrollRail({
+    root: { querySelector: (selector) => container?.querySelector(selector) ?? null },
+    scroller: '[data-timeline-scroll]',
+    positionOf: () => controller.model.state.scrollPpq * controller.model.state.zoom
+  });
+  const renderRail = rail.render;
+  const bindRail = rail.bind;
 
   /**
    * Middle-button drag pans the timeline, both axes at once.
@@ -1010,7 +925,7 @@ export function createSequencerModule(hub) {
             <div class="seq-playhead" data-playhead data-seq-left="${TRACK_HEADER + controller.playheadPpq * zoom}" data-seq-height="${HEAD_HEIGHT + Math.max(1, state.tracks.length) * TRACK_HEIGHT}"></div>
           </div>
         </div>
-        <div class="seq-rail" data-seq-rail hidden><div class="seq-rail-thumb" data-seq-rail-thumb></div></div>
+        ${scrollRailMarkup()}
       </section>
     </div>`;
     applyDynamicStyles(container);
