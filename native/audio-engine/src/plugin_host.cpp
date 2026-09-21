@@ -54,6 +54,30 @@ juce::String pluginEditorLearnArmedText()
     return juce::String::fromUTF8(u8"Learn armed in MiniHub — move one plugin control.");
 }
 
+bool processingStartAccepted(std::int32_t result) noexcept
+{
+    return result == Steinberg::kResultOk
+        || result == Steinberg::kResultTrue
+        || result == Steinberg::kNotImplemented;
+}
+
+std::string vst3ResultName(std::int32_t result)
+{
+    switch (result)
+    {
+        case Steinberg::kResultOk: return "kResultOk";
+        case Steinberg::kResultFalse: return "kResultFalse";
+        case Steinberg::kNoInterface: return "kNoInterface";
+        case Steinberg::kInvalidArgument: return "kInvalidArgument";
+        case Steinberg::kNotImplemented: return "kNotImplemented";
+        case Steinberg::kInternalError: return "kInternalError";
+        case Steinberg::kNotInitialized: return "kNotInitialized";
+        case Steinberg::kOutOfMemory: return "kOutOfMemory";
+        default: break;
+    }
+    return "0x" + juce::String::toHexString(static_cast<juce::uint32>(result)).toStdString();
+}
+
 namespace {
 
 bool succeeded(Steinberg::tresult result) noexcept
@@ -1427,11 +1451,12 @@ private:
         }
         if (!processing_)
         {
-            if (!succeeded(processor_->setProcessing(true)))
+            const auto result = processor_->setProcessing(true);
+            if (!processingStartAccepted(result))
             {
                 component_->setActive(false);
                 active_ = false;
-                error = className_ + " setProcessing(true) failed";
+                error = className_ + " setProcessing(true) failed (" + vst3ResultName(result) + ")";
                 return false;
             }
             processing_ = true;

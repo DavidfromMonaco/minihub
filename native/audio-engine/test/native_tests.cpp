@@ -13,6 +13,8 @@
 #include "one_ring/runtime.h"
 #include "one_ring/state_json.h"
 
+#include <pluginterfaces/base/funknown.h>
+
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -98,6 +100,39 @@ void testNoisyPluginHelperResultIsolation()
     const auto afterHung = mlh::Vst3Scanner::scanFileIsolated(kNoisyScanHelperPath);
     expect(afterHung.size() == 1,
            "a timed-out or crashing plugin does not compromise the next valid plugin");
+}
+
+void testProcessingStartAnswers()
+{
+    expect(mlh::processingStartAccepted(Steinberg::kNotImplemented),
+           "a plugin keeping the SDK's setProcessing default starts, as JUCE's host lets it");
+    expect(mlh::processingStartAccepted(Steinberg::kResultOk), "a plugin answering kResultOk starts");
+    expect(!mlh::processingStartAccepted(Steinberg::kResultFalse)
+               && !mlh::processingStartAccepted(Steinberg::kInternalError),
+           "a plugin refusing to process is still not started");
+    expect(mlh::vst3ResultName(Steinberg::kResultFalse) == "kResultFalse"
+               && mlh::vst3ResultName(0x12345678) == "0x12345678",
+           "the refusal names the code the plugin answered");
+}
+
+/**
+ * `--load-plugin <path>`: describe one installed plugin and start it as the
+ * engine does, without MiniHub and without an audio device. For a plugin that
+ * fails to load in MiniHub, the error printed is the engine's own.
+ */
+int runLoadPlugin(const juce::String& path)
+{
+    const auto records = mlh::Vst3Scanner::scanFile(path);
+    if (records.empty())
+    {
+        std::cerr << "[load-plugin] nothing described at " << path << "\n";
+        return 2;
+    }
+    mlh::PluginInstance plugin;
+    juce::String error;
+    const bool ready = plugin.create(records[0], 48000, 256, error) && plugin.isReady();
+    std::cerr << "[load-plugin] " << records[0].name << (ready ? juce::String(" ready") : " failed: " + error) << "\n";
+    return ready ? 0 : 1;
 }
 
 int runNoisyScanHelper(int argc, char** argv)
@@ -4219,6 +4254,8 @@ int main(int argc, char** argv)
 
     juce::ScopedJuceInitialiser_GUI juceInitialiser;
     const juce::String mode = argc > 1 ? juce::String::fromUTF8(argv[1]) : juce::String("--all");
+    if (mode == "--load-plugin" && argc > 2)
+        return runLoadPlugin(juce::String::fromUTF8(argv[2]));
     const bool runAll = mode == "--all";
     const bool runCore = runAll || mode == "--core";
     const bool runVst3 = runAll || mode == "--vst3-e2e";
@@ -4230,6 +4267,8 @@ int main(int argc, char** argv)
     testVst3SearchStopsAtAPluginFolder();
     std::cerr << "[core] vst3-role\n";
     testRoleFromCategoryWhenNoBusIsKnown();
+    std::cerr << "[core] processing-start\n";
+    testProcessingStartAnswers();
     std::cerr << "[core] gesture-required\n";
     testGestureRequired();
     std::cerr << "[core] learn-arm-cancel\n";

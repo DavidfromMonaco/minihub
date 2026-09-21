@@ -17,6 +17,14 @@ the choice that "+ Add VST" reads.
 - Checked by `npm test` and `npm run check` only. The author tries it himself
   in MiniHub.
 
+**Kilohearts plugins load — in the author's test** — fixed 2026-09-21. Every
+"kHs" effect ended in "setProcessing(true) failed": they keep the VST3 SDK's
+own answer to that call, `kNotImplemented`, which the engine took for a
+refusal. It is accepted now, as JUCE's host does (`processingStartAccepted`
+in `plugin_host.cpp`), and a real refusal names its code. All 35 installed
+kHs load through the engine's host in `mlh_native_tests --load-plugin <path>`;
+not seen in MiniHub yet.
+
 **An Audio Player node — in the author's test** — built 2026-09-21 on the
 author's word: an OmniBox he can put an audio file in, "at least WAV and MP3",
 to cable into VSTs and process the audio. An Audio OmniBox with one AUDIO OUT:
@@ -181,13 +189,6 @@ Plan: [plans/done/bindings-bar-docked.md](plans/done/bindings-bar-docked.md).
 `ui/contextMenu.js` exists and only the sequencer uses it.
 
 ## Kept for the author, not started
-
-**Kilohearts plugins do not load** — added on the author's request, 2026-09-15.
-kHs Gain, kHs Filter and kHs Reverb end in error: "setProcessing(true) failed".
-`start()` in `native/audio-engine/src/plugin_host.cpp` accepts only `kResultOk`
-or `kResultTrue` from that call; JUCE's own VST3 host also accepts
-`kNotImplemented`. Which code these plugins return is not verified. A native
-change: `npm run build:native` 0 errors 0 warnings, and the four test binaries.
 
 **Massive X moves a parameter by itself, and Learn takes it** — added on the
 author's request, 2026-09-15. In the author's session that morning, for the 36 s

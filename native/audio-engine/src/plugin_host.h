@@ -12,6 +12,7 @@
 #include <map>
 #include <memory>
 #include <set>
+#include <string>
 #include <vector>
 
 namespace mlh {
@@ -22,6 +23,17 @@ struct Vst3AudioBufferLayoutTrace;
 juce::String pluginEditorWindowTitle(const juce::String& pluginName);
 juce::String pluginEditorUntouchedText();
 juce::String pluginEditorLearnArmedText();
+
+/**
+ * Whether a plugin's answer to `setProcessing(true)` lets it start. The VST3
+ * SDK's own `AudioEffect` answers `kNotImplemented` to it, so every plugin that
+ * keeps that default was refused -- all of Kilohearts' "kHs" effects among
+ * them. JUCE's host takes that answer as well.
+ */
+bool processingStartAccepted(std::int32_t result) noexcept;
+
+/** A VST3 result code as the SDK names it, or in hexadecimal. */
+std::string vst3ResultName(std::int32_t result);
 
 /**
  * An embedded browser's window inside a plugin editor, drawn by another process.
