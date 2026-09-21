@@ -2802,7 +2802,7 @@ commands, the fades) and `audio_player::interpolate`; in `engine.cpp`,
 
 ## D-052 — An armed or monitored audio track passes its input on
 
-**Status**: in force · 2026-09-22 · **implemented**, not yet heard by the author
+**Status**: in force · 2026-09-22 · **implemented**, tried by the author the same day
 
 **Context** — The author recorded an Audio Player, through a chain of effects,
 into a Sequencer audio track, and found that the Sequencer blocked the sound.
