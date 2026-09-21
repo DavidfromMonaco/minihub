@@ -17,6 +17,14 @@ the choice that "+ Add VST" reads.
 - Checked by `npm test` and `npm run check` only. The author tries it himself
   in MiniHub.
 
+**Audio tracks pass their input on — in the author's test** — built 2026-09-22
+on the author's word: "the sequencer blocks the audio signal". An audio track
+that is armed or monitored now sends what reaches its Input to its Destination
+(DECISIONS D-052). Checked by the native tests, one of them new (armed,
+monitored, neither, muted, transport stopped), `npm test` and `npm run check`.
+- Not heard by the author yet. His direct cable to the Audio Output has to go,
+  or the chain is heard twice.
+
 **Kilohearts plugins load — in the author's test** — fixed 2026-09-21. Every
 "kHs" effect ended in "setProcessing(true) failed": they keep the VST3 SDK's
 own answer to that call, `kNotImplemented`, which the engine took for a

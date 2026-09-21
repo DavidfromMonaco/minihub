@@ -791,6 +791,11 @@ ne réémet le MIDI live que sur les branches de sortie choisies par les pistes
 armées ou monitorées, via `emitDataTo`. La lecture de l'arrangement, elle, est
 routée indépendamment par le plan natif par piste.
 
+An audio track that is armed or monitored passes what reaches its Input on to
+its Destination, transport running or not, and in an export too
+([DECISIONS.md](DECISIONS.md) D-052). Its Input is a node cabled straight into
+the Sequencer's AUDIO IN; nothing else reaches it.
+
 Il gère aussi le chien de garde d'export (`EXPORT_STALL_TIMEOUT_MS` = 60 s) :
 seule une **progression réelle du nombre de trames** compte comme activité, car
 la télémétrie native reste périodique même si le callback s'est arrêté.

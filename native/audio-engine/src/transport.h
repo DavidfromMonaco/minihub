@@ -92,12 +92,15 @@ public:
  int64_t samplePosition() const noexcept { return samples_.load(); }
  double ppqPosition() const noexcept { return ppq_.load(); }
  double quarterNotesPerSample() const noexcept { return blockBpm_.load()/(60.0*sampleRate_.load()); }
- void beginBlock() noexcept { blockBpm_.store(bpm()); blockPlaying_.store(playing()); }
+ void beginBlock() noexcept { blockBpm_.store(bpm()); blockPlaying_.store(playing()); blockSerial_.fetch_add(1, std::memory_order_relaxed); }
+ // Which block this is: what one node leaves for another is only good for the block it was left in.
+ uint64_t blockSerial() const noexcept { return blockSerial_.load(std::memory_order_relaxed); }
  double ppqAtSample(int offset) const noexcept { double q=ppqPosition()+std::max(0,offset)*quarterNotesPerSample();if(loopEnabled()){const auto a=loopStart(),b=loopEnd(),length=b-a;if(length>0&&q>=b-1.0e-12){q=a+std::fmod(std::max(0.0,q-a),length);if(q>=b-1.0e-12)q=a;}}return q; }
  void advance(int n) noexcept { if(!processingPlaying()||n<=0)return; samples_.fetch_add(n);double q=ppq_.load()+double(n)*blockBpm_.load()/(60.0*sampleRate_.load());if(loopEnabled()){const auto a=loopStart(),b=loopEnd(),length=b-a;if(length>0&&q>=b-1.0e-12){q=a+std::fmod(std::max(0.0,q-a),length);if(q>=b-1.0e-12)q=a;}}ppq_.store(q); }
  juce::Optional<PositionInfo> getPosition() const override { PositionInfo i; TimeSignature signature; signature.numerator=4; signature.denominator=4;LoopPoints points;points.ppqStart=loopStart();points.ppqEnd=loopEnd(); const auto samples=samplePosition(); const auto ppq=ppqPosition(); i.setBpm(blockBpm_.load()); i.setTimeSignature(signature); i.setIsPlaying(processingPlaying()); i.setIsRecording(recording()); i.setIsLooping(loopEnabled());i.setLoopPoints(points);i.setTimeInSamples(samples); i.setTimeInSeconds(double(samples)/sampleRate_.load()); i.setPpqPosition(ppq); i.setPpqPositionOfLastBarStart(std::floor(ppq/4.0)*4.0); return i; }
 private:
  std::atomic<double> bpm_{kDefaultBpm},sampleRate_{48000.0},ppq_{0.0},blockBpm_{kDefaultBpm};
+ std::atomic<uint64_t> blockSerial_{0};
  std::atomic<int64_t> samples_{0}; std::atomic<bool> playing_{false},blockPlaying_{false},recording_{false},loopEnabled_{false};
  std::atomic<double> loopStart_{0.0},loopEnd_{16.0};std::atomic<uint64_t> seekSerial_{0};
 };

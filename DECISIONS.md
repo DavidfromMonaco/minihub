@@ -2797,3 +2797,48 @@ commands, the fades) and `audio_player::interpolate`; in `engine.cpp`,
 `src/renderer/js/modules/audioPlayer/audioPlayerPanel.js`. Tests: native
 `--core` `audio-player-decode`, `-resample`, `-play`, `-transport`, `-network`;
 `test/audioPlayer.test.mjs`, `test/audioPlayerCommand.test.cjs`.
+
+---
+
+## D-052 — An armed or monitored audio track passes its input on
+
+**Status**: in force · 2026-09-22 · **implemented**, not yet heard by the author
+
+**Context** — The author recorded an Audio Player, through a chain of effects,
+into a Sequencer audio track, and found that the Sequencer blocked the sound.
+What reached its AUDIO IN was recorded and never heard, so the chain had to be
+cabled to the Audio Output a second time to be heard at all. The I button on an
+audio track, "Input monitor", was drawn and did nothing.
+
+**Decision** — An audio track that is armed (R) or monitored (I) passes what
+reaches its Input on to its Destination, at its level and under its mute,
+whether the transport runs or not. A MIDI track already does that with what is
+played into it, and a DAW's input monitoring does the same. An export does it
+too, so the file holds what was heard.
+
+Three alternatives were refused:
+
+- **I alone.** Arming would record in silence, while R is enough to hear a MIDI
+  track, as the Sequencer's own banner says. Two rules for one pair of buttons.
+- **Monitoring left out of the export.** The inputs here are nodes, an Audio
+  Player and its effects, and they play in an export too: a chain heard through
+  the Sequencer would be missing from the file.
+- **AUDIO IN passed to AUDIO OUT whatever the tracks.** The Sequencer plays per
+  Destination; a blind pass-through has neither a destination nor a level.
+
+**Consequences**
+
+- A chain cabled to the Audio Output directly and through an armed track is
+  heard twice. The direct cable has to go.
+- A microphone as the Input of an armed track, with loudspeakers, can feed back:
+  the usual behaviour of a DAW, and the reason for headphones.
+- An armed track plays its clips and its input together.
+- The input is heard as the Sequencer receives it, with the latency of the
+  plugins upstream of it uncompensated.
+- What one block captured is heard in that block only (`Transport::blockSerial`):
+  a cable pulled out cannot leave a block repeating.
+
+**Proof in the code** — `captureSource` and `renderAudioForOutput` in
+`native/audio-engine/src/sequencer.cpp`, `Track::inputScratch`,
+`Transport::blockSerial`. Test: `[core] audio-track-pass-through` in
+`native/audio-engine/test/native_tests.cpp`.

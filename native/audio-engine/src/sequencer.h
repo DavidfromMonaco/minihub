@@ -200,12 +200,22 @@ private:
         };
         std::string id, type, inputId, outputId;
         bool armed = false;
+        // Armed or monitored, an audio track passes its input on to its
+        // destination, as a MIDI track does with what is played into it.
+        bool monitored = false;
         MidiOutputKind midiOutputKind = MidiOutputKind::chain;
         Chain* destination = nullptr;
         std::vector<Thru> thru;
         AudioTakeWriter* takeWriter = nullptr; // append-only owner in takeWriters_
         juce::MidiBuffer midiScratch; // pre-sized outside the audio callback
         juce::AudioBuffer<float> audioSumScratch; // SUM, cleared once per track/block
+        // What reached an audio track's input this block, for its destination
+        // to hear. Sized outside the callback, audio-thread-owned; `inputFrames`
+        // is spent by the render that hears it, so a source whose cable is gone
+        // never leaves a block repeating.
+        juce::AudioBuffer<float> inputScratch;
+        int inputFrames = 0;
+        uint64_t inputBlock = 0; // Transport::blockSerial() it was captured in
         std::shared_ptr<TrackRuntime> runtime;
         std::array<uint16_t, 16 * 128> activeNotes{}; // audio-thread-owned
         // Audio-thread-owned: this track's notes were released when its plan

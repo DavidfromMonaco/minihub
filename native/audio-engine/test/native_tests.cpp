@@ -1423,6 +1423,37 @@ void testRealVst3SequencerPlaybackArpAndMasterExport()
     std::cerr << "[vst3-e2e] complete\n";
 }
 
+void testArmedAudioTrackPassesItsInput()
+{
+    // Audio Input -> Sequencer -> Audio Output and nothing else: whatever the
+    // output plays came through the track, with the transport stopped.
+    mlh::SequencerEngine sequencer;sequencer.prepare(48000,256);
+    juce::Array<juce::var> info;std::string error;
+    mlh::Transport transport;transport.setSampleRate(48000);transport.setBpm(120);transport.beginBlock();
+    juce::AudioBuffer<float> physical(2,256);for(int i=0;i<256;++i){physical.setSample(0,i,.25f);physical.setSample(1,i,-.5f);}
+    float left[256]{},right[256]{};float* outputs[]={left,right};juce::MidiBuffer midi;
+    auto input=networkNode("audio-input",mlh::AudioNodeKind::input);auto seq=networkNode("sequencer",mlh::AudioNodeKind::sequencer);auto out=networkNode("audio-output",mlh::AudioNodeKind::output);
+    seq.inputs={{"audio-in","audio-input","audio-out",1,false}};out.inputs={{"audio-in","sequencer","audio-out",1,false}};
+    mlh::AudioNetworkSpec spec;spec.nodes={out,seq,input};
+    auto plan=mlh::AudioExecutionPlan::compile(spec,[](const std::string&){return (mlh::Chain*)nullptr;},&sequencer,256,error);
+    expect(plan!=nullptr,"Audio Input -> Sequencer -> Audio Output compiles");if(!plan)return;
+    auto heard=[&](bool armed,bool monitored,bool muted){
+        auto track=audioTrack("track-through",juce::File(),armed,"audio-input",muted,"audio-output",.5);mlh::setProp(track,"monitored",monitored);
+        juce::Array<juce::var> tracks;tracks.add(track);
+        expect(sequencer.sync(makeSequencerProject(tracks),[](const std::string&){return (mlh::Chain*)nullptr;},48000,256,info,error),"a pass-through track compiles");
+        juce::FloatVectorOperations::clear(left,256);juce::FloatVectorOperations::clear(right,256);
+        plan->process(outputs,2,256,transport,midi,&physical);
+        return std::make_pair(left[128],right[128]);
+    };
+    const auto armed=heard(true,false,false);
+    expect(std::abs(armed.first-.125f)<.0001f&&std::abs(armed.second+.25f)<.0001f,
+           "an armed audio track passes its input to its destination at its level, transport stopped");
+    expect(std::abs(heard(false,true,false).first-.125f)<.0001f,"a monitored audio track passes its input too");
+    const auto idle=heard(false,false,false);
+    expect(idle.first==0.0f&&idle.second==0.0f,"a track neither armed nor monitored passes nothing");
+    expect(heard(true,false,true).first==0.0f,"a muted track passes nothing");
+}
+
 void testSequencerAudioInputRoutingAuthority()
 {
     mlh::SequencerEngine sequencer;sequencer.prepare(48000,256);
@@ -4325,6 +4356,8 @@ int main(int argc, char** argv)
     testSyncKeepingRoutingReleasesOnlyWhatChanged();
     std::cerr << "[core] audio-input-routing\n";
     testSequencerAudioInputRoutingAuthority();
+    std::cerr << "[core] audio-track-pass-through\n";
+    testArmedAudioTrackPassesItsInput();
     std::cerr << "[core] sequencer-sum-gain\n";
     testSequencerTrackSumGainAndTrace();
     std::cerr << "[core] audio-record-export\n";
