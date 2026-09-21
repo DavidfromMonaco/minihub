@@ -21,6 +21,7 @@ import { installHistoryKeys } from './ui/historyKeys.js';
 import { installAgentBridge } from './core/agentBridge.js';
 import { installBindingsBarHost } from './core/bindingsBarHost.js';
 import { registerOneRingPanel } from './modules/oneRing/oneRingPanel.js';
+import { registerAudioPlayerPanel } from './modules/audioPlayer/audioPlayerPanel.js';
 import { bindPearlLists } from './ui/omniPearl.js';
 
 async function main() {
@@ -53,6 +54,7 @@ async function main() {
   // A node type with its own folder brings its page (nodeEditors.js). Before
   // the instances load, so none can open without it.
   registerOneRingPanel();
+  registerAudioPlayerPanel();
   // Every menu of a faceplate is drawn by the page: the list Chromium opens for
   // a <select> is a window of its own, white whatever the page and the
   // application say (ui/omniPearl.js). Bound once, for every page.

@@ -33,7 +33,9 @@ const PERIODIC_EVENTS = new Set([
   'editorBounds',
   // A native One Ring's playheads and beat, ten times a second or on every
   // step while it plays.
-  'oneRingStatus'
+  'oneRingStatus',
+  // Where an Audio Player is in its file, ten times a second while it plays.
+  'audioPlayerStatus'
 ]);
 
 const RUNTIME_TELEMETRY = 'audioRuntimeTelemetry';

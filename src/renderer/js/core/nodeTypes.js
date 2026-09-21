@@ -63,6 +63,14 @@ export const NODE_TYPES = {
     emptyLabel: 'Connect AUDIO sources in Patch Bay', dynamicAudioInputs: true,
     ports: { inputs: [COMMAND_INPUT], outputs: [{ id: 'audio-out', type: 'audio', label: 'AUDIO OUT' }] }
   },
+  // A file played into the Patch Bay: its AUDIO OUT feeds a VST node's AUDIO
+  // IN, a Mixer, the Sequencer's AUDIO IN or the output. Its own Play, Pause
+  // and Stop, and the transport's (audioPlayers.js, native audio_player.h).
+  'audio-player': {
+    id: 'audio-player', label: 'Audio Player', omniBoxCategory: 'Audio', accent: '--accent-mixer', icon: 'player',
+    emptyLabel: 'Choose an audio file, then cable AUDIO OUT to what processes it',
+    ports: { inputs: [], outputs: [{ id: 'audio-out', type: 'audio', label: 'AUDIO OUT' }] }
+  },
   'audio-input': {
     id: 'audio-input',
     label: 'Audio Input',

@@ -55,7 +55,7 @@ const MUTATING = new Set([
  * stale id there is the normal case rather than the dangerous one.
  */
 const UNGATED = new Set([
-  'transport', 'set-tempo', 'set-master', 'open-editor', 'close-editor',
+  'transport', 'audio-player', 'set-tempo', 'set-master', 'open-editor', 'close-editor',
   'project', 'export', 'cancel-export', 'scan-plugins', 'devices',
   'show-window', 'open-clip-editor', 'close-clip-editor', 'browser'
 ]);
@@ -467,6 +467,16 @@ export async function handleAgentRequest(hub, request = {}) {
     else if (operation === 'seek') hub.sequencer?.seek?.(Number(request.ppq) || 0);
     else return failed('unsupported-request');
     return { ok: true, playhead: hub.sequencer?.playheadPpq ?? null };
+  }
+
+  if (kind === 'audio-player') {
+    // An Audio Player's own Play, Pause and Stop, and a click on its overview
+    // (`seek`, in seconds): what its page's buttons do. Its file, loop and
+    // level are content, written by `set-node-content`.
+    const nodeId = String(request.nodeId || '');
+    if (hub.nodes?.get?.(nodeId)?.type !== 'audio-player') return failed('node-not-found');
+    const result = await hub.audioPlayers?.transport?.(nodeId, String(request.operation || ''), Number(request.seconds));
+    return result?.ok === false ? failed(result.reason || 'refused') : { ok: true };
   }
 
   if (kind === 'set-tempo') {

@@ -2703,3 +2703,97 @@ layout that depends on the window is one that changes when the window does.
 block instead of a ribbon", "a rank short enough to be read stays the single
 column it always was", "one node taller than the drawing is wide keeps its own
 column", "aligning an already aligned canvas changes nothing").
+
+---
+
+## D-051 — An Audio Player follows the transport's Play, Pause and Stop, not its position
+
+**Status**: in force · 2026-09-21 · **implemented**, seen in the application
+through the agent channel, not yet heard by the author
+
+**Context** — The author asked for "an OmniBox I can put an audio file in (at
+least WAV and MP3) to cable it into VSTs and process the audio". A file could
+already reach a VST, through a Sequencer audio track whose Destination is that
+node, but only as a clip on the timeline. A node of its own needed an answer the
+request did not give: when does it play? File players in other node hosts give
+two. Gig Performer's Audio File Player has its own Play/Pause and a Sync switch
+by which the global Play and Pause drive it, the position staying in the file;
+its newer Streaming Audio File Player, synced, takes its position from the
+global timeline. Element's player plays, loops, and follows the transport.
+
+**Decision** — A player has its own position, in its file, and its own Play,
+Pause and Stop; the transport drives it as well, always. There is no Sync
+switch.
+
+- The transport's start plays every player from where it is; the transport's
+  stop pauses them. Record after its count-in, a Play from a sequence over a
+  cable, an agent's Play: every start is the same edge, seen by the audio
+  callback, so none is missed.
+- A Stop somebody gives -- the one that also stops the One Ring nodes, D-048 --
+  returns every player to its start. Pause keeps the place, as it does for the
+  arrangement. A Stop a sequence sends over a cable only pauses.
+- Seeking the arrangement, and its loop, move no player.
+- Without Loop, a player stops at the end of its file and waits at its start.
+  With Loop it wraps without a seam: the resampler reads across it.
+- A file that arrives while the arrangement plays waits for a Play: loading a
+  file never starts it.
+- An offline export plays every player from its beginning, on a copy, as a Play
+  after a Stop would; the live players keep their place.
+
+Three alternatives were refused:
+
+- **The position from the timeline**, Gig Performer's second player. A file
+  placed on the timeline is what a Sequencer audio clip already is; and a short
+  file whose place is past its end is silent when Play is pressed, with nothing
+  on the Patch Bay to say why.
+- **A Sync switch.** An option nobody can choose without knowing how the player
+  works inside -- the author's rule against technical choices. The two answers
+  differ only at the edges listed above.
+- **Players deaf to the transport.** Recording the processed file into a
+  Sequencer track would then take two clicks that have to land together.
+
+**Decided with it**
+
+- The file is named by its full path and never copied, as the Sequencer's clips
+  are. A file moved away is said to be missing.
+- The engine decodes the whole file into memory, on a worker thread, at the
+  file's own rate -- up to 2^26 frames, 23 minutes at 48 kHz -- and converts in
+  the callback with a 64-tap Kaiser-windowed sinc, widened when the file's rate
+  is above the device's. At the device's own rate the samples play bit for bit.
+  A device that changes rate needs nothing decoded again.
+- MP3 is read by the Windows Media decoder JUCE registers on Windows;
+  `JUCE_USE_MP3AUDIOFORMAT` stays off, so the Sequencer's MP3 clips decode as
+  they always have.
+- The level is the node's master value in the audio network: moved in place,
+  never a recompile.
+- The engine is given the whole list of players each time it may have changed;
+  a player the list leaves out holds no file afterwards. A deleted node, a
+  closed project or a renderer that reloaded cannot leave a file playing.
+
+**Consequences**
+
+- A player started from its page keeps playing while the transport is stopped.
+  The header's Stop stays pressable while one plays, and stops it.
+- An export of the loop region starts every player from its beginning, not
+  from where it would have been at the loop's start.
+- On a Windows "N" edition without the Media Feature Pack, an MP3 is refused
+  with "MiniHub cannot read this file as audio"; WAV, AIFF, FLAC and OGG still
+  load.
+- Two players of the same file share one decoded copy.
+
+**What would justify revisiting** — A player wanted as a backing track locked
+to an arrangement, where its place must follow the timeline: that is the
+timeline model as a second kind of player, not a switch on this one. An MP3
+refused on a machine that matters, which would bring in JUCE's own decoder --
+and change the Sequencer's MP3 clips with it. Files longer than 23 minutes,
+which would mean streaming from the disk.
+
+**Proof in the code** — `AudioPlayer` in
+`native/audio-engine/src/audio_player.h` (`render`: the transport's edges, the
+commands, the fades) and `audio_player::interpolate`; in `engine.cpp`,
+`cmdSetTransport` (the Stop that rewinds), `cmdSyncAudioPlayers`,
+`loadAudioPlayerFile` and the export's `cloneForExport`;
+`src/renderer/js/core/audioPlayers.js`; the page in
+`src/renderer/js/modules/audioPlayer/audioPlayerPanel.js`. Tests: native
+`--core` `audio-player-decode`, `-resample`, `-play`, `-transport`, `-network`;
+`test/audioPlayer.test.mjs`, `test/audioPlayerCommand.test.cjs`.

@@ -60,6 +60,9 @@ export function buildHeader(hub, statusEl) {
   // A One Ring node plays on when a sequence stops the transport, and runs
   // alone from its own RUN. Stop stays pressable while one plays, and stops it.
   let oneRingPlaying = false;
+  // So does an Audio Player started from its own page: Stop takes it back to
+  // its start.
+  let playerPlaying = false;
   if (bpmEl) bpmEl.value = String(hub.sequencer.tempo);
   const renderTransport = () => {
     playEl?.classList.toggle('playing', playing);
@@ -68,7 +71,7 @@ export function buildHeader(hub, statusEl) {
       playEl.title = playing ? 'Hold here — a One Ring keeps running' : 'Play';
       playEl.setAttribute('aria-pressed', String(playing));
     }
-    if (stopEl) stopEl.disabled = !playing && hub.sequencer?.recording !== true && !oneRingPlaying;
+    if (stopEl) stopEl.disabled = !playing && hub.sequencer?.recording !== true && !oneRingPlaying && !playerPlaying;
     positionEl?.classList.toggle('playing', playing);
   };
   /**
@@ -91,6 +94,13 @@ export function buildHeader(hub, statusEl) {
     renderTransport();
   };
   for (const name of ['oneRing:status', 'oneRing:ready', 'oneRing:gone']) hub.events.on(name, renderOneRing);
+  const renderPlayers = () => {
+    const now = hub.audioPlayers?.anyPlaying?.() === true;
+    if (now === playerPlaying) return;
+    playerPlaying = now;
+    renderTransport();
+  };
+  for (const name of ['audioPlayer:status', 'audioPlayer:gone']) hub.events.on(name, renderPlayers);
   playEl?.addEventListener('click', () => {
     if (playing) hub.sequencer?.pauseTransport();
     else hub.sequencer?.playTransport();

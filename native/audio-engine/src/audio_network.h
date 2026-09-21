@@ -15,8 +15,9 @@
 namespace mlh {
 
 class SequencerEngine;
+class AudioPlayer;
 
-enum class AudioNodeKind { input, vst, mixer, morpher, sequencer, output, diagnosticSine };
+enum class AudioNodeKind { input, vst, mixer, morpher, sequencer, output, player, diagnosticSine };
 
 struct AudioNetworkInput {
     std::string portId;
@@ -86,6 +87,7 @@ public:
         std::string id;
         AudioNodeKind kind = AudioNodeKind::vst;
         Chain* chain = nullptr; // chains are append-only and outlive every plan
+        AudioPlayer* player = nullptr; // so are players
         SequencerEngine* sequencer = nullptr;
         std::vector<int> sources;
         std::vector<SourceDelay> sourceDelays;
@@ -153,10 +155,13 @@ public:
         int64_t diagnosticRenderedSamples = 0;
     };
 
+    /** `playerLookup` answers an Audio Player node's player; a spec with one
+     *  and no lookup does not compile. */
     static std::unique_ptr<AudioExecutionPlan> compile(
         const AudioNetworkSpec&, const std::function<Chain*(const std::string&)>&,
         SequencerEngine*, int maxBlockSize, std::string& error,
-        bool pdcEnabled = true);
+        bool pdcEnabled = true,
+        const std::function<AudioPlayer*(const std::string&)>& playerLookup = {});
 
     void process(float* const* hardwareOutputs, int hardwareChannels,
                  int numSamples, Transport& transport, juce::MidiBuffer& midiScratch,

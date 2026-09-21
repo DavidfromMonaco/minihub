@@ -1,5 +1,6 @@
 #pragma once
 
+#include "audio_player.h"
 #include "chain.h"
 #include "ipc.h"
 #include "vst3_scanner.h"
@@ -104,6 +105,12 @@ private:
     void cmdSetOneRingMaterial(const juce::var& msg);
     void publishOneRingSet();
     void forwardOneRings();
+    void cmdSyncAudioPlayers(const juce::var& msg);
+    void cmdAudioPlayerTransport(const juce::var& msg);
+    AudioPlayer* getOrCreateAudioPlayer(const juce::String& nodeId);
+    void loadAudioPlayerFile(const juce::String& nodeId, const juce::String& path);
+    void sendAudioPlayerFile(const juce::String& nodeId);
+    void forwardAudioPlayers();
     void cmdSetTransport(const juce::var& msg);
     void cmdGetTransport(const juce::var& msg);
     void cmdSyncAudioNetwork(const juce::var& msg);
@@ -260,6 +267,8 @@ private:
     };
     struct ExportContext {
         std::map<juce::String, std::unique_ptr<Chain>> chains;
+        // Copies of the Audio Players, each started by the export's first block.
+        std::map<std::string, std::unique_ptr<AudioPlayer>> players;
         std::unique_ptr<AudioExecutionPlan> audioPlan;
         std::unique_ptr<MidiExecutionPlan> midiPlan;
         juce::AudioBuffer<float> audio;
@@ -343,6 +352,25 @@ private:
     private:
         const OneRingSet* set_;
     };
+    // Audio Player nodes. Like chains, players are append-only: a plan holds
+    // their raw pointers, so a node that goes only unloads its file. What the
+    // renderer last listed is the authority over which ones hold a file.
+    struct AudioPlayerNode {
+        std::unique_ptr<AudioPlayer> player;
+        bool listed = false;
+        juce::String path;       // the file asked for, '' for none
+        juce::String identity;   // the file held or being decoded
+        juce::int64 load = 0;    // bumped by every decode started, and by an unload
+        bool loading = false;
+        juce::String error;
+        AudioPlayer::Status lastStatus;
+        bool statusSent = false;
+        double statusSentAtMs = 0.0;
+    };
+    std::map<juce::String, AudioPlayerNode> audioPlayers_;
+    // One decode per file identity, shared by the players that play it.
+    std::map<juce::String, std::weak_ptr<const AudioPlayerAsset>> audioPlayerAssets_;
+
     std::map<juce::String, OneRingNode> oneRings_;
     std::vector<DrainingOneRing> drainingOneRings_;
     std::map<juce::String, std::vector<OneRingOutput>> oneRingOutputs_;

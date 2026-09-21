@@ -44,6 +44,7 @@ import { escapeHtml } from './html.js';
 import { normalizeControlBinding, normalizeControlBindings } from './controlBindings.js';
 import { defaultArpeggiatorContent, normalizeArpeggiatorContent } from './arpeggiatorState.js';
 import { createSequence, readSequence } from './oneRingSequence.js';
+import { AUDIO_PLAYER_TYPE, defaultAudioPlayerContent, normalizeAudioPlayerContent } from './audioPlayerState.js';
 import { copyOneRingToNode, isOneRingPlugin } from './oneRingImport.js';
 import { currentArpeggiatorStep, moveCustomNote, removeCustomNote, renderArpControlStrip, renderCustomPatternEditor, setCustomGateDuration, setCustomNote, syncArpControlStrip, velocityFromPointer } from './arpeggiatorEditor.js';
 import { icon } from '../ui/icons.js';
@@ -302,6 +303,7 @@ function defaultContentFor(typeId) {
   if (typeId === 'morpher') return { inputs: [{ id: 'audio-in-1', level: 1, muted: false }], stepCount: 4, steps: Array(32).fill(0).map((_,i)=>i/31), nextInputSeq: 1 };
   if (typeId === 'arpeggiator') return defaultArpeggiatorContent();
   if (typeId === 'one-ring') return createSequence();
+  if (typeId === AUDIO_PLAYER_TYPE) return defaultAudioPlayerContent();
   return null;
 }
 
@@ -361,6 +363,7 @@ export function normalizeContentFor(typeId, content) {
       return createSequence();
     }
   }
+  if (typeId === AUDIO_PLAYER_TYPE) return normalizeAudioPlayerContent(content);
   return content ?? null;
 }
 
@@ -804,6 +807,11 @@ export class NodeInstanceManager {
       this.hub.events.emit('nativeAudio:stateChanged', { nodeId: instance.id });
     } else if (instance.type === 'one-ring') {
       this.hub.events.emit('oneRing:contentChanged', { nodeId: instance.id });
+    } else if (instance.type === AUDIO_PLAYER_TYPE) {
+      // Its level is a value of the audio network; its file and loop are the
+      // player's own (audioPlayers.js).
+      this.hub.events.emit('nativeAudio:stateChanged', { nodeId: instance.id });
+      this.hub.events.emit('audioPlayer:contentChanged', { nodeId: instance.id });
     } else if (bindingsMoved) {
       this.hub.events.emit('control:bindingsChanged', { nodeId: instance.id });
     }

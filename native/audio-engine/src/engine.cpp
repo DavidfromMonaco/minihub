@@ -219,6 +219,7 @@ void Engine::timerCallback()
     }
     forwardControlEvents();
     forwardOneRings();
+    forwardAudioPlayers();
     if (preCountComplete_.exchange(false, std::memory_order_acq_rel))
     {
         // The audio callback owns count-in timing. The takes were opened when
@@ -516,6 +517,8 @@ void Engine::handleCommand(const juce::var& msg)
     else if (type == "oneRingCommand") cmdOneRingCommand(msg);
     else if (type == "removeOneRing") cmdRemoveOneRing(msg);
     else if (type == "setOneRingMaterial") cmdSetOneRingMaterial(msg);
+    else if (type == "syncAudioPlayers") cmdSyncAudioPlayers(msg);
+    else if (type == "audioPlayerTransport") cmdAudioPlayerTransport(msg);
     else if (type == "setTransport") cmdSetTransport(msg);
     else if (type == "getTransport") cmdGetTransport(msg);
     else if (type == "syncAudioNetwork") cmdSyncAudioNetwork(msg);
@@ -1095,7 +1098,8 @@ void Engine::republishActiveAudioNetwork()
     std::string error;
     auto plan = AudioExecutionPlan::compile(activeAudioSpec_,
         [this](const std::string& id) { return getOrCreateChain(juce::String(id)); },
-        &sequencer_, currentBlockSize_, error);
+        &sequencer_, currentBlockSize_, error, true,
+        [this](const std::string& id) { return getOrCreateAudioPlayer(juce::String(id)); });
     if (plan)
         publishAudioPlan(std::move(plan));
     else
@@ -1713,8 +1717,14 @@ void Engine::cmdSetTransport(const juce::var& msg)
     // before the transport, so no block sees the transport stopped and them not.
     if (msg["playing"].isBool() && !static_cast<bool>(msg["playing"])
         && msg["stopOneRings"].isBool() && static_cast<bool>(msg["stopOneRings"]))
+    {
         for (auto& entry : oneRings_)
             entry.second.runtime->stop();
+        // The same Stop takes every Audio Player back to its start; the
+        // transport stopping alone would only pause them.
+        for (auto& entry : audioPlayers_)
+            entry.second.player->command(AudioPlayer::Command::stop);
+    }
     if (msg["playing"].isBool()) {const bool playing=static_cast<bool>(msg["playing"]);if(!playing&&wasPlaying&&sequencer_.recording())for(const auto& event:sequencer_.finishRecording(transport_))ipc_.send(event);transport_.setPlaying(playing);if(!playing)panicAllMidi();}
     cmdGetTransport(msg);
 }
@@ -1756,6 +1766,7 @@ void Engine::cmdSyncAudioNetwork(const juce::var& msg)
         else if (type == "morpher") node.kind = AudioNodeKind::morpher;
         else if (type == "sequencer") node.kind = AudioNodeKind::sequencer;
         else if (type == "audio-output") node.kind = AudioNodeKind::output;
+        else if (type == "audio-player") node.kind = AudioNodeKind::player;
         else { reject("unknown audio node type: " + type); return; }
         node.masterLevel = value.hasProperty("masterLevel") ? (float)(double)value["masterLevel"] : 1.0f;
         node.stepCount = value.hasProperty("stepCount") ? (int)value["stepCount"] : 4;
@@ -1769,7 +1780,8 @@ void Engine::cmdSyncAudioNetwork(const juce::var& msg)
         spec.nodes.push_back(std::move(node));
     }
     std::string error;
-    auto plan = AudioExecutionPlan::compile(spec, [this](const std::string& id) { return getOrCreateChain(juce::String(id)); }, &sequencer_, currentBlockSize_, error);
+    auto plan = AudioExecutionPlan::compile(spec, [this](const std::string& id) { return getOrCreateChain(juce::String(id)); }, &sequencer_, currentBlockSize_, error, true,
+        [this](const std::string& id) { return getOrCreateAudioPlayer(juce::String(id)); });
     if (!plan) { reject(juce::String(error)); return; }
     activeAudioSpec_ = spec;
     publishAudioPlan(std::move(plan));
@@ -2046,7 +2058,12 @@ void Engine::cmdSequencerExport(const juce::var& msg)
             std::unique_ptr<ExportContext> owned(context);if(!*alive)return;if(generation!=exportGeneration_.load(std::memory_order_acquire)||cancel->load(std::memory_order_acquire))return;auto fail=[&](const juce::String& message){exportPreparing_.store(false,std::memory_order_release);exportCancel_.reset();exportTransactionStartedAtMs_=0.0;sendError("sequencer-export",message);auto failed=makeExportStage("error","render-context",file,options.format,"error");setProp(failed,"message",message);ipc_.send(failed);flushDeferredExportCommands();};if(buildError.isNotEmpty()){fail(buildError);return;}
             ipc_.send(makeExportStage("preparing", "prepare-vst", file, options.format, "end"));
             ipc_.send(makeExportStage("preparing", "build-network", file, options.format, "begin"));
-            const auto lookup=[&](const std::string& id)->Chain*{auto found=owned->chains.find(juce::String(id));return found==owned->chains.end()?nullptr:found->second.get();};std::string compileError;owned->midiPlan=MidiExecutionPlan::compile(midiSpec,lookup,compileError);if(!owned->midiPlan){fail(juce::String(compileError));return;}owned->audioPlan=AudioExecutionPlan::compile(audioSpec,lookup,&sequencer_,blockSize,compileError);if(!owned->audioPlan){fail(juce::String(compileError));return;}if(!sequencer_.prepareExportPlan(lookup,compileError)){fail(juce::String(compileError));return;}ipc_.send(makeExportStage("preparing", "build-network", file, options.format, "end"));clearExportContext();exportContext_=std::move(owned);activeExportContext_.store(exportContext_.get(),std::memory_order_release);ipc_.send(makeExportStage("preparing", "render-context", file, options.format, "end"));ipc_.send(makeExportStage("preparing", "timeline", file, options.format, "begin"));Transport tempoSnapshot;tempoSnapshot.setSampleRate(sampleRate);tempoSnapshot.setBpm(exportBpm);juce::String startError;if(!sequencer_.startExport(file,start,end,tail,tempoSnapshot,options,startError)){clearExportContext();fail(startError);return;}ipc_.send(makeExportStage("preparing", "timeline", file, options.format, "end"));exportPreparing_.store(false,std::memory_order_release);exportCancel_.reset();lastPublishedExportFrames_=-1;exportProgressStartedAtMs_=juce::Time::getMillisecondCounterHiRes();exportLastAdvancedAtMs_=exportProgressStartedAtMs_;auto out=makeExportStage("started","render-blocks",file,options.format,"begin");setProp(out,"exportStartPpq",start);setProp(out,"exportEndPpq",end);setProp(out,"tailSeconds",tail);setProp(out,"livePlaying",transport_.playing());setProp(out,"liveRecording",transport_.recording());setProp(out,"livePpqPosition",transport_.ppqPosition());setProp(out,"liveSamplePosition",transport_.samplePosition());setProp(out,"liveLoopEnabled",transport_.loopEnabled());setProp(out,"liveLoopStartPpq",transport_.loopStart());setProp(out,"liveLoopEndPpq",transport_.loopEnd());auto& offline=sequencer_.exportTransport();setProp(out,"offlinePlaying",offline.playing());setProp(out,"offlinePpqPosition",offline.ppqPosition());setProp(out,"offlineSamplePosition",offline.samplePosition());setProp(out,"offlineLoopEnabled",offline.loopEnabled());setProp(out,"snapshot",sequencer_.exportSnapshotTrace());setProp(out,"vstSnapshot",vstTrace);setProp(out,"deferredMutationCount",0);setProp(out,"audibleTransport","live");setProp(out,"renderThread","offline-worker");setProp(out,"deviceIndependent",true);setProp(out,"hardwareOutput",false);ipc_.send(out);ipc_.send(makeExportStage("started","Master",file,options.format,"begin"));ipc_.send(makeExportStage("started","encoder",file,options.format,"begin"));launchWorker([this,generation](){renderOfflineExport(generation);});
+            const auto lookup=[&](const std::string& id)->Chain*{auto found=owned->chains.find(juce::String(id));return found==owned->chains.end()?nullptr:found->second.get();};std::string compileError;owned->midiPlan=MidiExecutionPlan::compile(midiSpec,lookup,compileError);if(!owned->midiPlan){fail(juce::String(compileError));return;}
+            // Each Audio Player plays in the export from its beginning, on a copy:
+            // the live one keeps its place, as the live chains keep theirs.
+            for(const auto& entry:audioPlayers_)owned->players[entry.first.toStdString()]=entry.second.player->cloneForExport();
+            const auto playerLookup=[&](const std::string& id)->AudioPlayer*{auto& player=owned->players[id];if(!player)player=std::make_unique<AudioPlayer>(id);return player.get();};
+            owned->audioPlan=AudioExecutionPlan::compile(audioSpec,lookup,&sequencer_,blockSize,compileError,true,playerLookup);if(!owned->audioPlan){fail(juce::String(compileError));return;}if(!sequencer_.prepareExportPlan(lookup,compileError)){fail(juce::String(compileError));return;}ipc_.send(makeExportStage("preparing", "build-network", file, options.format, "end"));clearExportContext();exportContext_=std::move(owned);activeExportContext_.store(exportContext_.get(),std::memory_order_release);ipc_.send(makeExportStage("preparing", "render-context", file, options.format, "end"));ipc_.send(makeExportStage("preparing", "timeline", file, options.format, "begin"));Transport tempoSnapshot;tempoSnapshot.setSampleRate(sampleRate);tempoSnapshot.setBpm(exportBpm);juce::String startError;if(!sequencer_.startExport(file,start,end,tail,tempoSnapshot,options,startError)){clearExportContext();fail(startError);return;}ipc_.send(makeExportStage("preparing", "timeline", file, options.format, "end"));exportPreparing_.store(false,std::memory_order_release);exportCancel_.reset();lastPublishedExportFrames_=-1;exportProgressStartedAtMs_=juce::Time::getMillisecondCounterHiRes();exportLastAdvancedAtMs_=exportProgressStartedAtMs_;auto out=makeExportStage("started","render-blocks",file,options.format,"begin");setProp(out,"exportStartPpq",start);setProp(out,"exportEndPpq",end);setProp(out,"tailSeconds",tail);setProp(out,"livePlaying",transport_.playing());setProp(out,"liveRecording",transport_.recording());setProp(out,"livePpqPosition",transport_.ppqPosition());setProp(out,"liveSamplePosition",transport_.samplePosition());setProp(out,"liveLoopEnabled",transport_.loopEnabled());setProp(out,"liveLoopStartPpq",transport_.loopStart());setProp(out,"liveLoopEndPpq",transport_.loopEnd());auto& offline=sequencer_.exportTransport();setProp(out,"offlinePlaying",offline.playing());setProp(out,"offlinePpqPosition",offline.ppqPosition());setProp(out,"offlineSamplePosition",offline.samplePosition());setProp(out,"offlineLoopEnabled",offline.loopEnabled());setProp(out,"snapshot",sequencer_.exportSnapshotTrace());setProp(out,"vstSnapshot",vstTrace);setProp(out,"deferredMutationCount",0);setProp(out,"audibleTransport","live");setProp(out,"renderThread","offline-worker");setProp(out,"deviceIndependent",true);setProp(out,"hardwareOutput",false);ipc_.send(out);ipc_.send(makeExportStage("started","Master",file,options.format,"begin"));ipc_.send(makeExportStage("started","encoder",file,options.format,"begin"));launchWorker([this,generation](){renderOfflineExport(generation);});
         });
     });
 }
@@ -2078,6 +2095,9 @@ void Engine::cmdSequencerQuiesce(const juce::var& msg)
     const bool cancelledExport = sequencer_.requestCancelExport(false)||cancelledPreparing;
     clearExportContext();
     sequencer_.clearPlan();
+    // A player the next project names the same starts from its beginning.
+    for (auto& entry : audioPlayers_)
+        entry.second.player->command(AudioPlayer::Command::stop);
     transport_.setPlaying(false);
     panicAllMidi();
     juce::var out=makeObject();setProp(out,"type","sequencerQuiesced");setProp(out,"requestId",msg["requestId"]);setProp(out,"wasRecording",wasRecording);setProp(out,"cancelledExport",cancelledExport);ipc_.send(out);
@@ -2818,6 +2838,241 @@ void Engine::forwardOneRings()
         oneRingSets_.erase(std::remove_if(oneRingSets_.begin(), oneRingSets_.end(),
             [keep](const auto& owned) { return owned.get() != keep; }), oneRingSets_.end());
         retiredOneRings_.clear();
+    }
+}
+
+// ---- Audio Player nodes ----
+
+AudioPlayer* Engine::getOrCreateAudioPlayer(const juce::String& nodeId)
+{
+    if (!isProtocolChainId(nodeId))
+        return nullptr;
+    auto& node = audioPlayers_[nodeId];
+    if (node.player == nullptr)
+        node.player = std::make_unique<AudioPlayer>(nodeId.toStdString());
+    return node.player.get();
+}
+
+void Engine::cmdSyncAudioPlayers(const juce::var& msg)
+{
+    // The whole list, every time: what it leaves out holds no file afterwards,
+    // which is how a deleted node, a closed project or a renderer that reloaded
+    // can never leave a file playing that nothing on screen names.
+    const auto* players = msg["players"].getArray();
+    if (players == nullptr || players->size() > 64)
+    {
+        sendError("audio-players-invalid", "players must be an array of at most 64 entries");
+        return;
+    }
+    std::vector<juce::String> listed;
+    for (const auto& value : *players)
+    {
+        const juce::String nodeId = value["nodeId"].toString();
+        auto* player = getOrCreateAudioPlayer(nodeId);
+        if (player == nullptr)
+        {
+            sendError("audio-players-invalid", "invalid Audio Player node id: " + nodeId);
+            continue;
+        }
+        listed.push_back(nodeId);
+        auto& node = audioPlayers_[nodeId];
+        node.listed = true;
+        player->setLooping(value["loop"].isBool() && static_cast<bool>(value["loop"]));
+        const juce::String path = value["filePath"].toString();
+        const bool reload = value["reload"].isBool() && static_cast<bool>(value["reload"]);
+        // A file that could not be read is tried again: it may be back.
+        const bool failed = node.error.isNotEmpty() && !node.loading;
+        if (path != node.path || reload || (failed && path.isNotEmpty()))
+            loadAudioPlayerFile(nodeId, path);
+        else if (value["describe"].isBool() && static_cast<bool>(value["describe"]))
+            sendAudioPlayerFile(nodeId);
+    }
+    for (auto& [nodeId, node] : audioPlayers_)
+    {
+        if (!node.listed || std::find(listed.begin(), listed.end(), nodeId) != listed.end())
+            continue;
+        node.listed = false;
+        node.player->command(AudioPlayer::Command::stop);
+        node.path.clear();
+        node.identity.clear();
+        node.error.clear();
+        node.loading = false;
+        ++node.load;
+        node.player->setAsset(nullptr);
+        node.statusSent = false;
+    }
+}
+
+void Engine::loadAudioPlayerFile(const juce::String& nodeId, const juce::String& path)
+{
+    const auto found = audioPlayers_.find(nodeId);
+    if (found == audioPlayers_.end())
+        return;
+    auto& node = found->second;
+    node.path = path;
+    node.error.clear();
+    node.loading = false;
+    const auto load = ++node.load;
+    const auto unload = [&](const juce::String& error)
+    {
+        node.identity.clear();
+        node.error = error;
+        node.player->setAsset(nullptr);
+        sendAudioPlayerFile(nodeId);
+    };
+    if (path.isEmpty())
+    {
+        unload({});
+        return;
+    }
+    if (!juce::File::isAbsolutePath(path))
+    {
+        unload("The file path is not a full path: " + path);
+        return;
+    }
+    const juce::File file(path);
+    if (!file.existsAsFile())
+    {
+        unload("The file is missing: " + path);
+        return;
+    }
+    const auto identity = audio_player::fileIdentity(file);
+    for (auto it = audioPlayerAssets_.begin(); it != audioPlayerAssets_.end();)
+        it = it->second.expired() ? audioPlayerAssets_.erase(it) : std::next(it);
+    const auto cached = audioPlayerAssets_.find(identity);
+    if (cached != audioPlayerAssets_.end())
+        if (auto asset = cached->second.lock())
+        {
+            node.identity = identity;
+            node.player->setAsset(std::move(asset));
+            sendAudioPlayerFile(nodeId);
+            return;
+        }
+    // The file playing now plays on until the new one is ready.
+    node.identity = identity;
+    node.loading = true;
+    sendAudioPlayerFile(nodeId);
+    launchWorker([this, nodeId, path, load]()
+    {
+        juce::String error;
+        auto asset = audio_player::decode(juce::File(path), error, &cancelWorkers_);
+        postWorkerResult([this, nodeId, load, asset = std::move(asset), error]() mutable
+        {
+            const auto entry = audioPlayers_.find(nodeId);
+            // Another file was asked for meanwhile, or none.
+            if (entry == audioPlayers_.end() || entry->second.load != load)
+                return;
+            auto& player = entry->second;
+            player.loading = false;
+            if (asset == nullptr)
+            {
+                player.identity.clear();
+                player.error = error.isNotEmpty() ? error : juce::String("MiniHub cannot read this file");
+                player.player->setAsset(nullptr);
+            }
+            else
+            {
+                player.identity = asset->identity;
+                audioPlayerAssets_[asset->identity] = asset;
+                player.player->setAsset(std::move(asset));
+            }
+            sendAudioPlayerFile(nodeId);
+        });
+    });
+}
+
+void Engine::sendAudioPlayerFile(const juce::String& nodeId)
+{
+    const auto found = audioPlayers_.find(nodeId);
+    if (found == audioPlayers_.end())
+        return;
+    const auto& node = found->second;
+    const auto& asset = node.player->asset();
+    const bool ready = !node.loading && node.error.isEmpty() && node.path.isNotEmpty() && asset != nullptr;
+    juce::var out = makeObject();
+    setProp(out, "type", "audioPlayerFile");
+    setProp(out, "nodeId", nodeId);
+    setProp(out, "filePath", node.path);
+    setProp(out, "state", node.loading ? "loading" : node.error.isNotEmpty() ? "error" : ready ? "ready" : "empty");
+    setProp(out, "message", node.error);
+    if (ready)
+    {
+        setProp(out, "durationSeconds", asset->durationSeconds());
+        setProp(out, "sampleRate", asset->sampleRate);
+        setProp(out, "channels", asset->channels);
+        setProp(out, "format", asset->format);
+        juce::Array<juce::var> peaks;
+        for (const auto peak : asset->peaks)
+            peaks.add(std::round(static_cast<double>(peak) * 10000.0) / 10000.0);
+        setProp(out, "peaks", peaks);
+    }
+    ipc_.send(out);
+}
+
+void Engine::cmdAudioPlayerTransport(const juce::var& msg)
+{
+    const juce::String nodeId = msg["nodeId"].toString();
+    const juce::String action = msg["action"].toString();
+    const auto found = isProtocolChainId(nodeId) ? audioPlayers_.find(nodeId) : audioPlayers_.end();
+    juce::String error;
+    bool ok = false;
+    if (found == audioPlayers_.end() || !found->second.listed)
+        error = "no such Audio Player node";
+    else
+    {
+        const std::map<juce::String, AudioPlayer::Command> commands {
+            { "play", AudioPlayer::Command::play }, { "pause", AudioPlayer::Command::pause },
+            { "stop", AudioPlayer::Command::stop }, { "seek", AudioPlayer::Command::seek } };
+        const auto command = commands.find(action);
+        const double seconds = isNumber(msg["seconds"]) ? static_cast<double>(msg["seconds"]) : 0.0;
+        if (command == commands.end())
+            error = "unknown Audio Player action";
+        else if (command->second == AudioPlayer::Command::seek && !(std::isfinite(seconds) && seconds >= 0.0))
+            error = "a seek needs a position in seconds";
+        else if (!(ok = found->second.player->command(command->second, seconds)))
+            error = "the player is not running";
+    }
+    juce::var out = makeObject();
+    setProp(out, "type", "audioPlayerTransportResult");
+    setProp(out, "nodeId", nodeId);
+    setProp(out, "action", action);
+    setProp(out, "ok", ok);
+    setProp(out, "message", ok ? juce::String() : error);
+    ipc_.send(out);
+}
+
+void Engine::forwardAudioPlayers()
+{
+    if (audioPlayers_.empty() || shutdownRequested_)
+        return;
+    const double now = juce::Time::getMillisecondCounterHiRes();
+    for (auto& [nodeId, node] : audioPlayers_)
+    {
+        if (node.player->hasRetired())
+            node.player->collectRetired();
+        if (!node.listed)
+            continue;
+        const auto status = node.player->status();
+        const auto& last = node.lastStatus;
+        const bool playing = status.state == AudioPlayer::State::playing;
+        const bool changed = !node.statusSent || status.state != last.state || status.ended != last.ended
+            || (!playing && status.positionSeconds != last.positionSeconds);
+        // The position moves on every block; alone, it is sent ten times a second.
+        const bool due = playing && now - node.statusSentAtMs >= 100.0;
+        if (!changed && !due)
+            continue;
+        juce::var out = makeObject();
+        setProp(out, "type", "audioPlayerStatus");
+        setProp(out, "nodeId", nodeId);
+        setProp(out, "state", playing ? "playing"
+                              : status.state == AudioPlayer::State::paused ? "paused" : "stopped");
+        setProp(out, "positionSeconds", status.positionSeconds);
+        setProp(out, "ended", static_cast<juce::int64>(
+            std::min<std::uint64_t>(status.ended, static_cast<std::uint64_t>(kMaxSafeInteger))));
+        ipc_.send(out);
+        node.lastStatus = status;
+        node.statusSent = true;
+        node.statusSentAtMs = now;
     }
 }
 

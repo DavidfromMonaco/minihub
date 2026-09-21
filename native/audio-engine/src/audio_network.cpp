@@ -1,4 +1,5 @@
 #include "audio_network.h"
+#include "audio_player.h"
 #include "sequencer.h"
 #include <algorithm>
 #include <atomic>
@@ -43,7 +44,7 @@ const juce::AudioBuffer<float>& AudioExecutionPlan::SourceDelay::process(
 std::unique_ptr<AudioExecutionPlan> AudioExecutionPlan::compile(
     const AudioNetworkSpec& spec, const std::function<Chain*(const std::string&)>& chainLookup,
     SequencerEngine* sequencer, int maxBlockSize, std::string& error,
-    bool pdcEnabled)
+    bool pdcEnabled, const std::function<AudioPlayer*(const std::string&)>& playerLookup)
 {
     if (maxBlockSize <= 0) { error = "invalid block size"; return {}; }
     std::unordered_map<std::string, int> index;
@@ -52,6 +53,7 @@ std::unique_ptr<AudioExecutionPlan> AudioExecutionPlan::compile(
         const bool validId=!n.id.empty()&&std::all_of(n.id.begin(),n.id.end(),[](unsigned char c){return std::isalnum(c)||c=='-'||c=='_';});
         if (!validId || !index.emplace(n.id,i).second) { error="invalid or duplicate node id"; return {}; }
         if (n.kind==AudioNodeKind::vst && chainLookup(n.id)==nullptr) { error="unknown VST node: "+n.id; return {}; }
+        if (n.kind==AudioNodeKind::player && (!playerLookup || playerLookup(n.id)==nullptr)) { error="unknown Audio Player node: "+n.id; return {}; }
         if (n.kind==AudioNodeKind::input && n.id!="audio-input") { error="invalid input node id"; return {}; }
         if (n.kind==AudioNodeKind::output && n.id!="audio-output") { error="invalid output node id"; return {}; }
         if (n.kind==AudioNodeKind::morpher && !(n.stepCount==4||n.stepCount==8||n.stepCount==16||n.stepCount==32)) { error="invalid Morpher step count"; return {}; }
@@ -78,6 +80,7 @@ std::unique_ptr<AudioExecutionPlan> AudioExecutionPlan::compile(
     std::unordered_map<int,int> compiled;
     for(int original:order){const auto& s=spec.nodes[(size_t)original];Node n;n.id=s.id;n.kind=s.kind;n.setMasterLevel(s.masterLevel);n.stepCount=s.stepCount;for(size_t stepIndex=0;stepIndex<NodeValues::kMaxSteps;++stepIndex)n.setStep(stepIndex,s.steps[stepIndex]);n.diagnosticCyclesPerSample=s.diagnosticCyclesPerSample;n.diagnosticAmplitude=std::clamp(s.diagnosticAmplitude,-2.0f,2.0f);n.diagnosticStartSample=std::max<int64_t>(0,s.diagnosticStartSample);n.diagnosticEndSample=std::max(n.diagnosticStartSample,s.diagnosticEndSample);
         if(n.kind==AudioNodeKind::vst)n.chain=chainLookup(n.id);
+        if(n.kind==AudioNodeKind::player)n.player=playerLookup(n.id);
         if(n.kind==AudioNodeKind::sequencer)n.sequencer=sequencer;
         if(n.kind==AudioNodeKind::mixer||n.kind==AudioNodeKind::morpher)n.signalMeter=std::make_unique<AudioSignalMeter>();
         int maximumSourceLatency=0;
@@ -126,6 +129,10 @@ void AudioExecutionPlan::process(float* const* hw,int hwChannels,int count,Trans
             const double twoPi=juce::MathConstants<double>::twoPi;
             for(int sample=0;sample<count;++sample){const int64_t absolute=n.diagnosticRenderedSamples+sample;const float value=absolute>=n.diagnosticStartSample&&absolute<n.diagnosticEndSample?(float)(std::sin(twoPi*n.diagnosticCyclesPerSample*(double)absolute)*n.diagnosticAmplitude):0.0f;for(int ch=0;ch<2;++ch)n.output.setSample(ch,sample,value);}
             n.diagnosticRenderedSamples+=count;
+        }
+        else if(n.kind==AudioNodeKind::player){
+            // A source: it has no input, and its level is the node's master.
+            if(n.player)n.player->render(n.output,count,transport.processingPlaying(),transport.sampleRate(),n.masterLevel());
         }
         else if(n.kind==AudioNodeKind::input){
             if(hardwareInput&&hardwareInput->getNumChannels()>0&&hardwareInput->getNumSamples()>=count)

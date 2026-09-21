@@ -116,6 +116,8 @@ add_executable(mlh_audio_engine
     src/transport.h
     src/audio_network.h
     src/audio_network.cpp
+    src/audio_player.h
+    src/audio_player.cpp
     src/audio_take_writer.h
     src/audio_take_writer.cpp
     src/audio_signal_meter.h
@@ -206,6 +208,8 @@ if(BUILD_TESTING)
         src/transport.h
         src/audio_network.h
         src/audio_network.cpp
+        src/audio_player.h
+        src/audio_player.cpp
         src/audio_take_writer.h
         src/audio_take_writer.cpp
         src/audio_signal_meter.h

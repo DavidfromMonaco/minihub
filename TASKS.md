@@ -7,6 +7,26 @@ finished, delete its entry**, in the same commit. What was done lives in git and
 
 ## Started, not finished
 
+**An Audio Player node — in the author's test** — built 2026-09-21 on the
+author's word: an OmniBox he can put an audio file in, "at least WAV and MP3",
+to cable into VSTs and process the audio. An Audio OmniBox with one AUDIO OUT:
+a WAV, MP3, AIFF, FLAC or OGG file chosen on its page, Play/Pause, Stop, Loop,
+Level, a click on the overview to place it; the Play, Pause and Stop at the top
+of MiniHub drive it too (DECISIONS D-051, ARCHITECTURE §7 *`AudioPlayer`*).
+- Seen in the application through the agent channel, on the 48 kHz headphone
+  output: a 44.1 kHz WAV and an MP3 of it, through ValhallaSupermassive to the
+  output; the transport's Play, Pause, resume and Stop, the loop's wrap, an MP3
+  without loop ending at its start, the node's own buttons, and the header's
+  Stop ending a player started alone. An export with the plugin bypassed
+  differs from one without, so the file really is processed. The page and the
+  Patch Bay card seen in a capture.
+- Not heard by the author yet. The page is plain (`base.css`) until he says what
+  it should look like.
+- Outside this repository, the author's to update: `../minihub-agent/AGENTS.md`
+  does not describe `create-node audio-player`, its content
+  `{ filePath, loop, level }`, nor the `audio-player` request (`play`, `pause`,
+  `stop`, `seek` with `seconds`).
+
 **Templates, and a Home that says what MiniHub is** — built 2026-09-18 on the
 author's word, replacing the "Basic template" placeholder, which only ever made
 an empty project under another name.

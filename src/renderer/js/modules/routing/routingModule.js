@@ -23,6 +23,7 @@ import { NetworkLayout, separateOverlaps, alignPositions, NODE_GAP } from '../..
 import { NetworkViewport } from '../../core/networkViewport.js';
 import { GRID_SIZE, dragPosition } from '../../core/grid.js';
 import { getNodeType, listNodeTypes, listOmniBoxCategories } from '../../core/nodeTypes.js';
+import { AUDIO_PLAYER_TYPE, fileNameOf } from '../../core/audioPlayerState.js';
 import {
   NODE_WIDTH,
   nodeWidth,
@@ -261,6 +262,15 @@ export function createRoutingModule(hub) {
           typeInfo = vstTypeBadge(plugins);
           const sub = svgEl('text', { class: 'node-subtitle', x: 12, y: 76 });
           sub.textContent = `${plugins.length} plugin${plugins.length === 1 ? '' : 's'}`;
+          clipped.appendChild(sub);
+        } else if (node.type === AUDIO_PLAYER_TYPE) {
+          // The file it plays, by name, and its format: two players on a
+          // canvas are told apart by what they hold.
+          const name = fileNameOf(hub.nodes?.get(node.id)?.content?.filePath);
+          const extension = /\.([A-Za-z0-9]{1,5})$/.exec(name)?.[1]?.toUpperCase();
+          typeInfo = name ? { text: extension || 'FILE', className: 'file' } : { text: 'EMPTY', className: 'empty' };
+          const sub = svgEl('text', { class: 'node-subtitle', x: 12, y: 76 });
+          sub.textContent = !name ? 'No file' : name.length > 28 ? `${name.slice(0, 27)}…` : name;
           clipped.appendChild(sub);
         } else {
           typeInfo = { text: 'EMPTY', className: 'empty' };

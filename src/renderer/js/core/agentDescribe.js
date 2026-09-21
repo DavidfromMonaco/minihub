@@ -78,6 +78,27 @@ function oneRingStatusOf(hub, nodeId) {
 }
 
 /**
+ * What an Audio Player's engine says of its file and of where it is -- which
+ * the content, a path, cannot say: whether that file could be read, how long it
+ * is, and whether it plays. The overview is left out; it is for eyes.
+ */
+function audioPlayerStatusOf(hub, nodeId, instance) {
+  const file = hub.audioPlayers?.fileOf?.(nodeId) ?? null;
+  const status = hub.audioPlayers?.statusOf?.(nodeId) ?? null;
+  // An answer about another path than the one the node names is an old one.
+  const current = file && file.filePath === (instance?.content?.filePath || '') ? file : null;
+  return {
+    file: current?.state ?? (instance?.content?.filePath ? 'loading' : 'empty'),
+    message: current?.message ?? '',
+    durationSeconds: current?.durationSeconds ?? 0,
+    sampleRate: current?.sampleRate ?? 0,
+    channels: current?.channels ?? 0,
+    state: status?.state ?? 'stopped',
+    positionSeconds: status?.positionSeconds ?? 0
+  };
+}
+
+/**
  * Every node in the network, with the ports it actually has.
  *
  * WHY THE NETWORK AND NOT `nodes.list()`
@@ -108,7 +129,8 @@ export function describeNodes(hub) {
       system: !instance,
       ports: { inputs: strip(node.inputs), outputs: strip(node.outputs) },
       content: contentOf(instance, hub),
-      ...(typeId === 'one-ring' ? { status: oneRingStatusOf(hub, node.id) } : {})
+      ...(typeId === 'one-ring' ? { status: oneRingStatusOf(hub, node.id) } : {}),
+      ...(typeId === 'audio-player' ? { status: audioPlayerStatusOf(hub, node.id, instance) } : {})
     };
   });
 }

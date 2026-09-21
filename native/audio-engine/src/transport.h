@@ -81,6 +81,7 @@ public:
  void seekPpq(double v) noexcept { if(!std::isfinite(v))return;const auto q=std::max(0.0,v);ppq_.store(q);samples_.store((int64_t)std::llround(q*60.0*sampleRate_.load()/bpm_.load()));seekSerial_.fetch_add(1); }
  void setLoop(bool enabled,double start,double end) noexcept { if(!std::isfinite(start)||!std::isfinite(end))return;start=std::max(0.0,start);end=std::max(start+0.03125,end);loopStart_.store(start);loopEnd_.store(end);loopEnabled_.store(enabled); }
  double bpm() const noexcept { return bpm_.load(); }
+ double sampleRate() const noexcept { return sampleRate_.load(); }
  bool playing() const noexcept { return playing_.load(std::memory_order_acquire); }
  bool recording() const noexcept { return recording_.load(std::memory_order_acquire); }
  bool loopEnabled() const noexcept { return loopEnabled_.load(); }

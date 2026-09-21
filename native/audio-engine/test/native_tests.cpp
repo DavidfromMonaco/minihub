@@ -1,3 +1,4 @@
+#include "audio_player.h"
 #include "gesture_learn_state.h"
 #include "host_system.h"
 #include "transport.h"
@@ -3834,6 +3835,371 @@ void testSequencerFeedsOneRing()
            "the track's notes reach the One Ring node by its id");
 }
 
+// ---- Audio Player ------------------------------------------------------------
+
+std::shared_ptr<mlh::AudioPlayerAsset> playerAsset(double sampleRate, int frames,
+                                                   const std::function<float(int, int)>& value)
+{
+    auto asset = std::make_shared<mlh::AudioPlayerAsset>();
+    asset->sampleRate = sampleRate;
+    asset->samples.setSize(2, frames);
+    for (int channel = 0; channel < 2; ++channel)
+        for (int i = 0; i < frames; ++i)
+            asset->samples.setSample(channel, i, value(channel, i));
+    asset->peaks.assign(mlh::audio_player::kPeakCount, 0.0f);
+    return asset;
+}
+
+std::shared_ptr<mlh::AudioPlayerAsset> sineAsset(double sampleRate, double hz, double amplitude, int frames)
+{
+    const double twoPi = juce::MathConstants<double>::twoPi;
+    return playerAsset(sampleRate, frames, [=](int, int i)
+        { return static_cast<float>(amplitude * std::sin(twoPi * hz * i / sampleRate)); });
+}
+
+/** Render `blocks` blocks of `size` frames and return them end to end. */
+juce::AudioBuffer<float> renderPlayer(mlh::AudioPlayer& player, int blocks, int size, bool transport,
+                                      double rate, float level = 1.0f)
+{
+    juce::AudioBuffer<float> all(2, blocks * size), block(2, size);
+    for (int b = 0; b < blocks; ++b)
+    {
+        block.clear();
+        player.render(block, size, transport, rate, level);
+        for (int channel = 0; channel < 2; ++channel)
+            all.copyFrom(channel, b * size, block, channel, 0, size);
+    }
+    return all;
+}
+
+juce::File writeTestWav(const juce::String& name, double sampleRate, int channels, int frames,
+                        const std::function<float(int, int)>& value, int bits = 16)
+{
+    auto file = juce::File::getSpecialLocation(juce::File::tempDirectory).getNonexistentChildFile(name, ".wav");
+    std::unique_ptr<juce::OutputStream> stream = file.createOutputStream();
+    juce::WavAudioFormat wav;
+    auto writer = wav.createWriterFor(stream, juce::AudioFormatWriter::Options{}
+        .withSampleRate(sampleRate).withNumChannels(channels).withBitsPerSample(bits));
+    juce::AudioBuffer<float> audio(channels, frames);
+    for (int channel = 0; channel < channels; ++channel)
+        for (int i = 0; i < frames; ++i)
+            audio.setSample(channel, i, value(channel, i));
+    writer->writeFromAudioSampleBuffer(audio, 0, frames);
+    writer.reset();
+    return file;
+}
+
+/** Frequency from the rising zero crossings of `count` frames from `start`. */
+double crossingsFrequency(const juce::AudioBuffer<float>& audio, int channel, int start, int count, double rate)
+{
+    int first = -1, last = -1, crossings = 0;
+    for (int i = start + 1; i < start + count; ++i)
+        if (audio.getSample(channel, i - 1) < 0.0f && audio.getSample(channel, i) >= 0.0f)
+        {
+            if (first < 0) first = i;
+            last = i;
+            ++crossings;
+        }
+    return crossings > 1 ? (crossings - 1) * rate / static_cast<double>(last - first) : 0.0;
+}
+
+void testAudioPlayerDecodesFiles()
+{
+    const double twoPi = juce::MathConstants<double>::twoPi;
+    const auto sine = [twoPi](double hz, double rate) { return [=](int channel, int i)
+        { return static_cast<float>((channel == 0 ? 0.5 : 0.25) * std::sin(twoPi * hz * i / rate)); }; };
+
+    auto stereo = writeTestWav("MiniHub-player-stereo", 44100, 2, 44100, sine(1000, 44100));
+    juce::String error;
+    auto asset = mlh::audio_player::decode(stereo, error);
+    expect(asset != nullptr && error.isEmpty(), "a WAV file decodes");
+    if (asset)
+    {
+        expect(asset->sampleRate == 44100 && asset->frames() == 44100 && asset->channels == 2,
+               "the file keeps its own rate, length and channel count");
+        expect(asset->peaks.size() == static_cast<size_t>(mlh::audio_player::kPeakCount)
+               && std::abs(asset->peaks[100] - 0.5f) < 0.01f, "its overview holds the louder channel's peak");
+        expect(asset->identity == mlh::audio_player::fileIdentity(stereo), "it is known by its file's identity");
+        expect(std::abs(asset->samples.getSample(1, 10) - 0.25f * static_cast<float>(std::sin(twoPi * 1000 * 10 / 44100.0))) < 1.0e-3f,
+               "each channel keeps its own signal");
+    }
+
+    auto mono = writeTestWav("MiniHub-player-mono", 48000, 1, 4800, sine(440, 48000));
+    auto monoAsset = mlh::audio_player::decode(mono, error);
+    expect(monoAsset != nullptr && monoAsset->channels == 1, "a mono WAV decodes");
+    if (monoAsset)
+    {
+        bool same = true;
+        for (int i = 0; i < monoAsset->frames(); ++i)
+            same = same && monoAsset->samples.getSample(0, i) == monoAsset->samples.getSample(1, i);
+        expect(same, "a mono file plays on both channels");
+    }
+
+    // MP3, through the decoder Windows provides, from a file LAME made.
+    const auto lame = mlh::SequencerEngine::bundledLameExecutable();
+    auto source = writeTestWav("MiniHub-player-mp3-source", 44100, 2, 44100, sine(1000, 44100));
+    auto mp3 = source.getSiblingFile(source.getFileNameWithoutExtension() + ".mp3");
+    mp3.deleteFile();
+    juce::ChildProcess encoder;
+    juce::StringArray args { lame.getFullPathName(), "--quiet", "-b", "192", source.getFullPathName(), mp3.getFullPathName() };
+    const bool encoded = encoder.start(args) && encoder.waitForProcessToFinish(20000)
+        && encoder.getExitCode() == 0 && mp3.existsAsFile();
+    expect(encoded, "LAME encodes the MP3 the player test reads");
+    auto mp3Asset = encoded ? mlh::audio_player::decode(mp3, error) : nullptr;
+    expect(mp3Asset != nullptr, "an MP3 file decodes: " + error);
+    if (mp3Asset)
+    {
+        expect(mp3Asset->sampleRate == 44100 && mp3Asset->channels == 2, "the MP3 keeps its rate and channels");
+        expect(mp3Asset->durationSeconds() > 0.95 && mp3Asset->durationSeconds() < 1.2,
+               "the MP3 lasts what its source lasted, give or take the coder's padding");
+        const double hz = crossingsFrequency(mp3Asset->samples, 0, 13230, 17640, 44100);
+        expect(std::abs(hz - 1000.0) < 2.0, "the MP3 holds the tone it was made of");
+        const float rms = mp3Asset->samples.getRMSLevel(0, 13230, 17640);
+        expect(std::abs(juce::Decibels::gainToDecibels(rms) - juce::Decibels::gainToDecibels(0.5f / std::sqrt(2.0f))) < 1.0f,
+               "at the level it was made at");
+    }
+
+    expect(mlh::audio_player::decode(stereo.getSiblingFile("MiniHub-no-such-file.wav"), error) == nullptr
+           && error.startsWith("The file is missing"), "a missing file is named as missing");
+    auto text = juce::File::getSpecialLocation(juce::File::tempDirectory).getNonexistentChildFile("MiniHub-player-not-audio", ".wav");
+    text.replaceWithText("this is not audio");
+    expect(mlh::audio_player::decode(text, error) == nullptr && error.startsWith("MiniHub cannot read"),
+           "a file that is not audio is refused in words");
+    for (auto* file : { &stereo, &mono, &source, &mp3, &text })
+        file->deleteFile();
+}
+
+void testAudioPlayerResamples()
+{
+    // The same rate: the samples as they are.
+    {
+        mlh::AudioPlayer player("audio-player-001");
+        auto asset = sineAsset(48000, 997, 0.8, 4800);
+        player.setAsset(asset);
+        renderPlayer(player, 1, 256, false, 48000);
+        player.command(mlh::AudioPlayer::Command::play);
+        auto out = renderPlayer(player, 10, 256, false, 48000);
+        bool exact = true;
+        for (int i = 0; i < 2560; ++i)
+            exact = exact && out.getSample(0, i) == asset->samples.getSample(0, i);
+        expect(exact, "a file at the device's rate plays bit for bit");
+    }
+    // 44.1 kHz on a 48 kHz device: the tone keeps its pitch and its level.
+    for (const double hz : { 1000.0, 15000.0 })
+    {
+        mlh::AudioPlayer player("audio-player-002");
+        auto asset = sineAsset(44100, hz, 0.5, 44100);
+        player.setAsset(asset);
+        renderPlayer(player, 1, 480, false, 48000);
+        player.command(mlh::AudioPlayer::Command::play);
+        auto out = renderPlayer(player, 50, 480, false, 48000);
+        const double measured = crossingsFrequency(out, 0, 4800, 14400, 48000);
+        expect(std::abs(measured - hz) < hz * 0.001, "a 44.1 kHz file keeps its pitch on a 48 kHz device");
+        const float rms = out.getRMSLevel(0, 4800, 14400);
+        expect(std::abs(juce::Decibels::gainToDecibels(rms) - juce::Decibels::gainToDecibels(0.5f / std::sqrt(2.0f))) < 0.1f,
+               "and its level, up to 15 kHz");
+        if (hz == 1000.0)
+        {
+            // Against the ideal tone at the output's rate: the conversion error.
+            const double twoPi = juce::MathConstants<double>::twoPi;
+            double worst = 0.0;
+            for (int i = 100; i < 20000; ++i)
+                worst = std::max(worst, std::abs(out.getSample(0, i) - 0.5 * std::sin(twoPi * hz * i / 48000.0)));
+            expect(worst < 1.0e-3, "within -54 dB of the ideal tone");
+        }
+    }
+    // 96 kHz on a 48 kHz device: what 48 kHz cannot carry is filtered, not folded.
+    {
+        mlh::AudioPlayer player("audio-player-003");
+        auto asset = sineAsset(96000, 30000, 0.5, 96000);
+        player.setAsset(asset);
+        renderPlayer(player, 1, 480, false, 48000);
+        player.command(mlh::AudioPlayer::Command::play);
+        auto out = renderPlayer(player, 40, 480, false, 48000);
+        expect(out.getRMSLevel(0, 4800, 9600) < 0.005f, "a 30 kHz tone above the device's reach comes out 40 dB down");
+    }
+}
+
+void testAudioPlayerPlaysLoopsAndStops()
+{
+    // A loop of whole periods tiles into a continuous tone.
+    {
+        mlh::AudioPlayer player("audio-player-004");
+        auto asset = sineAsset(48000, 100, 1.0, 4800);
+        player.setAsset(asset);
+        player.setLooping(true);
+        renderPlayer(player, 1, 256, false, 48000);
+        player.command(mlh::AudioPlayer::Command::play);
+        auto out = renderPlayer(player, 60, 256, false, 48000);
+        bool tiled = true;
+        for (int i = 0; i < 15360; ++i)
+            tiled = tiled && out.getSample(0, i) == asset->samples.getSample(0, i % 4800);
+        expect(tiled, "a loop plays the file again, seamlessly");
+        expect(player.status().state == mlh::AudioPlayer::State::playing, "and keeps playing");
+    }
+    // Resampled, the loop's seam reads across the ends: no step where it wraps.
+    {
+        mlh::AudioPlayer player("audio-player-005");
+        auto asset = sineAsset(44100, 100, 1.0, 4410);
+        player.setAsset(asset);
+        player.setLooping(true);
+        renderPlayer(player, 1, 256, false, 48000);
+        player.command(mlh::AudioPlayer::Command::play);
+        auto out = renderPlayer(player, 80, 256, false, 48000);
+        float step = 0.0f;
+        for (int i = 2000; i < 20000; ++i)
+            step = std::max(step, std::abs(out.getSample(0, i) - out.getSample(0, i - 1)));
+        expect(step < 0.02f, "a resampled loop has no click at its seam");
+    }
+    // Without loop: once, then silence, and back to the start.
+    {
+        mlh::AudioPlayer player("audio-player-006");
+        auto asset = sineAsset(48000, 100, 1.0, 1000);
+        player.setAsset(asset);
+        renderPlayer(player, 1, 256, false, 48000);
+        player.command(mlh::AudioPlayer::Command::play);
+        auto out = renderPlayer(player, 8, 256, false, 48000);
+        expect(out.getMagnitude(0, 0, 1000) > 0.9f && out.getMagnitude(0, 1000, 1048) == 0.0f,
+               "a file without loop plays once");
+        const auto status = player.status();
+        expect(status.state == mlh::AudioPlayer::State::stopped && status.positionSeconds == 0.0 && status.ended == 1,
+               "then waits at its start, having ended once");
+    }
+    // Pause, resume, stop, and fades that leave no click.
+    {
+        mlh::AudioPlayer player("audio-player-007");
+        auto asset = sineAsset(48000, 100, 1.0, 48000);
+        player.setAsset(asset);
+        renderPlayer(player, 1, 256, false, 48000);
+        player.command(mlh::AudioPlayer::Command::play);
+        renderPlayer(player, 10, 256, false, 48000);
+        player.command(mlh::AudioPlayer::Command::pause);
+        auto fading = renderPlayer(player, 4, 256, false, 48000);
+        float step = 0.0f;
+        for (int i = 1; i < 1024; ++i)
+            step = std::max(step, std::abs(fading.getSample(0, i) - fading.getSample(0, i - 1)));
+        expect(step < 0.02f, "a pause fades out instead of cutting");
+        expect(fading.getMagnitude(0, 300, 724) == 0.0f, "and is silent within 5 ms");
+        const auto paused = player.status();
+        expect(paused.state == mlh::AudioPlayer::State::paused && paused.positionSeconds > 0.05,
+               "a paused player keeps its place");
+        player.command(mlh::AudioPlayer::Command::play);
+        auto resumed = renderPlayer(player, 1, 256, false, 48000);
+        expect(std::abs(resumed.getSample(0, 0)) < 0.02f && resumed.getMagnitude(0, 200, 56) > 0.2f,
+               "resuming fades in from where it paused");
+        player.command(mlh::AudioPlayer::Command::stop);
+        renderPlayer(player, 4, 256, false, 48000);
+        const auto stopped = player.status();
+        expect(stopped.state == mlh::AudioPlayer::State::stopped && stopped.positionSeconds == 0.0,
+               "a stop returns to the start");
+        player.command(mlh::AudioPlayer::Command::seek, 0.5);
+        renderPlayer(player, 1, 256, false, 48000);
+        expect(player.status().state == mlh::AudioPlayer::State::paused
+               && std::abs(player.status().positionSeconds - 0.5) < 1.0e-6, "a place chosen while stopped waits there");
+        player.command(mlh::AudioPlayer::Command::play);
+        auto fromThere = renderPlayer(player, 2, 256, false, 48000);
+        expect(fromThere.getMagnitude(0, 300, 212) > 0.2f
+               && std::abs(player.status().positionSeconds - (0.5 + 512.0 / 48000.0)) < 1.0e-6,
+               "and Play starts from it");
+    }
+    // A level, and a new file.
+    {
+        mlh::AudioPlayer player("audio-player-008");
+        auto asset = playerAsset(48000, 4800, [](int, int) { return 0.5f; });
+        player.setAsset(asset);
+        renderPlayer(player, 1, 256, false, 48000, 0.5f);
+        player.command(mlh::AudioPlayer::Command::play);
+        auto out = renderPlayer(player, 1, 256, false, 48000, 0.5f);
+        expect(std::abs(out.getSample(0, 100) - 0.25f) < 1.0e-6f, "the level scales what plays");
+        player.setAsset(playerAsset(48000, 4800, [](int, int) { return 0.1f; }));
+        expect(player.hasRetired(), "the file replaced waits to be freed");
+        auto after = renderPlayer(player, 1, 256, false, 48000, 0.5f);
+        expect(after.getMagnitude(0, 0, 256) == 0.0f && player.status().state == mlh::AudioPlayer::State::stopped,
+               "another file waits at its start");
+        player.collectRetired();
+        expect(!player.hasRetired(), "and the old one is freed once no render holds it");
+    }
+}
+
+void testAudioPlayerFollowsTheTransport()
+{
+    mlh::AudioPlayer player("audio-player-009");
+    auto asset = sineAsset(48000, 100, 1.0, 48000);
+    player.setAsset(asset);
+    renderPlayer(player, 1, 256, true, 48000);
+    expect(player.status().state == mlh::AudioPlayer::State::stopped,
+           "a file present while the arrangement plays waits for a Play");
+    renderPlayer(player, 1, 256, false, 48000);
+    auto started = renderPlayer(player, 1, 256, true, 48000);
+    expect(player.status().state == mlh::AudioPlayer::State::playing
+           && started.getSample(0, 5) == asset->samples.getSample(0, 5),
+           "the transport's start plays it, from its first sample and without a fade");
+    renderPlayer(player, 10, 256, true, 48000);
+    renderPlayer(player, 4, 256, false, 48000);
+    const auto paused = player.status();
+    expect(paused.state == mlh::AudioPlayer::State::paused && paused.positionSeconds > 0.05,
+           "the transport's stop pauses it where it is");
+    renderPlayer(player, 1, 256, true, 48000);
+    expect(player.status().state == mlh::AudioPlayer::State::playing
+           && player.status().positionSeconds > paused.positionSeconds, "and its start resumes it");
+    // A Stop somebody gives arrives with the transport's stop: it wins.
+    player.command(mlh::AudioPlayer::Command::stop);
+    renderPlayer(player, 4, 256, false, 48000);
+    expect(player.status().state == mlh::AudioPlayer::State::stopped && player.status().positionSeconds == 0.0,
+           "a Stop returns it to its start even as the transport stops");
+    // An export plays a copy, from the beginning, and leaves the player alone.
+    player.command(mlh::AudioPlayer::Command::seek, 0.25);
+    renderPlayer(player, 1, 256, false, 48000);
+    auto copy = player.cloneForExport();
+    auto exported = renderPlayer(*copy, 1, 256, true, 48000);
+    expect(copy->status().state == mlh::AudioPlayer::State::playing
+           && exported.getSample(0, 7) == asset->samples.getSample(0, 7), "an export's copy starts at the file's start");
+    expect(std::abs(player.status().positionSeconds - 0.25) < 1.0e-6, "the player itself keeps its place");
+}
+
+void testAudioPlayerInTheNetwork()
+{
+    mlh::AudioPlayer player("audio-player-010");
+    player.setAsset(playerAsset(48000, 48000, [](int channel, int) { return channel == 0 ? 0.5f : -0.5f; }));
+    mlh::AudioNetworkSpec spec;
+    mlh::AudioNetworkNodeSpec source; source.id = "audio-player-010"; source.kind = mlh::AudioNodeKind::player; source.masterLevel = 0.5f;
+    mlh::AudioNetworkNodeSpec output; output.id = "audio-output"; output.kind = mlh::AudioNodeKind::output;
+    output.inputs.push_back({ "audio-in", "audio-player-010", "audio-out", 1.0f, false });
+    spec.nodes = { source, output };
+    const auto noChain = [](const std::string&) { return (mlh::Chain*) nullptr; };
+    std::string error;
+    expect(mlh::AudioExecutionPlan::compile(spec, noChain, nullptr, 256, error) == nullptr
+           && error.find("unknown Audio Player node") != std::string::npos,
+           "a network naming a player compiles only with a way to find it");
+    auto plan = mlh::AudioExecutionPlan::compile(spec, noChain, nullptr, 256, error, true,
+        [&player](const std::string& id) { return id == player.id() ? &player : nullptr; });
+    expect(plan != nullptr, "an Audio Player feeds the Audio Output");
+    auto withInput = spec;
+    withInput.nodes[0].inputs.push_back({ "audio-in", "audio-output", "audio-out", 1.0f, false });
+    expect(mlh::AudioExecutionPlan::compile(withInput, noChain, nullptr, 256, error, true,
+        [&player](const std::string&) { return &player; }) == nullptr, "a player takes no input");
+    if (!plan)
+        return;
+    mlh::Transport transport; transport.setSampleRate(48000);
+    float left[256] {}, right[256] {};
+    float* hardware[] = { left, right };
+    juce::MidiBuffer midi;
+    const auto block = [&](bool playing)
+    {
+        juce::FloatVectorOperations::clear(left, 256);
+        juce::FloatVectorOperations::clear(right, 256);
+        transport.setPlaying(playing);
+        transport.beginBlock();
+        plan->process(hardware, 2, 256, transport, midi);
+        transport.advance(256);
+    };
+    block(false);
+    expect(left[10] == 0.0f, "a player waiting at its start is silent");
+    block(true);
+    expect(std::abs(left[10] - 0.25f) < 1.0e-6f && std::abs(right[10] + 0.25f) < 1.0e-6f,
+           "playing, it reaches the output at its node's level, channel for channel");
+}
+
 } // namespace
 
 int main(int argc, char** argv)
@@ -3950,6 +4316,16 @@ int main(int argc, char** argv)
     testOneRingScenes();
     std::cerr << "[core] sequencer-feeds-one-ring\n";
     testSequencerFeedsOneRing();
+    std::cerr << "[core] audio-player-decode\n";
+    testAudioPlayerDecodesFiles();
+    std::cerr << "[core] audio-player-resample\n";
+    testAudioPlayerResamples();
+    std::cerr << "[core] audio-player-play\n";
+    testAudioPlayerPlaysLoopsAndStops();
+    std::cerr << "[core] audio-player-transport\n";
+    testAudioPlayerFollowsTheTransport();
+    std::cerr << "[core] audio-player-network\n";
+    testAudioPlayerInTheNetwork();
     }
     if (runVst3) testRealVst3SequencerPlaybackArpAndMasterExport();
     if (runCrossTrack) crossTrackLevelIsolation();

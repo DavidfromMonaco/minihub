@@ -29,6 +29,8 @@ const ICONS = {
     '<path d="M9 9a3 3 0 1 1 4 2.83c-.6.3-1 .9-1 1.67"/><path d="M12 17h.01"/>',
   speaker:
     '<rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 10v4M12 8v8M15 10v4M18 8v8"/>',
+  player:
+    '<path d="M3 7v10l7-5z"/><path d="M14 9v6M17 5v14M20 10v4"/>',
   info: '<circle cx="12" cy="12" r="9"/><path d="M12 8h.01M12 12v4"/>'
 };
 

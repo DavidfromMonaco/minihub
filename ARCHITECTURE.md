@@ -365,6 +365,7 @@ nécessaire. La barre latérale, le graphe et la navigation suivent.
 | `arpeggiator` | MIDI | midi, control | midi | motif, gamme, mode, rythme |
 | `sequencer` | MIDI | midi, audio, control | midi, audio | *(modèle séparé)* |
 | `audio-input` | Audio | — | audio | — |
+| `audio-player` | Audio | — | audio | a file's path, loop, level (§7, *`AudioPlayer`*) |
 | `video`, `image` | — | — | — | réservés |
 
 Drapeaux structurants : `singleton` (une seule instance), `stableId` (identité
@@ -578,7 +579,7 @@ tout plan), les éditeurs natifs, et l'instance `engine2::AudioEngine`.
 audio, publié, puis **immuable dans sa forme**. Chaque nœud porte :
 
 - son `kind` (`input`, `vst`, `mixer`, `morpher`, `sequencer`, `output`,
-  `diagnosticSine`) ;
+  `player`, `diagnosticSine`) ;
 - ses sources en **ordre topologique** ;
 - ses `SourceDelay` — les lignes de retard qui compensent la latence des
   plugins (PDC) ;
@@ -620,6 +621,26 @@ the piece plays — panics nothing: the callback gives Note Off to the notes of
 the tracks whose clips changed and chases their new ones, and the other tracks
 play on (`SequencerEngine::adoptLivePlan`; `sequencerSynced` says
 `keptRouting`).
+
+### `AudioPlayer` — a file in the Patch Bay
+
+[audio_player.h](native/audio-engine/src/audio_player.h). An Audio Player node's
+file, decoded whole by the engine on a worker thread -- the renderer sends a
+path, never a sample (invariant 1). Players are append-only like chains: a plan
+holds their raw pointers, so a node that goes only unloads its file.
+
+| Step | Where | What |
+|---|---|---|
+| the list | `AudioPlayerNodes` (`core/audioPlayers.js`) | every player of the project, `{ nodeId, filePath, loop }`, sent as `syncAudioPlayers` whenever it may have changed; one it leaves out holds no file |
+| the file | `Engine::loadAudioPlayerFile` | decoded off the message thread (`audio_player::decode`), shared by the players of the same file, answered as `audioPlayerFile`: `loading`, `ready` with length, rate and a 512-point overview, `error` with a sentence, `empty` |
+| the level | `describeAudioNetwork` | the node's `masterLevel` in the audio network: a value, never a recompile |
+| the sound | `AudioPlayer::render`, node kind `player` | at the file's own rate, converted by a 64-tap windowed sinc; the transport's edges, the commands of its page (`audioPlayerTransport`), fades of 5 ms on a pause, a stop, a seek |
+| where it is | `Engine::forwardAudioPlayers` | `audioPlayerStatus`, on a change and ten times a second while it plays, kept out of the startup log |
+
+The transport drives every player, and does not place it: its start plays them
+from where they are, its stop pauses them, and the Stop somebody gives returns
+them to their start. An export plays a copy of each from its beginning.
+[DECISIONS.md](DECISIONS.md) D-051 holds the why.
 
 ### `MidiExecutionPlan` — arpégiateurs et destinations
 

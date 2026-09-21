@@ -13,7 +13,7 @@
 import { midiThruReach } from './midiThru.js';
 
 export function describeAudioNetwork(hub) {
-  const supported = new Set(['audio-input', 'vst', 'mixer', 'morpher', 'sequencer', 'audio-output']);
+  const supported = new Set(['audio-input', 'audio-player', 'vst', 'mixer', 'morpher', 'sequencer', 'audio-output']);
   return hub.network.listNodes().filter((node) => supported.has(node.type)).map((node) => {
     const content = hub.nodes?.get(node.id)?.content || {};
     const incoming = hub.network.connectionsTo(node.id);
@@ -23,6 +23,8 @@ export function describeAudioNetwork(hub) {
     });
     return { id:node.id, nodeType:node.type, inputs,
       ...(node.type==='mixer'?{masterLevel:content.masterLevel??1}:{}),
+      // A player's level travels as its node's master: a fader, not a shape.
+      ...(node.type==='audio-player'?{masterLevel:content.level??1}:{}),
       ...(node.type==='morpher'?{stepCount:content.stepCount??4,steps:content.steps||[]}:{}) };
   });
 }

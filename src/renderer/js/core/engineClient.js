@@ -322,6 +322,10 @@ export class EngineClient {
       case 'oneRingMaterial':
       case 'oneRingMaterialSet':
       case 'oneRingWrite':
+      // The Audio Player nodes' players (audioPlayers.js).
+      case 'audioPlayerFile':
+      case 'audioPlayerStatus':
+      case 'audioPlayerTransportResult':
         this.events.emit(`engine:${msg.type}`, msg);
         break;
       case 'pluginRequestResult': {
@@ -872,6 +876,23 @@ export class EngineClient {
   removeOneRing(nodeId) {
     if (this.state !== 'running') return Promise.resolve({ ok: false, reason: 'engine-not-running' });
     return Promise.resolve(this.command({ type: 'removeOneRing', nodeId }));
+  }
+
+  /**
+   * Every Audio Player of the project, with its file and loop. The whole list
+   * each time: a player it leaves out holds no file afterwards.
+   */
+  syncAudioPlayers(players) {
+    if (this.state !== 'running') return Promise.resolve({ ok: false, reason: 'engine-not-running' });
+    return Promise.resolve(this.command({ type: 'syncAudioPlayers', players }));
+  }
+
+  /** Play, pause, stop, or place (`seek`, at `seconds`) one Audio Player. */
+  audioPlayerTransport(nodeId, action, seconds) {
+    if (this.state !== 'running') return Promise.resolve({ ok: false, reason: 'engine-not-running' });
+    const command = { type: 'audioPlayerTransport', nodeId, action };
+    if (action === 'seek') command.seconds = Math.max(0, Number(seconds) || 0);
+    return Promise.resolve(this.command(command));
   }
 
   /** Why its last command was refused, shown in that plugin's own window; '' clears it. */
