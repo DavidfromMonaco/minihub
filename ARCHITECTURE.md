@@ -891,6 +891,14 @@ Unifying them means teaching the shared module about **submenus** — the canvas
 menu's New Node family hierarchy — so it is a piece of work, not a move. It is
 named in [ROADMAP.md](ROADMAP.md) where items 10 and 11 are recorded.
 
+The VST node's plugin list is not a third menu but a select's list, drawn by
+the page as the faceplate's are (`bindPearlLists`):
+[ui/pluginMenu.js](src/renderer/js/ui/pluginMenu.js) leaves the `<select>` in
+charge of the value and draws what it opens, because a select cannot fold a
+brand's plugins into one row (`foldPluginsByBrand`, `core/vstChain.js`). It
+wears the `.ctx-menu` vocabulary, scoped under `.plugin-menu`, and scrolls,
+since one brand can hold more plugins than the screen has rows.
+
 ### Contrainte CSP
 
 `default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self' data:`

@@ -7,6 +7,16 @@ finished, delete its entry**, in the same commit. What was done lives in git and
 
 ## Started, not finished
 
+**The plugin list folds a brand — in the author's test** — built 2026-09-21 on
+the author's word, after Kilohearts' 35 "kHs" effects filled the VST node's
+plugin list. A brand with two plugins or more in a family is one row, its
+plugins opening beside it; a lone plugin stays a line; the families stay the
+headings. The page draws that list (`ui/pluginMenu.js`, `foldPluginsByBrand`
+in `core/vstChain.js`), so it no longer opens white; the select still holds
+the choice that "+ Add VST" reads.
+- Checked by `npm test` and `npm run check` only. The author tries it himself
+  in MiniHub.
+
 **An Audio Player node — in the author's test** — built 2026-09-21 on the
 author's word: an OmniBox he can put an audio file in, "at least WAV and MP3",
 to cable into VSTs and process the audio. An Audio OmniBox with one AUDIO OUT:

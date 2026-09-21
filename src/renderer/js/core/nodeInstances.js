@@ -40,6 +40,7 @@
 import { getNodeType, nodeDisplayName } from './nodeTypes.js';
 import { NetworkLayout } from './networkLayout.js';
 import { VstChain, getVstRole, duplicateVstContent, groupPluginsByFamily } from './vstChain.js';
+import { bindPluginMenu, closePluginMenu } from '../ui/pluginMenu.js';
 import { escapeHtml } from './html.js';
 import { normalizeControlBinding, normalizeControlBindings } from './controlBindings.js';
 import { defaultArpeggiatorContent, normalizeArpeggiatorContent } from './arpeggiatorState.js';
@@ -163,7 +164,7 @@ function renderChain(plugins, statusMap, editorNotes) {
  * only visible outcome of clicking it again was a silent "scan already
  * running" error from the engine.
  */
-function renderAddVst(hub, scan = {}) {
+function renderAddVst(hub, scan = {}, picked = '') {
   const plugins = hub.engine.plugins;
   const scanning = hub.engine.scanning === true;
   const scanNote = scanning
@@ -183,7 +184,7 @@ function renderAddVst(hub, scan = {}) {
     .map((g) => `
       <optgroup label="${escapeHtml(g.label)}">
         ${g.plugins
-          .map((p) => `<option value="${escapeHtml(p.pluginId)}">${escapeHtml(p.name)} · ${escapeHtml(p.manufacturer || '?')}</option>`)
+          .map((p) => `<option value="${escapeHtml(p.pluginId)}"${p.pluginId === picked ? ' selected' : ''}>${escapeHtml(p.name)} · ${escapeHtml(p.manufacturer || '?')}</option>`)
           .join('')}
       </optgroup>`)
     .join('');
@@ -192,7 +193,7 @@ function renderAddVst(hub, scan = {}) {
   // incomplete could never be refreshed from the UI.
   return `
     <div class="row mt-10">
-      <select id="vst-pick" class="select select-sm">
+      <select id="vst-pick" class="select select-sm plugin-pick" aria-haspopup="menu">
         ${optionsHtml}
       </select>
       <button id="vst-add" class="btn btn-sm primary">+ Add VST</button>
@@ -1065,9 +1066,13 @@ export class NodeInstanceManager {
 
         const scanState = { error: '' };
 
+        // The list the picker opens describes the catalogue it was opened on,
+        // so a redraw closes it; the plugin picked survives the redraw.
         function rerenderAddSection() {
+          closePluginMenu();
           const addEl = container.querySelector('#vst-add-section');
-          if (addEl) addEl.innerHTML = renderAddVst(hub, scanState);
+          const picked = container.querySelector('#vst-pick')?.value || '';
+          if (addEl) addEl.innerHTML = renderAddVst(hub, scanState, picked);
         }
 
         function rerenderChain() {
@@ -1317,6 +1322,7 @@ export class NodeInstanceManager {
         disposers.listen(container, 'keydown', onKeyDown);
         disposers.listen(container, 'scroll', onScroll, true);
         for (const unsubscribe of subs) disposers.add(unsubscribe);
+        if (type.id === 'vst') disposers.add(bindPluginMenu(container, { plugins: () => hub.engine.plugins }));
         // An editor that binds its own listeners never touches the shared
         // handlers above, and hands back its own teardown so invariant 8 holds
         // without this file knowing anything about that editor.

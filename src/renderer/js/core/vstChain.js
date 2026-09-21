@@ -104,6 +104,62 @@ export function groupPluginsByFamily(plugins) {
   return buckets.filter((b) => b.plugins.length > 0);
 }
 
+/** Two plugins of one brand are "several": one has nothing to fold into. */
+export const BRAND_FOLD_MIN = 2;
+
+const brandOf = (plugin) => String((plugin && plugin.manufacturer) || '').trim();
+
+/**
+ * One family's entries for the picker, a brand's plugins folded into one.
+ *
+ * Kilohearts installs 35 effects, every one named "kHs ...", and listed one per
+ * line they buried every other effect (the author, 2026-09-21). The brand is
+ * the plugin's own `manufacturer`, compared without case or outer spaces. A
+ * plugin that names none is never folded: an empty name is not a brand, and
+ * folding every such plugin together would invent one.
+ *
+ * Entries are `{ plugin }` or `{ brand, plugins }`, ordered by the name they
+ * show, so a brand sits where its own name falls among the plugins. The fold
+ * never crosses families: a brand with three instruments and one effect is a
+ * folder among the instruments and a plain line among the effects, because
+ * the family is the first thing chosen when adding a plugin.
+ */
+export function foldPluginsByBrand(plugins) {
+  const list = Array.isArray(plugins) ? plugins : [];
+  const brands = new Map();
+  for (const plugin of list) {
+    const brand = brandOf(plugin);
+    if (!brand) continue;
+    const key = brand.toLowerCase();
+    if (!brands.has(key)) brands.set(key, { brand, plugins: [] });
+    brands.get(key).plugins.push(plugin);
+  }
+  const entries = [];
+  for (const plugin of list) {
+    const group = brands.get(brandOf(plugin).toLowerCase());
+    if (!group || group.plugins.length < BRAND_FOLD_MIN) {
+      entries.push({ plugin });
+    } else if (group.plugins[0] === plugin) {
+      entries.push({ brand: group.brand, plugins: [...group.plugins].sort(byName) });
+    }
+  }
+  const shown = (entry) => String(entry.brand ?? entry.plugin?.name ?? '');
+  return entries.sort((a, b) => shown(a).localeCompare(shown(b)));
+}
+
+function byName(a, b) {
+  return String(a?.name).localeCompare(String(b?.name));
+}
+
+/** The picker's menu: every family, in order, each with its brands folded. */
+export function pluginPickerSections(plugins) {
+  return groupPluginsByFamily(plugins).map((family) => ({
+    id: family.id,
+    label: family.label,
+    entries: foldPluginsByBrand(family.plugins)
+  }));
+}
+
 /**
  * Deep-duplicate a VST chain `content` object ({ plugins: [] }) for a new
  * node. Preserves plugin order, role, bypass and configuration state, but
