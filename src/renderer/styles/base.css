@@ -1912,20 +1912,34 @@ body ::-webkit-scrollbar-thumb { border:3px solid transparent; border-radius:8px
 body ::-webkit-scrollbar-thumb:hover { background:#5b636e; background-clip:content-box; }
 body ::-webkit-scrollbar-corner { background:transparent; }
 
-.seq-arrangement { position:relative; min-height:0; padding:0; overflow:hidden; }
-/* The bottom padding is the rail's clearance: the rail floats over this panel,
-   and without it the last track's lane would sit under it. */
-.seq-scroll { width:100%; height:100%; min-height:0; padding-bottom:14px; box-sizing:border-box; overflow:auto; overscroll-behavior:contain; }
-/* The horizontal bar is replaced by .scroll-rail below. The vertical one is kept:
+.seq-arrangement { position:relative; display:flex; flex-direction:column; min-height:0; padding:0; overflow:hidden; }
+.seq-scroll { flex:1 1 auto; width:100%; min-height:0; box-sizing:border-box; overflow:auto; overscroll-behavior:contain; }
+/* The horizontal bar is replaced by .nav-bar below. The vertical one is kept:
    with up to 64 tracks, "there is more below" has to be visible somewhere. */
 .seq-scroll::-webkit-scrollbar:horizontal { height:0; }
-/* A scroll rail, not a scrollbar: 4px at rest, 8px under the pointer, dark,
-   and absent entirely when the whole arrangement already fits. */
-.scroll-rail { position:absolute; left:0; right:0; bottom:0; z-index:10; height:14px; padding:5px 3px; box-sizing:border-box; background:linear-gradient(to top,rgba(10,11,13,.85),rgba(10,11,13,0)); cursor:pointer; }
-.scroll-rail[hidden] { display:none; }
-.scroll-rail-thumb { position:absolute; top:5px; height:4px; min-width:22px; border-radius:3px; background:#4b525c; transition:height .1s ease,top .1s ease,background .1s ease; }
-.scroll-rail:hover .scroll-rail-thumb,.scroll-rail.dragging .scroll-rail-thumb { top:3px; height:8px; background:#6d7681; }
-.scroll-rail.dragging { cursor:grabbing; }
+/* Lined up under the timeline, not under the track heads: the thumb is a
+   picture of the timeline, and it reads as one only when it sits below it. */
+.seq-arrangement > .nav-bar { padding-left:calc(var(--seq-head,260px) + 4px); }
+/* The navigation bar under a timeline (ui/navigationBar.js): the arrangement
+   and both Clip Editors. A bar in its own row, always there, with a thumb
+   light enough to find: the four-pixel rail it replaced was dark grey on a
+   dark panel and hid itself whenever the view fitted, and it was not found.
+   The ends of the thumb are handles -- dragging one zooms, as in Cubase,
+   Studio One and Bitwig. */
+.nav-bar { flex:0 0 auto; display:flex; align-items:center; gap:4px; height:22px; padding:0 6px 0 4px; box-sizing:border-box; background:#1b1e22; border-top:1px solid var(--border); }
+.nav-track { position:relative; flex:1 1 auto; min-width:40px; height:14px; border-radius:7px; background:#111316; box-shadow:inset 0 1px 2px rgba(0,0,0,.5); cursor:pointer; touch-action:none; }
+.nav-thumb { position:absolute; top:1px; bottom:1px; border-radius:6px; background:#5d6672; box-shadow:0 0 0 1px rgba(255,255,255,.08); cursor:grab; }
+.nav-thumb[hidden] { display:none; }
+.nav-track:hover .nav-thumb { background:#727c89; }
+.nav-track.dragging .nav-thumb { background:#8a95a3; cursor:grabbing; }
+.nav-edge { position:absolute; top:0; bottom:0; width:8px; cursor:ew-resize; }
+.nav-edge::after { content:''; position:absolute; top:3px; bottom:3px; width:2px; border-radius:1px; background:rgba(255,255,255,.35); }
+.nav-edge-start { left:0; }
+.nav-edge-start::after { left:3px; }
+.nav-edge-end { right:0; }
+.nav-edge-end::after { right:3px; }
+.nav-zoom { flex:0 0 auto; width:22px; height:18px; padding:0; border:1px solid var(--border); border-radius:4px; color:var(--text-dim); background:#23272c; font:600 13px/1 var(--mono); cursor:pointer; }
+.nav-zoom:hover { color:var(--text); background:#2c3137; }
 .seq-scroll.panning { cursor:grabbing; }
 .seq-canvas { position:relative; background:#15171a; }
 /* The corner covers BOTH ruler rows: their heights come from the module

@@ -7,6 +7,28 @@ finished, delete its entry**, in the same commit. What was done lives in git and
 
 ## Started, not finished
 
+**Navigation in the three timelines — in the author's test** — built
+2026-09-24 on the author's word: "more precise navigation tools, present in
+all three" (the arrangement, an audio take's Clip Editor, a MIDI clip's), the
+navigation bar first, zoom in and out too. He reported that the arrangement
+had no navigation bar: its four-pixel grey rail hid itself and was not found.
+- One bar for the three (`ui/navigationBar.js`), in its own row under the
+  timeline: drag the thumb to travel, press beside it to jump there, drag one
+  of its ends to zoom with the other end held, − and + for a step. It replaces
+  `ui/scrollRail.js`.
+- An audio take is no longer a fixed picture of the whole file: it zooms
+  (the bar, Ctrl+wheel under the cursor, Fit) under a clock ruler down to the
+  hundredth of a second (`ui/secondsRuler.js`).
+- Seen in the application over CDP: the bar under all three, the thumb drag,
+  an end drag (the other end did not move), −, +, Fit, Ctrl+wheel on a take.
+- Still coarse: a take's waveform is the engine's 256 peaks for the whole
+  file, so zoomed in it is an outline, not the signal. Finer peaks, asked of
+  the engine for what is on screen, is the next step, and needs native work.
+- Not started: dragging nodes in the sidebar's NODES list to order them, the
+  other half of the same request.
+- Seen in passing, not touched: at a 1224 px window the arrangement's toolbar
+  is 12 px wider than the page, which clips the + at the right of the bar.
+
 **The plugin list folds a brand — in the author's test** — built 2026-09-21 on
 the author's word, after Kilohearts' 35 "kHs" effects filled the VST node's
 plugin list. A brand with two plugins or more in a family is one row, its

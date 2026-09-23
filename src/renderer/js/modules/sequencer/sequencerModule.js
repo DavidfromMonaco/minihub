@@ -1,5 +1,5 @@
 import { escapeHtml } from '../../core/html.js';
-import { attachScrollRail, scrollRailMarkup } from '../../ui/scrollRail.js';
+import { attachNavigationBar, navigationBarMarkup } from '../../ui/navigationBar.js';
 import { SEQUENCER_LIMITS, SNAP_STEPS, ZOOM_MAX, ZOOM_MIN, snapStep } from '../../core/sequencerModel.js';
 import { bindTempoInput } from '../../core/tempoControl.js';
 import { isCanonicalMidiIngress } from '../../core/sequencerController.js';
@@ -620,31 +620,61 @@ export function createSequencerModule(hub) {
   }
 
   /**
-   * The horizontal scroll rail, which `ui/scrollRail.js` owns for both the
-   * arrangement and the Clip Editor's piano roll -- two windows, one mapping,
-   * because a thumb drawn by one rule and read by another jumps out from
-   * under the pointer that grabbed it.
+   * The navigation bar under the arrangement (`ui/navigationBar.js`, shared
+   * with both Clip Editors): drag the thumb to travel, an end to zoom.
    *
-   * It lives OUTSIDE `.seq-scroll` on purpose: inside it, it would scroll
-   * away with the content it describes. Every part of it is resolved through
-   * `container` on each call and never held, because a render replaces the
-   * whole page under a drag that is still running.
+   * It lives OUTSIDE `.seq-scroll` on purpose: inside it, it would scroll away
+   * with the content it describes.
    *
    * The position comes from the model, not from `scroller.scrollLeft`.
-   * `render()` assigns that property and then draws the rail, and an
-   * assignment made on freshly inserted DOM can still be clamped to zero when
-   * it is read back -- which drew the thumb at the far left while the view sat
-   * in the middle of the arrangement. `scrollPpq` is the value the render is
-   * applying, so it is the value the rail must agree with. The two
-   * measurements stay measurements.
+   * `render()` assigns that property and then draws the bar, and an assignment
+   * made on freshly inserted DOM can still read back as zero -- which drew the
+   * thumb at the far left while the view sat in the middle of the arrangement.
+   *
+   * Its extent is the music plus the same four bars of room `timelineEndPpq`
+   * keeps, never less than the empty arrangement's 64 bars, and always at
+   * least as far as the view reaches. It is NOT the canvas width, which keeps
+   * a screenful of empty bars ahead of the view and so grows as you scroll:
+   * a thumb measured against that shrinks under the hand that is moving it.
    */
-  const rail = attachScrollRail({
+  function navigationView() {
+    const state = controller.model.state;
+    const width = viewportPx();
+    const span = width / state.zoom;
+    const start = Math.max(0, state.scrollPpq);
+    return {
+      start,
+      span,
+      total: Math.max(TIMELINE_BEATS, controller.model.compositionEndPpq() + 16, start + span),
+      minSpan: width / ZOOM_MAX,
+      maxSpan: width / ZOOM_MIN
+    };
+  }
+
+  /** A view the bar asks for: a scroll when the zoom is unchanged, else both. */
+  function applyNavigation({ start, span }) {
+    const state = controller.model.state;
+    const zoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, Math.round(viewportPx() / span * 100) / 100));
+    const scrollPpq = Math.max(0, start);
+    if (zoom === state.zoom) {
+      state.scrollPpq = scrollPpq;
+      // Looked up now: the element a drag began on may have been replaced.
+      const scroller = container?.querySelector('[data-timeline-scroll]');
+      if (scroller) scroller.scrollLeft = scrollPpq * zoom;
+      return;
+    }
+    state.zoom = zoom;
+    state.scrollPpq = scrollPpq;
+    commitView();
+  }
+
+  const navigation = attachNavigationBar({
     root: { querySelector: (selector) => container?.querySelector(selector) ?? null },
-    scroller: '[data-timeline-scroll]',
-    positionOf: () => controller.model.state.scrollPpq * controller.model.state.zoom
+    view: navigationView,
+    apply: applyNavigation
   });
-  const renderRail = rail.render;
-  const bindRail = rail.bind;
+  const renderNavigation = navigation.render;
+  const bindNavigation = navigation.bind;
 
   /**
    * Middle-button drag pans the timeline, both axes at once.
@@ -655,7 +685,7 @@ export function createSequencerModule(hub) {
   function bindPan() {
     const scroller = container?.querySelector('[data-timeline-scroll]');
     if (!scroller) return;
-    // The live scroller on every move, for the reason `bindRail` gives: a pan
+    // The live scroller on every move, for the reason `ui/navigationBar.js` gives: a pan
     // that crosses the virtualization boundary re-renders the timeline under
     // the hand, and the element this closure captured is detached from then
     // on. `from` stays valid across that repaint -- `render()` puts the scroll
@@ -763,7 +793,7 @@ export function createSequencerModule(hub) {
     // scrollPpq and repaints the clips that just entered the window.
     controller.model.state.scrollPpq = next;
     scroller.scrollLeft = next * zoom;
-    renderRail();
+    renderNavigation();
   }
 
   /**
@@ -925,7 +955,7 @@ export function createSequencerModule(hub) {
             <div class="seq-playhead" data-playhead data-seq-left="${TRACK_HEADER + controller.playheadPpq * zoom}" data-seq-height="${HEAD_HEIGHT + Math.max(1, state.tracks.length) * TRACK_HEIGHT}"></div>
           </div>
         </div>
-        ${scrollRailMarkup()}
+        ${navigationBarMarkup(`data-seq-head="${TRACK_HEADER}"`)}
       </section>
     </div>`;
     applyDynamicStyles(container);
@@ -936,7 +966,7 @@ export function createSequencerModule(hub) {
       // Both axes, or the tracks below the fold vanish on every repaint.
       scroller.scrollTop = scrollTopPx;
     }
-    renderRail();
+    renderNavigation();
   }
 
   function bind() {
@@ -996,7 +1026,7 @@ export function createSequencerModule(hub) {
       scrollTopPx = event.currentTarget.scrollTop || 0;
       const next = event.currentTarget.scrollLeft / controller.model.state.zoom;
       controller.model.state.scrollPpq = next;
-      renderRail();
+      renderNavigation();
       if (!scrollRenderQueued && outsideDrawnWindow(next, drawnWindow)) {
         scrollRenderQueued = true;
         requestAnimationFrame(render); // layout virtualization only; native transport remains the musical clock
@@ -1011,7 +1041,7 @@ export function createSequencerModule(hub) {
     bindSeeks(container);
     container.querySelectorAll('.seq-track').forEach(bindTrack);
     container.querySelectorAll('.seq-clip').forEach(bindClip);
-    bindRail();
+    bindNavigation();
     bindPan();
   }
 

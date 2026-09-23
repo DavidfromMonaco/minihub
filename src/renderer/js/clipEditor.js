@@ -1,8 +1,9 @@
 import { escapeHtml } from './core/html.js';
-import { attachScrollRail, scrollRailMarkup } from './ui/scrollRail.js';
+import { attachNavigationBar, navigationBarMarkup } from './ui/navigationBar.js';
 import { historyIntent, isTextEditingTarget } from './ui/historyKeys.js';
 import { notesInBox, selectNoteIds } from './core/clipEditorSelection.js';
 import { MIN_NOTE_PPQ, SNAP_STEPS, clampNoteGroupDelta } from './core/sequencerModel.js';
+import { formatSeconds, secondsMarks, secondsStride } from './ui/secondsRuler.js';
 
 /** Mirrors AUDITION_MAX_MS in clipEditorWindows.js, which refuses anything
  *  longer on the way in. Asking for what will be refused is a silent click. */
@@ -22,6 +23,22 @@ const AUDITION_MAX_MS = 4000;
 const ZOOM = Object.freeze({ minWidth: 8, maxWidth: 480, minHeight: 6, maxHeight: 40 });
 const KEY_WIDTH = 80;
 let view = { ppqWidth: 120, noteHeight: 18, fitted: false };
+/**
+ * An audio take's zoom, in pixels per second of the file.
+ *
+ * The take used to be one fixed picture of the whole file: a 225-second
+ * recording was a window-wide strip, and nothing in it could be looked at
+ * closer. It is now a view the window owns, framed on the whole file the first
+ * time it is drawn, like the piano roll's. The lower bound is that frame --
+ * zooming out past the whole file shows nothing more -- and the upper one a
+ * millisecond per pixel.
+ */
+const AUDIO_MAX_PX_PER_SECOND = 1000;
+let audioView = { pxPerSecond: 0, fitted: false };
+/** Where the take is scrolled to, in pixels. The window's own record, for the
+ *  reason the arrangement reads its position from its model: freshly inserted
+ *  markup can read back a scroll of zero for a view that is in the middle. */
+let audioScrollLeft = 0;
 const clipId = new URLSearchParams(globalThis.location.search).get('clipId') || '';
 const root = document.getElementById('clip-editor-root');
 let current = null;
@@ -33,19 +50,27 @@ let reloadQueued = false;
 let reloadFrame = 0;
 let pianoScroll = null;
 /**
- * The bar under the piano roll: where you are in the clip, how much of it is
- * on screen, and a thumb to drag. The same object the arrangement carries
- * (`ui/scrollRail.js`), because a clip is scrolled the same way an
- * arrangement is and the mapping has to be its own inverse in both.
+ * The navigation bar under the piano roll, and under an audio take: the same
+ * one the arrangement carries (`ui/navigationBar.js`). Drag the thumb to
+ * travel, an end to zoom, − and + for a step.
  *
  * `root` is looked up through, never held: every edit redraws the whole
  * page, and a drag that outlived its own repaint would go on writing to an
  * element that has left the document.
  */
-const pianoRail = attachScrollRail({ root, scroller: '[data-piano-scroll]' });
+const navigation = attachNavigationBar({
+  root,
+  view: () => (current?.track?.type === 'midi' ? pianoNavigationView() : audioNavigationView()),
+  apply: (next) => (current?.track?.type === 'midi' ? applyPianoNavigation(next) : applyAudioNavigation(next))
+});
 // A narrower window shows less of the clip, so the thumb it draws is a lie
 // until something redraws it. Nothing else here listens for a resize.
-globalThis.addEventListener('resize', () => pianoRail.render());
+// An audio take opened in a window not yet laid out is framed on the first
+// resize that gives it a width.
+globalThis.addEventListener('resize', () => {
+  if (current && current.track.type !== 'midi' && !audioView.fitted) render();
+  else navigation.render();
+});
 /**
  * A scroll position the NEXT render must adopt instead of the one on screen.
  *
@@ -92,9 +117,20 @@ function applyDynamicStyles() {
   root.querySelectorAll('[data-ce-vel]').forEach((element) => { element.style.setProperty('--ce-vel', String(Number(element.dataset.ceVel) || 0)); });
 }
 
-function waveform(peaks) {
-  const values = Array.isArray(peaks) && peaks.length ? peaks : [0.15, 0.35, 0.6, 0.3, 0.75, 0.45, 0.2, 0.55];
-  return values.map((peak, index) => `<i data-ce-left-pct="${index * 100 / values.length}" data-ce-height-pct="${Math.max(4, Number(peak) * 84)}"></i>`).join('');
+/**
+ * The take's peaks as one closed shape: above the middle, mirrored below.
+ *
+ * A path and not a bar per peak: stretched to any zoom it stays one outline,
+ * where 256 bars drawn two pixels wide turned into a comb with gaps as wide as
+ * the teeth the moment the view was widened.
+ */
+function waveformPath(peaks) {
+  const values = Array.isArray(peaks) && peaks.length ? peaks : [0];
+  const height = (peak) => Math.max(0.01, Math.min(1, Number(peak) || 0)).toFixed(4);
+  let path = '';
+  values.forEach((peak, index) => { path += `${index ? 'L' : 'M'}${index + 0.5} -${height(peak)}`; });
+  for (let index = values.length - 1; index >= 0; index -= 1) path += `L${index + 0.5} ${height(values[index])}`;
+  return { path: `${path}Z`, count: values.length };
 }
 
 /**
@@ -196,7 +232,7 @@ function midiMarkup(state) {
           <div class="clip-piano-grid" data-piano-grid data-ce-left="${KEY_WIDTH}" data-ce-width="${gridWidth}" data-ce-height="${gridHeight}" data-ce-beat="${view.ppqWidth}">${playheadMarkup()}${noteMarkup(clip)}</div>
         </div>
       </div>
-      ${scrollRailMarkup()}
+      ${navigationBarMarkup(`data-ce-keys="${KEY_WIDTH}"`)}
     </section>`;
 }
 
@@ -242,15 +278,136 @@ function applyTransportState(next = {}) {
 
 function audioMarkup(state) {
   const { clip } = state;
+  const wave = waveformPath(clip.peaks);
   return `<section class="clip-editor-panel clip-audio-controls">
       <h2>Audio clip</h2>
       ${clip.mediaAvailable === false ? `<p class="clip-editor-error" role="alert">${escapeHtml(clip.mediaError || 'Audio media is unavailable')}</p>` : ''}
       <label>Trim start <input data-audio="trimStartSeconds" type="number" min="0" max="${clip.trimEndSeconds}" step="0.01" value="${Number(clip.trimStartSeconds).toFixed(3)}"> s</label>
       <label>Trim end <input data-audio="trimEndSeconds" type="number" min="0" max="${clip.durationSeconds}" step="0.01" value="${Number(clip.trimEndSeconds).toFixed(3)}"> s</label>
       <label>Gain <input data-audio="gain" type="range" min="0" max="2" step="0.01" value="${clip.gain}"></label>
+      <button class="btn" data-action="audio-fit" title="Frame the whole take (Ctrl+wheel zooms under the cursor)">Fit</button>
       <span class="clip-audio-path">${escapeHtml(clip.filePath)}</span>
     </section>
-    <section class="clip-audio-waveform" aria-label="Audio waveform preview">${waveform(clip.peaks)}</section>`;
+    <section class="clip-audio-shell" aria-label="Audio waveform">
+      <div class="clip-audio-scroll" data-audio-scroll>
+        <div class="clip-audio-canvas" data-ce-width="${audioCanvasWidth()}">
+          <div class="clip-audio-ruler" data-audio-ruler></div>
+          <svg class="clip-audio-wave" viewBox="0 -1 ${wave.count} 2" preserveAspectRatio="none" aria-hidden="true"><path d="${wave.path}"/></svg>
+        </div>
+      </div>
+      ${navigationBarMarkup()}
+    </section>`;
+}
+
+/** The file's length in seconds, never zero: a width is divided by it. */
+const audioDuration = () => Math.max(0.01, Number(current?.clip?.durationSeconds) || 0);
+const audioCanvasWidth = () => Math.max(1, Math.round(audioDuration() * (audioView.pxPerSecond || 1)));
+const audioViewportPx = () => root.querySelector('[data-audio-scroll]')?.clientWidth || 0;
+
+/** A zoom held between "the whole take" and a millisecond per pixel. */
+function clampAudioZoom(pxPerSecond, width = audioViewportPx()) {
+  const whole = width > 0 ? width / audioDuration() : 0;
+  const floor = Math.min(whole, AUDIO_MAX_PX_PER_SECOND);
+  return Math.max(floor, Math.min(AUDIO_MAX_PX_PER_SECOND, Number(pxPerSecond) || floor));
+}
+
+/**
+ * Draw the marks the take shows now, and a screen either side.
+ *
+ * Redrawn on every scroll rather than once for the whole file: at the finest
+ * zoom a four-minute take has twenty-odd thousand hundredths of a second, and
+ * a ruler of that many elements costs more than the waveform under it.
+ */
+function renderAudioRuler() {
+  const ruler = root.querySelector('[data-audio-ruler]');
+  const width = audioViewportPx();
+  const scale = audioView.pxPerSecond;
+  if (!ruler || !(scale > 0)) return;
+  const stride = secondsStride(scale);
+  const from = (audioScrollLeft - width) / scale;
+  const to = (audioScrollLeft + width * 2) / scale;
+  const marks = secondsMarks(from, Math.min(to, audioDuration()), stride);
+  ruler.innerHTML = marks.map((seconds) => `<span class="clip-audio-mark">${escapeHtml(formatSeconds(seconds, stride))}</span>`).join('');
+  // Positioned through the CSSOM: the CSP drops a style ATTRIBUTE in markup.
+  ruler.querySelectorAll('.clip-audio-mark').forEach((mark, index) => { mark.style.left = `${marks[index] * scale}px`; });
+}
+
+/** The take as the navigation bar sees it, in seconds. */
+function audioNavigationView() {
+  const width = audioViewportPx();
+  const scale = audioView.pxPerSecond;
+  if (!(width > 0) || !(scale > 0)) return null;
+  return {
+    start: audioScrollLeft / scale,
+    span: width / scale,
+    total: audioDuration(),
+    minSpan: width / AUDIO_MAX_PX_PER_SECOND,
+    maxSpan: Math.max(audioDuration(), width / AUDIO_MAX_PX_PER_SECOND)
+  };
+}
+
+function applyAudioNavigation({ start, span }) {
+  const scroll = root.querySelector('[data-audio-scroll]');
+  const width = scroll?.clientWidth || 0;
+  if (!(width > 0) || !(span > 0)) return;
+  const scale = clampAudioZoom(width / span, width);
+  const left = Math.max(0, Math.min(audioDuration() * scale - width, start * scale));
+  if (Math.abs(scale - audioView.pxPerSecond) <= scale * 1e-9) {
+    scroll.scrollLeft = left;
+    audioScrollLeft = left;
+    renderAudioRuler();
+    return;
+  }
+  audioView = { pxPerSecond: scale, fitted: true };
+  scrollIntent = { left, top: 0 };
+  render();
+}
+
+/**
+ * Zoom the take and keep one instant where it is on screen: the cursor's for
+ * Ctrl+wheel.
+ */
+function applyAudioZoom(pxPerSecond, anchorX) {
+  const width = audioViewportPx();
+  const scale = clampAudioZoom(pxPerSecond, width);
+  if (!(width > 0) || scale === audioView.pxPerSecond) return false;
+  const seconds = (audioScrollLeft + anchorX) / (audioView.pxPerSecond || scale);
+  audioView = { pxPerSecond: scale, fitted: true };
+  scrollIntent = { left: Math.max(0, Math.min(audioDuration() * scale - width, seconds * scale - anchorX)), top: 0 };
+  render();
+  return true;
+}
+
+/**
+ * After an audio take is drawn: frame it the first time, put the scroll back,
+ * and bring the ruler and the bar into line with it.
+ */
+function settleAudio() {
+  const scroll = root.querySelector('[data-audio-scroll]');
+  if (!scroll) return;
+  if (!audioView.fitted && scroll.clientWidth > 0) {
+    audioView = { pxPerSecond: clampAudioZoom(0, scroll.clientWidth), fitted: true };
+    scrollIntent = { left: 0, top: 0 };
+    render();
+    return;
+  }
+  const intent = scrollIntent;
+  scrollIntent = null;
+  if (intent) audioScrollLeft = intent.left;
+  scroll.scrollLeft = audioScrollLeft;
+  scroll.addEventListener('scroll', () => {
+    audioScrollLeft = scroll.scrollLeft;
+    renderAudioRuler();
+    navigation.render();
+  });
+  scroll.addEventListener('wheel', (event) => {
+    if (!(event.ctrlKey || event.metaKey)) return;
+    event.preventDefault();
+    const rect = scroll.getBoundingClientRect?.() || { left: 0 };
+    applyAudioZoom(audioView.pxPerSecond * (event.deltaY < 0 ? 1.25 : 1 / 1.25), event.clientX - rect.left);
+  }, { passive: false });
+  renderAudioRuler();
+  navigation.render();
 }
 
 const clampZoom = (next = {}) => ({
@@ -298,7 +455,7 @@ function render() {
   applyDynamicStyles();
   bind();
   applyTransportState(transport);
-  if (type !== 'midi') return;
+  if (type !== 'midi') { settleAudio(); return; }
   const scroll = root.querySelector('[data-piano-scroll]');
   if (!scroll) return;
   // The clip is framed the first time it is drawn, and only then: fitting on
@@ -329,11 +486,11 @@ function render() {
   }
   scroll.addEventListener('scroll', () => {
     pianoScroll = { left: scroll.scrollLeft, top: scroll.scrollTop };
-    pianoRail.render();
+    navigation.render();
   });
   // Drawn last, once the scroll above has been put where it belongs: the
   // thumb reports a position, so it is the position that comes first.
-  pianoRail.render();
+  navigation.render();
 }
 
 async function applyMutation(operation, payload) {
@@ -442,9 +599,14 @@ function bind() {
     root.querySelectorAll('[data-audio]').forEach((input) => input.addEventListener('change', () => {
       mutate('update-audio', { [input.dataset.audio]: Number(input.value) });
     }));
+    root.querySelector('[data-action="audio-fit"]')?.addEventListener('click', () => {
+      audioView = { ...audioView, fitted: false };
+      render();
+    });
+    navigation.bind();
     return;
   }
-  pianoRail.bind();
+  navigation.bind();
   const strength = root.querySelector('[data-quantize="strength"]');
   strength?.addEventListener('input', () => { root.querySelector('[data-strength-output]').textContent = `${strength.value}%`; });
   root.querySelector('[data-action="apply-quantize"]')?.addEventListener('click', () => mutate('quantize', {
@@ -549,6 +711,36 @@ function bind() {
       pitch: Math.max(0, Math.min(127, 127 - Math.floor(localY / view.noteHeight))), velocity: 100, channel: 1
     });
   });
+}
+
+/** The piano roll as the navigation bar sees it, in quarters of the clip. */
+function pianoNavigationView() {
+  const scroll = root.querySelector('[data-piano-scroll]');
+  const width = (scroll?.clientWidth || 0) - KEY_WIDTH;
+  if (!current?.clip || !(width > 0)) return null;
+  return {
+    // The keyboard is sticky over the first KEY_WIDTH of the canvas, so the
+    // first quarter on screen is the scroll itself, in quarters.
+    start: scroll.scrollLeft / view.ppqWidth,
+    span: width / view.ppqWidth,
+    total: Math.max(0.25, Number(current.clip.lengthPpq) || 0),
+    minSpan: width / ZOOM.maxWidth,
+    maxSpan: width / ZOOM.minWidth
+  };
+}
+
+function applyPianoNavigation({ start, span }) {
+  const scroll = root.querySelector('[data-piano-scroll]');
+  const width = (scroll?.clientWidth || 0) - KEY_WIDTH;
+  if (!scroll || !(width > 0) || !(span > 0)) return;
+  const zoomed = clampZoom({ ...view, ppqWidth: width / span });
+  if (Math.abs(zoomed.ppqWidth - view.ppqWidth) <= zoomed.ppqWidth * 1e-9) {
+    scroll.scrollLeft = Math.max(0, start * view.ppqWidth);
+    return;
+  }
+  view = { ...zoomed, fitted: true };
+  scrollIntent = { left: Math.max(0, start * view.ppqWidth), top: scroll.scrollTop };
+  render();
 }
 
 /**

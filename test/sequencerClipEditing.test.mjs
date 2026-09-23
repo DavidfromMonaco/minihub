@@ -408,7 +408,9 @@ test('dedicated editor assets separate MIDI Piano Roll from audio controls and m
   assert.match(editorSource, /addEventListener\('blur', pointerCancel\)/);
   assert.match(css, /\.content\.sequencer-workspace \{ padding:0; overflow:hidden; \}/);
   assert.match(css, /\.sequencer-page \{[^}]*width:100%; height:100%/);
-  assert.match(css, /\.seq-scroll \{[^}]*width:100%; height:100%/);
+  assert.match(css, /\.seq-arrangement \{[^}]*flex-direction:column/);
+  assert.match(css, /\.seq-scroll \{[^}]*flex:1 1 auto; width:100%/,
+    'the timeline takes what the navigation bar under it leaves');
 });
 
 function audioMarkupSource(source) {
@@ -680,36 +682,41 @@ test('the Clip Editor can sound a note, and only through the cable the Patch Bay
     'sounding a note is a performance: it writes no state and rebuilds no native plan');
 });
 
-test('the Clip Editor carries the arrangement\'s own scroll rail, in its own window', () => {
+test('both Clip Editors carry the arrangement\'s own navigation bar, in their own window', () => {
   const editorSource = fs.readFileSync(new URL('../src/renderer/js/clipEditor.js', import.meta.url), 'utf8');
   const editorCss = fs.readFileSync(new URL('../src/renderer/styles/clip-editor.css', import.meta.url), 'utf8');
   const baseCss = fs.readFileSync(new URL('../src/renderer/styles/base.css', import.meta.url), 'utf8');
   const page = fs.readFileSync(new URL('../src/renderer/clip-editor.html', import.meta.url), 'utf8');
 
-  // One component, two windows: the mapping that draws the thumb and the one
-  // that reads a drag on it are the same function or they drift apart.
-  assert.match(editorSource, /from '\.\/ui\/scrollRail\.js'/);
-  assert.match(editorSource, /attachScrollRail\(\{ root, scroller: '\[data-piano-scroll\]' \}\)/);
-  assert.match(editorSource, /\$\{scrollRailMarkup\(\)\}\s*\n\s*<\/section>/,
-    'the rail hangs from the shell, not from inside the scroller it describes');
+  // One component, three surfaces: the mapping that draws the thumb and the
+  // one that reads a drag on it are the same function or they drift apart.
+  assert.match(editorSource, /from '\.\/ui\/navigationBar\.js'/);
+  assert.match(editorSource, /attachNavigationBar\(\{\s*root,/);
+  assert.match(editorSource, /\$\{navigationBarMarkup\(`data-ce-keys="\$\{KEY_WIDTH\}"`\)\}\s*\n\s*<\/section>/,
+    'the piano roll\'s bar hangs from the shell, not from inside the scroller it describes');
 
-  // Drawn after the scroll has been put back, and again whenever it moves --
-  // including while the thumb itself is being dragged.
-  assert.match(editorSource, /pianoScroll = \{ left: scroll\.scrollLeft, top: scroll\.scrollTop \};\s*\n\s*pianoRail\.render\(\);/);
-  assert.match(editorSource, /addEventListener\('resize', \(\) => pianoRail\.render\(\)\)/,
+  // Drawn after the scroll has been put back, and again whenever it moves.
+  assert.match(editorSource, /pianoScroll = \{ left: scroll\.scrollLeft, top: scroll\.scrollTop \};\s*\n\s*navigation\.render\(\);/);
+  assert.match(editorSource, /addEventListener\('resize', \(\) => \{[\s\S]*?navigation\.render\(\);/,
     'a resized window shows less of the clip, so the thumb it drew is a lie');
-  assert.match(editorSource, /pianoRail\.bind\(\);/);
+  assert.equal((editorSource.match(/navigation\.bind\(\);/g) || []).length, 2, 'bound after a piano roll and after an audio take');
 
-  // An audio clip has no piano roll, so it has no rail either.
-  assert.doesNotMatch(audioMarkupSource(editorSource), /scrollRailMarkup|data-piano-scroll/);
+  // An audio take has the bar too now, over a waveform it can zoom -- and
+  // still nothing of the piano roll.
+  const audio = audioMarkupSource(editorSource);
+  assert.match(audio, /\$\{navigationBarMarkup\(\)\}/);
+  assert.match(audio, /data-audio-scroll/);
+  assert.match(audio, /data-audio-ruler/);
+  assert.doesNotMatch(audio, /data-piano-scroll/);
 
-  assert.match(editorCss, /\.clip-piano-shell \{ position:relative;/,
-    'the shell is what the rail is positioned against');
+  assert.match(editorCss, /\.clip-piano-shell \{ position:relative; display:flex; flex-direction:column;/,
+    'the shell stacks the scroller and the bar');
   assert.match(editorCss, /\.clip-piano-scroll::-webkit-scrollbar:horizontal \{ height:0; \}/,
-    'and the light slab it replaces is gone, as it is under the arrangement');
+    'and the light slab the bar replaces is gone, as it is under the arrangement');
+  assert.match(editorCss, /\.clip-audio-scroll::-webkit-scrollbar:horizontal \{ height:0; \}/);
 
   // The trap this window is built on: its rule lives in base.css, and a class
   // whose sheet is not loaded here renders as nothing at all, silently.
-  assert.match(baseCss, /\.scroll-rail \{/);
+  assert.match(baseCss, /\.nav-bar \{/);
   assert.match(page, /href="styles\/base\.css"/);
 });

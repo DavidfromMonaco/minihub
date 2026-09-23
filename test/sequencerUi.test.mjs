@@ -58,9 +58,9 @@ function captureContainer() {
   // new one starts at scroll zero. A stub that survived would hide the very
   // thing this models -- that putting the scroll back is the module's job.
   let scroller = null;
-  // The horizontal rail under the arrangement, and its thumb.
-  let rail = null;
-  let railThumbEl = null;
+  // The navigation bar under the arrangement: its track, and the thumb in it.
+  let navTrack = null;
+  let navThumbEl = null;
   // The clock ruler is the one row redrawn on its own, when the tempo moves.
   let timeRuler = null;
   container.clientWidth = 1200;
@@ -107,11 +107,12 @@ function captureContainer() {
       scroller.scrollWidth = 6000;
       // Rebuilt with everything else, for the same reason the scroller is: a
       // drag holds these elements, and `render()` throws them away.
-      rail = makeEl('div');
-      rail.dataset.scrollRail = '';
-      rail.clientWidth = 940;
-      railThumbEl = makeEl('div');
-      railThumbEl.dataset.scrollRailThumb = '';
+      navTrack = makeEl('div');
+      navTrack.dataset.navTrack = '';
+      navTrack.clientWidth = 684;
+      navThumbEl = makeEl('div');
+      navThumbEl.dataset.navThumb = '';
+      navThumbEl.dataset.navPart = 'thumb';
       for (const action of ['open-routing', 'go-start', 'go-end', 'play', 'start-record', 'stop',
         'toggle-metronome', 'add-midi', 'add-audio']) {
         if (!markup.includes(`data-action="${action}"`)) continue;
@@ -155,8 +156,8 @@ function captureContainer() {
     if (controlMatch) return controls.get(controlMatch[1]) || null;
     if (selector === '[data-metronome-light]') return metronomeLight;
     if (selector === '[data-timeline-scroll]') return scroller;
-    if (selector === '[data-scroll-rail]') return rail;
-    if (selector === '[data-scroll-rail-thumb]') return railThumbEl;
+    if (selector === '[data-nav-track]') return navTrack;
+    if (selector === '[data-nav-thumb]') return navThumbEl;
     if (selector === '[data-seq-time-scale]') return timeRuler;
     return null;
   };
@@ -164,7 +165,7 @@ function captureContainer() {
   return {
     container, markup: () => markup, action: (name) => actions.get(name),
     control: (name) => controls.get(name), light: () => metronomeLight, clips: () => clips,
-    scroller: () => scroller, timeRuler: () => timeRuler, rail: () => rail
+    scroller: () => scroller, timeRuler: () => timeRuler, navTrack: () => navTrack, navThumb: () => navThumbEl
   };
 }
 
@@ -1069,7 +1070,7 @@ test('the arrangement replaces the native horizontal scrollbar rather than keepi
   const css = fs.readFileSync(new URL('../src/renderer/styles/base.css', import.meta.url), 'utf8');
   assert.match(css, /\.seq-scroll::-webkit-scrollbar:horizontal \{ height:0; \}/,
     'the light slab under the arrangement is gone');
-  assert.match(css, /\.scroll-rail \{/, 'and a four-pixel rail says the same thing in its place');
+  assert.match(css, /\.nav-bar \{/, 'and a navigation bar says the same thing in its place');
   assert.match(css, /body ::-webkit-scrollbar \{/,
     'the shell dresses its remaining scrollbars instead of leaving them white');
   const faceplate = fs.readFileSync(new URL('../src/renderer/styles/omni-pearl.css', import.meta.url), 'utf8');
@@ -1079,8 +1080,8 @@ test('the arrangement replaces the native horizontal scrollbar rather than keepi
     'nothing here is declared unscoped, which would beat nothing but reach everything');
 });
 
-test('a drag on the scroll rail survives the repaint it triggers', async () => {
-  const { railThumb } = await import('../src/renderer/js/ui/scrollRail.js');
+test('a drag on the navigation bar survives the repaint it triggers', async () => {
+  const { navDrag } = await import('../src/renderer/js/ui/navigationBar.js');
   const { hub } = await runtime();
   hub.nodes.create('sequencer');
   hub.sequencer.model.addTrack('midi');
@@ -1088,13 +1089,20 @@ test('a drag on the scroll rail survives the repaint it triggers', async () => {
   const view = captureContainer();
   hub.modules.activate('sequencer', view.container);
 
-  const rail = view.rail();
+  const track = view.navTrack();
   const stale = view.scroller();
-  assert.ok(rail && stale, 'the rail and the scroller are drawn');
+  assert.ok(track && stale, 'the bar and the scroller are drawn');
+  const state = hub.sequencer.model.state;
+  const zoom = state.zoom;
+  // 940px of timeline at this zoom; the bar spans the 64 empty bars.
+  const span = 940 / zoom;
+  const unitsPerPx = 256 / 680;
 
-  fire(rail, 'pointerdown', { button: 0, clientX: 100 });
+  fire(track, 'pointerdown', { button: 0, clientX: 100, target: track });
   const grabbed = stale.scrollLeft;
-  assert.ok(grabbed > 0, 'grabbing the rail scrolls to the point grabbed');
+  assert.ok(grabbed > 0, 'pressing the bar travels to the point pressed');
+  const jumped = state.scrollPpq;
+  assert.ok(Math.abs(jumped - (98 * unitsPerPx - span / 2)) < 1e-6, 'with the thumb centred on it');
 
   // What the browser does next: the scroll leaves the drawn window, the module
   // repaints on the following frame, and every element the pointerdown saw is
@@ -1105,16 +1113,35 @@ test('a drag on the scroll rail survives the repaint it triggers', async () => {
   assert.notEqual(fresh, stale, 'the repaint replaced the scrolling element');
 
   fire(globalThis.document, 'pointermove', { clientX: 500 });
-
-  // The defect: the move kept writing to the detached element, where assigning
-  // scrollLeft does nothing and says nothing. The rail stopped answering after
-  // about a quarter of a screen, in either direction.
-  const expected = railThumb({ scrollLeft: 0, scrollWidth: 6000, clientWidth: 940, railWidth: 940 })
-    .scrollFor(500);
-  assert.ok(Math.abs(fresh.scrollLeft - expected) < 1,
-    `the live timeline follows the thumb (${fresh.scrollLeft} vs ${expected})`);
+  const expected = navDrag('move', { start: jumped, span }, 400 * unitsPerPx, { total: 256 }).start;
+  assert.ok(Math.abs(state.scrollPpq - expected) < 1e-6, `the view follows the thumb (${state.scrollPpq} vs ${expected})`);
+  assert.ok(Math.abs(fresh.scrollLeft - expected * zoom) < 1e-6, 'and so does the live timeline');
   assert.equal(stale.scrollLeft, grabbed, 'and the element that was thrown away is left alone');
+  assert.equal(state.zoom, zoom, 'travelling never zooms');
+  fire(globalThis.document, 'pointerup', {});
+});
 
+test('dragging an end of the thumb zooms the arrangement and holds the other end', async () => {
+  const { hub } = await runtime();
+  hub.nodes.create('sequencer');
+  hub.sequencer.model.addTrack('midi');
+  hub.modules.register(createSequencerModule(hub));
+  const view = captureContainer();
+  hub.modules.activate('sequencer', view.container);
+  const state = hub.sequencer.model.state;
+  state.scrollPpq = 32;
+  const zoom = state.zoom;
+  const endEdge = makeEl('span');
+  endEdge.dataset.navPart = 'end';
+
+  fire(view.navTrack(), 'pointerdown', { button: 0, clientX: 300, target: endEdge });
+  // Ten quarters wider: the right end pulled out, the left one where it was.
+  const px = 10 / (256 / 680);
+  fire(globalThis.document, 'pointermove', { clientX: 300 + px });
+  await flush();
+  const wanted = Math.round(940 / (940 / zoom + 10) * 100) / 100;
+  assert.equal(state.zoom, wanted, 'the arrangement zoomed out');
+  assert.equal(state.scrollPpq, 32, 'and its left edge did not move');
   fire(globalThis.document, 'pointerup', {});
 });
 
