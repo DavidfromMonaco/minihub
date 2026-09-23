@@ -61,6 +61,21 @@ test('deleting a node and undoing brings it back under its own id', async () => 
   assert.equal(back.ordinal, node.ordinal, 'and with the number it was displayed under');
 });
 
+test('a node an undo brings back returns to its place in the list, not the bottom', async () => {
+  const hub = rig();
+  const [a, b, c] = [hub.nodes.create('vst'), hub.nodes.create('vst'), hub.nodes.create('vst')];
+  hub.nodes.move(c.id, a.id);
+  await tick();
+  assert.deepEqual(hub.nodes.list().map((node) => node.id), [c.id, a.id, b.id]);
+
+  hub.nodes.delete(a.id);
+  await tick();
+  await hub.history.undo();
+
+  assert.deepEqual(hub.nodes.list().map((node) => node.id), [c.id, a.id, b.id],
+    'between the node above it and the node below it, as the person had arranged them');
+});
+
 test('redo deletes it again', async () => {
   const hub = rig();
   const node = hub.nodes.create('vst');

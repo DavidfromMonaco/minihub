@@ -322,6 +322,15 @@ body {
   border-color: rgba(79, 140, 255, 0.25);
 }
 
+/* A node in NODES is dragged to reorder the list (ui/sidebar.js). The node
+   held goes pale, and a line in the accent colour marks where it will land --
+   drawn outside the item, in the 2px gap between two rows. */
+.nav-item.nav-movable { user-select: none; touch-action: none; }
+.nav-item.nav-dragging { opacity: 0.45; }
+.nav-item.nav-drop-before { box-shadow: 0 -2px 0 0 var(--accent); }
+.nav-item.nav-drop-after { box-shadow: 0 2px 0 0 var(--accent); }
+.sidebar.nav-reordering, .sidebar.nav-reordering .nav-item { cursor: grabbing; }
+
 .nav-icon {
   display: inline-flex;
   width: 18px;
@@ -1839,7 +1848,7 @@ body {
 .project-identity { color: var(--muted, #a7abb2); font-size: 13px; margin-right: 8px; }
 
 /* --- Integrated MIDI + audio Sequencer ---------------------------------- */
-.sequencer-page { display:grid; grid-template-rows:max-content minmax(0,1fr); gap:0; width:100%; height:100%; min-width:0; min-height:0; }
+.sequencer-page { display:grid; grid-template-columns:minmax(0,1fr); grid-template-rows:max-content minmax(0,1fr); gap:0; width:100%; height:100%; min-width:0; min-height:0; }
 .sequencer-page > .panel { border-radius:0; border-left:0; border-right:0; }
 .sequencer-page > .panel + .panel { margin-top:0; border-top:0; }
 .seq-runtime-empty { min-height:300px; display:grid; place-content:center; justify-items:center; gap:14px; padding:48px; text-align:center; }
@@ -1847,6 +1856,15 @@ body {
 .seq-runtime-empty .page-title { margin:0; }
 .seq-runtime-empty p { max-width:620px; margin:0; color:var(--text-dim); line-height:1.6; }
 .seq-toolbar { padding:12px 14px; }
+/* The transport row wraps onto a second line rather than pushing the page
+   wider than the window. It did not wrap: in a 1224 px window its buttons were
+   squeezed to three lines of text each and the row was still 12 px too wide,
+   so every panel below it -- the arrangement, and the + at the end of its
+   navigation bar -- ran under the window's right edge. The column above is
+   held to the page for the same reason: an implicit grid column grows to its
+   widest child. */
+.seq-toolbar > .row:first-child { flex-wrap:wrap; row-gap:8px; }
+.seq-toolbar > .row:first-child .btn { white-space:nowrap; }
 .seq-toolbar .page-title { margin:0; }
 .seq-record-status { margin-top:9px; padding:7px 10px; border:1px solid var(--border); border-radius:6px; color:var(--text-dim); background:#191c20; font-size:11px; }
 .seq-record-status.ready { color:#7fdaa5; border-color:rgba(62,207,126,.4); }

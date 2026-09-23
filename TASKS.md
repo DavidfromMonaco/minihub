@@ -7,10 +7,10 @@ finished, delete its entry**, in the same commit. What was done lives in git and
 
 ## Started, not finished
 
-**Navigation in the three timelines — in the author's test** — built
-2026-09-24 on the author's word: "more precise navigation tools, present in
-all three" (the arrangement, an audio take's Clip Editor, a MIDI clip's), the
-navigation bar first, zoom in and out too. He reported that the arrangement
+**Navigation in the three timelines, and the NODES list in any order — in
+the author's test** — built 2026-09-24 on the author's word: "more precise
+navigation tools, present in all three" (the arrangement, an audio take's
+Clip Editor, a MIDI clip's), the navigation bar first, zoom in and out too. He reported that the arrangement
 had no navigation bar: its four-pixel grey rail hid itself and was not found.
 - One bar for the three (`ui/navigationBar.js`), in its own row under the
   timeline: drag the thumb to travel, press beside it to jump there, drag one
@@ -24,10 +24,16 @@ had no navigation bar: its four-pixel grey rail hid itself and was not found.
 - Still coarse: a take's waveform is the engine's 256 peaks for the whole
   file, so zoomed in it is an outline, not the signal. Finer peaks, asked of
   the engine for what is on screen, is the next step, and needs native work.
-- Not started: dragging nodes in the sidebar's NODES list to order them, the
-  other half of the same request.
-- Seen in passing, not touched: at a 1224 px window the arrangement's toolbar
-  is 12 px wider than the page, which clips the + at the right of the bar.
+- The sidebar's NODES list is ordered by dragging a node, the other half of
+  the same request ("just grab them and move them, no arrows"). The order is
+  `hub.nodes`' own and so the project's (`NodeInstanceManager.move`); a press
+  that barely moves is still a click; Escape cancels; Routing stays first; a
+  node an undo brings back returns to its place. Reordering is not an undo
+  step. Seen in the application: a drag up, a drag down, the line and the
+  pale node mid-drag, a click after it, the order after a save and a reload.
+- The arrangement's transport row wraps onto a second line in a narrow window
+  instead of widening the page: at 1224 px it was 12 px too wide and clipped
+  the + at the end of the navigation bar. Seen fitting at 1224 px.
 
 **The plugin list folds a brand — in the author's test** — built 2026-09-21 on
 the author's word, after Kilohearts' 35 "kHs" effects filled the VST node's

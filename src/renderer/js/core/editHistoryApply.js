@@ -41,9 +41,22 @@ function restoreInstances(hub, persisted) {
   // Present in both: its content may have moved -- an arpeggiator pattern
   // drawn, a mixer level pushed. `restoreContent` is what knows which part of a
   // node's content can go back and which cannot.
+  const restored = [];
   for (const [id, entry] of wanted) {
     if (hub.nodes.get(id)) hub.nodes.restoreContent(id, entry.content);
-    else hub.nodes.restoreInstance(entry);
+    else if (hub.nodes.restoreInstance(entry)) restored.push(id);
+  }
+
+  // A node brought back returns to its place in the sidebar's list, not to the
+  // bottom of it: before the node that followed it in the snapshot. Done last
+  // first, so a run of nodes restored together lands in its own order. Only
+  // the nodes brought back move -- an undo never re-sorts a list the person
+  // has arranged since.
+  if (typeof hub.nodes.move !== 'function') return;
+  const order = [...wanted.keys()];
+  for (const id of restored.reverse()) {
+    const next = order.slice(order.indexOf(id) + 1).find((other) => hub.nodes.get(other)) ?? null;
+    hub.nodes.move(id, next);
   }
 }
 

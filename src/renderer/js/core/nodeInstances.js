@@ -425,6 +425,30 @@ export class NodeInstanceManager {
     return this.instances.get(id) || null;
   }
 
+  /**
+   * Put a node in the sidebar's NODES list just before another, or last when
+   * `beforeId` is null.
+   *
+   * The list IS the order of this map, and the map is what `_persist()` writes,
+   * so the order a person arranges is the order the project saves and reopens
+   * with -- no second key naming the same nodes, which could disagree with it.
+   * Nothing else reads this order as meaning: ids name nodes everywhere, and
+   * the edit history compares the node SET sorted by id, so reordering is
+   * neither a step to undo nor a change to anything that sounds.
+   */
+  move(id, beforeId = null) {
+    if (!this.instances.has(id) || id === beforeId) return false;
+    if (beforeId !== null && !this.instances.has(beforeId)) return false;
+    const order = [...this.instances.keys()].filter((key) => key !== id);
+    const at = beforeId === null ? order.length : order.indexOf(beforeId);
+    order.splice(at, 0, id);
+    if (order.every((key, index) => key === [...this.instances.keys()][index])) return false;
+    this.instances = new Map(order.map((key) => [key, this.instances.get(key)]));
+    this._persist();
+    this.hub.events.emit('nodes:reordered', { nodeId: id, order });
+    return true;
+  }
+
   /** Access the internal plugin chain of a VST instance (or null). */
   getChain(instanceId) {
     const inst = this.instances.get(instanceId);
