@@ -120,8 +120,12 @@ the author tests).
   both read back in `describe`, which also gives a track's input and
   monitoring. `../minihub-agent/AGENTS.md` describes all of it, the Audio
   Player, the transport's `pause`, `go-end` and `bars`, D-045 and D-054, and
-  `outils/verify-all.mjs` checks the new kinds. Checked by `npm test` only:
-  not run against the application, which the author had open at the time.
+  `outils/verify-all.mjs` checks the new kinds. Run against the application
+  once he had closed his: 39 of 39, the knob cable plugged and unplugged, a
+  range stored, Plays and the loop read back, a player read, muted and
+  played. The client's own list of project-gated kinds lacked `loop`
+  (`stale-project`); added -- that list has to follow `MUTATING` in
+  `agentRequests.js` by hand.
 
 **Splice asks to log in again — in the author's test** — diagnosed 2026-09-16. Splice keeps its login
 in its own folder under AppData, and Windows files that folder inside a
