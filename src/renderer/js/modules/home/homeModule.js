@@ -131,7 +131,7 @@ export function createHomeModule(hub) { return {
             bound to the parameters of your own plugins.
           </p>
           <div class="home-about-state">
-            <span class="pill warn">Pre-alpha ${escapeHtml(BUILD_STAMP.version)}</span>
+            <span class="pill warn">Beta ${escapeHtml(BUILD_STAMP.version)}</span>
             <p class="home-about-text">
               Under active development, and honest about it: the Patch Bay, the
               VST3 host, the Sequencer and control learning are built and
