@@ -134,6 +134,12 @@ public:
 
     /** Update the live DSP control without rebuilding the immutable clip plan. */
     bool setTrackControl(const std::string& trackId, float gain, bool muted) noexcept;
+    /** True while Play is set to play the Audio Players alone: no clip sounds,
+     *  in playback or in an export, but what is played into a track still is --
+     *  its input, its monitoring, its recording. Unlike a mute, it leaves every
+     *  track's fader, and so every instrument's level, as it is. */
+    void setClipsSilenced(bool silenced) noexcept;
+    bool clipsSilenced() const noexcept { return clipsSilenced_.load(std::memory_order_acquire); }
     /** Resolve the Sequencer instrument-return gain for one VST node. */
     MidiTrackGain midiTrackGainForOutput(const std::string& outputId,
                                          const Transport&) noexcept;
@@ -295,7 +301,8 @@ private:
     std::atomic<Plan*> exportPlan_{nullptr};
     std::unique_ptr<Plan> preparedExportPlan_;
     std::atomic<bool> needsChase_{true}, needsExportChase_{true}, recording_{false},
-                      midiCleanupPending_{false}, exportMidiCleanupPending_{false}, midiReleasePending_{false};
+                      midiCleanupPending_{false}, exportMidiCleanupPending_{false}, midiReleasePending_{false},
+                      clipsSilenced_{false};
     std::vector<MidiTake> midiTakes_;      // message thread only
     std::vector<AudioTake> audioTakes_;    // message thread only
 

@@ -2709,7 +2709,8 @@ column", "aligning an already aligned canvas changes nothing").
 ## D-051 — An Audio Player follows the transport's Play, Pause and Stop, not its position
 
 **Status**: in force · 2026-09-21 · **implemented**, seen in the application
-through the agent channel, not yet heard by the author
+through the agent channel, not yet heard by the author · **amended by D-053**:
+"always" now means "unless Play is set to play the Sequencer alone"
 
 **Context** — The author asked for "an OmniBox I can put an audio file in (at
 least WAV and MP3) to cable it into VSTs and process the audio". A file could
@@ -2842,3 +2843,60 @@ Three alternatives were refused:
 `native/audio-engine/src/sequencer.cpp`, `Track::inputScratch`,
 `Transport::blockSerial`. Test: `[core] audio-track-pass-through` in
 `native/audio-engine/test/native_tests.cpp`.
+
+## D-053 — What Play plays: All, Sequencer, or Players
+
+**Status**: in force · 2026-09-24 · **implemented**, checked by the native and
+JS tests, not yet heard by the author
+
+**Context** — The author recorded a take and, playing it back, heard the Audio
+Players of the Patch Bay with it: under D-051 every player follows the
+transport, always. He asked for a button beside the transport offering "the
+whole", "the Sequencer without the nodes" and "the nodes without the
+Sequencer", and left the wording to me.
+
+**Decision** — A selector in the header, after the position: **Plays** All,
+Sequencer or Players.
+
+- **All** is D-051 unchanged, and the default.
+- **Sequencer**: the transport's start and stop no longer reach a player
+  (`AudioPlayer::setFollowsTransport`). Its own Play, Pause and Stop still do,
+  and so does a Stop somebody gives.
+- **Players**: no clip of the arrangement sounds, MIDI or audio
+  (`SequencerEngine::setClipsSilenced`). What is played into a track still
+  does -- its input, its monitoring, its recording -- and no fader moves, so an
+  instrument played by hand keeps its level. It is not a mute of every track.
+- An export prints what Play plays, as a DAW prints what is heard.
+- Changed while the transport runs, it takes effect at once: players left out
+  pause, players brought back start from where they are; clips silenced
+  release their notes, clips heard again chase the notes under the playhead.
+- Anything but All is drawn amber, as a Record that cannot start is: a Play
+  that leaves half the project silent is never a mystery the next day.
+- It is an application setting (`playScope`), like the metronome, not a
+  project key: a way of listening, not part of the music.
+
+"Players" rather than "Nodes": the VST nodes are nodes too and sound under the
+Sequencer; the only nodes Play starts are the Audio Players (a One Ring runs on
+its own clock, D-048).
+
+Two alternatives were refused:
+
+- **A mute on every track for Players.** A MIDI track's mute also sets its
+  instrument's level to zero, so a keyboard played through it would go silent.
+- **A project key.** A project reopened on "Sequencer" would play without its
+  players, for a reason saved in the file and forgotten.
+
+**Consequences**
+
+- Under Sequencer, recording a player through an armed track (D-052) takes the
+  player's own Play as well: the price D-051 refused for everyone, paid only by
+  whoever chose it.
+- The agent channel does not set it yet.
+
+**Proof in the code** — `cmdSetPlayScope` in `native/audio-engine/src/engine.cpp`,
+`AudioPlayer::render` in `audio_player.cpp`, `processMidi` and
+`renderAudioForOutput` in `sequencer.cpp`, `setPlayScope` in
+`src/renderer/js/core/sequencerController.js`. Tests: `[core]
+audio-player-left-out`, `testSequencerClipsSilenced` in
+`native/audio-engine/test/native_tests.cpp`; "what Play plays" in
+`test/sequencerUi.test.mjs`.

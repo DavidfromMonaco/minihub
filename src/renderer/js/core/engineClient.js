@@ -719,6 +719,7 @@ export class EngineClient {
   // frozen render state untouched.
   sequencerPanic() { return this.command({ type: 'sequencerPanic' }); }
   setMetronome(enabled, volume) { return this.command({ type: 'setMetronome', enabled, volume }); }
+  setPlayScope(scope) { return this.command({ type: 'setPlayScope', scope }); }
   setMasterOutput({ gainDb } = {}) {
     const command = { type: 'setMasterOutput' };
     if (Number.isFinite(gainDb)) command.gainDb = Math.max(-60, Math.min(12, gainDb));

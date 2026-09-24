@@ -487,7 +487,7 @@ void SequencerEngine::processMidi(int count,Transport& transport,MidiExecutionPl
         const auto destinationEpoch=track.destination?track.destination->midiEpoch():0;
         for(auto& hop:track.thru)hop.blockEpoch=hop.chain?hop.chain->midiEpoch():0;
         if(cleanup||released){for(int channel=1;channel<=16;++channel){for(int pitch=0;pitch<128;++pitch){auto& held=track.activeNotes[(size_t)((channel-1)*128+pitch)];while(held>0){buffer.addEvent(juce::MidiMessage::noteOff(channel,pitch),0);--held;}}if(cleanup){buffer.addEvent(juce::MidiMessage::allNotesOff(channel),0);buffer.addEvent(juce::MidiMessage::allSoundOff(channel),0);}}}
-        const bool muted=track.runtime&&track.runtime->muted.load(std::memory_order_acquire);
+        const bool muted=(track.runtime&&track.runtime->muted.load(std::memory_order_acquire))||clipsSilenced_.load(std::memory_order_acquire);
         const bool chaseTrack=playing&&(chase||track.chasePending);
         if(playing)track.chasePending=false;
         int activeClips=0;
@@ -526,11 +526,22 @@ void SequencerEngine::renderAudioForOutput(juce::AudioBuffer<float>& out,int cou
         if(!playing&&heard==0)continue;
         auto& sum=track.audioSumScratch;sum.clear(0,count);int activeClips=0;float peakBeforeSum=0;
         for(int ch=0;ch<2&&heard>0;++ch)sum.copyFrom(ch,0,track.inputScratch,ch,0,heard);
-        if(playing)for(const auto& clip:track.audio){if(!clip.asset)continue;bool active=false;for(int sample=0;sample<count;++sample){const double q=transport.ppqAtSample(sample);if(exportContext&&q>=exportSourceEndPpq())continue;if(q<clip.startPpq||q>=clip.startPpq+clip.lengthPpq)continue;const double seconds=clip.trimStartSeconds+(q-clip.startPpq)*60.0/bpm;if(seconds<clip.trimStartSeconds||seconds>=clip.trimEndSeconds)continue;const double source=seconds*clip.asset->sampleRate;const int i=(int)source;if(i<0||i+1>=clip.asset->samples.getNumSamples())continue;active=true;const float f=(float)(source-i);for(int ch=0;ch<2;++ch){const float* data=clip.asset->samples.getReadPointer(ch);const float value=(data[i]+(data[i+1]-data[i])*f)*clip.gain;peakBeforeSum=std::max(peakBeforeSum,std::abs(value));sum.addSample(ch,sample,value);}}if(active)++activeClips;}
+        if(playing&&!clipsSilenced_.load(std::memory_order_acquire))for(const auto& clip:track.audio){if(!clip.asset)continue;bool active=false;for(int sample=0;sample<count;++sample){const double q=transport.ppqAtSample(sample);if(exportContext&&q>=exportSourceEndPpq())continue;if(q<clip.startPpq||q>=clip.startPpq+clip.lengthPpq)continue;const double seconds=clip.trimStartSeconds+(q-clip.startPpq)*60.0/bpm;if(seconds<clip.trimStartSeconds||seconds>=clip.trimEndSeconds)continue;const double source=seconds*clip.asset->sampleRate;const int i=(int)source;if(i<0||i+1>=clip.asset->samples.getNumSamples())continue;active=true;const float f=(float)(source-i);for(int ch=0;ch<2;++ch){const float* data=clip.asset->samples.getReadPointer(ch);const float value=(data[i]+(data[i+1]-data[i])*f)*clip.gain;peakBeforeSum=std::max(peakBeforeSum,std::abs(value));sum.addSample(ch,sample,value);}}if(active)++activeClips;}
         const float peakAfterSum=std::max(sum.getMagnitude(0,0,count),sum.getMagnitude(1,0,count));const bool muted=track.runtime&&track.runtime->muted.load(std::memory_order_acquire);const float gain=muted?0.0f:(track.runtime?track.runtime->gain.load(std::memory_order_acquire):1.0f);if(gain!=1.0f)sum.applyGain(0,count,gain);const float peakAfterGain=std::max(sum.getMagnitude(0,0,count),sum.getMagnitude(1,0,count));
         if(track.runtime){track.runtime->activeClips.store(activeClips,std::memory_order_release);track.runtime->peakBeforeSum.store(peakBeforeSum,std::memory_order_release);track.runtime->peakAfterSum.store(peakAfterSum,std::memory_order_release);track.runtime->gainApplied.store(gain,std::memory_order_release);track.runtime->peakAfterGain.store(peakAfterGain,std::memory_order_release);}for(int ch=0;ch<2;++ch)out.addFrom(ch,0,sum,ch,0,count);
     }
     releasePlan(exportContext);
+}
+
+void SequencerEngine::setClipsSilenced(bool silenced) noexcept
+{
+    const bool was=clipsSilenced_.exchange(silenced,std::memory_order_acq_rel);
+    if(silenced==was)return;
+    // Silenced mid-note: the note's Note Off will never be read, so the notes
+    // held are released now. Heard again: the notes already under the playhead
+    // are chased, as after a seek.
+    if(silenced)midiCleanupPending_.store(true,std::memory_order_release);
+    else needsChase_.store(true,std::memory_order_release);
 }
 
 bool SequencerEngine::setTrackControl(const std::string& trackId,float gain,bool muted) noexcept

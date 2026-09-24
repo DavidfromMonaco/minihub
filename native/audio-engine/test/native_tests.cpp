@@ -1075,6 +1075,28 @@ void testSyncKeepingRoutingReleasesOnlyWhatChanged()
     expect(silenced(padOut),"and its panic silences, as before");
 }
 
+void testSequencerClipsSilenced()
+{
+    // Play set to the Audio Players alone: the arrangement's clips are left out,
+    // and nothing else is -- not the track's fader, which the instrument's level
+    // answers to while it is played by hand.
+    mlh::SequencerEngine sequencer;sequencer.prepare(48000,12000);CapturingMidiOutput hardware;
+    mlh::Chain chain("vst-quiet");chain.setMidiEnabled(true);
+    const auto lookup=[&](const std::string& id)->mlh::Chain*{return id=="vst-quiet"?&chain:nullptr;};
+    auto track=midiTrack("track-quiet","vst-quiet");mlh::setProp(track,"outputKind","vst");
+    juce::Array<juce::var> tracks;tracks.add(track);juce::Array<juce::var> info;std::string error;
+    expect(sequencer.sync(makeSequencerProject(tracks),lookup,48000,12000,info,error),"a MIDI track compiles");
+    const auto noteOns=[&]{juce::MidiBuffer midi;chain.pullMidi(midi,12000);int ons=0;for(const auto& event:midi)if(event.getMessage().isNoteOn())++ons;return ons;};
+    mlh::Transport transport;transport.setSampleRate(48000);transport.setPlaying(true);transport.beginBlock();
+    sequencer.setClipsSilenced(true);
+    sequencer.processMidi(12000,transport,nullptr,&hardware,1000.0);
+    expect(noteOns()==0,"a silenced arrangement plays no note");
+    expect(sequencer.midiTrackGainForOutput("vst-quiet",transport).gain==1.0f,"and leaves the track's fader where it was");
+    sequencer.setClipsSilenced(false);transport.seekPpq(0);transport.beginBlock();
+    sequencer.processMidi(12000,transport,nullptr,&hardware,1000.0);
+    expect(noteOns()==1,"heard again, it plays its note");
+}
+
 void testSequencerMidiThruPlaysTheSeries()
 {
     // D-039. A track wired to one VST plays every node that VST's MIDI OUT is
@@ -4223,6 +4245,34 @@ void testAudioPlayerFollowsTheTransport()
     expect(std::abs(player.status().positionSeconds - 0.25) < 1.0e-6, "the player itself keeps its place");
 }
 
+void testAudioPlayerLeftOutOfTheTransport()
+{
+    // Play set to the Sequencer alone: the transport no longer drives a
+    // player, and its own buttons still do.
+    mlh::AudioPlayer player("audio-player-010");
+    auto asset = sineAsset(48000, 100, 1.0, 48000);
+    player.setAsset(asset);
+    renderPlayer(player, 1, 256, false, 48000);
+    player.setFollowsTransport(false);
+    renderPlayer(player, 1, 256, true, 48000);
+    expect(player.status().state == mlh::AudioPlayer::State::stopped, "the transport's start leaves it waiting");
+    player.command(mlh::AudioPlayer::Command::play);
+    renderPlayer(player, 2, 256, true, 48000);
+    expect(player.status().state == mlh::AudioPlayer::State::playing, "its own Play still plays it");
+    renderPlayer(player, 4, 256, false, 48000);
+    expect(player.status().state == mlh::AudioPlayer::State::playing, "and the transport's stop does not pause it");
+    auto copy = player.cloneForExport();
+    renderPlayer(*copy, 1, 256, true, 48000);
+    expect(copy->status().state == mlh::AudioPlayer::State::stopped, "an export prints what Play plays");
+    player.command(mlh::AudioPlayer::Command::pause);
+    renderPlayer(player, 4, 256, false, 48000);
+    player.setFollowsTransport(true);
+    renderPlayer(player, 1, 256, false, 48000);
+    expect(player.status().state == mlh::AudioPlayer::State::paused, "following again finds no stale edge");
+    renderPlayer(player, 1, 256, true, 48000);
+    expect(player.status().state == mlh::AudioPlayer::State::playing, "and the next start plays it");
+}
+
 void testAudioPlayerInTheNetwork()
 {
     mlh::AudioPlayer player("audio-player-010");
@@ -4348,6 +4398,7 @@ int main(int argc, char** argv)
     testSequencerPhysicalMidiOutputAndArpeggiatorRoute();
     std::cerr << "[core] midi-thru-series\n";
     testSequencerMidiThruPlaysTheSeries();
+    testSequencerClipsSilenced();
     std::cerr << "[core] arp-values-while-playing\n";
     testArpeggiatorTakesValuesWhilePlaying();
     std::cerr << "[core] seek-releases\n";
@@ -4396,6 +4447,8 @@ int main(int argc, char** argv)
     testAudioPlayerPlaysLoopsAndStops();
     std::cerr << "[core] audio-player-transport\n";
     testAudioPlayerFollowsTheTransport();
+    std::cerr << "[core] audio-player-left-out\n";
+    testAudioPlayerLeftOutOfTheTransport();
     std::cerr << "[core] audio-player-network\n";
     testAudioPlayerInTheNetwork();
     }

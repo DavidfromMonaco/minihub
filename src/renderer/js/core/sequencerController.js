@@ -7,6 +7,8 @@ import { midiThruReach } from './midiThru.js';
 import { barStep } from './musicalTime.js';
 
 const STATE_KEY = 'sequencerState';
+/** What Play plays -- `setPlayScope`. The first is the default. */
+export const PLAY_SCOPES = Object.freeze(['all', 'sequencer', 'players']);
 const LEGACY_DEVICE_INPUT_ID = 'device-input';
 const EXPORT_STALL_TIMEOUT_MS = 60000;
 
@@ -78,6 +80,7 @@ export class SequencerController {
     this.playheadPpq = 0;
     this.tempo = 120;
     this.metronomeEnabled = false;
+    this.playScope = 'all';
     this.metronomeVolume = 0.35;
     this._unsubs = [];
     this._syncQueued = false;
@@ -109,6 +112,7 @@ export class SequencerController {
     this.model = new SequencerModel(seeded ? initialSequencerState() : stored);
     this.tempo = normalizeTempo(this.hub.settings.get('transportBpm'));
     this.metronomeEnabled = this.hub.settings.get('metronomeEnabled') === true;
+    this.playScope = PLAY_SCOPES.includes(this.hub.settings.get('playScope')) ? this.hub.settings.get('playScope') : 'all';
     const storedMetronomeVolume = Number(this.hub.settings.get('metronomeVolume'));
     this.metronomeVolume = Number.isFinite(storedMetronomeVolume)
       ? Math.max(0, Math.min(1, storedMetronomeVolume)) : 0.35;
@@ -263,6 +267,7 @@ export class SequencerController {
   _syncTransportControls() {
     this.hub.engine.setTransport({ bpm: this.tempo });
     this.hub.engine.setMetronome?.(this.metronomeEnabled, this.metronomeVolume);
+    this.hub.engine.setPlayScope?.(this.playScope);
   }
 
   setTempo(value) {
@@ -282,6 +287,36 @@ export class SequencerController {
       this.hub.events.emit('sequencer:metronome', next);
     }
     this.hub.engine.setMetronome?.(next, this.metronomeVolume);
+    return next;
+  }
+
+  /**
+   * What Play plays: everything, the Sequencer's clips alone, or the Audio
+   * Players alone. Asked 2026-09-24: listening back to a take also played the
+   * files in the Patch Bay. Nothing is stopped, only left out -- a track's
+   * input and monitoring, and a player's own buttons, still sound -- and an
+   * export prints what Play plays.
+   *
+   * Changed while the transport runs, it takes effect at once: players left
+   * out pause, players brought back start from where they are.
+   */
+  setPlayScope(scope) {
+    const next = PLAY_SCOPES.includes(scope) ? scope : 'all';
+    const before = this.playScope;
+    if (next !== before) {
+      this.playScope = next;
+      this.hub.settings.set('playScope', next);
+      this.hub.events.emit('sequencer:playScope', next);
+    }
+    this.hub.engine.setPlayScope?.(next);
+    const players = this.hub.audioPlayers;
+    if (this.playing && players && (before === 'sequencer') !== (next === 'sequencer')) {
+      for (const node of players.list()) {
+        const playing = players.statusOf(node.id)?.state === 'playing';
+        if (next === 'sequencer' && playing) players.pause(node.id);
+        else if (next !== 'sequencer' && !playing && players.fileOf(node.id)) players.play(node.id);
+      }
+    }
     return next;
   }
 

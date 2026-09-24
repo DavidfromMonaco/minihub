@@ -27,6 +27,10 @@ const DEFAULTS = {
   vstCatalog: [], // last successful VST3 scan, reused before the next scan
   metronomeEnabled: false,
   metronomeVolume: 0.35,
+  // What the transport plays: 'all', 'sequencer' (its clips, no Audio Player)
+  // or 'players' (the Audio Players, no clip). A listening choice, like the
+  // metronome, so it belongs to the application and not to a project.
+  playScope: 'all',
   recentProjectPath: null,
   recentProjectName: null,
   recentDirectories: {}, // purpose -> last folder chosen in a picker; see recentDirectories.js

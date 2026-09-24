@@ -240,6 +240,8 @@ std::unique_ptr<AudioPlayer> AudioPlayer::cloneForExport() const
     clone->asset_.store(owned_.get(), std::memory_order_seq_cst);
     clone->current_ = owned_.get();
     clone->looping_.store(looping(), std::memory_order_release);
+    // An export prints what Play plays.
+    clone->followsTransport_.store(followsTransport(), std::memory_order_release);
     // Seen stopped, so the export's first playing block is a start.
     clone->primed_ = true;
     clone->lastTransport_ = false;
@@ -396,12 +398,17 @@ void AudioPlayer::render(juce::AudioBuffer<float>& out, int numSamples, bool tra
     else if (transportPlaying != lastTransport_)
     {
         lastTransport_ = transportPlaying;
-        if (transportPlaying)
-            start(asset);
-        // Already on its way to a stop -- a Stop somebody gave arrives with the
-        // transport's own stop -- it keeps going there.
-        else if (state_ == State::playing && !(fadeDirection_ < 0 && afterFade_ != State::playing))
-            halt(State::paused, -1);
+        // Edges are still tracked while the player does not follow them, so
+        // following again never finds a stale one waiting.
+        if (followsTransport_.load(std::memory_order_acquire))
+        {
+            if (transportPlaying)
+                start(asset);
+            // Already on its way to a stop -- a Stop somebody gave arrives with
+            // the transport's own stop -- it keeps going there.
+            else if (state_ == State::playing && !(fadeDirection_ < 0 && afterFade_ != State::playing))
+                halt(State::paused, -1);
+        }
     }
 
     const int channels = out.getNumChannels();

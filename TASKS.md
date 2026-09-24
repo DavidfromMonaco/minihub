@@ -21,8 +21,11 @@ author during a session, built after he quit MiniHub ("fais tout").
   or removes one, a left-drag on empty canvas draws a frame that takes every
   node it touches, a drag moves the whole selection, Delete removes it, Ctrl+A
   selects all, Escape none. Ctrl+C still copies one node only.
-- To do: what Play plays (All, Sequencer,
-  Players); a range per knob assignment; the white strip beside a narrow
+- Done: what Play plays — **Plays** All / Sequencer / Players in the header
+  (DECISIONS D-053), native flags on the players and on the sequencer's clips.
+  Native build 0 warnings, the four native test binaries pass. The agent
+  channel cannot set it yet.
+- To do: a range per knob assignment; the white strip beside a narrow
   plugin window.
 
 **Navigation in the three timelines, and the NODES list in any order — in

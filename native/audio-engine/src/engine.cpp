@@ -525,6 +525,7 @@ void Engine::handleCommand(const juce::var& msg)
     else if (type == "setAudioNodeValues") cmdSetAudioNodeValues(msg);
     else if (type == "syncMidiNetwork") cmdSyncMidiNetwork(msg);
     else if (type == "setMetronome") cmdSetMetronome(msg);
+    else if (type == "setPlayScope") cmdSetPlayScope(msg);
     else if (type == "setMasterOutput") cmdSetMasterOutput(msg);
     else if (type == "resetMasterClip") cmdResetMasterClip(msg);
     else if (type == "syncSequencer") cmdSyncSequencer(msg);
@@ -1929,6 +1930,23 @@ void Engine::cmdSetMetronome(const juce::var& msg)
     if(msg.hasProperty("volume"))metronomeVolume_.store(juce::jlimit(0.0f,1.0f,(float)(double)msg["volume"]));
 }
 
+void Engine::cmdSetPlayScope(const juce::var& msg)
+{
+    // What the transport plays: "all", the Sequencer's clips alone, or the
+    // Audio Players alone. Neither half is stopped, only left out -- what is
+    // played into a track, and a player's own Play, still sound.
+    const juce::String scope = msg["scope"].toString();
+    if (scope != "all" && scope != "sequencer" && scope != "players")
+    {
+        sendError("play-scope-invalid", "scope must be all, sequencer or players");
+        return;
+    }
+    sequencer_.setClipsSilenced(scope == "players");
+    playersFollowTransport_ = scope != "sequencer";
+    for (auto& entry : audioPlayers_)
+        entry.second.player->setFollowsTransport(playersFollowTransport_);
+}
+
 void Engine::cmdSetMasterOutput(const juce::var& msg)
 {
     if (msg.hasProperty("gainDb"))
@@ -2849,7 +2867,10 @@ AudioPlayer* Engine::getOrCreateAudioPlayer(const juce::String& nodeId)
         return nullptr;
     auto& node = audioPlayers_[nodeId];
     if (node.player == nullptr)
+    {
         node.player = std::make_unique<AudioPlayer>(nodeId.toStdString());
+        node.player->setFollowsTransport(playersFollowTransport_);
+    }
     return node.player.get();
 }
 

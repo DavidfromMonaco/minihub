@@ -118,6 +118,11 @@ public:
     const std::shared_ptr<const AudioPlayerAsset>& asset() const noexcept { return owned_; }
     void setLooping(bool looping) noexcept { looping_.store(looping, std::memory_order_release); }
     bool looping() const noexcept { return looping_.load(std::memory_order_acquire); }
+    /** False while Play is set to play the Sequencer alone: the transport's
+     *  start and stop then leave the player as it is. Its own Play, Pause and
+     *  Stop, and a Stop somebody gives, still reach it. */
+    void setFollowsTransport(bool follows) noexcept { followsTransport_.store(follows, std::memory_order_release); }
+    bool followsTransport() const noexcept { return followsTransport_.load(std::memory_order_acquire); }
     /** False when the ring is full: a player the callback does not run fills it. */
     bool command(Command command, double seconds = 0.0) noexcept;
     bool hasRetired() const noexcept { return !retired_.empty(); }
@@ -157,6 +162,7 @@ private:
     std::atomic<const AudioPlayerAsset*> asset_ { nullptr };
     std::atomic<bool> inRender_ { false };
     std::atomic<bool> looping_ { false };
+    std::atomic<bool> followsTransport_ { true };
     std::array<Queued, kQueueSize> queue_ {};
     std::atomic<uint32_t> queueRead_ { 0 }, queueWrite_ { 0 };
     std::atomic<int> publishedState_ { 0 };

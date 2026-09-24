@@ -118,6 +118,7 @@ private:
     void cmdSyncMidiNetwork(const juce::var& msg);
     void cmdCapturePluginStates(const juce::var& msg);
     void cmdSetMetronome(const juce::var& msg);
+    void cmdSetPlayScope(const juce::var& msg);
     void cmdSetMasterOutput(const juce::var& msg);
     void cmdResetMasterClip(const juce::var& msg);
     void cmdSyncSequencer(const juce::var& msg);
@@ -368,6 +369,9 @@ private:
         double statusSentAtMs = 0.0;
     };
     std::map<juce::String, AudioPlayerNode> audioPlayers_;
+    // What Play plays (`setPlayScope`): false while it plays the Sequencer
+    // alone, and every player -- a new one too -- then ignores the transport.
+    bool playersFollowTransport_ = true;
     // One decode per file identity, shared by the players that play it.
     std::map<juce::String, std::weak_ptr<const AudioPlayerAsset>> audioPlayerAssets_;
 

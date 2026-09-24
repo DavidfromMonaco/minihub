@@ -1185,3 +1185,55 @@ test('the playhead passes under the track heads, never across them', () => {
   // reason they do.
   assert.ok(layer('.seq-corner') > layer('.seq-playhead'));
 });
+
+test('what Play plays: the header chooses, the engine is told, and the choice is remembered', async () => {
+  const { api, hub } = await runtime();
+  const scope = makeEl('select');
+  scope.value = 'all';
+  const ids = new Map([['transport-play', makeEl('button')], ['transport-stop', makeEl('button')],
+    ['transport-bpm', makeEl('input')], ['transport-scope', scope]]);
+  const previousGetElementById = document.getElementById;
+  document.getElementById = (id) => ids.get(id) || null;
+  try {
+    buildHeader(hub, makeEl('span'));
+    assert.equal(hub.sequencer.playScope, 'all', 'everything plays by default');
+    assert.equal(scope.classList.contains('scoped'), false);
+
+    scope.value = 'players';
+    fire(scope, 'change');
+    assert.equal(api.sent.filter((message) => message.type === 'setPlayScope').at(-1)?.scope, 'players');
+    assert.equal(hub.settings.get('playScope'), 'players', 'kept with the application settings');
+    assert.equal(scope.classList.contains('scoped'), true, 'marked while something is left out');
+
+    assert.equal(hub.sequencer.setPlayScope('nonsense'), 'all', 'an unknown scope is everything');
+    assert.equal(scope.value, 'all', 'and the header follows a change made elsewhere');
+
+    // Changed while playing: players left out pause, players brought back start.
+    const calls = [];
+    hub.audioPlayers = {
+      list: () => [{ id: 'audio-player-001' }, { id: 'audio-player-002' }],
+      statusOf: (id) => ({ state: id === 'audio-player-001' ? 'playing' : 'paused' }),
+      fileOf: () => ({ ok: true }),
+      pause: (id) => calls.push(['pause', id]),
+      play: (id) => calls.push(['play', id])
+    };
+    hub.sequencer.playing = true;
+    hub.sequencer.setPlayScope('sequencer');
+    assert.deepEqual(calls, [['pause', 'audio-player-001']]);
+    calls.length = 0;
+    hub.sequencer.setPlayScope('players');
+    assert.deepEqual(calls, [['play', 'audio-player-002']]);
+    calls.length = 0;
+    hub.sequencer.setPlayScope('all');
+    assert.deepEqual(calls, [], 'from Players to All, the players were already in');
+  } finally {
+    document.getElementById = previousGetElementById;
+  }
+});
+
+test('a restarted engine is told what Play plays', async () => {
+  const { api, hub } = await runtime({ playScope: 'sequencer' });
+  assert.equal(hub.sequencer.playScope, 'sequencer');
+  hub.sequencer._syncTransportControls();
+  assert.equal(api.sent.filter((message) => message.type === 'setPlayScope').at(-1)?.scope, 'sequencer');
+});

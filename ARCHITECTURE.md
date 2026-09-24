@@ -640,7 +640,9 @@ holds their raw pointers, so a node that goes only unloads its file.
 The transport drives every player, and does not place it: its start plays them
 from where they are, its stop pauses them, and the Stop somebody gives returns
 them to their start. An export plays a copy of each from its beginning.
-[DECISIONS.md](DECISIONS.md) D-051 holds the why.
+[DECISIONS.md](DECISIONS.md) D-051 holds the why. The header's **Plays**
+selector (`setPlayScope`, D-053) can take the players out of the transport
+(Sequencer), or the arrangement's clips out of it (Players).
 
 ### `MidiExecutionPlan` — arpégiateurs et destinations
 

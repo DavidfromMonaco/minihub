@@ -51,6 +51,7 @@ export function buildHeader(hub, statusEl) {
   const recordEl = document.getElementById('transport-record');
   const bpmEl = document.getElementById('transport-bpm');
   const positionEl = document.getElementById('transport-position');
+  const scopeEl = document.getElementById('transport-scope');
   const navEls = {
     start: document.getElementById('transport-start'),
     back: document.getElementById('transport-back'),
@@ -152,6 +153,18 @@ export function buildHeader(hub, statusEl) {
     playing = state.playing;
     renderTransport();
   });
+  /**
+   * What Play plays. Anything but All is marked, so a Play that leaves half
+   * the project silent is never a mystery the next day.
+   */
+  const renderScope = (scope) => {
+    if (!scopeEl) return;
+    if (scopeEl.value !== scope) scopeEl.value = scope;
+    scopeEl.classList.toggle('scoped', scope !== 'all');
+  };
+  scopeEl?.addEventListener('change', () => renderScope(hub.sequencer?.setPlayScope(scopeEl.value) ?? 'all'));
+  hub.events.on('sequencer:playScope', renderScope);
+  renderScope(hub.sequencer?.playScope ?? 'all');
   bindTempoInput(bpmEl, (tempo) => hub.sequencer.setTempo(tempo));
   hub.events.on('sequencer:tempo', (tempo) => {
     if (bpmEl && bpmEl.value !== String(tempo)) bpmEl.value = String(tempo);
