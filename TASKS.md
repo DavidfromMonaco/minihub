@@ -10,8 +10,9 @@ finished, delete its entry**, in the same commit. What was done lives in git and
 **Navigation in the three timelines, and the NODES list in any order — in
 the author's test** — built 2026-09-24 on the author's word: "more precise
 navigation tools, present in all three" (the arrangement, an audio take's
-Clip Editor, a MIDI clip's), the navigation bar first, zoom in and out too. He reported that the arrangement
-had no navigation bar: its four-pixel grey rail hid itself and was not found.
+Clip Editor, a MIDI clip's), the navigation bar first, zoom in and out too.
+He reported that the arrangement had no navigation bar: its four-pixel grey
+rail hid itself and was not found.
 - One bar for the three (`ui/navigationBar.js`), in its own row under the
   timeline: drag the thumb to travel, press beside it to jump there, drag one
   of its ends to zoom with the other end held, − and + for a step. It replaces
@@ -31,9 +32,13 @@ had no navigation bar: its four-pixel grey rail hid itself and was not found.
   node an undo brings back returns to its place. Reordering is not an undo
   step. Seen in the application: a drag up, a drag down, the line and the
   pale node mid-drag, a click after it, the order after a save and a reload.
-- The arrangement's transport row wraps onto a second line in a narrow window
-  instead of widening the page: at 1224 px it was 12 px too wide and clipped
-  the + at the end of the navigation bar. Seen fitting at 1224 px.
+- The arrangement's transport row stays one line at every window width and
+  compacts in steps instead of widening the page (at 1224 px it was 12 px too
+  wide and clipped the + at the end of the navigation bar). Wrapping it onto
+  two lines was tried first and refused by the author. First Tempo,
+  Métronome and "Track" go, then Play, Record and Stop become symbols and the
+  track count goes, then the export format; each keeps a tooltip. Seen on one
+  line with nothing clipped at 960, 1100, 1224, 1400 and 1700 px.
 
 **The plugin list folds a brand — in the author's test** — built 2026-09-21 on
 the author's word, after Kilohearts' 35 "kHs" effects filled the VST node's

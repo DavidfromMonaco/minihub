@@ -1856,15 +1856,37 @@ body {
 .seq-runtime-empty .page-title { margin:0; }
 .seq-runtime-empty p { max-width:620px; margin:0; color:var(--text-dim); line-height:1.6; }
 .seq-toolbar { padding:12px 14px; }
-/* The transport row wraps onto a second line rather than pushing the page
-   wider than the window. It did not wrap: in a 1224 px window its buttons were
-   squeezed to three lines of text each and the row was still 12 px too wide,
-   so every panel below it -- the arrangement, and the + at the end of its
-   navigation bar -- ran under the window's right edge. The column above is
-   held to the page for the same reason: an implicit grid column grows to its
+/* The transport row stays ONE line at every window width, and gives up
+   words, not room. Spelled out it needs about 1120 px; MiniHub's narrowest
+   window leaves it 712. It used to squeeze its buttons to three lines of text
+   each and still push the page 12 px past the window at 1224 px, clipping the
+   + at the end of the navigation bar; wrapping it onto two lines was tried
+   next and refused by the author. So it compacts in steps, the way transport
+   bars do: first the words a control does not need (Tempo, Métronome, Track),
+   then Play, Record and Stop become their symbols and the track count goes,
+   then the last spare pixels. Every control keeps a tooltip and an
+   accessible name for what it no longer spells. The page column above is held
+   to the window for the same reason: an implicit grid column grows to its
    widest child. */
-.seq-toolbar > .row:first-child { flex-wrap:wrap; row-gap:8px; }
-.seq-toolbar > .row:first-child .btn { white-space:nowrap; }
+.seq-toolbar { container-type:inline-size; }
+.seq-transport-row { flex-wrap:nowrap; }
+.seq-transport-row > * { flex-shrink:0; }
+.seq-transport-row .btn { white-space:nowrap; }
+.seq-tempo-control .seq-tempo-label { color:inherit; font:inherit; }
+.seq-transport-icon { display:none; width:14px; height:14px; fill:currentColor; }
+@container (max-width:1139px) {
+  .seq-roomy, .seq-tempo-label, .seq-metronome-label { display:none; }
+}
+@container (max-width:959px) {
+  .seq-track-count { display:none; }
+  .seq-transport-label { display:none; }
+  .seq-transport-icon { display:block; }
+  .seq-transport-row .seq-play, .seq-transport-row .seq-record, .seq-transport-row .seq-stop { width:32px; padding:5px!important; display:inline-grid; place-items:center; }
+}
+@container (max-width:799px) {
+  .seq-transport-row { gap:6px; }
+  .seq-export-format { display:none; }
+}
 .seq-toolbar .page-title { margin:0; }
 .seq-record-status { margin-top:9px; padding:7px 10px; border:1px solid var(--border); border-radius:6px; color:var(--text-dim); background:#191c20; font-size:11px; }
 .seq-record-status.ready { color:#7fdaa5; border-color:rgba(62,207,126,.4); }

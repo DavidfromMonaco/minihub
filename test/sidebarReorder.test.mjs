@@ -138,9 +138,16 @@ test('the drop line and the held node have a rule in the shell sheet', () => {
   }
 });
 
-test('the arrangement toolbar wraps instead of widening the page', () => {
+test('the arrangement transport row stays one line and compacts instead of widening the page', () => {
   const css = fs.readFileSync(new URL('../src/renderer/styles/base.css', import.meta.url), 'utf8');
+  const source = fs.readFileSync(new URL('../src/renderer/js/modules/sequencer/sequencerModule.js', import.meta.url), 'utf8');
   assert.match(css, /\.sequencer-page \{[^}]*grid-template-columns:minmax\(0,1fr\)/,
     'the page column is held to the window, not to its widest child');
-  assert.match(css, /\.seq-toolbar > \.row:first-child \{ flex-wrap:wrap;/);
+  assert.match(css, /\.seq-transport-row \{ flex-wrap:nowrap; \}/, 'never a second line: the author refused it');
+  assert.match(css, /\.seq-toolbar \{ container-type:inline-size; \}/, 'the steps follow the room the row has');
+  assert.equal((css.match(/@container \(max-width:/g) || []).length, 3);
+  for (const action of ['play', 'start-record', 'stop']) {
+    const button = new RegExp(`data-action="${action}"[^>]*aria-label="[^"]+"[^>]*>`);
+    assert.match(source, button, `${action} keeps an accessible name once only its symbol shows`);
+  }
 });

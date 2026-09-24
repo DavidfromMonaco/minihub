@@ -898,20 +898,20 @@ export function createSequencerModule(hub) {
     closeContextMenu();
     container.innerHTML = `<div class="sequencer-page">
       <section class="panel seq-toolbar">
-        <div class="row"><h1 class="page-title">Sequencer</h1><span class="pill">${state.tracks.length} tracks</span><span class="spacer"></span>
-          <button class="btn" data-action="add-midi" ${atTrackLimit ? 'disabled title="64-track project limit reached"' : ''}>+ MIDI Track</button><button class="btn" data-action="add-audio" ${atTrackLimit ? 'disabled title="64-track project limit reached"' : ''}>+ Audio Track</button>
+        <div class="row seq-transport-row"><h1 class="page-title">Sequencer</h1><span class="pill seq-track-count">${state.tracks.length} tracks</span><span class="spacer"></span>
+          <button class="btn" data-action="add-midi" ${atTrackLimit ? 'disabled title="64-track project limit reached"' : 'title="Add a MIDI track"'}><span>+ MIDI<span class="seq-roomy"> Track</span></span></button><button class="btn" data-action="add-audio" ${atTrackLimit ? 'disabled title="64-track project limit reached"' : 'title="Add an audio track"'}><span>+ Audio<span class="seq-roomy"> Track</span></span></button>
           <button class="btn seq-nav-icon" data-action="go-start" title="Go to Start" aria-label="Go to Start"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4v16M19 5l-10 7 10 7z"/></svg></button>
           <button class="btn seq-nav-icon" data-action="go-end" title="Go to End" aria-label="Go to End"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 4v16M5 5l10 7-10 7z"/></svg></button>
-          <button class="btn seq-play ${controller.playing ? 'active' : ''}" data-action="play" aria-pressed="${controller.playing}">Play</button>
-          <button class="btn seq-record ${controller.recording ? 'active' : (recordBlockReason ? 'blocked' : '')}" data-action="start-record" ${controller.recording ? 'disabled' : ''} title="${escapeHtml(recordBlockReason || 'Start recording')}">Record</button>
-          <button class="btn seq-stop" data-action="stop" ${controller.playing || controller.recording ? '' : 'disabled'}>Stop</button>
-          <label class="seq-tempo-control">Tempo <input class="tempo-input" data-control="tempo" type="number" min="20" max="300" step="1" value="${controller.tempo}" aria-label="Sequencer tempo in BPM"><span>BPM</span></label>
-          <div class="seq-metronome-control">
+          <button class="btn seq-play ${controller.playing ? 'active' : ''}" data-action="play" aria-pressed="${controller.playing}" title="Play" aria-label="Play"><svg class="seq-transport-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5v14l12-7z"/></svg><span class="seq-transport-label">Play</span></button>
+          <button class="btn seq-record ${controller.recording ? 'active' : (recordBlockReason ? 'blocked' : '')}" data-action="start-record" ${controller.recording ? 'disabled' : ''} title="${escapeHtml(recordBlockReason || 'Start recording')}" aria-label="Record"><svg class="seq-transport-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="6"/></svg><span class="seq-transport-label">Record</span></button>
+          <button class="btn seq-stop" data-action="stop" ${controller.playing || controller.recording ? '' : 'disabled'} title="Stop" aria-label="Stop"><svg class="seq-transport-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6h12v12H6z"/></svg><span class="seq-transport-label">Stop</span></button>
+          <label class="seq-tempo-control" title="Tempo"><span class="seq-tempo-label">Tempo</span><input class="tempo-input" data-control="tempo" type="number" min="20" max="300" step="1" value="${controller.tempo}" aria-label="Sequencer tempo in BPM"><span>BPM</span></label>
+          <div class="seq-metronome-control" title="Métronome">
             <span class="seq-metronome-label">Métronome</span>
             <button class="seq-metronome-switch ${controller.metronomeEnabled ? 'active' : ''}" type="button" role="switch" aria-checked="${controller.metronomeEnabled}" data-action="toggle-metronome" aria-label="Activer ou désactiver le métronome"><span aria-hidden="true"></span></button>
             <span class="seq-metronome-light" data-metronome-light aria-label="Voyant du métronome" role="status"></span>
           </div>
-          <button class="btn primary" data-action="export" ${controller.exporting ? 'disabled' : ''}>Export ${exportFormat.toUpperCase()}</button>
+          <button class="btn primary" data-action="export" ${controller.exporting ? 'disabled' : ''} title="Export ${exportFormat.toUpperCase()}"><span>Export<span class="seq-export-format"> ${exportFormat.toUpperCase()}</span></span></button>
         </div>
         <div class="seq-record-status ${status.tone}" role="status">${escapeHtml(status.text)}</div>
         <div class="row mt-12 seq-tools">

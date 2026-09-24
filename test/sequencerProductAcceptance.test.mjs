@@ -43,7 +43,7 @@ test('Sequencer toolbar exposes shared Play, actionable Record, distinct Stop, a
   assert.match(moduleSource, /data-track-inspector/);
   assert.match(moduleSource, /const TRACK_HEIGHT = 64;/,
     'a track is a lane with a clip in it, not a five-row form');
-  const idleRecord = /<button class="btn seq-record[\s\S]*?data-action="start-record"([\s\S]*?)>Record<\/button>/.exec(moduleSource)?.[1] || '';
+  const idleRecord = /<button class="btn seq-record[\s\S]*?data-action="start-record"([\s\S]*?)<span class="seq-transport-label">Record<\/span><\/button>/.exec(moduleSource)?.[1] || '';
   assert.doesNotMatch(idleRecord, /recordBlockReason[^\n]*disabled/,
     'missing setup is reported by an actionable Record control instead of a silent grey button');
   assert.doesNotMatch(moduleSource, /Piano Roll|piano-(?:scroll|keyboard|grid|note)|pianoZoom|data-note-control/);
