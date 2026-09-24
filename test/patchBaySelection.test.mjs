@@ -477,3 +477,21 @@ test('Ctrl+A selects every node', () => {
   assert.deepEqual(selectedIds(nodesLayerOf(svg)), ['minilab-3', 'vst-001']);
   mod.unmount();
 });
+
+test('a press on a cable is the cable’s: no frame, and Ctrl + click still unplugs it', () => {
+  // Reported 2026-09-24: the selection frame captured the pointer on a cable
+  // too, and the browser then gave the cable's click to the canvas.
+  const hub = setupHub();
+  hub.nodes.create('vst');
+  hub.network.connect('minilab-3', 'midi-out', 'vst-001', 'midi-in');
+  const { svg, mod } = mount(hub);
+  const cables = findClass(svg, 'cables');
+  const hit = cables.children.find((c) => c._classSet.has('cable-hit'));
+  fire(svg, 'pointerdown', { button: 0, target: hit, clientX: 300, clientY: 200, ctrlKey: true });
+  fire(svg, 'pointermove', { clientX: 500, clientY: 400, ctrlKey: true });
+  assert.ok(!svg.children.some((c) => c._classSet?.has('selection-frame')), 'no frame is drawn from a cable');
+  fire(svg, 'pointerup', {});
+  fire(cables, 'click', { target: hit, ctrlKey: true });
+  assert.equal(hub.network.connections().length, 0, 'Ctrl + click unplugged it');
+  mod.unmount();
+});

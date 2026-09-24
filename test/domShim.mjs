@@ -79,8 +79,13 @@ export function makeEl(tag) {
   el.releasePointerCapture = () => {};
   el.getBoundingClientRect = () => ({ left: 0, top: 0, width: 800, height: 600, right: 800, bottom: 600 });
 
-  /** Supports `.class`, `tag`, and `tag.class.class`. */
+  /** Supports `.class`, `tag`, `tag.class.class`, and `[data-some-key]`. */
   el.matches = (sel) => {
+    const attribute = /^\[data-([a-z-]+)\]$/.exec(String(sel));
+    if (attribute) {
+      const key = attribute[1].replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+      return el.dataset?.[key] !== undefined;
+    }
     const parts = String(sel).split('.').filter(Boolean);
     const looksLikeClassOnly = String(sel).startsWith('.');
     const tag = looksLikeClassOnly ? '' : parts[0];

@@ -883,6 +883,10 @@ export function createRoutingModule(hub) {
     if (selectedCableId) setSelectedCable(null);
     const additive = e.shiftKey || e.ctrlKey || e.metaKey;
     if (!additive && selectedNodeIds.size) setSelectedNode(null);
+    // A press on a cable is the cable's: its click selects it, or with Ctrl
+    // unplugs it (`onCableClick`). A frame would capture the pointer, and the
+    // browser would then deliver that click to the canvas instead (2026-09-24).
+    if (e.target.closest?.('[data-cable-id]')) return;
     startMarquee(e, additive);
   }
 
