@@ -1134,7 +1134,8 @@ void testSequencerMidiThruPlaysTheSeries()
     expect(!sequencer.midiTrackGainForOutput("vst-arp-target",transport).controlled,"an arpeggiator's destination still answers to no track: the arpeggiator is its own source");
     const auto epochBeforeMute=second.midiEpoch();
     expect(sequencer.setTrackControl("track-series",.5f,true),"the track mutes");
-    expect(second.midiEpoch()!=epochBeforeMute&&sequencer.midiTrackGainForOutput("vst-second",transport).gain==0.0f,"muting the track silences and cuts the series too");
+    expect(second.midiEpoch()!=epochBeforeMute,"muting the track cuts the notes the series holds");
+    expect(sequencer.midiTrackGainForOutput("vst-second",transport).gain==.5f,"and leaves the instruments' output at the fader: what else they play is not the track's to mute");
 
     auto direct=midiTrack("track-direct","vst-second");mlh::setProp(direct,"volume",.25);
     tracks.clear();tracks.add(series);tracks.add(direct);
@@ -1426,7 +1427,7 @@ void testRealVst3SequencerPlaybackArpAndMasterExport()
             expect(sequencer.setTrackControl("track-vst-series",1.0f,true),"the series track mutes");
             juce::FloatVectorOperations::clear(seriesLeft,256);juce::FloatVectorOperations::clear(seriesRight,256);
             transport.beginBlock();sequencer.processMidi(256,transport);seriesPlan->process(seriesLive,2,256,transport,scratch);
-            expect(stagePeak("vst-e2e")==0.0f&&stagePeak("vst-e2e-b")==0.0f,"muting the track silences the whole series, not one layer of it");
+            expect(stagePeak("vst-e2e")==0.0f&&stagePeak("vst-e2e-b")==0.0f,"muting the track releases the whole series' notes, not one layer of it");
             expect(sequencer.setTrackControl("track-vst-series",1.0f,false),"the series track unmutes for the bounce");
             transport.setPlaying(false);transport.seekPpq(0);
             const auto seriesFile=juce::File::getSpecialLocation(juce::File::tempDirectory).getNonexistentChildFile("MiniHub-vst3-e2e-series",".wav");
@@ -1473,7 +1474,7 @@ void testArmedAudioTrackPassesItsInput()
     expect(std::abs(heard(false,true,false).first-.125f)<.0001f,"a monitored audio track passes its input too");
     const auto idle=heard(false,false,false);
     expect(idle.first==0.0f&&idle.second==0.0f,"a track neither armed nor monitored passes nothing");
-    expect(heard(true,false,true).first==0.0f,"a muted track passes nothing");
+    expect(std::abs(heard(true,false,true).first-.125f)<.0001f,"a muted track still passes its input: mute silences its clips, not the Patch Bay's sources");
 }
 
 void testSequencerAudioInputRoutingAuthority()

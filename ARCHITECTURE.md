@@ -462,7 +462,11 @@ a VST's copy of every note. And an instrument two paths reach plays once — a
 per-cable copy would double it.
 
 A track's fader and mute cover its whole series (`midiTrackGainForOutput`, second
-pass): lowering a track that lowered one layer would read as broken. A track
+pass): lowering a track that lowered one layer would read as broken. The fader
+scales the instruments' output; the mute stops the track's notes and leaves
+that output alone, so what else an instrument plays is not muted with the
+track (D-054). An audio track's mute likewise silences its clips and still
+passes its input. A track
 cabled to an instrument directly outranks one that reaches it through a series.
 
 ### Commands from a plugin

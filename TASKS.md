@@ -7,7 +7,8 @@ finished, delete its entry**, in the same commit. What was done lives in git and
 
 ## Started, not finished
 
-**The project's name, the clock ruler, and a question on track mute** —
+**The project's name, the clock ruler, track mute, the players, the context
+menus** —
 asked 2026-09-25 by the author, the day he reported every entry awaiting his
 test as tried and working.
 - Done, in the author's test: the header's top left names the open project
@@ -23,11 +24,12 @@ test as tried and working.
   stopping at the second and leaving the fine divisions to the bar ruler — the
   opposite of what he had asked. It draws only the marks around the view.
   Seen in the application: 0:28.0, 0:28.2, 0:28.4 at the top zoom.
-- Waiting for the author: muting a Sequencer audio track silences what the
-  track monitors, and in Codex's session the two Audio Players reached the
-  output only through the Mixer → Sequencer AUDIO IN → armed track "Audio 1".
-  Every DAW mutes a monitored input with its track; he reported it as a
-  defect. Not changed until he says which it should be.
+- Done, in the author's test: a track's mute silences its clips and no
+  longer what it passes (D-054). In Codex's session two Audio Players reached
+  the output through an armed audio track, and muting it silenced them; a
+  MIDI track's mute zeroed its instrument, and whatever else it played. Seen
+  in the application: a player through an armed track, muted, peaks at
+  0.054 against 0.055 unmuted.
 - Waiting for the author: the Patch Bay's context menus, which he finds
   unergonomic. A proposal is before him; nothing built. They are still
   hand-built in `routingModule.js`; `ui/contextMenu.js` exists and only the

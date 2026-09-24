@@ -1866,7 +1866,8 @@ destinations. Four things the walk settles that a port does not:
 - **An instrument two paths reach plays once.** A copy per cable would double
   its notes, and a lattice of cables would multiply them.
 - **A track's fader and mute cover its whole series.** Lowering a track that
-  lowers one layer of its sound reads as broken. A track cabled to an
+  lowers one layer of its sound reads as broken. (Since D-054 the mute stops
+  the track's notes rather than zeroing the instruments.) A track cabled to an
   instrument directly outranks one that reaches it through another VST.
 - **What a plugin generates itself does not come out.** MIDI OUT repeats; it
   does not transform. The host discards a plugin's output events today
@@ -2812,8 +2813,8 @@ cabled to the Audio Output a second time to be heard at all. The I button on an
 audio track, "Input monitor", was drawn and did nothing.
 
 **Decision** — An audio track that is armed (R) or monitored (I) passes what
-reaches its Input on to its Destination, at its level and under its mute,
-whether the transport runs or not. A MIDI track already does that with what is
+reaches its Input on to its Destination, at its level, whether the transport
+runs or not. (Its mute silenced that input too until D-054.) A MIDI track already does that with what is
 played into it, and a DAW's input monitoring does the same. An export does it
 too, so the file holds what was heard.
 
@@ -2881,8 +2882,9 @@ its own clock, D-048).
 
 Two alternatives were refused:
 
-- **A mute on every track for Players.** A MIDI track's mute also sets its
-  instrument's level to zero, so a keyboard played through it would go silent.
+- **A mute on every track for Players.** A MIDI track's mute also set its
+  instrument's level to zero, so a keyboard played through it would go silent
+  (no longer so since D-054).
 - **A project key.** A project reopened on "Sequencer" would play without its
   players, for a reason saved in the file and forgotten.
 
@@ -2900,3 +2902,44 @@ Two alternatives were refused:
 audio-player-left-out`, `testSequencerClipsSilenced` in
 `native/audio-engine/test/native_tests.cpp`; "what Play plays" in
 `test/sequencerUi.test.mjs`.
+
+## D-054 — A track's mute silences its clips, not what it passes
+
+**Status**: in force · 2026-09-25 · **implemented**, amends D-039 and D-052
+
+**Context** — In a session of 2026-09-24, two Audio Players went through a
+Mixer into the Sequencer's AUDIO IN and reached the speakers through an armed
+audio track (D-052). Muting that track to leave its recorded take out
+silenced the players with it. A MIDI track's mute did the same in its own
+way: it set its instrument's output to zero (D-039's series included), so an
+Audio Player cabled into that instrument, or a keyboard played through it,
+went silent with the track. The author: muting a Sequencer track must not
+mute the rest.
+
+**Decision** — Mute is about the track's own material. A muted audio track
+plays none of its clips and still passes its input, at its fader. A muted
+MIDI track sends none of its clips' notes and releases the ones it held, and
+leaves its instruments' output at the fader. Leaving the whole arrangement
+out is the Plays scope's job (D-053).
+
+It departs from the DAWs, where a track's mute also silences its monitored
+input. It is justified by where the track stands here: in a DAW the monitored
+sound belongs to the track; in MiniHub the Sequencer is a node of the Patch
+Bay, and what reaches a track's input -- a player, a mixer, a controller --
+belongs to the Patch Bay. A track does not own it and does not mute it.
+
+One alternative was refused:
+
+- **Keep the DAWs' mute, and cable the players to the output a second time.**
+  That is the workaround D-052 was written to remove.
+
+**Consequences**
+
+- An armed track that monitors a microphone keeps passing it when muted. Its
+  fader, or disarming it, is what silences it.
+- A muted MIDI track's release tails ring out rather than being cut, as when
+  its notes end.
+
+**Proof in the code** — `renderAudioForOutput` and `midiTrackGainForOutput`
+in `native/audio-engine/src/sequencer.cpp`. Tests: "a muted track still
+passes its input" and the series mute in `native/audio-engine/test/native_tests.cpp`.

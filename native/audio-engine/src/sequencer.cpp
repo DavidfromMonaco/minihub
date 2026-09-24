@@ -526,8 +526,15 @@ void SequencerEngine::renderAudioForOutput(juce::AudioBuffer<float>& out,int cou
         if(!playing&&heard==0)continue;
         auto& sum=track.audioSumScratch;sum.clear(0,count);int activeClips=0;float peakBeforeSum=0;
         for(int ch=0;ch<2&&heard>0;++ch)sum.copyFrom(ch,0,track.inputScratch,ch,0,heard);
-        if(playing&&!clipsSilenced_.load(std::memory_order_acquire))for(const auto& clip:track.audio){if(!clip.asset)continue;bool active=false;for(int sample=0;sample<count;++sample){const double q=transport.ppqAtSample(sample);if(exportContext&&q>=exportSourceEndPpq())continue;if(q<clip.startPpq||q>=clip.startPpq+clip.lengthPpq)continue;const double seconds=clip.trimStartSeconds+(q-clip.startPpq)*60.0/bpm;if(seconds<clip.trimStartSeconds||seconds>=clip.trimEndSeconds)continue;const double source=seconds*clip.asset->sampleRate;const int i=(int)source;if(i<0||i+1>=clip.asset->samples.getNumSamples())continue;active=true;const float f=(float)(source-i);for(int ch=0;ch<2;++ch){const float* data=clip.asset->samples.getReadPointer(ch);const float value=(data[i]+(data[i+1]-data[i])*f)*clip.gain;peakBeforeSum=std::max(peakBeforeSum,std::abs(value));sum.addSample(ch,sample,value);}}if(active)++activeClips;}
-        const float peakAfterSum=std::max(sum.getMagnitude(0,0,count),sum.getMagnitude(1,0,count));const bool muted=track.runtime&&track.runtime->muted.load(std::memory_order_acquire);const float gain=muted?0.0f:(track.runtime?track.runtime->gain.load(std::memory_order_acquire):1.0f);if(gain!=1.0f)sum.applyGain(0,count,gain);const float peakAfterGain=std::max(sum.getMagnitude(0,0,count),sum.getMagnitude(1,0,count));
+        // Mute silences the track's CLIPS, not what it passes. Its input is the
+        // Patch Bay's signal -- two Audio Players into an armed track, in the
+        // author's session of 2026-09-24 -- and a mute that cut it cut sources
+        // the track does not own. Silencing what the Sequencer plays, as a
+        // whole, is the Plays scope's job (D-053). The fader still applies to
+        // both, as it did.
+        const bool trackMuted=track.runtime&&track.runtime->muted.load(std::memory_order_acquire);
+        if(playing&&!trackMuted&&!clipsSilenced_.load(std::memory_order_acquire))for(const auto& clip:track.audio){if(!clip.asset)continue;bool active=false;for(int sample=0;sample<count;++sample){const double q=transport.ppqAtSample(sample);if(exportContext&&q>=exportSourceEndPpq())continue;if(q<clip.startPpq||q>=clip.startPpq+clip.lengthPpq)continue;const double seconds=clip.trimStartSeconds+(q-clip.startPpq)*60.0/bpm;if(seconds<clip.trimStartSeconds||seconds>=clip.trimEndSeconds)continue;const double source=seconds*clip.asset->sampleRate;const int i=(int)source;if(i<0||i+1>=clip.asset->samples.getNumSamples())continue;active=true;const float f=(float)(source-i);for(int ch=0;ch<2;++ch){const float* data=clip.asset->samples.getReadPointer(ch);const float value=(data[i]+(data[i+1]-data[i])*f)*clip.gain;peakBeforeSum=std::max(peakBeforeSum,std::abs(value));sum.addSample(ch,sample,value);}}if(active)++activeClips;}
+        const float peakAfterSum=std::max(sum.getMagnitude(0,0,count),sum.getMagnitude(1,0,count));const float gain=track.runtime?track.runtime->gain.load(std::memory_order_acquire):1.0f;if(gain!=1.0f)sum.applyGain(0,count,gain);const float peakAfterGain=std::max(sum.getMagnitude(0,0,count),sum.getMagnitude(1,0,count));
         if(track.runtime){track.runtime->activeClips.store(activeClips,std::memory_order_release);track.runtime->peakBeforeSum.store(peakBeforeSum,std::memory_order_release);track.runtime->peakAfterSum.store(peakAfterSum,std::memory_order_release);track.runtime->gainApplied.store(gain,std::memory_order_release);track.runtime->peakAfterGain.store(peakAfterGain,std::memory_order_release);}for(int ch=0;ch<2;++ch)out.addFrom(ch,0,sum,ch,0,count);
     }
     releasePlan(exportContext);
@@ -557,7 +564,11 @@ SequencerEngine::MidiTrackGain SequencerEngine::midiTrackGainForOutput(const std
 {
     const bool exportContext=&transport==&offlineExportTransport_;auto* plan=acquirePlan(exportContext);if(!plan)return{};
     MidiTrackGain result;
-    const auto apply=[&result](Track& track){const bool muted=track.runtime->muted.load(std::memory_order_acquire);const float gain=muted?0.0f:track.runtime->gain.load(std::memory_order_acquire);track.runtime->gainApplied.store(gain,std::memory_order_release);result={true,gain};};
+    // The fader, and not the mute. A muted MIDI track stops sending its notes
+    // and releases what it held (processMidi, setTrackControl); zeroing the
+    // instrument's output as well silenced everything else that instrument
+    // plays -- an Audio Player cabled into it, a keyboard played live.
+    const auto apply=[&result](Track& track){const float gain=track.runtime->gain.load(std::memory_order_acquire);track.runtime->gainApplied.store(gain,std::memory_order_release);result={true,gain};};
     for(auto& track:plan->tracks)if(track.type=="midi"&&track.midiOutputKind==Track::MidiOutputKind::chain&&track.outputId==outputId&&track.runtime){apply(track);break;}
     // An instrument further down a track's series answers to that track's fader
     // and mute too (D-039): lowering the track must lower all of it, not one
