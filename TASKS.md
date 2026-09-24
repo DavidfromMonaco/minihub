@@ -30,15 +30,16 @@ finished, delete its entry**, in the same commit. What was done lives in git and
   scope plays; live, Sequencer left the player stopped under Play and All
   started it mid-play. Under 1050 px the words Plays, Tempo and BPM drop so the
   device pill keeps its text (111 px at 960).
-- A range per knob assignment: Range with Low = now, High = now and Full in
-  the bindings bar (`range` in `core/controlBindings.js`). Seen with kHs Pitch
+- A range per knob assignment: "Range [Low] −2.00 [High] +2.00 [Full]" in
+  the bindings bar, each button beside the end it sets, as the author laid it
+  out (`range` in `core/controlBindings.js`). Seen with kHs Pitch
   Shifter (its Pitch is ±24 semitones): ends at −2 and +2, the bar reading
   "−2.00 → +2.00", the drawn K5 dragged to its top, bottom and middle giving
   +2.00, −2.00 and +0.00. Tried by the author with the MiniLab's K5: "ça
   fonctionne", once he understood that an end takes the value the plugin
   shows. He had read "Min" as "the lowest possible", pressed it at +0.30 and
-  left the top at +24; the buttons are named after the gesture since, and the
-  range always writes both ends out ("+0.30 → max"). Seen in the bar since:
+  left the top at +24; each button stands beside its value since, and both
+  ends are always written out ("max" for a top never set). Seen in the bar since:
   the Range line on one row, the help whole, the bar 860 px under a narrow
   plugin. The Plays list opens dark (its options carry the shell's colours).
 - The white strip beside kHs Pitch Shifter: its 236 px bar cut the help and the
