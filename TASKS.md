@@ -38,13 +38,14 @@ finished, delete its entry**, in the same commit. What was done lives in git and
   fonctionne", once he understood that an end takes the value the plugin
   shows. He had read "Min" as "the lowest possible", pressed it at +0.30 and
   left the top at +24; the buttons are named after the gesture since, and the
-  range always writes both ends out ("+0.30 → max"). The renamed buttons are
-  not seen in the application yet: `dist/` waits for MiniHub to close.
+  range always writes both ends out ("+0.30 → max"). Seen in the bar since:
+  the Range line on one row, the help whole, the bar 860 px under a narrow
+  plugin. The Plays list opens dark (its options carry the shell's colours).
 - The white strip beside kHs Pitch Shifter: its 236 px bar cut the help and the
   toolbar, and a widened plugin window cannot stretch the plugin. The bar is
-  now at least 720 px under a plugin (`STRIP_MIN_WIDTH`), and a plugin that
+  now at least 860 px under a plugin (`STRIP_MIN_WIDTH`), and a plugin that
   cannot resize gets a window without a resizing border or Maximize
-  (`canResize` in `plugin_host.cpp`). Seen: a 252 x 363 frame, a 720 px bar,
+  (`canResize` in `plugin_host.cpp`). Seen: a 252 x 363 frame, a 720 px bar (860 since),
   help and toolbar whole.
 - Outside this repository, the author's to update: `../minihub-agent/AGENTS.md`
   describes neither the Plays scope nor a binding's range, and the channel

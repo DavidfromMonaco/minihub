@@ -125,8 +125,10 @@ function rangeControls(controlId, binding) {
   return `<div class="control-range">
         <span class="control-range-label">Range</span>
         <span class="control-range-span">${span}</span>
+        <span class="control-range-buttons">
         ${button('min', 'Low = now', 'Set the parameter in the plugin where the control should start, then press: the value the plugin shows now becomes the bottom of the control')}
         ${button('max', 'High = now', 'Set the parameter in the plugin where the control should end, then press: the value the plugin shows now becomes the top of the control')}
         ${button('full', 'Full', 'The control sweeps the whole parameter again', Boolean(range))}
+        </span>
       </div>`;
 }

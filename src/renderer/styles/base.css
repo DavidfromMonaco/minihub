@@ -145,6 +145,10 @@ body {
 /* A narrow window drops the words beside the tempo and the Plays selector
    before it squeezes the device pill to its dot; each keeps its tooltip. */
 @media (max-width: 1050px) { .transport .transport-word { display:none; } }
+/* The list the selector opens is a window Windows draws itself, white whatever
+   `color-scheme` says; what it does take is each option's own colours. Without
+   them the list was white, its entries in the amber of a scoped selector. */
+.transport select option { background-color:var(--bg-panel); color:var(--text); }
 .transport select.scoped { color:#ffdb76; border-color:rgba(245,196,81,.65); background:rgba(245,196,81,.08); }
 /* The four seek buttons. Square and drawn rather than written, because six
    named buttons across a 48px header is a wall of words. */
@@ -1555,9 +1559,10 @@ body {
 .bindings-bar > .control-learn-toolbar:has(.control-range) { flex-wrap:wrap; row-gap:4px; }
 .control-range { flex:1 0 100%; display:flex; flex-wrap:wrap; align-items:center; gap:4px 6px; min-width:0; font-size:11.5px; }
 .control-range-label { color:var(--text-dim); }
-/* The two ends first, whole; the buttons follow on the next line when the
-   column is too narrow for both. */
+/* The two ends first, whole; the three buttons follow together on the next
+   line when the column is too narrow for all of it. */
 .control-range-span { flex:1 0 auto; min-width:0; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-family:var(--mono); }
+.control-range-buttons { display:flex; gap:6px; }
 .control-range .btn { white-space:nowrap; }
 /* Where the drawing is, in the toolbar's "Select a control …": on the left of it
    in the strip, above it in the column. */

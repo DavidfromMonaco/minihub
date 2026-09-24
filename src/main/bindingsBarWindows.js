@@ -48,8 +48,10 @@ const BAR_HEIGHT = 182;
  * Shifter, 236 px wide, it cut the help and the toolbar, and the author widened
  * the plugin's window to read it -- which left the plugin in a corner of a white
  * window (2026-09-24). Under a narrow plugin the bar runs past its right edge.
+ * 860 rather than 720 since the Range line: at 720 its buttons wrapped onto a
+ * third line of the toolbar, and the help above it was cut again.
  */
-const STRIP_MIN_WIDTH = 720;
+const STRIP_MIN_WIDTH = 860;
 
 /**
  * The bar's width when it stands beside the plugin instead, in DIPs.
