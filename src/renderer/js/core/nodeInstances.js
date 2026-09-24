@@ -37,7 +37,7 @@
  * Responsibilities are kept separate: `nodeInstances` owns instances,
  * `networkLayout` owns positions, `networkConnections` owns routing.
  */
-import { getNodeType, nodeDisplayName } from './nodeTypes.js';
+import { defaultListPlace, getNodeType, nodeDisplayName } from './nodeTypes.js';
 import { NetworkLayout } from './networkLayout.js';
 import { VstChain, getVstRole, duplicateVstContent, groupPluginsByFamily } from './vstChain.js';
 import { bindPluginMenu, closePluginMenu } from '../ui/pluginMenu.js';
@@ -729,7 +729,15 @@ export class NodeInstanceManager {
     const restoredSuffix = idSuffix(instance.id);
     if (restoredSuffix > (this._idSeq[typeId] || 0)) this._idSeq[typeId] = restoredSuffix;
     instance.name = nodeDisplayName(type, instance.ordinal);
+    // A new node joins its own kind in the NODES list. A restored one does not:
+    // the edit history puts it back where it was (editHistoryApply.js).
+    const beforeId = id ? null : defaultListPlace(this.list(), typeId);
     this.instances.set(instance.id, instance);
+    if (beforeId !== null) {
+      const order = [...this.instances.keys()].filter((key) => key !== instance.id);
+      order.splice(order.indexOf(beforeId), 0, instance.id);
+      this.instances = new Map(order.map((key) => [key, this.instances.get(key)]));
+    }
     this._registerModule(instance);
     this._persist();
     return instance;

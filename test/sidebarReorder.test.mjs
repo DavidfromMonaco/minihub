@@ -72,9 +72,36 @@ test('the order is kept by the node manager, and saved with the nodes', () => {
   assert.equal(c.name, 'VST 2', 'a node keeps its name wherever it is put');
 });
 
+test('a new node joins its own kind, in the order VST, Audio Player, Mixer, and the rest after', () => {
+  const hub = makeFullHub();
+  const ids = () => hub.nodes.list().map((node) => node.id);
+  const mixer = hub.nodes.create('mixer');
+  const vst1 = hub.nodes.create('vst');
+  const player = hub.nodes.create('audio-player');
+  const arp = hub.nodes.create('arpeggiator');
+  const vst2 = hub.nodes.create('vst');
+  assert.deepEqual(ids(), [vst1.id, vst2.id, player.id, mixer.id, arp.id]);
+  assert.deepEqual(hub.settings.get('nodeInstances').instances.map((entry) => entry.id), ids(),
+    'and the project is saved in that order');
+});
+
+test('the order is a default, not a sort: a node moved stays, and the next of its kind follows it', () => {
+  const hub = makeFullHub();
+  const ids = () => hub.nodes.list().map((node) => node.id);
+  const [vst1, vst2] = [hub.nodes.create('vst'), hub.nodes.create('vst')];
+  const mixer1 = hub.nodes.create('mixer');
+  hub.nodes.move(mixer1.id, vst2.id);
+  assert.deepEqual(ids(), [vst1.id, mixer1.id, vst2.id]);
+  const vst3 = hub.nodes.create('vst');
+  const mixer2 = hub.nodes.create('mixer');
+  assert.deepEqual(ids(), [vst1.id, mixer1.id, mixer2.id, vst2.id, vst3.id],
+    'a VST after the last VST, a Mixer after the Mixer where it was put');
+});
+
 test('dragging a node up the list puts it there, and the list redraws in that order', () => {
   const { hub, sidebarEl, layout } = setup();
   const [vst1, player, vst2] = [hub.nodes.create('vst'), hub.nodes.create('mixer'), hub.nodes.create('vst')];
+  hub.nodes.move(vst2.id, null);
   layout();
   assert.deepEqual(nodeItems(sidebarEl), ['routing', vst1.id, player.id, vst2.id]);
 

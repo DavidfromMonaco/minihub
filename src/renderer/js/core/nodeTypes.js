@@ -172,6 +172,33 @@ export function nodeDisplayName(type, ordinal) {
   return type.singleton ? type.label : `${type.label} ${ordinal}`;
 }
 
+/**
+ * Where a NEW node goes in the sidebar's NODES list: after the last node of its
+ * own type, and a type with none yet goes where this order puts it. Asked
+ * 2026-09-24: "VST first, then Audio, then Mixer", the grey ones kept together.
+ * It is a default, not a sort -- a node dragged elsewhere stays there, and the
+ * next of its type follows it there. A type missing from this list goes last.
+ */
+export const NODE_LIST_ORDER = Object.freeze([
+  'vst', 'audio-player', 'audio-input', 'mixer', 'morpher', 'arpeggiator', 'one-ring'
+]);
+
+function listRank(typeId) {
+  const rank = NODE_LIST_ORDER.indexOf(typeId);
+  return rank < 0 ? NODE_LIST_ORDER.length : rank;
+}
+
+/**
+ * The id a new node of `typeId` goes before, or null for the end, given the
+ * nodes as listed (`[{ id, type }]`).
+ */
+export function defaultListPlace(listed, typeId) {
+  const lastOfType = listed.map((node) => node.type).lastIndexOf(typeId);
+  if (lastOfType >= 0) return listed[lastOfType + 1]?.id ?? null;
+  const rank = listRank(typeId);
+  return listed.find((node) => listRank(node.type) > rank)?.id ?? null;
+}
+
 export function listNodeTypes() {
   return Object.values(NODE_TYPES);
 }

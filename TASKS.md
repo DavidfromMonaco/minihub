@@ -7,6 +7,18 @@ finished, delete its entry**, in the same commit. What was done lives in git and
 
 ## Started, not finished
 
+**Five changes asked in one session — in progress** — asked 2026-09-24 by the
+author during a session, built after he quit MiniHub ("fais tout").
+- Done: a new node joins its own kind in the NODES list — VST, then Audio
+  Player, Audio Input, Mixer, Morpher, Arpeggiator, One Ring
+  (`NODE_LIST_ORDER` in `core/nodeTypes.js`). A default, not a sort: a node
+  dragged elsewhere stays, and the next of its kind follows it there. A
+  project opens in its saved order.
+- To do: a cable's end moved from one input to another; several nodes
+  selected (Shift, Ctrl, a frame drawn); what Play plays (All, Sequencer,
+  Players); a range per knob assignment; the white strip beside a narrow
+  plugin window.
+
 **Navigation in the three timelines, and the NODES list in any order — in
 the author's test** — built 2026-09-24 on the author's word: "more precise
 navigation tools, present in all three" (the arrangement, an audio take's
