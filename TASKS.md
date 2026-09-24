@@ -25,8 +25,13 @@ author during a session, built after he quit MiniHub ("fais tout").
   (DECISIONS D-053), native flags on the players and on the sequencer's clips.
   Native build 0 warnings, the four native test binaries pass. The agent
   channel cannot set it yet.
-- To do: a range per knob assignment; the white strip beside a narrow
-  plugin window.
+- Done: a range per knob assignment. In the bindings bar, a bound control
+  shows **Range** with Min, Max and Full: the parameter's value as the plugin
+  shows it now becomes the bottom or the top of the control; the plugin's own
+  words for the two ends are kept and shown ("-2.00 → +2.00"). Saved in the
+  binding (`range` in `core/controlBindings.js`); a reversed range turns the
+  control round.
+- To do: the white strip beside a narrow plugin window.
 
 **Navigation in the three timelines, and the NODES list in any order — in
 the author's test** — built 2026-09-24 on the author's word: "more precise

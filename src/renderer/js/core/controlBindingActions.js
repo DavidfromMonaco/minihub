@@ -12,7 +12,7 @@
  * of `core/` reads at import.
  */
 
-const PANEL_ACTIONS = new Set(['learn', 'cancel', 'clear']);
+const PANEL_ACTIONS = new Set(['learn', 'cancel', 'clear', 'range-min', 'range-max', 'range-full']);
 
 /**
  * The action a click inside the panel asks for, or null.
@@ -55,6 +55,11 @@ export function performControlBindingAction(hub, nodeId, action, panel) {
       return true;
     case 'clear':
       hub.control.clear(nodeId, action.controlId);
+      return true;
+    case 'range-min':
+    case 'range-max':
+    case 'range-full':
+      hub.control.setRange(nodeId, action.controlId, action.kind.slice('range-'.length));
       return true;
     default:
       return false;

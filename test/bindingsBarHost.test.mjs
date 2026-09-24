@@ -254,6 +254,14 @@ test('a click is read from the panel markup and nothing else', () => {
     { kind: 'clear', controlId: 'minilab-3:k2' });
   assert.equal(controlBindingActionOf(element({ controlAction: 'learn', sourceControlId: '' })), null,
     'the toolbar before anything is selected');
+  for (const edge of ['min', 'max', 'full']) {
+    assert.deepEqual(controlBindingActionOf(element({ controlAction: `range-${edge}`, sourceControlId: 'minilab-3:k5' })),
+      { kind: `range-${edge}`, controlId: 'minilab-3:k5' }, `the range's ${edge}`);
+  }
+  const asked = [];
+  performControlBindingAction({ control: { setRange: (...args) => asked.push(args) } }, 'vst-001',
+    { kind: 'range-max', controlId: 'minilab-3:k5' }, { selectedControlId: null });
+  assert.deepEqual(asked, [['vst-001', 'minilab-3:k5', 'max']]);
   assert.equal(controlBindingActionOf(element({ action: 'open' })), null, 'a plugin card is not this panel');
   assert.equal(controlBindingActionOf(null), null);
 

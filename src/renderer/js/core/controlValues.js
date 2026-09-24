@@ -21,6 +21,7 @@
  * Only what an open bar shows is followed: a node with no bar costs nothing.
  */
 import { getMiniLabControlSource } from '../midi/minilabControls.js';
+import { controlPositionOf } from './controlBindings.js';
 
 // What a mouse can move: what turns or slides. A pad is struck, a button
 // pressed; neither has a position to drag. Profile families, never ids.
@@ -112,7 +113,7 @@ export class ControlValues {
         if (binding.pluginInstanceId !== instanceId || !asked.has(binding.sourceControlId)) continue;
         if ((this._writes.get(keyOf(nodeId, binding.sourceControlId)) ?? 0) !== asked.get(binding.sourceControlId)) continue;
         const value = read.get(binding.parameterId);
-        if (Number.isFinite(value)) this._set(nodeId, binding.sourceControlId, value);
+        if (Number.isFinite(value)) this._set(nodeId, binding.sourceControlId, controlPositionOf(binding, value));
       }
     }));
   }
@@ -126,7 +127,8 @@ export class ControlValues {
 
   _signature(nodeId) {
     return this._movable(nodeId)
-      .map((binding) => `${binding.sourceControlId}=${binding.pluginInstanceId}/${binding.parameterId}`)
+      .map((binding) => `${binding.sourceControlId}=${binding.pluginInstanceId}/${binding.parameterId}`
+        + (binding.range ? `@${binding.range.min}-${binding.range.max}` : ''))
       .sort()
       .join('|');
   }
@@ -146,7 +148,7 @@ export class ControlValues {
     if (!this._watchers.has(msg?.chainId)) return;
     for (const binding of this._movable(msg.chainId)) {
       if (binding.pluginInstanceId === msg.instanceId && binding.parameterId === msg.parameterId) {
-        this._write(msg.chainId, binding.sourceControlId, Number(msg.normalizedValue));
+        this._write(msg.chainId, binding.sourceControlId, controlPositionOf(binding, Number(msg.normalizedValue)));
       }
     }
   }

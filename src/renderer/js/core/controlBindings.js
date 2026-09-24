@@ -22,6 +22,44 @@ function boundedString(value, maxLength) {
   return typeof value === 'string' && value.length > 0 && value.length <= maxLength;
 }
 
+const MAX_RANGE_TEXT_LENGTH = 64;
+// Closer than this, the two ends are one value: a knob with nothing to sweep.
+const MIN_RANGE_SPAN = 1e-4;
+
+/**
+ * The part of its parameter a control sweeps, or null for all of it.
+ *
+ * Asked 2026-09-24: a MiniLab knob sends 128 positions, and spread over the 48
+ * semitones of a pitch shifter each one is 0.38 of a semitone. Narrowed to the
+ * four semitones around zero, each is 0.03. `min` is where the control's bottom
+ * lands and `max` where its top does, both on the parameter's own 0..1 scale; a
+ * `min` above `max` turns the control round, as a mapping's range does in other
+ * hosts. The texts are the plugin's own words for the two ends, kept to be
+ * shown, since the 0..1 scale means nothing outside the plugin.
+ */
+export function normalizeBindingRange(value) {
+  if (!value || typeof value !== 'object') return null;
+  const { min, max } = value;
+  if (![min, max].every((end) => Number.isFinite(end) && end >= 0 && end <= 1)) return null;
+  if (Math.abs(max - min) < MIN_RANGE_SPAN) return null;
+  if (min === 0 && max === 1) return null;
+  const text = (end) => (typeof end === 'string' && end.length <= MAX_RANGE_TEXT_LENGTH ? end : '');
+  return { min, max, minText: text(value.minText), maxText: text(value.maxText) };
+}
+
+/** Where a control at `position` (0..1) puts its parameter. */
+export function parameterValueOf(binding, position) {
+  const range = binding?.range;
+  return range ? range.min + position * (range.max - range.min) : position;
+}
+
+/** Where the control stands for a parameter at `value`, held to its ends. */
+export function controlPositionOf(binding, value) {
+  const range = binding?.range;
+  if (!range) return value;
+  return Math.min(1, Math.max(0, (value - range.min) / (range.max - range.min)));
+}
+
 /**
  * Is this a well-formed binding key, `<profileId>:<controlId>`?
  *
@@ -63,6 +101,7 @@ export function normalizeControlBinding(value) {
       || !/^plugin-[1-9][0-9]*$/.test(value.pluginInstanceId)) return null;
   if (!boundedString(value.pluginId, MAX_PLUGIN_ID_LENGTH)) return null;
   if (!isStableVstParameterId(value.parameterId)) return null;
+  const range = normalizeBindingRange(value.range);
   return {
     version: CONTROL_BINDING_VERSION,
     sourceControlId: value.sourceControlId,
@@ -70,7 +109,8 @@ export function normalizeControlBinding(value) {
     pluginId: value.pluginId,
     parameterId: value.parameterId,
     pluginName: boundedString(value.pluginName, MAX_NAME_LENGTH) ? value.pluginName : '',
-    parameterName: boundedString(value.parameterName, MAX_NAME_LENGTH) ? value.parameterName : ''
+    parameterName: boundedString(value.parameterName, MAX_NAME_LENGTH) ? value.parameterName : '',
+    ...(range ? { range } : {})
   };
 }
 
@@ -315,6 +355,45 @@ export class ControlBindingManager {
     return true;
   }
 
+  /**
+   * Narrow what a control sweeps: `edge` 'min' or 'max' takes the parameter's
+   * value as it stands now for that end, 'full' gives the whole parameter back.
+   *
+   * Set from where the parameter is rather than typed: the plugin alone knows
+   * what 0.42 means, so the person puts the parameter where the end should be,
+   * in the plugin, and says "this is the bottom". The other end, not set yet,
+   * stays where it was -- the parameter's own end at first.
+   */
+  async setRange(nodeId, sourceControlId, edge) {
+    const binding = this.bindingFor(nodeId, sourceControlId);
+    if (!binding || !['min', 'max', 'full'].includes(edge)) return { ok: false, reason: 'no-binding' };
+    let range = null;
+    if (edge !== 'full') {
+      let answer;
+      try {
+        answer = await this.hub.engine.getVstParameters(nodeId, binding.pluginInstanceId, [binding.parameterId]);
+      } catch (_) {
+        return { ok: false, reason: 'engine-unavailable' };
+      }
+      const parameter = answer?.status === 'ok'
+        ? answer.parameters?.find((item) => String(item.parameterId) === binding.parameterId) : null;
+      const value = Number(parameter?.normalizedValue);
+      if (!Number.isFinite(value)) return { ok: false, reason: 'parameter-unreadable' };
+      const text = typeof parameter.display === 'string' ? parameter.display : '';
+      const current = binding.range || { min: 0, max: 1, minText: '', maxText: '' };
+      const next = edge === 'min' ? { ...current, min: value, minText: text } : { ...current, max: value, maxText: text };
+      // Both ends on one value is a control that does nothing: refused.
+      if (Math.abs(next.max - next.min) < MIN_RANGE_SPAN) return { ok: false, reason: 'empty-range' };
+      range = normalizeBindingRange(next);
+    }
+    const { range: _old, ...rest } = this.bindingFor(nodeId, sourceControlId) || binding;
+    if (!this.hub.nodes.setControlBinding(nodeId, range ? { ...rest, range } : rest)) {
+      return { ok: false, reason: 'no-binding' };
+    }
+    this._changed(nodeId);
+    return { ok: true, range };
+  }
+
   bindingFor(nodeId, sourceControlId) {
     return this.hub.nodes.getControlBindings(nodeId)
       .find((binding) => binding.sourceControlId === sourceControlId) || null;
@@ -364,7 +443,7 @@ export class ControlBindingManager {
       binding.pluginInstanceId,
       binding.pluginId,
       binding.parameterId,
-      control.normalizedValue
+      parameterValueOf(binding, control.normalizedValue)
     );
     // What the parameter now reads, said once, for whoever draws it. The engine
     // does not echo a value the host writes, so a drawing that followed only the

@@ -100,5 +100,26 @@ export function renderControlBindings(instance, hub, selectedControlId = null) {
         ${selected ? '' : 'disabled'}>${isPending ? 'Cancel Learning' : 'Arm Learning'}</button>
       <button class="btn" data-control-action="clear" data-source-control-id="${selected?.id || ''}"
         ${binding && !isPending ? '' : 'disabled'}>Clear</button>
+      ${binding && !isPending ? rangeControls(selected.id, binding) : ''}
     </div>`;
+}
+
+/**
+ * The part of the parameter the control sweeps, and how to narrow it: put the
+ * parameter where an end should be, in the plugin, then Min or Max. Full gives
+ * the whole parameter back. Shown only for a bound control, on its own line.
+ */
+function rangeControls(controlId, binding) {
+  const range = binding.range;
+  const end = (text, fallback) => escapeHtml(text || fallback);
+  const span = range ? `${end(range.minText, 'set')} → ${end(range.maxText, 'set')}` : 'Full';
+  const button = (edge, label, title, enabled = true) =>
+    `<button class="btn btn-sm" data-control-action="range-${edge}" data-source-control-id="${controlId}" title="${title}"${enabled ? '' : ' disabled'}>${label}</button>`;
+  return `<div class="control-range">
+        <span class="control-range-label">Range</span>
+        <span class="control-range-span">${span}</span>
+        ${button('min', 'Min', 'The value the plugin shows now becomes the bottom of the control')}
+        ${button('max', 'Max', 'The value the plugin shows now becomes the top of the control')}
+        ${button('full', 'Full', 'The control sweeps the whole parameter again', Boolean(range))}
+      </div>`;
 }

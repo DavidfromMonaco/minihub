@@ -905,3 +905,63 @@ test('Learn IPC validation rejects malformed identities and types', () => {
     assert.equal(isValidSetVstParameterLearnCommand({ ...valid, ...mutation }), false);
   }
 });
+
+// ---- a range per binding (asked 2026-09-24: 0.38 of a semitone per step) -----
+test('a binding sweeps the range set from where the parameter stands, and Full gives it all back', async () => {
+  const { api, hub, node, plugin } = await makeRig();
+  connect(hub, node.id, 'k1');
+  capture(api, hub, node, plugin);
+  const k1 = source('k1').id;
+  let standing = { normalizedValue: 0.4583, display: '-2.00' };
+  hub.engine.getVstParameters = async (chainId, instanceId, ids) => ({
+    status: 'ok', parameters: [{ parameterId: ids[0], ...standing }]
+  });
+  const routed = (position) => {
+    api.sent.length = 0;
+    hub.control.route(node.id, { type: 'control', sourceControlId: k1, normalizedValue: position });
+    return sentOf(api, 'setVstParameter').at(-1)?.normalizedValue;
+  };
+  assert.equal(routed(0.5), 0.5, 'unnarrowed, the control is the parameter');
+
+  assert.equal((await hub.control.setRange(node.id, k1, 'min')).ok, true);
+  standing = { normalizedValue: 0.5417, display: '+2.00' };
+  assert.equal((await hub.control.setRange(node.id, k1, 'max')).ok, true);
+  assert.deepEqual(hub.control.bindingFor(node.id, k1).range,
+    { min: 0.4583, max: 0.5417, minText: '-2.00', maxText: '+2.00' });
+  assert.equal(routed(0), 0.4583, 'the bottom of the knob is the bottom of the range');
+  assert.equal(routed(1), 0.5417);
+  assert.ok(Math.abs(routed(0.5) - 0.5) < 1e-9);
+  assert.equal(hub.settings.get('nodeInstances').instances.find((entry) => entry.id === node.id)
+    .content.controlBindings[0].range.maxText, '+2.00', 'saved with the project');
+
+  const { renderControlBindings } = await import('../src/renderer/js/core/controlBindingsPanel.js');
+  const toolbar = renderControlBindings(node, hub, k1);
+  assert.match(toolbar, /class="control-range-span">-2\.00 → \+2\.00</, 'the bar says the range in the plugin’s words');
+  assert.match(toolbar, /data-control-action="range-full"[^>]*>Full</);
+  assert.doesNotMatch(renderControlBindings(node, hub, source('k2').id), /control-range/, 'an unbound control has no range');
+
+  assert.equal((await hub.control.setRange(node.id, k1, 'min')).reason, 'empty-range',
+    'both ends on one value is refused');
+  assert.equal((await hub.control.setRange(node.id, k1, 'full')).ok, true);
+  assert.equal(hub.control.bindingFor(node.id, k1).range, undefined);
+  assert.equal(routed(1), 1);
+});
+
+test('a range is validated like the rest of a binding, and a reversed one turns the control round', async () => {
+  const { normalizeBindingRange, parameterValueOf, controlPositionOf } = await import('../src/renderer/js/core/controlBindings.js');
+  assert.equal(normalizeBindingRange({ min: 0, max: 1 }), null, 'the whole parameter is no range');
+  assert.equal(normalizeBindingRange({ min: 0.5, max: 0.5 }), null);
+  assert.equal(normalizeBindingRange({ min: -0.1, max: 0.5 }), null);
+  assert.equal(normalizeBindingRange({ min: '0.1', max: 0.5 }), null);
+  assert.deepEqual(normalizeBindingRange({ min: 0.8, max: 0.2, minText: 'x'.repeat(65) }),
+    { min: 0.8, max: 0.2, minText: '', maxText: '' });
+  const reversed = { range: { min: 0.8, max: 0.2 } };
+  assert.ok(Math.abs(parameterValueOf(reversed, 1) - 0.2) < 1e-12);
+  assert.ok(Math.abs(controlPositionOf(reversed, 0.8)) < 1e-12);
+  assert.equal(controlPositionOf({ range: { min: 0.4, max: 0.6 } }, 0.9), 1, 'held to its ends');
+  const kept = normalizeControlBinding({
+    version: CONTROL_BINDING_VERSION, sourceControlId: 'minilab-3:k1', pluginInstanceId: 'plugin-1',
+    pluginId: 'x', parameterId: '1', range: { min: 0.25, max: 0.75, minText: 'lo', maxText: 'hi' }
+  });
+  assert.deepEqual(kept.range, { min: 0.25, max: 0.75, minText: 'lo', maxText: 'hi' });
+});
