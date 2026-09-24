@@ -613,8 +613,21 @@ export function createRoutingModule(hub) {
   /** Create a new empty dynamic node of a type at a world position. */
   function createNodeAt(typeId, worldPos) {
     const instance = hub.nodes.create(typeId);
-    if (!instance) return;
+    if (!instance) return null;
     placeNode(instance, resolveNodePos(typeId, worldPos));
+    return instance;
+  }
+
+  /**
+   * A VST node with this plugin already in it: what a search for a plugin's
+   * name ends in. The plugin goes in the way the node page's "+ Add VST" puts
+   * it in (`appendPlugin`), so the page finds it loading like any other.
+   */
+  function createPluginNodeAt(pluginId, worldPos) {
+    const instance = createNodeAt('vst', worldPos);
+    if (!instance) return null;
+    hub.nodes.appendPlugin(instance.id, pluginId);
+    return instance;
   }
 
   /** Place a freshly created node at a world position, select it, and re-render. */
@@ -778,6 +791,12 @@ export function createRoutingModule(hub) {
    * The empty canvas: the node types first, since adding one is what the empty
    * canvas is for, then what acts on the whole Patch Bay. Typing narrows the
    * list at once and Enter creates the first match, under the pointer.
+   *
+   * Typing also finds the installed plugins, asked by the author on 2026-09-25:
+   * "Val" offers Valhalla, and taking it places a VST node with Valhalla
+   * already loaded. They wait for a search -- fifty plugins are a list to
+   * search, not one to read -- and come after the node types, so "mix" still
+   * means the Mixer.
    */
   function openCanvasContextMenu(clientX, clientY) {
     const r = svgRect();
@@ -789,6 +808,21 @@ export function createRoutingModule(hub) {
         items.push({ label: type.label, keywords: type.id, action: () => createNodeAt(type.id, world) });
       }
     }
+    const plugins = [...(hub.engine?.plugins || [])]
+      .filter((plugin) => plugin?.pluginId && plugin.name)
+      .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+    if (plugins.length) {
+      items.push({ heading: 'Installed plugins' });
+      for (const plugin of plugins) {
+        items.push({
+          label: plugin.name,
+          hint: plugin.manufacturer || '',
+          keywords: ['vst', plugin.manufacturer, plugin.category].filter(Boolean).join(' '),
+          searchOnly: true,
+          action: () => createPluginNodeAt(plugin.pluginId, world)
+        });
+      }
+    }
     items.push(
       { separator: true },
       { label: 'Paste', hint: 'Ctrl+V', disabled: !clipboard, action: () => pasteNode(world) },
@@ -798,7 +832,7 @@ export function createRoutingModule(hub) {
       ...(alignUndo ? [{ label: 'Undo Align', action: undoAlign }] : []),
       { label: 'Show All Nodes', keywords: 'reset view fit zoom', action: resetView }
     );
-    openContextMenu({ x: clientX, y: clientY, items, search: { placeholder: 'Add a node…' }, className: 'patch-bay-menu' });
+    openContextMenu({ x: clientX, y: clientY, items, search: { placeholder: 'Add a node or a plugin…' }, className: 'patch-bay-menu' });
   }
 
   function selectAll() {

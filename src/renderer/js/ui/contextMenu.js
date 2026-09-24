@@ -30,9 +30,11 @@
  *   and with `search` what is typed narrows the list and Enter takes the first
  *   entry left.
  *
- * `items` is a flat list of `{ label, hint, action, disabled, danger, keywords }`,
- * `{ heading: 'Family' }`, or `{ separator: true }`. An entry with no `action`
- * renders inert. `search` is `{ placeholder }`; `className` adds a class to
+ * `items` is a flat list of `{ label, hint, action, disabled, danger, keywords,
+ * searchOnly }`, `{ heading: 'Family' }`, or `{ separator: true }`. An entry with
+ * no `action` renders inert. A `searchOnly` entry shows only once something is
+ * typed: the Patch Bay lists every installed plugin that way, a list to search
+ * rather than one to read. `search` is `{ placeholder }`; `className` adds a class to
  * the menu for a caller's own sizing.
  */
 
@@ -141,7 +143,10 @@ export function openContextMenu({ x = 0, y = 0, items = [], onClose, search = nu
       });
     }
     element.appendChild(button);
-    rows.push({ kind: 'item', element: button, inert, run, text: [item.label, group, item.keywords].filter(Boolean).join(' ') });
+    rows.push({
+      kind: 'item', element: button, inert, run, searchOnly: item.searchOnly === true,
+      text: [item.label, group, item.keywords].filter(Boolean).join(' ')
+    });
   }
 
   const shown = (row) => row.element.hidden !== true;
@@ -153,7 +158,9 @@ export function openContextMenu({ x = 0, y = 0, items = [], onClose, search = nu
    */
   function filter(query) {
     const searching = String(query || '').trim() !== '';
-    for (const row of rows) if (row.kind === 'item') row.element.hidden = searching && !menuMatches(row.text, query);
+    for (const row of rows) {
+      if (row.kind === 'item') row.element.hidden = searching ? !menuMatches(row.text, query) : row.searchOnly;
+    }
     for (let index = 0; index < rows.length; index += 1) {
       const row = rows[index];
       if (row.kind === 'item') continue;
@@ -171,6 +178,9 @@ export function openContextMenu({ x = 0, y = 0, items = [], onClose, search = nu
     const next = at < 0 ? (delta > 0 ? 0 : list.length - 1) : (at + delta + list.length) % list.length;
     list[next].element.focus?.();
   }
+
+  // Entries that wait for a search start hidden, and so do their headings.
+  if (rows.some((row) => row.searchOnly)) filter('');
 
   if (field) {
     listen(field, 'input', () => filter(field.value));

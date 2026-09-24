@@ -49,6 +49,11 @@ test as tried and working.
   CDP: "arp" + Enter created an Arpeggiator, a cable's Disconnect unplugged it,
   a double-click opened the list and a click on Mixer made one, Duplicate made
   a selected copy that one undo removed, and the Sequencer's clip menu duplicated a clip.
+- Built, in the author's test, not seen in the application: typing in the
+  canvas menu also finds the installed plugins ("val" offers the Valhallas,
+  their maker beside them), and taking one places a VST node with that plugin
+  already loaded. Asked 2026-09-25 while the author played; no window was
+  opened during that time, so it is checked by `npm test` only.
 
 **One Ring, made native** — started 2026-09-16 on the author's word, in place
 of the Matrix node (ROADMAP item 7). One Ring becomes a node of MiniHub with

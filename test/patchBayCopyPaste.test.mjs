@@ -353,6 +353,54 @@ test('typing in the canvas menu narrows the node list, and Enter creates the fir
   mod.unmount();
 });
 
+test('typing a plugin name offers it, and taking it places a VST node with that plugin loaded', () => {
+  const hub = setupHub({ withMinilab: false });
+  const catalogue = [
+    { pluginId: 'C:/VST3/ValhallaSupermassive.vst3', name: 'ValhallaSupermassive', manufacturer: 'Valhalla DSP, LLC', category: 'Fx|Reverb', role: 'effect' },
+    { pluginId: 'C:/VST3/ValhallaDelay.vst3', name: 'ValhallaDelay', manufacturer: 'Valhalla DSP, LLC', category: 'Fx|Delay', role: 'effect' },
+    { pluginId: 'C:/VST3/Dexed.vst3', name: 'Dexed', manufacturer: 'Digital Suburban', category: 'Instrument|Synth', role: 'instrument' }
+  ];
+  const loaded = [];
+  hub.engine = {
+    plugins: catalogue,
+    getPlugin: (id) => catalogue.find((plugin) => plugin.pluginId === id) || null,
+    createInstance: (chainId, pluginId, instanceId) => loaded.push({ chainId, pluginId, instanceId })
+  };
+  hub.nodes.hub.engine = hub.engine;
+  const { svg, mod } = mount(hub);
+  fire(svg, 'contextmenu', { target: svg, clientX: 700, clientY: 520 });
+  const menu = openMenu();
+  const visible = () => menuEntries(menu).filter((entry) => entry.hidden !== true).map(entryLabel);
+  const headings = () => menu.children.filter((c) => c._classSet.has('ctx-group') && c.hidden !== true).map((c) => c.textContent);
+
+  // Untyped, the plugins wait: the menu is the node types, as before.
+  assert.equal(visible().includes('Dexed'), false);
+  assert.equal(headings().includes('Installed plugins'), false);
+
+  const field = findClass(menu, 'ctx-search');
+  field.value = 'val';
+  fire(field, 'input');
+  assert.deepEqual(visible(), ['ValhallaDelay', 'ValhallaSupermassive'], 'in the order of their names');
+  assert.deepEqual(headings(), ['Installed plugins']);
+  // The maker is shown beside the name, and found too.
+  field.value = 'suburban';
+  fire(field, 'input');
+  assert.deepEqual(visible(), ['Dexed']);
+
+  field.value = 'val';
+  fire(field, 'input');
+  pickEntry('ValhallaSupermassive');
+  const node = hub.nodes.list().find((instance) => instance.type === 'vst');
+  assert.ok(node, 'a VST node was placed');
+  assert.deepEqual(hub.settings.get('networkLayout')[node.id], { x: 700, y: 520 }, 'where the menu was opened');
+  assert.deepEqual(node.content.plugins.map((plugin) => plugin.pluginId), ['C:/VST3/ValhallaSupermassive.vst3'],
+    'with the plugin already in its chain');
+  assert.deepEqual(loaded.map((entry) => [entry.chainId, entry.pluginId]), [[node.id, 'C:/VST3/ValhallaSupermassive.vst3']],
+    'and the engine asked to load it');
+  assert.ok(findNode(nodesLayerOf(svg), node.id)._classSet.has('selected'), 'and it is selected');
+  mod.unmount();
+});
+
 test('a double-click on the empty canvas opens the node list there', () => {
   const hub = setupHub({ withMinilab: false });
   const { svg, mod } = mount(hub);
