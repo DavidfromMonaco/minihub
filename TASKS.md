@@ -30,6 +30,11 @@ test as tried and working.
   MIDI track's mute zeroed its instrument, and whatever else it played. Seen
   in the application: a player through an armed track, muted, peaks at
   0.054 against 0.055 unmuted.
+- Done, in the author's test: an Audio Player's page steps back and forward
+  five seconds and back to the start, and mutes that player alone (`muted`
+  in its content, sent as a level of zero). Seen in the application: a
+  muted player at 0.000 while a second one played at 0.161; paused at 0.9 s,
+  a step back landed on 0.0.
 - Waiting for the author: the Patch Bay's context menus, which he finds
   unergonomic. A proposal is before him; nothing built. They are still
   hand-built in `routingModule.js`; `ui/contextMenu.js` exists and only the
@@ -191,6 +196,6 @@ Reported to the author, not acted on.
 **`../minihub-agent/AGENTS.md` is behind** — outside this repository, the
 author's to update. It describes neither the Plays scope, nor a binding's
 range (the channel cannot set either), nor `create-node audio-player` with
-its content `{ filePath, loop, level }` and the `audio-player` request
+its content `{ filePath, loop, level, muted }` and the `audio-player` request
 (`play`, `pause`, `stop`, `seek` with `seconds`), nor the transport's
 `pause`, `go-end` and `bars`.

@@ -7,10 +7,10 @@ import { LEVEL_MAX, fileNameOf, formatPlayerTime } from '../../core/audioPlayerS
  *
  * PLAYING IS NOT EDITING
  * ----------------------
- * Play, Pause, Stop and a click on the overview go to the engine's player
- * (`hub.audioPlayers`) and leave the project alone. The file, the loop and the
- * level are the node's content, written through `hub.nodes.setContent`: an undo
- * step each. A level being dragged is heard as it moves -- the engine is given
+ * Play, Pause, Stop, the steps back and forward and a click on the overview go
+ * to the engine's player (`hub.audioPlayers`) and leave the project alone. The
+ * file, the loop, the level and the mute are the node's content, written through
+ * `hub.nodes.setContent`: an undo step each. A level being dragged is heard as it moves -- the engine is given
  * each value at once -- and written once, when the slider is let go.
  *
  * WHAT IS REDRAWN
@@ -23,6 +23,27 @@ import { LEVEL_MAX, fileNameOf, formatPlayerTime } from '../../core/audioPlayerS
 
 const WAVE_WIDTH = 512;
 const WAVE_HEIGHT = 100;
+/**
+ * How far the step buttons move the player. What a media player's skip does:
+ * enough to hear a passage again, short enough not to lose where you were.
+ */
+export const SKIP_SECONDS = 5;
+
+/**
+ * Where a step lands. Back stops at the start, as any player's does -- a loop
+ * is not a reason to be thrown to the end of the file. Forward past the end
+ * goes round a looping player, which is where it would be playing, and stops
+ * at the end of one that does not loop.
+ */
+export function skipTarget(seconds, delta, durationSeconds, loop) {
+  const duration = Number(durationSeconds);
+  if (!(duration > 0)) return 0;
+  const target = Math.max(0, (Number(seconds) || 0) + delta);
+  if (target < duration) return target;
+  return loop ? target % duration : duration;
+}
+
+const icon = (path) => `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${path}"/></svg>`;
 
 const now = () => globalThis.performance?.now?.() ?? Date.now();
 
@@ -83,6 +104,7 @@ function render({ instance, type, hub }) {
       + `<line class="ap-playhead" data-ap-playhead x1="0" x2="0" y1="0" y2="${WAVE_HEIGHT}"/></svg>`
     : `<p class="ap-wave-note">${escapeHtml(noteOf(view))}</p>`;
   const disabled = view.ready ? '' : ' disabled';
+  const muted = view.content.muted === true;
   return `<div class="panel audio-player" data-audio-player>
     <div class="row"><h1 class="page-title">${escapeHtml(instance.name)}</h1><span class="spacer"></span><span class="pill accent-${type.id}">${escapeHtml(type.label)}</span></div>
     <div class="panel mt-16 ap-deck">
@@ -95,11 +117,15 @@ function render({ instance, type, hub }) {
       </div>
       <div class="ap-wave ap-wave--${view.state}" data-ap-wave${view.ready ? ' title="Click to move the player here"' : ''}>${overview}</div>
       <div class="ap-transport">
+        <button type="button" class="btn ap-nav" data-ap-act="start" title="Back to the start" aria-label="Back to the start"${disabled}>${icon('M5 4v16M19 5l-10 7 10 7z')}</button>
+        <button type="button" class="btn ap-nav" data-ap-act="back" title="Back ${SKIP_SECONDS} seconds" aria-label="Back ${SKIP_SECONDS} seconds"${disabled}>${icon('M11 5l-7 7 7 7zM20 5l-7 7 7 7z')}</button>
         <button type="button" class="btn ap-play" data-ap-act="play" aria-pressed="false"${disabled}>Play</button>
         <button type="button" class="btn" data-ap-act="stop"${disabled}>Stop</button>
+        <button type="button" class="btn ap-nav" data-ap-act="forward" title="Forward ${SKIP_SECONDS} seconds" aria-label="Forward ${SKIP_SECONDS} seconds"${disabled}>${icon('M13 5l7 7-7 7zM4 5l7 7-7 7z')}</button>
         <span class="ap-time" data-ap-time>${view.ready ? `0:00.0 / ${formatPlayerTime(view.file.durationSeconds)}` : ''}</span>
         <span class="spacer"></span>
         <label class="ap-check"><input type="checkbox" data-ap-act="loop"${view.content.loop ? ' checked' : ''}> Loop</label>
+        <button type="button" class="btn ap-mute${muted ? ' active' : ''}" data-ap-act="mute" aria-pressed="${muted}" title="${muted ? 'Muted: this player alone is silent. Click to hear it' : 'Mute this player, and nothing else'}">Mute</button>
         <label class="ap-level">Level <input type="range" min="0" max="${LEVEL_MAX}" step="0.01" value="${level}" data-ap-act="level"></label>
         <span class="ap-level-value" data-ap-level>${levelText(level)}</span>
       </div>
@@ -184,6 +210,13 @@ function bind(container, context) {
         if (hub.audioPlayers?.statusOf?.(nodeId)?.state === 'playing') hub.audioPlayers.pause(nodeId);
         else hub.audioPlayers?.play?.(nodeId);
       } else if (act === 'stop') hub.audioPlayers?.stop?.(nodeId);
+      else if (act === 'start') hub.audioPlayers?.seek?.(nodeId, 0);
+      else if (act === 'back' || act === 'forward') {
+        const { view, seconds } = position();
+        if (!view.ready) return;
+        const delta = act === 'back' ? -SKIP_SECONDS : SKIP_SECONDS;
+        hub.audioPlayers?.seek?.(nodeId, skipTarget(seconds, delta, view.file.durationSeconds, view.content.loop === true));
+      } else if (act === 'mute') write({ muted: instance.content.muted !== true });
       return;
     }
     const wave = event.target?.closest?.('[data-ap-wave]');
@@ -203,7 +236,9 @@ function bind(container, context) {
     const level = levelOf(input);
     const label = container.querySelector('[data-ap-level]');
     if (label) label.textContent = levelText(level);
-    // Heard as it moves: a value of the running network, not a new one.
+    // Heard as it moves: a value of the running network, not a new one. A
+    // muted player's level moves in silence, and is heard once unmuted.
+    if (instance.content.muted === true) return;
     hub.engine?.setAudioNodeValues?.([{ id: nodeId, inputs: [], masterLevel: level }]);
   };
 

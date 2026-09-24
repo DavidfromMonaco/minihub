@@ -192,6 +192,9 @@ body {
 .ap-transport { display:flex; align-items:center; flex-wrap:wrap; gap:10px; margin-top:12px; }
 .ap-play { min-width:76px; justify-content:center; }
 .ap-play.playing { border-color:var(--audio); color:var(--audio); }
+.btn.ap-nav { width:34px; padding:7px 0; justify-content:center; }
+.btn.ap-nav svg { flex:0 0 auto; width:14px; height:14px; fill:currentColor; stroke:currentColor; stroke-width:1.5; }
+.btn.ap-mute.active { border-color:#f5c451; background:#f5c451; color:#17191d; }
 .ap-time { min-width:124px; font-family:var(--mono); font-size:12px; color:var(--text-dim); }
 .ap-check, .ap-level { display:inline-flex; align-items:center; gap:6px; }
 .ap-level-value { min-width:40px; font-family:var(--mono); font-size:12px; color:var(--text-dim); text-align:right; }

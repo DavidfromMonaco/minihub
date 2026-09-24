@@ -24,7 +24,9 @@ export function describeAudioNetwork(hub) {
     return { id:node.id, nodeType:node.type, inputs,
       ...(node.type==='mixer'?{masterLevel:content.masterLevel??1}:{}),
       // A player's level travels as its node's master: a fader, not a shape.
-      ...(node.type==='audio-player'?{masterLevel:content.level??1}:{}),
+      // Its mute is that master at zero, so it silences this player and
+      // nothing it is cabled into (D-054's rule, for a player).
+      ...(node.type==='audio-player'?{masterLevel:content.muted===true?0:(content.level??1)}:{}),
       ...(node.type==='morpher'?{stepCount:content.stepCount??4,steps:content.steps||[]}:{}) };
   });
 }

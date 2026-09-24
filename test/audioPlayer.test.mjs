@@ -8,7 +8,7 @@ import {
 } from '../src/renderer/js/core/audioPlayerState.js';
 import { audioNodeValues, audioTopologyKey, describeAudioNetwork, setupEngineSync } from '../src/renderer/js/core/engineSync.js';
 import { describeNodes } from '../src/renderer/js/core/agentDescribe.js';
-import { registerAudioPlayerPanel, waveformPath } from '../src/renderer/js/modules/audioPlayer/audioPlayerPanel.js';
+import { SKIP_SECONDS, registerAudioPlayerPanel, skipTarget, waveformPath } from '../src/renderer/js/modules/audioPlayer/audioPlayerPanel.js';
 
 /**
  * Contract: an Audio Player node names a file; the engine plays it (native
@@ -76,9 +76,11 @@ test('an Audio Player is an Audio OmniBox with one AUDIO OUT, and starts without
 });
 
 test('content from a file or an agent is made safe before it reaches the engine', () => {
-  assert.deepEqual(normalizeAudioPlayerContent(null), { filePath: '', loop: false, level: 1 });
+  assert.deepEqual(normalizeAudioPlayerContent(null), { filePath: '', loop: false, level: 1, muted: false });
   assert.deepEqual(normalizeAudioPlayerContent({ filePath: 'C:\\a.wav', loop: 'yes', level: 7 }),
-    { filePath: 'C:\\a.wav', loop: false, level: 2 });
+    { filePath: 'C:\\a.wav', loop: false, level: 2, muted: false });
+  assert.equal(normalizeAudioPlayerContent({ muted: 'yes' }).muted, false, 'only true mutes');
+  assert.equal(normalizeAudioPlayerContent({ muted: true }).muted, true);
   assert.equal(normalizeAudioPlayerContent({ level: -1 }).level, 0);
   assert.equal(normalizeAudioPlayerContent({ level: 'loud' }).level, 1);
   assert.equal(normalizeAudioPlayerContent({ filePath: 'C:\\a\0.wav' }).filePath, '', 'a NUL is no path');
@@ -210,7 +212,7 @@ test('an agent plays a player as its page does, whatever project id it holds', a
   assert.equal((await handleAgentRequest(hub, { kind: 'audio-player', nodeId: 'mixer-001', operation: 'play' })).reason, 'node-not-found');
   assert.deepEqual(await handleAgentRequest(hub, { kind: 'set-node-content', expectedProjectId: hub.project.projectId, nodeId: player.id,
     content: { filePath: 'C:\\Loops\\drums.wav', loop: true, level: 0.5 } }), { ok: true });
-  assert.deepEqual(hub.nodes.get(player.id).content, { filePath: 'C:\\Loops\\drums.wav', loop: true, level: 0.5 });
+  assert.deepEqual(hub.nodes.get(player.id).content, { filePath: 'C:\\Loops\\drums.wav', loop: true, level: 0.5, muted: false });
 });
 
 test('the agent reads what the engine said of the file and where the player is', async () => {
@@ -366,4 +368,67 @@ test('its controls play the player and write the content, and a teardown removes
   click('play');
   await settle();
   assert.equal(sent('audioPlayerTransport').length, count, 'a page taken down does nothing');
+});
+
+test('the page steps back and forward, and back to the start, without writing anything', async () => {
+  const { hub, player, sent, answer, report, click } = await page();
+  hub.nodes.setContent(player.id, { ...player.content, filePath: READY.filePath });
+  await settle();
+  answer({ ...READY, durationSeconds: 20 });
+  const before = JSON.stringify(hub.nodes.get(player.id).content);
+  const lastSeek = () => sent('audioPlayerTransport').filter((msg) => msg.action === 'seek').at(-1)?.seconds;
+  report({ state: 'paused', positionSeconds: 12 });
+  click('back');
+  await settle();
+  assert.equal(lastSeek(), 12 - SKIP_SECONDS);
+  report({ state: 'paused', positionSeconds: 12 });
+  click('forward');
+  await settle();
+  assert.equal(lastSeek(), 12 + SKIP_SECONDS);
+  click('start');
+  await settle();
+  assert.equal(lastSeek(), 0);
+  assert.equal(JSON.stringify(hub.nodes.get(player.id).content), before, 'moving the player is not an edit');
+
+  // Back stops at the start, looping or not; forward goes round a loop and
+  // stops at the end of a file that does not loop.
+  assert.equal(skipTarget(2, -5, 20, false), 0);
+  assert.equal(skipTarget(2, -5, 20, true), 0);
+  assert.equal(skipTarget(18, 5, 20, false), 20);
+  assert.equal(skipTarget(18, 5, 20, true), 3);
+  assert.equal(skipTarget(3, 5, 0, false), 0, 'no file, no step');
+});
+
+test('muting a player silences that player and nothing else', async () => {
+  const { hub, player, sent, answer, click, dispatch, editor, context } = await page();
+  setupEngineSync(hub);
+  const other = hub.nodes.create('audio-player');
+  const mixer = hub.nodes.create('mixer');
+  hub.network.connect(player.id, 'audio-out', mixer.id, 'audio-in-1');
+  hub.nodes.setContent(player.id, { ...player.content, filePath: READY.filePath, level: 0.8 });
+  await settle();
+  answer(READY);
+  assert.match(editor.render(context), /data-ap-act="mute" aria-pressed="false"/);
+
+  click('mute');
+  await settle();
+  assert.equal(hub.nodes.get(player.id).content.muted, true, 'the mute is content: saved, and one undo step');
+  assert.equal(hub.nodes.get(player.id).content.level, 0.8, 'and it keeps the level it will come back to');
+  const described = describeAudioNetwork(hub);
+  assert.equal(described.find((node) => node.id === player.id).masterLevel, 0);
+  assert.equal(described.find((node) => node.id === other.id).masterLevel, 1, 'another player plays on');
+  assert.equal(described.find((node) => node.id === mixer.id).masterLevel, 1, 'what it is cabled into is untouched');
+  assert.equal(sent('setAudioNodeValues').at(-1).nodes.find((node) => node.id === player.id).masterLevel, 0);
+  assert.match(editor.render({ ...context, instance: hub.nodes.get(player.id) }),
+    /class="btn ap-mute active" data-ap-act="mute" aria-pressed="true"/);
+
+  // A level dragged under the mute moves in silence.
+  const writes = sent('setAudioNodeValues').length;
+  dispatch('input', { target: fakeElement({ apAct: 'level' }, 'INPUT', { value: '0.3' }) });
+  assert.equal(sent('setAudioNodeValues').length, writes, 'nothing is heard while muted');
+
+  click('mute');
+  await settle();
+  assert.equal(hub.nodes.get(player.id).content.muted, false);
+  assert.equal(describeAudioNetwork(hub).find((node) => node.id === player.id).masterLevel, 0.8, 'heard again at its level');
 });

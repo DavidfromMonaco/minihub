@@ -1,6 +1,6 @@
 /**
- * An Audio Player node's content: the file it plays, whether it loops, and its
- * level.
+ * An Audio Player node's content: the file it plays, whether it loops, its
+ * level, and whether it is muted.
  *
  * The file is named by its full path and never copied, as a Sequencer audio
  * clip names its own: the project stays small, and a file moved away is said to
@@ -18,7 +18,7 @@ export const AUDIO_PLAYER_EXTENSIONS = Object.freeze(['wav', 'mp3', 'aif', 'aiff
 export const LEVEL_MAX = 2;
 
 export function defaultAudioPlayerContent() {
-  return { filePath: '', loop: false, level: 1 };
+  return { filePath: '', loop: false, level: 1, muted: false };
 }
 
 /** Untrusted content -- a project file, an agent -- made safe to send the engine. */
@@ -27,7 +27,7 @@ export function normalizeAudioPlayerContent(value) {
   const filePath = typeof source.filePath === 'string' && !source.filePath.includes('\0')
     ? source.filePath.slice(0, 32767) : '';
   const level = Number.isFinite(source.level) ? Math.max(0, Math.min(LEVEL_MAX, source.level)) : 1;
-  return { filePath, loop: source.loop === true, level };
+  return { filePath, loop: source.loop === true, level, muted: source.muted === true };
 }
 
 /** The file's name, without its folder. */
