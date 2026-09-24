@@ -17,8 +17,11 @@ author during a session, built after he quit MiniHub ("fais tout").
 - Done: a cable's input end, dragged onto another input, is plugged there
   (`moveConnectionEnd` in `routing/routingCore.js`); refused there, it stays
   where it was. Released on empty canvas it is still unplugged.
-- To do: several nodes
-  selected (Shift, Ctrl, a frame drawn); what Play plays (All, Sequencer,
+- Done: several nodes selected in the Patch Bay. Shift or Ctrl + click adds
+  or removes one, a left-drag on empty canvas draws a frame that takes every
+  node it touches, a drag moves the whole selection, Delete removes it, Ctrl+A
+  selects all, Escape none. Ctrl+C still copies one node only.
+- To do: what Play plays (All, Sequencer,
   Players); a range per knob assignment; the white strip beside a narrow
   plugin window.
 

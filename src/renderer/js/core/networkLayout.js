@@ -259,3 +259,13 @@ export class NetworkLayout {
     return this.settings.set(KEY, map);
   }
 }
+
+/**
+ * The ids of the boxes a selection frame touches. Touching is enough, as in
+ * most canvas editors: a frame drawn across the top of a row of nodes takes
+ * the row, without having to swallow the tallest of them whole.
+ */
+export function framedNodes(boxes, frame) {
+  return boxes.filter((box) => box.x < frame.x + frame.width && box.x + box.width > frame.x
+    && box.y < frame.y + frame.height && box.y + box.height > frame.y).map((box) => box.id);
+}

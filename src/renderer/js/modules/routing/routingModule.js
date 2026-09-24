@@ -10,7 +10,10 @@
  *   - drag a node body to move it (position is view state only)
  *   - drag from an output jack toward a compatible input jack to connect
  *   - click a cable to select it, then press Delete to remove it
- *   - left-click a node to select it (blue outline)
+ *   - left-click a node to select it (blue outline); Shift or Ctrl + click adds
+ *     or removes one; left-drag on empty canvas draws a frame that selects every
+ *     node it touches; dragging a selected node moves the whole selection;
+ *     Delete removes them, Ctrl+A selects all, Escape none
  *   - Ctrl+C / Ctrl+V to copy/paste a selected dynamic node (internal clipboard)
  *   - right-click a node -> node context menu (Copy / Delete)
  *   - right-click empty canvas -> canvas context menu (New Node / Paste)
@@ -19,7 +22,7 @@
  * Rendering uses native SVG (no framework): nodes are `<g>` groups positioned
  * with `transform`, ports are jack glyphs, cables are cubic bezier paths.
  */
-import { NetworkLayout, separateOverlaps, alignPositions, NODE_GAP } from '../../core/networkLayout.js';
+import { NetworkLayout, separateOverlaps, alignPositions, framedNodes, NODE_GAP } from '../../core/networkLayout.js';
 import { NetworkViewport } from '../../core/networkViewport.js';
 import { GRID_SIZE, dragPosition } from '../../core/grid.js';
 import { getNodeType, listNodeTypes, listOmniBoxCategories } from '../../core/nodeTypes.js';
@@ -101,7 +104,10 @@ export function createRoutingModule(hub) {
   let alignUndo = null;                   // nodeId -> {x, y}
 
   let selectedCableId = null;
-  let selectedNodeId = null; // Patch Bay UI selection (never persisted)
+  // Patch Bay UI selection (never persisted). Several nodes since 2026-09-24:
+  // Shift or Ctrl + click adds or removes one, a frame drawn on the canvas takes
+  // every node it touches, and a drag moves them all.
+  let selectedNodeIds = new Set();
   let lastNodeTap = null;    // { nodeId, at } - pointer-level double-tap detection
   let contextNodeId = null; // right-click context-menu target (independent of selection)
   let contextMenuEl = null;
@@ -166,7 +172,7 @@ export function createRoutingModule(hub) {
 
     // Clear stale selection/context target if the node disappeared for any
     // reason (deletion elsewhere, network change, etc.).
-    if (selectedNodeId && !ids.has(selectedNodeId)) selectedNodeId = null;
+    for (const id of [...selectedNodeIds]) if (!ids.has(id)) selectedNodeIds.delete(id);
     if (contextNodeId && !ids.has(contextNodeId)) contextNodeId = null;
 
     selectedCableId = null;
@@ -211,7 +217,7 @@ export function createRoutingModule(hub) {
       const height = geo.get(node.id).height;
       const g = svgEl('g', { class: 'node', transform: `translate(${positions.get(node.id).x} ${positions.get(node.id).y})` });
       g.dataset.nodeId = node.id;
-      if (node.id === selectedNodeId) g.classList.add('selected');
+      if (selectedNodeIds.has(node.id)) g.classList.add('selected');
 
       const type = getNodeType(node.type);
       if (type) g.classList.add(`node-type-${node.type}`);
@@ -502,18 +508,28 @@ export function createRoutingModule(hub) {
   function deleteNode(nodeId) {
     if (!isDeletable(nodeId)) return false;
     hub.nodes.delete(nodeId);
-    if (selectedNodeId === nodeId) setSelectedNode(null);
+    if (selectedNodeIds.has(nodeId)) setSelection([...selectedNodeIds].filter((id) => id !== nodeId));
     if (contextNodeId === nodeId) contextNodeId = null;
     return true;
   }
 
-  /** Select a node (Patch Bay UI state only). Selecting a node clears cable selection. */
-  function setSelectedNode(id) {
-    selectedNodeId = id;
-    if (id) setSelectedCable(null);
+  /** Select these nodes and only these (Patch Bay UI state only). Selecting a node clears cable selection. */
+  function setSelection(ids) {
+    selectedNodeIds = new Set(ids);
+    if (selectedNodeIds.size) setSelectedCable(null);
     for (const [nodeId, el] of nodeEls) {
-      el.classList.toggle('selected', nodeId === id);
+      el.classList.toggle('selected', selectedNodeIds.has(nodeId));
     }
+  }
+
+  /** Select one node, or none with null. */
+  function setSelectedNode(id) {
+    setSelection(id ? [id] : []);
+  }
+
+  /** The one selected node, or null when there are none or several. */
+  function soleSelectedNode() {
+    return selectedNodeIds.size === 1 ? [...selectedNodeIds][0] : null;
   }
 
   // ---------- clipboard / copy / paste ----------
@@ -862,9 +878,12 @@ export function createRoutingModule(hub) {
       return;
     }
 
-    // Clicking empty canvas deselects nodes and cables.
+    // Clicking empty canvas deselects nodes and cables, unless Shift or Ctrl
+    // keeps the nodes; dragging on it draws a selection frame.
     if (selectedCableId) setSelectedCable(null);
-    if (selectedNodeId) setSelectedNode(null);
+    const additive = e.shiftKey || e.ctrlKey || e.metaKey;
+    if (!additive && selectedNodeIds.size) setSelectedNode(null);
+    startMarquee(e, additive);
   }
 
   /** Single entry point for "show me this node's page" (chip, tap, dblclick). */
@@ -994,25 +1013,34 @@ export function createRoutingModule(hub) {
 
   function startNodeDrag(e, nodeEl) {
     const nodeId = nodeEl.dataset.nodeId;
-    // Left-click / left-drag selects the node (and moves it).
-    setSelectedNode(nodeId);
+    // A plain press on a node outside the selection selects it alone; Shift or
+    // Ctrl adds it. A press on a node already selected keeps the selection, so
+    // the drag carries every selected node -- and, if it turns out to be a
+    // click, the release decides (`endNodeDrag`): a plain click narrows the
+    // selection to that node, a Shift or Ctrl click takes it out.
+    const additive = e.shiftKey || e.ctrlKey || e.metaKey;
+    const wasSelected = selectedNodeIds.has(nodeId);
+    if (!wasSelected) setSelection(additive ? [...selectedNodeIds, nodeId] : [nodeId]);
+    else setSelectedCable(null);
     const pos = positions.get(nodeId);
-    const startX = e.clientX;
-    const startY = e.clientY;
-    const origX = pos.x;
-    const origY = pos.y;
 
     drag = {
       kind: 'node',
       nodeId,
-      startX,
-      startY,
-      origX,
-      origY
+      startX: e.clientX,
+      startY: e.clientY,
+      origX: pos.x,
+      origY: pos.y,
+      // Where every node carried along started. The pressed node is the one
+      // snapped to the grid; the others keep their distance to it.
+      group: [...selectedNodeIds].filter((id) => positions.has(id))
+        .map((id) => ({ id, x: positions.get(id).x, y: positions.get(id).y })),
+      onClick: !wasSelected ? null : (additive ? 'remove' : 'narrow'),
+      additive
     };
 
     svg.setPointerCapture(e.pointerId);
-    nodeEl.classList.add('dragging');
+    for (const { id } of drag.group) nodeEls.get(id)?.classList.add('dragging');
     e.preventDefault();
   }
 
@@ -1026,22 +1054,68 @@ export function createRoutingModule(hub) {
       viewport.zoom,
       e.ctrlKey
     );
+    const dx = pos.x - d.origX;
+    const dy = pos.y - d.origY;
 
-    positions.set(d.nodeId, pos);
-    const el = nodeEls.get(d.nodeId);
-    if (el) el.setAttribute('transform', `translate(${pos.x} ${pos.y})`);
+    for (const start of d.group) {
+      const next = { x: start.x + dx, y: start.y + dy };
+      positions.set(start.id, next);
+      const el = nodeEls.get(start.id);
+      if (el) el.setAttribute('transform', `translate(${next.x} ${next.y})`);
+    }
     updateCables();
   }
 
   function endNodeDrag() {
     const d = drag;
-    const el = nodeEls.get(d.nodeId);
-    if (el) el.classList.remove('dragging');
-    // Persist view state (never routing state).
-    const pos = positions.get(d.nodeId);
-    layout.set(d.nodeId, pos.x, pos.y);
+    for (const { id } of d.group) nodeEls.get(id)?.classList.remove('dragging');
     drag = null;
-    if (pos.x === d.origX && pos.y === d.origY) registerNodeTap(d.nodeId);
+    const pos = positions.get(d.nodeId);
+    if (pos.x !== d.origX || pos.y !== d.origY) {
+      // Persist view state (never routing state), in one write for the group.
+      layout.setMany(new Map(d.group.map(({ id }) => [id, positions.get(id)])));
+      return;
+    }
+    if (d.onClick === 'remove') setSelection([...selectedNodeIds].filter((id) => id !== d.nodeId));
+    else if (d.onClick === 'narrow') setSelectedNode(d.nodeId);
+    if (!d.additive) registerNodeTap(d.nodeId);
+  }
+
+  // --- selection frame (left-drag on empty canvas) ---
+
+  function startMarquee(e, additive) {
+    drag = {
+      kind: 'marquee',
+      start: toSvgPoint(e),
+      base: additive ? [...selectedNodeIds] : [],
+      rect: null
+    };
+    svg.setPointerCapture(e.pointerId);
+  }
+
+  function moveMarquee(e) {
+    const d = drag;
+    const at = toSvgPoint(e);
+    const box = {
+      x: Math.min(d.start.x, at.x), y: Math.min(d.start.y, at.y),
+      width: Math.abs(at.x - d.start.x), height: Math.abs(at.y - d.start.y)
+    };
+    // Under a few pixels it is still a click on the canvas.
+    if (!d.rect && Math.hypot(box.width, box.height) * viewport.zoom < PAN_THRESHOLD) return;
+    if (!d.rect) {
+      d.rect = svgEl('rect', { class: 'selection-frame' });
+      svg.appendChild(d.rect);
+    }
+    d.rect.setAttribute('x', box.x);
+    d.rect.setAttribute('y', box.y);
+    d.rect.setAttribute('width', box.width);
+    d.rect.setAttribute('height', box.height);
+    setSelection([...d.base, ...framedNodes(nodeBoxes(), box)]);
+  }
+
+  function endMarquee() {
+    if (drag.rect) drag.rect.remove();
+    drag = null;
   }
 
   // --- cable drag (create connection) ---
@@ -1230,6 +1304,7 @@ export function createRoutingModule(hub) {
   function onKeyDown(e) {
     if (e.key === 'Escape') {
       if (contextMenuEl) closeContextMenu();
+      else if (selectedNodeIds.size && !isEditableTarget(e.target)) setSelectedNode(null);
       return;
     }
     // Never interfere with normal keyboard editing in text controls.
@@ -1237,7 +1312,13 @@ export function createRoutingModule(hub) {
 
     const ctrl = e.ctrlKey || e.metaKey;
     if (ctrl && (e.key === 'c' || e.key === 'C')) {
-      if (selectedNodeId) copyNode(selectedNodeId);
+      const sole = soleSelectedNode();
+      if (sole) copyNode(sole);
+      e.preventDefault();
+      return;
+    }
+    if (ctrl && (e.key === 'a' || e.key === 'A')) {
+      setSelection(nodeBoxes().map((box) => box.id));
       e.preventDefault();
       return;
     }
@@ -1258,10 +1339,12 @@ export function createRoutingModule(hub) {
       return;
     }
 
-    // Native/system nodes are not in hub.nodes, so deleteNode ignores them.
-    if (selectedNodeId && deleteNode(selectedNodeId)) {
-      e.preventDefault();
-    }
+    // Native/system nodes are not in hub.nodes, so deleteNode ignores them and
+    // they stay selected. Every other selected node goes, in one undo step --
+    // the edit history settles after the last write.
+    let deleted = false;
+    for (const id of [...selectedNodeIds]) deleted = deleteNode(id) || deleted;
+    if (deleted) e.preventDefault();
   }
 
   // ---------- helpers ----------
@@ -1681,6 +1764,7 @@ export function createRoutingModule(hub) {
     else if (drag.kind === 'cable') moveCableDrag(e);
     else if (drag.kind === 'unplug') moveUnplugDrag(e);
     else if (drag.kind === 'pan') movePan(e);
+    else if (drag.kind === 'marquee') moveMarquee(e);
   }
 
   function onPointerUp(e) {
@@ -1695,6 +1779,7 @@ export function createRoutingModule(hub) {
     else if (drag.kind === 'cable') endCableDrag(e);
     else if (drag.kind === 'unplug') endUnplugDrag(e);
     else if (drag.kind === 'pan') endPan();
+    else if (drag.kind === 'marquee') endMarquee();
   }
 
   function onNetworkChange() {
@@ -1746,7 +1831,7 @@ export function createRoutingModule(hub) {
     gridRects = [];
     viewport = { x: 0, y: 0, zoom: 1 };
     selectedCableId = null;
-    selectedNodeId = null;
+    selectedNodeIds = new Set();
     contextNodeId = null;
     clipboard = null;
     rightDown = null;

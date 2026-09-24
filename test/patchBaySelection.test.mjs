@@ -379,3 +379,101 @@ test('right-drag empty canvas still pans and does not open a node menu', () => {
   assert.ok(!findClass(container, 'node-context-menu'), 'no menu opened after pan');
   mod.unmount();
 });
+
+// ---- several nodes (asked 2026-09-24: "shift, ctrl, and drawing a zone") -----
+const at = (layer, id) => {
+  const [, x, y] = /translate\(([-\d.]+) ([-\d.]+)\)/.exec(findNode(layer, id).getAttribute('transform'));
+  return { x: Number(x), y: Number(y) };
+};
+const selectedIds = (layer) => layer.children.filter((c) => c._classSet.has('selected')).map((c) => c.dataset.nodeId).sort();
+
+test('Shift + click adds a node, Ctrl + click on a selected one takes it out', () => {
+  const hub = setupHub();
+  hub.nodes.create('vst');
+  hub.nodes.create('vst');
+  hub.nodes.create('mixer');
+  const { svg, mod } = mount(hub);
+  const layer = nodesLayerOf(svg);
+  clickNode(svg, findNode(layer, 'vst-001'));
+  clickNode(svg, findNode(layer, 'vst-002'), { shiftKey: true });
+  clickNode(svg, findNode(nodesLayerOf(svg), 'mixer-001'), { ctrlKey: true });
+  assert.deepEqual(selectedIds(nodesLayerOf(svg)), ['mixer-001', 'vst-001', 'vst-002']);
+  clickNode(svg, findNode(nodesLayerOf(svg), 'vst-002'), { ctrlKey: true });
+  assert.deepEqual(selectedIds(nodesLayerOf(svg)), ['mixer-001', 'vst-001']);
+  clickNode(svg, findNode(nodesLayerOf(svg), 'vst-001'));
+  assert.deepEqual(selectedIds(nodesLayerOf(svg)), ['vst-001'], 'a plain click narrows the selection to that node');
+  mod.unmount();
+});
+
+test('dragging one of several selected nodes moves them all, by the same amount', () => {
+  const hub = setupHub();
+  hub.nodes.create('vst');
+  hub.nodes.create('vst');
+  hub.nodes.create('vst');
+  const { svg, mod } = mount(hub);
+  const layer = nodesLayerOf(svg);
+  clickNode(svg, findNode(layer, 'vst-001'));
+  clickNode(svg, findNode(layer, 'vst-002'), { shiftKey: true });
+  const before = Object.fromEntries(['vst-001', 'vst-002', 'vst-003'].map((id) => [id, at(layer, id)]));
+  fire(svg, 'pointerdown', { button: 0, clientX: 0, clientY: 0, target: nodePanel(findNode(layer, 'vst-002')) });
+  fire(svg, 'pointermove', { clientX: 40, clientY: 30 });
+  fire(svg, 'pointerup', {});
+  const after = hub.settings.get('networkLayout');
+  after['vst-003'] ??= at(nodesLayerOf(svg), 'vst-003');
+  for (const id of ['vst-001', 'vst-002']) {
+    assert.deepEqual([after[id].x - before[id].x, after[id].y - before[id].y], [40, 30], `${id} moved`);
+  }
+  assert.deepEqual(after['vst-003'], before['vst-003'], 'the node left out stays');
+  assert.deepEqual(selectedIds(nodesLayerOf(svg)), ['vst-001', 'vst-002'], 'and the selection survives the drag');
+  mod.unmount();
+});
+
+test('Delete removes every selected node, and leaves the MiniLab', () => {
+  const hub = setupHub();
+  hub.nodes.create('vst');
+  hub.nodes.create('mixer');
+  const { svg, mod } = mount(hub);
+  const layer = nodesLayerOf(svg);
+  clickNode(svg, findNode(layer, 'vst-001'));
+  clickNode(svg, findNode(layer, 'mixer-001'), { shiftKey: true });
+  clickNode(svg, findNode(layer, 'minilab-3'), { shiftKey: true });
+  fireKey('Delete', svg);
+  assert.equal(hub.nodes.get('vst-001'), null);
+  assert.equal(hub.nodes.get('mixer-001'), null);
+  assert.ok(hub.network.getNode('minilab-3'), 'a system node is never deleted');
+  mod.unmount();
+});
+
+test('a frame drawn on the canvas selects the nodes it touches; Escape selects none', () => {
+  const hub = setupHub();
+  hub.nodes.create('vst');
+  hub.nodes.create('vst');
+  const { svg, mod } = mount(hub);
+  const a = at(nodesLayerOf(svg), 'vst-001');
+  // From just above-left of VST 1 to its top-left corner area: VST 1 only.
+  fire(svg, 'pointerdown', { button: 0, target: svg, clientX: a.x - 20, clientY: a.y - 20 });
+  fire(svg, 'pointermove', { clientX: a.x + 10, clientY: a.y + 10 });
+  const frame = svg.children.find((c) => c._classSet?.has('selection-frame'));
+  assert.ok(frame, 'the frame is drawn');
+  assert.deepEqual(selectedIds(nodesLayerOf(svg)), ['vst-001']);
+  fire(svg, 'pointerup', {});
+  assert.ok(!svg.children.includes(frame), 'and removed on release');
+
+  // Everything, by a frame over the whole canvas.
+  fire(svg, 'pointerdown', { button: 0, target: svg, clientX: -5000, clientY: -5000 });
+  fire(svg, 'pointermove', { clientX: 5000, clientY: 5000 });
+  fire(svg, 'pointerup', {});
+  assert.deepEqual(selectedIds(nodesLayerOf(svg)), ['minilab-3', 'vst-001', 'vst-002']);
+  fireKey('Escape', svg);
+  assert.deepEqual(selectedIds(nodesLayerOf(svg)), []);
+  mod.unmount();
+});
+
+test('Ctrl+A selects every node', () => {
+  const hub = setupHub();
+  hub.nodes.create('vst');
+  const { svg, mod } = mount(hub);
+  fireKey('a', svg, { ctrlKey: true });
+  assert.deepEqual(selectedIds(nodesLayerOf(svg)), ['minilab-3', 'vst-001']);
+  mod.unmount();
+});

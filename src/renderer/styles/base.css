@@ -1187,6 +1187,15 @@ body {
   stroke-width: 2.6;
   opacity: 1;
 }
+/* The frame a left-drag on empty Patch Bay canvas draws to select nodes. */
+.selection-frame {
+  fill: color-mix(in srgb, var(--accent) 10%, transparent);
+  stroke: var(--accent);
+  stroke-width: 1;
+  stroke-dasharray: 4 3;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
 .cable.temp {
   stroke: var(--accent);
   stroke-width: 2;
