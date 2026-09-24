@@ -356,6 +356,42 @@ export class ControlBindingManager {
   }
 
   /**
+   * Bind a control to a parameter without Learn: the agent channel's
+   * `set-binding`, which names the parameter instead of touching it.
+   *
+   * It ends where a capture ends. It plugged no cable, and the binding it wrote
+   * was drawn dashed and did nothing until someone cabled the knob by hand; an
+   * open bindings bar did not redraw either. So the cable is plugged here as the
+   * capture plugs it -- before the binding, one history step for both -- and
+   * taken back out when the binding is refused, and the bar is told.
+   */
+  bind(nodeId, value) {
+    const binding = normalizeControlBinding(value);
+    const node = this.hub.nodes.get(nodeId);
+    if (!node || node.type !== 'vst') return { ok: false, reason: 'node-not-found' };
+    if (!binding) return { ok: false, reason: 'binding-refused' };
+    const plugin = node.content.plugins?.find((item) => item.id === binding.pluginInstanceId);
+    if (!plugin || plugin.pluginId !== binding.pluginId) return { ok: false, reason: 'plugin-not-found' };
+    let plugged = null;
+    if (!this.isConnected(nodeId, binding.sourceControlId)) {
+      const cable = this.cableFor(nodeId, binding.sourceControlId);
+      if (!cable) return { ok: false, reason: 'unknown-source' };
+      try {
+        if (!this.hub.network.connect(cable.from, cable.portId, nodeId, 'ctrl-in')) return { ok: false, reason: 'cable-refused' };
+      } catch (error) {
+        return { ok: false, reason: 'cable-refused', message: String(error?.message || error) };
+      }
+      plugged = cable;
+    }
+    if (!this.hub.nodes.setControlBinding(nodeId, { ...binding, pluginName: binding.pluginName || plugin.name || '' })) {
+      if (plugged) this.hub.network.disconnect(plugged.from, plugged.portId, nodeId, 'ctrl-in');
+      return { ok: false, reason: 'binding-refused' };
+    }
+    this._changed(nodeId);
+    return { ok: true, binding: this.bindingFor(nodeId, binding.sourceControlId), plugged: Boolean(plugged) };
+  }
+
+  /**
    * Narrow what a control sweeps: `edge` 'min' or 'max' takes the parameter's
    * value as it stands now for that end, 'full' gives the whole parameter back.
    *

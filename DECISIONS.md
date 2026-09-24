@@ -2893,7 +2893,8 @@ Two alternatives were refused:
 - Under Sequencer, recording a player through an armed track (D-052) takes the
   player's own Play as well: the price D-051 refused for everyone, paid only by
   whoever chose it.
-- The agent channel does not set it yet.
+- The agent channel sets it (`play-scope`, since 2026-09-25) and reads it in
+  `describe` → `sequencer.playScope`.
 
 **Proof in the code** — `cmdSetPlayScope` in `native/audio-engine/src/engine.cpp`,
 `AudioPlayer::render` in `audio_player.cpp`, `processMidi` and

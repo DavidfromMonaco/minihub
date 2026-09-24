@@ -168,15 +168,22 @@ export function describeSequencer(hub) {
   const state = hub.sequencer?.model?.snapshot?.() || hub.settings?.get?.('sequencerState') || null;
   if (!state || typeof state !== 'object') return null;
   const tracks = Array.isArray(state.tracks) ? state.tracks : [];
+  // What Play plays (D-053) is a setting of the application, read from the
+  // controller that applies it; the loop is the arrangement's own.
+  const loop = state.loop && typeof state.loop === 'object' ? state.loop : null;
   return {
     bpm: hub.settings?.get?.('transportBpm') ?? null,
+    playScope: hub.sequencer?.playScope ?? hub.settings?.get?.('playScope') ?? 'all',
+    loop: loop ? { enabled: loop.enabled === true, startPpq: loop.startPpq, endPpq: loop.endPpq } : null,
     tracks: tracks.map((track) => ({
       id: track.id,
       name: track.name,
       type: track.type,
+      inputId: track.inputId || '',
       outputId: track.outputId || '',
       muted: track.muted === true,
       armed: track.armed === true,
+      monitored: track.monitored === true,
       volume: track.volume,
       clips: (Array.isArray(track.clips) ? track.clips : []).map((clip) => ({
         id: clip.id,

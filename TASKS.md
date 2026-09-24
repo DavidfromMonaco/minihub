@@ -114,10 +114,14 @@ the author tests).
   folder, not in the project. A MiniHub Codex opens with `start` uses that
   same folder (its logs, 2026-09-13).
 - Optional: an MCP wrapper, so Codex calls requests as tools.
-- Gap: `set-binding` plugs no cable (Learn does, since 2026-09-14) and does not
-  redraw an open bindings bar.
-- Gap: the sequencer's Loop, From and To cannot be set through the channel,
-  nor read in `describe` (reported by Codex for Metamorphose).
+- Closed 2026-09-25, on the author's word ("mets à jour tout ce qui concerne le
+  mode agent"): `set-binding` plugs its cable and redraws the bar, and takes a
+  `range`; `clear-binding` unplugs; `play-scope` and `loop` are new kinds,
+  both read back in `describe`, which also gives a track's input and
+  monitoring. `../minihub-agent/AGENTS.md` describes all of it, the Audio
+  Player, the transport's `pause`, `go-end` and `bars`, D-045 and D-054, and
+  `outils/verify-all.mjs` checks the new kinds. Checked by `npm test` only:
+  not run against the application, which the author had open at the time.
 
 **Splice asks to log in again — in the author's test** — diagnosed 2026-09-16. Splice keeps its login
 in its own folder under AppData, and Windows files that folder inside a
@@ -138,9 +142,9 @@ the login was refused the next day: the likely cause, not proven.
   MiniHub directly.
 - Left alone on purpose: the old Splice copies in Codex's and the Claude app's
   storage.
-- Outside this repository, unchanged: `../minihub-agent/AGENTS.md` and
-  `minihub.mjs` still say a direct launch leaves plugin logins in Codex's
-  storage — the author's to update.
+- `../minihub-agent/AGENTS.md` says so since 2026-09-25; `minihub.mjs` still
+  warns when `launchedInsidePackage` is named, which now means the relaunch
+  did not happen.
 
 **Learning a knob in one window: the bindings bar docked under the plugin
 editor** — 7 of 8 steps. The bar opens under every plugin window, follows it,
@@ -202,10 +206,3 @@ need native work. Not started.
 2026-09-18 while building templates: when no MIDI output is selected on the
 controller's page, `midiManager.send` answers `false` and nothing says so.
 Reported to the author, not acted on.
-
-**`../minihub-agent/AGENTS.md` is behind** — outside this repository, the
-author's to update. It describes neither the Plays scope, nor a binding's
-range (the channel cannot set either), nor `create-node audio-player` with
-its content `{ filePath, loop, level, muted }` and the `audio-player` request
-(`play`, `pause`, `stop`, `seek` with `seconds`), nor the transport's
-`pause`, `go-end` and `bars`.

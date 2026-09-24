@@ -3,6 +3,7 @@ import { getVstParametersForNode } from './vstParameterDiscovery.js';
 import { CONTROL_BINDING_VERSION } from './controlBindings.js';
 import { updateMasterOutput } from './masterOutput.js';
 import { handleOneRingRequest } from './oneRingRequests.js';
+import { PLAY_SCOPES } from './sequencerController.js';
 
 /**
  * The one door an outside agent knocks on.
@@ -41,7 +42,7 @@ const MUTATING = new Set([
   'create-node', 'delete-node', 'connect', 'disconnect',
   'add-plugin', 'remove-plugin', 'set-parameter', 'move-plugin', 'set-plugin-bypass',
   'add-track', 'remove-track', 'set-track', 'add-clip',
-  'set-node-content', 'set-binding', 'clear-binding', 'plugin', 'one-ring', 'patch-bay'
+  'set-node-content', 'set-binding', 'clear-binding', 'plugin', 'one-ring', 'patch-bay', 'loop'
 ]);
 
 /**
@@ -55,7 +56,7 @@ const MUTATING = new Set([
  * stale id there is the normal case rather than the dangerous one.
  */
 const UNGATED = new Set([
-  'transport', 'audio-player', 'set-tempo', 'set-master', 'open-editor', 'close-editor',
+  'transport', 'audio-player', 'play-scope', 'set-tempo', 'set-master', 'open-editor', 'close-editor',
   'project', 'export', 'cancel-export', 'scan-plugins', 'devices',
   'show-window', 'open-clip-editor', 'close-clip-editor', 'browser'
 ]);
@@ -166,7 +167,9 @@ function quitRequest(hub, request) {
 
 const trackSummary = (track) => ({
   id: track.id, name: track.name, type: track.type,
-  outputId: track.outputId || '', muted: track.muted === true, volume: track.volume
+  inputId: track.inputId || '', outputId: track.outputId || '',
+  armed: track.armed === true, monitored: track.monitored === true,
+  muted: track.muted === true, volume: track.volume
 });
 
 const endpoint = (value) => (value && typeof value === 'object'
@@ -434,21 +437,38 @@ export async function handleAgentRequest(hub, request = {}) {
   if (kind === 'set-binding') {
     // `version` is filled in here rather than asked for: it is a fact about the
     // storage format, and a caller that had to know it would be a caller that
-    // breaks when it changes.
-    const ok = hub.nodes.setControlBinding(String(request.nodeId || ''), {
+    // breaks when it changes. The binding goes through the same manager a
+    // capture does, so the cable is plugged and the bindings bar redrawn.
+    //
+    // `range` is the part of the parameter the control sweeps, both ends on
+    // the parameter's 0..1 scale -- what the bar's Low and High set by reading
+    // the plugin. Left out, the control sweeps all of it.
+    if (!hub.control?.bind) return failed('unsupported-request');
+    const range = request.range && typeof request.range === 'object' ? {
+      min: Number(request.range.min), max: Number(request.range.max),
+      minText: String(request.range.minText || ''), maxText: String(request.range.maxText || '')
+    } : null;
+    const result = hub.control.bind(String(request.nodeId || ''), {
       version: CONTROL_BINDING_VERSION,
       sourceControlId: String(request.sourceControlId || ''),
       pluginInstanceId: String(request.pluginInstanceId || ''),
       pluginId: String(request.pluginId || ''),
       parameterId: String(request.parameterId || ''),
       pluginName: String(request.pluginName || ''),
-      parameterName: String(request.parameterName || '')
+      parameterName: String(request.parameterName || ''),
+      ...(range ? { range } : {})
     });
-    return ok ? { ok: true } : failed('binding-refused');
+    if (!result.ok) return failed(result.reason, result.message);
+    if (range && !result.binding?.range) {
+      return { ...failed('range-refused', 'both ends between 0 and 1, apart, and not 0 to 1'), binding: result.binding };
+    }
+    return { ok: true, binding: result.binding, plugged: result.plugged };
   }
 
   if (kind === 'clear-binding') {
-    return hub.nodes.clearControlBinding(String(request.nodeId || ''), String(request.sourceControlId || ''))
+    // Clear, as the bar's button does: the binding, and the cable it travelled by.
+    if (!hub.control?.clear) return failed('unsupported-request');
+    return hub.control.clear(String(request.nodeId || ''), String(request.sourceControlId || ''))
       ? { ok: true } : failed('binding-not-found');
   }
 
@@ -477,6 +497,34 @@ export async function handleAgentRequest(hub, request = {}) {
     if (hub.nodes?.get?.(nodeId)?.type !== 'audio-player') return failed('node-not-found');
     const result = await hub.audioPlayers?.transport?.(nodeId, String(request.operation || ''), Number(request.seconds));
     return result?.ok === false ? failed(result.reason || 'refused') : { ok: true };
+  }
+
+  if (kind === 'play-scope') {
+    // What Play plays, the header's Plays list (D-053): a way of listening kept
+    // in the application's settings, not an edit of the project.
+    const scope = String(request.scope || '');
+    if (!PLAY_SCOPES.includes(scope)) return failed('unknown-scope', `scopes: ${PLAY_SCOPES.join(', ')}`);
+    if (typeof hub.sequencer?.setPlayScope !== 'function') return failed('unsupported-request');
+    return { ok: true, scope: hub.sequencer.setPlayScope(scope) ?? scope };
+  }
+
+  if (kind === 'loop') {
+    // The Sequencer's Loop, From and To, as its fields set them: snapped to the
+    // arrangement's grid, and never shorter than one step of it.
+    const model = hub.sequencer?.model;
+    if (typeof model?.setLoop !== 'function') return failed('unsupported-request');
+    const changes = {};
+    if ('enabled' in request) changes.enabled = request.enabled === true;
+    for (const key of ['startPpq', 'endPpq']) {
+      if (!(key in request)) continue;
+      const value = Number(request[key]);
+      if (!Number.isFinite(value) || value < 0) return failed('invalid-position', `${key} is a number of quarter notes from 0`);
+      changes[key] = value;
+    }
+    if (!Object.keys(changes).length) return failed('nothing-to-change', 'enabled, startPpq or endPpq');
+    const loop = model.setLoop(changes);
+    hub.sequencer.changed?.();
+    return { ok: true, loop };
   }
 
   if (kind === 'set-tempo') {
