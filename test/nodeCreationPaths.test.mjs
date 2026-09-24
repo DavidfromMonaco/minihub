@@ -12,7 +12,7 @@ import { makeHub } from './helpers.mjs';
  * selected.
  */
 
-import { makeEl, installDom, findClass, lastCreatedWithClass } from './domShim.mjs';
+import { makeEl, installDom, findClass, lastCreatedWithClass, menuEntry, pickEntry } from './domShim.mjs';
 
 installDom();
 const { createRoutingModule } = await import('../src/renderer/js/modules/routing/routingModule.js');
@@ -66,17 +66,9 @@ function fireContextMenu(svg, clientX = 400, clientY = 300) {
 }
 
 function clickMenuLabel(label) {
-  const menu = lastCreatedWithClass('node-context-menu');
-  const stack = [...menu.children];
-  while (stack.length) {
-    const n = stack.pop();
-    if (n._classSet.has('ctx-item') && n.textContent === label) {
-      [...n._listeners['click']].forEach((fn) => fn());
-      return true;
-    }
-    stack.push(...n.children);
-  }
-  return false;
+  if (!menuEntry(label)) return false;
+  pickEntry(label);
+  return true;
 }
 
 // ---- tests ------------------------------------------------------------------
@@ -112,7 +104,7 @@ test('toolbar and context menu produce equivalent nodes', () => {
     const { container, svg } = makeContainer();
     createRoutingModule(hub).mount(container);
     fireContextMenu(svg);
-    assert.ok(clickMenuLabel('VST'), 'the New Node submenu must offer VST');
+    assert.ok(clickMenuLabel('VST'), 'the canvas menu must offer VST');
     return hub;
   })();
 

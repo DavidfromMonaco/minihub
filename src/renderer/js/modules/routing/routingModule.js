@@ -14,9 +14,12 @@
  *     or removes one; left-drag on empty canvas draws a frame that selects every
  *     node it touches; dragging a selected node moves the whole selection;
  *     Delete removes them, Ctrl+A selects all, Escape none
- *   - Ctrl+C / Ctrl+V to copy/paste a selected dynamic node (internal clipboard)
- *   - right-click a node -> node context menu (Copy / Delete)
- *   - right-click empty canvas -> canvas context menu (New Node / Paste)
+ *   - Ctrl+C / Ctrl+V copy and paste the selected nodes, Ctrl+D duplicates
+ *     them (internal clipboard; cables are never copied)
+ *   - right-click a node -> its menu, acting on the selection it belongs to
+ *   - right-click a cable -> Disconnect
+ *   - right-click or double-click empty canvas -> the node types, narrowed by
+ *     typing, then Paste, Select All, Align, Show All Nodes
  *   - right-drag empty canvas -> pan (click vs drag disambiguated by threshold)
  *
  * Rendering uses native SVG (no framework): nodes are `<g>` groups positioned
@@ -25,6 +28,7 @@
 import { NetworkLayout, separateOverlaps, alignPositions, framedNodes, NODE_GAP } from '../../core/networkLayout.js';
 import { NetworkViewport } from '../../core/networkViewport.js';
 import { GRID_SIZE, dragPosition } from '../../core/grid.js';
+import { closeContextMenu, openContextMenu } from '../../ui/contextMenu.js';
 import { getNodeType, listNodeTypes, listOmniBoxCategories } from '../../core/nodeTypes.js';
 import { AUDIO_PLAYER_TYPE, fileNameOf } from '../../core/audioPlayerState.js';
 import {
@@ -109,8 +113,8 @@ export function createRoutingModule(hub) {
   // every node it touches, and a drag moves them all.
   let selectedNodeIds = new Set();
   let lastNodeTap = null;    // { nodeId, at } - pointer-level double-tap detection
-  let contextNodeId = null; // right-click context-menu target (independent of selection)
-  let contextMenuEl = null;
+  let lastCanvasTap = null; // { at, x, y } - double-click on the empty canvas
+  let rightPressCableId = null; // the cable a right press landed on, for its menu
   let suppressContextMenu = false; // suppress menu right after a right-drag pan
   let suppressTimer = null;
   let drag = null; // node drag, cable drag, or pan state
@@ -173,7 +177,6 @@ export function createRoutingModule(hub) {
     // Clear stale selection/context target if the node disappeared for any
     // reason (deletion elsewhere, network change, etc.).
     for (const id of [...selectedNodeIds]) if (!ids.has(id)) selectedNodeIds.delete(id);
-    if (contextNodeId && !ids.has(contextNodeId)) contextNodeId = null;
 
     selectedCableId = null;
     nodeEls.clear();
@@ -509,7 +512,6 @@ export function createRoutingModule(hub) {
     if (!isDeletable(nodeId)) return false;
     hub.nodes.delete(nodeId);
     if (selectedNodeIds.has(nodeId)) setSelection([...selectedNodeIds].filter((id) => id !== nodeId));
-    if (contextNodeId === nodeId) contextNodeId = null;
     return true;
   }
 
@@ -527,30 +529,85 @@ export function createRoutingModule(hub) {
     setSelection(id ? [id] : []);
   }
 
-  /** The one selected node, or null when there are none or several. */
-  function soleSelectedNode() {
-    return selectedNodeIds.size === 1 ? [...selectedNodeIds][0] : null;
+  // ---------- clipboard / copy / paste / duplicate ----------
+
+  /** The copyable nodes among `ids`: the controller and the output are not. */
+  function copyableIds(ids) {
+    return [...ids].filter((id) => isCopyable(id));
   }
 
-  // ---------- clipboard / copy / paste ----------
-
-  /** Copy a dynamic node into the internal clipboard (native nodes cannot be copied). */
-  function copyNode(nodeId) {
-    if (!isCopyable(nodeId)) return;
-    const inst = hub.nodes.get(nodeId);
-    if (!inst) return;
-    clipboard = {
-      type: inst.type,
-      content: inst.content ? JSON.parse(JSON.stringify(inst.content)) : null
+  /**
+   * What copying these nodes keeps: each one's type and content, and where it
+   * sits against the group's top-left corner, so several nodes paste in the
+   * arrangement they were copied in. Cables are not copied, not even between
+   * two copied nodes: a paste is new nodes, never new routing.
+   */
+  function snapshotNodes(ids) {
+    const found = copyableIds(ids)
+      .map((id) => ({ instance: hub.nodes.get(id), pos: positions.get(id) || layout.get(id, 0) }))
+      .filter((entry) => entry.instance);
+    if (!found.length) return null;
+    const origin = {
+      x: Math.min(...found.map((entry) => entry.pos.x)),
+      y: Math.min(...found.map((entry) => entry.pos.y))
+    };
+    return {
+      origin,
+      items: found.map(({ instance, pos }) => ({
+        type: instance.type,
+        content: instance.content ? JSON.parse(JSON.stringify(instance.content)) : null,
+        dx: pos.x - origin.x,
+        dy: pos.y - origin.y
+      }))
     };
   }
 
-  /** Paste the clipboard into a new independent instance at a world position. */
+  /** Copy nodes into the internal clipboard. Returns whether anything was copied. */
+  function copyNodes(ids) {
+    const snapshot = snapshotNodes(ids);
+    if (snapshot) clipboard = snapshot;
+    return Boolean(snapshot);
+  }
+
+  /**
+   * New, independent nodes from a snapshot, the group's corner at `worldPos`,
+   * and those nodes selected. The first node is nudged off anything it would
+   * cover, and the group moves with it.
+   */
+  function pasteSnapshot(snapshot, worldPos) {
+    if (!snapshot?.items?.length) return [];
+    const [first] = snapshot.items;
+    const wanted = { x: worldPos.x + first.dx, y: worldPos.y + first.dy };
+    const landed = resolveNodePos(first.type, wanted);
+    const shift = { x: landed.x - wanted.x, y: landed.y - wanted.y };
+    const made = new Map();
+    for (const item of snapshot.items) {
+      const instance = hub.nodes.createFromSnapshot({ type: item.type, content: item.content });
+      if (!instance) continue;
+      const pos = { x: worldPos.x + item.dx + shift.x, y: worldPos.y + item.dy + shift.y };
+      positions.set(instance.id, pos);
+      made.set(instance.id, pos);
+    }
+    if (!made.size) return [];
+    layout.setMany(made);
+    setSelection([...made.keys()]);
+    render();
+    return [...made.keys()];
+  }
+
+  /** Paste the clipboard at a world position. */
   function pasteNode(worldPos) {
-    if (!clipboard) return;
-    const instance = hub.nodes.createFromSnapshot(clipboard);
-    if (!instance) return;
-    placeNode(instance, resolveNodePos(clipboard.type, worldPos));
+    return pasteSnapshot(clipboard, worldPos);
+  }
+
+  /**
+   * Duplicate: a copy beside the original, in one gesture, and the clipboard
+   * left as it was -- what Ctrl+D does in the Sequencer and the Clip Editor.
+   */
+  function duplicateNodes(ids) {
+    const snapshot = snapshotNodes(ids);
+    if (!snapshot) return [];
+    return pasteSnapshot(snapshot, { x: snapshot.origin.x + GRID_SIZE * 2, y: snapshot.origin.y + GRID_SIZE * 2 });
   }
 
   /** Create a new empty dynamic node of a type at a world position. */
@@ -628,204 +685,124 @@ export function createRoutingModule(hub) {
     pasteNode(pointerWorldOrCenter());
   }
 
-  // ---------- context menu ----------
+  // ---------- context menus ----------
+  //
+  // Built on ui/contextMenu.js since 2026-09-25, when the author found the
+  // hand-built ones unergonomic: adding a node took three hover submenus
+  // (OmniBox > family > type), a node offered Copy and Delete only, and a cable
+  // had no menu. What node editors do instead: one flat list of the node types
+  // under their families, narrowed by typing, on a right-click or a
+  // double-click of the empty canvas; on a node, what can be done to it -- or
+  // to the whole selection it belongs to; on a cable, unplugging it.
 
-  function closeContextMenu() {
-    if (contextMenuEl) {
-      contextMenuEl.remove();
-      contextMenuEl = null;
-    }
-    contextNodeId = null;
+  function nodeName(nodeId) {
+    return hub.nodes?.get(nodeId)?.name || hub.network.getNode?.(nodeId)?.name || nodeId;
   }
 
-  function openSubmenuToAvailableSide(wrap) {
-    const submenu = [...wrap.children].find((child) => child.classList?.contains('ctx-sub'));
-    if (!submenu) return;
-    wrap.classList.add('ctx-expanded');
-    submenu.classList.remove('ctx-flip-left');
-    submenu.style.left = '100%';
-    submenu.style.right = 'auto';
-    submenu.style.top = '-4px';
-    const viewport = container.getBoundingClientRect();
-    const parent = wrap.getBoundingClientRect();
-    const width = submenu.offsetWidth || 140;
-    const height = submenu.offsetHeight || 40;
-    const rightFits = parent.right + width <= viewport.right - 8;
-    const leftFits = parent.left - width >= viewport.left + 8;
-    if (!rightFits && leftFits) {
-      submenu.classList.add('ctx-flip-left');
-      submenu.style.left = 'auto';
-      submenu.style.right = '100%';
-    }
-    else if (!rightFits) {
-      const desiredLeft = Math.max(viewport.left + 8, Math.min(parent.right, viewport.right - width - 8));
-      submenu.style.left = `${desiredLeft - parent.left}px`;
-      submenu.style.right = 'auto';
-    }
-    const top = Math.max(viewport.top + 8, Math.min(parent.top - 4, viewport.bottom - height - 8));
-    submenu.style.top = `${top - parent.top}px`;
+  /** The first plugin of a VST node, when it is loaded and its window can open. */
+  function readyPrimaryPlugin(nodeId) {
+    if (hub.nodes?.get(nodeId)?.type !== 'vst') return null;
+    const primary = hub.nodes.getChain(nodeId)?.plugins?.[0];
+    return primary && hub.engine.getInstanceStatus(nodeId, primary.id) === 'ready' ? primary : null;
   }
 
-  function closeSubmenuBranch(wrap) {
-    wrap.classList.remove('ctx-expanded');
-    const pending = [...wrap.children];
-    while (pending.length) {
-      const child = pending.pop();
-      if (child.classList?.contains('ctx-submenu')) child.classList.remove('ctx-expanded');
-      pending.push(...(child.children || []));
-    }
+  /**
+   * What a right-click on a node acts on: the selection when that node is in
+   * it, otherwise that node alone -- which it selects, as a file manager or a
+   * DAW does, so the menu never acts on something that is not highlighted.
+   */
+  function menuTargets(nodeId) {
+    if (!selectedNodeIds.has(nodeId)) setSelectedNode(nodeId);
+    return [...selectedNodeIds];
   }
 
-  function armSubmenu(wrap) {
-    let closeTimer = null;
-    wrap.addEventListener('pointerenter', () => {
-      if (closeTimer) clearTimeout(closeTimer);
-      const parentPanel = wrap.parentElement || wrap.parentNode;
-      if (parentPanel) {
-        [...parentPanel.children].forEach((sibling) => {
-          if (sibling !== wrap && sibling.classList?.contains('ctx-submenu')) {
-            closeSubmenuBranch(sibling);
-          }
-        });
-      }
-      openSubmenuToAvailableSide(wrap);
-    });
-    wrap.addEventListener('pointerleave', () => {
-      closeTimer = setTimeout(() => closeSubmenuBranch(wrap), 180);
-    });
+  function deleteNodes(ids) {
+    let deleted = false;
+    for (const id of ids) deleted = deleteNode(id) || deleted;
+    return deleted;
   }
 
-  /** Position a menu near the pointer, clamped inside the visible container. */
-  function positionMenu(menu, clientX, clientY) {
-    const r = container.getBoundingClientRect();
-    const mw = menu.offsetWidth || 150;
-    const mh = menu.offsetHeight || 40;
-    let left = clientX - r.left;
-    let top = clientY - r.top;
-    if (left + mw > r.width - 8) left = r.width - mw - 8;
-    if (top + mh > r.height - 8) top = r.height - mh - 8;
-    if (left < 8) left = 8;
-    if (top < 8) top = 8;
-    menu.style.left = `${left}px`;
-    menu.style.top = `${top}px`;
-    container.appendChild(menu);
-    contextMenuEl = menu;
+  /** Unplug every cable into or out of these nodes. One undo step, like a delete. */
+  function disconnectNodes(ids) {
+    const set = new Set(ids);
+    const cables = buildVisualConnections(hub.network)
+      .filter((cable) => set.has(cable.from.nodeId) || set.has(cable.to.nodeId));
+    for (const cable of cables) deleteConnection(hub.network, cable);
+    return cables.length;
   }
 
-  /** Node context menu. Native/system nodes expose no actions. */
   function openNodeContextMenu(nodeId, clientX, clientY) {
-    closeContextMenu();
-    const canCopy = isCopyable(nodeId);
-    const canDelete = isDeletable(nodeId);
-    if (!canCopy && !canDelete) return; // native/fixed: no Copy, no Delete
-    contextNodeId = nodeId;
-
-    const menu = document.createElement('div');
-    menu.classList.add('node-context-menu');
-
-    if (canCopy) {
-      const copy = document.createElement('button');
-      copy.classList.add('ctx-item');
-      copy.textContent = 'Copy';
-      copy.addEventListener('click', () => {
-        copyNode(nodeId);
-        closeContextMenu();
-      });
-      menu.appendChild(copy);
+    const ids = menuTargets(nodeId);
+    const several = ids.length > 1;
+    const counted = (one, verb) => (several ? `${verb} ${ids.length} Nodes` : one);
+    const cabled = hub.network.connections()
+      .some((cable) => ids.includes(cable.from.nodeId) || ids.includes(cable.to.nodeId));
+    const items = [];
+    if (!several) {
+      const plugin = readyPrimaryPlugin(nodeId);
+      if (plugin) items.push({ label: 'Open Plugin Window', action: () => hub.engine.openEditor(nodeId, plugin.id) });
+      if (hub.nodes?.get(nodeId) && hub.modules?.get(nodeId)) {
+        items.push({ label: 'Open Page', hint: 'Double-click', action: () => openNodeEditor(nodeId) });
+      }
+      if (items.length) items.push({ separator: true });
     }
-
-    if (canCopy && canDelete) {
-      const sep = document.createElement('div');
-      sep.classList.add('ctx-separator');
-      menu.appendChild(sep);
-    }
-
-    if (canDelete) {
-      const del = document.createElement('button');
-      del.classList.add('ctx-item');
-      del.textContent = 'Delete Node';
-      del.addEventListener('click', () => {
-        deleteNode(nodeId);
-        closeContextMenu();
-      });
-      menu.appendChild(del);
-    }
-
-    positionMenu(menu, clientX, clientY);
+    const copyable = copyableIds(ids).length > 0;
+    items.push(
+      { label: counted('Duplicate', 'Duplicate'), hint: 'Ctrl+D', disabled: !copyable, action: () => duplicateNodes(ids) },
+      { label: counted('Copy', 'Copy'), hint: 'Ctrl+C', disabled: !copyable, action: () => copyNodes(ids) },
+      { separator: true },
+      { label: 'Disconnect All Cables', disabled: !cabled, action: () => disconnectNodes(ids) },
+      { label: counted('Delete Node', 'Delete'), hint: 'Del', danger: true, disabled: !ids.some(isDeletable), action: () => deleteNodes(ids) }
+    );
+    openContextMenu({ x: clientX, y: clientY, items, className: 'patch-bay-menu' });
   }
 
-  /** Empty-canvas context menu: New Node submenu + Paste. */
+  function openCableContextMenu(cableId, clientX, clientY) {
+    const cable = buildVisualConnections(hub.network).find((item) => item.id === cableId);
+    if (!cable) return false;
+    setSelection([]);
+    setSelectedCable(cableId);
+    openContextMenu({
+      x: clientX,
+      y: clientY,
+      className: 'patch-bay-menu',
+      items: [
+        { heading: `${nodeName(cable.from.nodeId)} → ${nodeName(cable.to.nodeId)}` },
+        { label: 'Disconnect', hint: 'Del', danger: true, action: () => deleteConnection(hub.network, cable) }
+      ]
+    });
+    return true;
+  }
+
+  /**
+   * The empty canvas: the node types first, since adding one is what the empty
+   * canvas is for, then what acts on the whole Patch Bay. Typing narrows the
+   * list at once and Enter creates the first match, under the pointer.
+   */
   function openCanvasContextMenu(clientX, clientY) {
-    closeContextMenu();
-    contextNodeId = null;
     const r = svgRect();
     const world = screenToWorld(viewport, { x: clientX - r.left, y: clientY - r.top });
-
-    const menu = document.createElement('div');
-    menu.classList.add('node-context-menu');
-
-    // OmniBox hierarchy is driven by populated families in the Node Type Registry.
-    const subWrap = document.createElement('div');
-    subWrap.classList.add('ctx-submenu');
-    const parent = document.createElement('button');
-    parent.classList.add('ctx-item', 'ctx-parent');
-    parent.textContent = 'OmniBox';
-    const parentCaret = document.createElement('span');
-    parentCaret.classList.add('ctx-caret'); parentCaret.textContent = '›'; parent.appendChild(parentCaret);
-    const sub = document.createElement('div');
-    sub.classList.add('ctx-sub');
-    listOmniBoxCategories().forEach((category) => {
-      const categoryWrap = document.createElement('div');
-      categoryWrap.classList.add('ctx-submenu');
-      const categoryButton = document.createElement('button');
-      categoryButton.classList.add('ctx-item', 'ctx-parent');
-      categoryButton.textContent = category.label;
-      const categoryCaret = document.createElement('span');
-      categoryCaret.classList.add('ctx-caret'); categoryCaret.textContent = '›'; categoryButton.appendChild(categoryCaret);
-      const categorySub = document.createElement('div');
-      categorySub.classList.add('ctx-sub');
-      category.types.forEach((t) => {
-        const btn = document.createElement('button');
-        btn.classList.add('ctx-item');
-        btn.textContent = t.label;
-        btn.dataset.nodeType = t.id;
-        btn.addEventListener('click', () => {
-          createNodeAt(t.id, world);
-          closeContextMenu();
-        });
-        categorySub.appendChild(btn);
-      });
-      categoryWrap.appendChild(categoryButton);
-      categoryWrap.appendChild(categorySub);
-      sub.appendChild(categoryWrap);
-    });
-    subWrap.appendChild(parent);
-    subWrap.appendChild(sub);
-    armSubmenu(subWrap);
-    [...sub.children].forEach(armSubmenu);
-    menu.appendChild(subWrap);
-
-    const sep = document.createElement('div');
-    sep.classList.add('ctx-separator');
-    menu.appendChild(sep);
-
-    const paste = document.createElement('button');
-    paste.classList.add('ctx-item');
-    paste.textContent = 'Paste';
-    paste.disabled = !clipboard;
-    paste.addEventListener('click', () => {
-      if (clipboard) pasteNode(world);
-      closeContextMenu();
-    });
-    menu.appendChild(paste);
-
-    positionMenu(menu, clientX, clientY);
+    const items = [];
+    for (const category of listOmniBoxCategories()) {
+      items.push({ heading: category.label });
+      for (const type of category.types) {
+        items.push({ label: type.label, keywords: type.id, action: () => createNodeAt(type.id, world) });
+      }
+    }
+    items.push(
+      { separator: true },
+      { label: 'Paste', hint: 'Ctrl+V', disabled: !clipboard, action: () => pasteNode(world) },
+      { label: 'Select All', hint: 'Ctrl+A', disabled: nodeBoxes().length === 0, action: selectAll },
+      { separator: true },
+      { label: 'Align', keywords: 'layout arrange', action: alignNodes },
+      ...(alignUndo ? [{ label: 'Undo Align', action: undoAlign }] : []),
+      { label: 'Show All Nodes', keywords: 'reset view fit zoom', action: resetView }
+    );
+    openContextMenu({ x: clientX, y: clientY, items, search: { placeholder: 'Add a node…' }, className: 'patch-bay-menu' });
   }
 
-  function onGlobalPointerDown(e) {
-    if (contextMenuEl && !(e.target && e.target.closest && e.target.closest('.node-context-menu'))) {
-      closeContextMenu();
-    }
+  function selectAll() {
+    setSelection(nodeBoxes().map((box) => box.id));
   }
 
   // ---------- interactions ----------
@@ -848,6 +825,10 @@ export function createRoutingModule(hub) {
     if (e.button === 2) {
       const portEl = e.target.closest('.port');
       const nodeEl = e.target.closest('.node');
+      // Remembered now: the pointer is captured below, and the `contextmenu`
+      // that follows is then aimed at the canvas, not at the cable.
+      const cableEl = e.target.closest?.('[data-cable-id]');
+      rightPressCableId = cableEl && !cableEl.classList.contains('temp') ? cableEl.dataset.cableId : null;
       if (!portEl && !nodeEl) {
         rightDown = { clientX: e.clientX, clientY: e.clientY, pointerId: e.pointerId };
         svg.setPointerCapture(e.pointerId);
@@ -887,6 +868,19 @@ export function createRoutingModule(hub) {
     // unplugs it (`onCableClick`). A frame would capture the pointer, and the
     // browser would then deliver that click to the canvas instead (2026-09-24).
     if (e.target.closest?.('[data-cable-id]')) return;
+    // A second press in the same place, quickly: the node list, as a
+    // double-click on the empty canvas opens it in node editors. Counted by
+    // hand for the reason `registerNodeTap` gives -- the frame captures the
+    // pointer, and the browser's own dblclick then never reaches the canvas.
+    const now = Date.now();
+    if (!additive && lastCanvasTap && now - lastCanvasTap.at < 400
+        && Math.hypot(e.clientX - lastCanvasTap.x, e.clientY - lastCanvasTap.y) <= PAN_THRESHOLD) {
+      lastCanvasTap = null;
+      e.preventDefault();
+      openCanvasContextMenu(e.clientX, e.clientY);
+      return;
+    }
+    lastCanvasTap = { at: now, x: e.clientX, y: e.clientY };
     startMarquee(e, additive);
   }
 
@@ -1306,9 +1300,10 @@ export function createRoutingModule(hub) {
   }
 
   function onKeyDown(e) {
+    // An open menu takes Escape for itself (ui/contextMenu.js), so this one
+    // only ever clears the selection.
     if (e.key === 'Escape') {
-      if (contextMenuEl) closeContextMenu();
-      else if (selectedNodeIds.size && !isEditableTarget(e.target)) setSelectedNode(null);
+      if (selectedNodeIds.size && !isEditableTarget(e.target)) setSelectedNode(null);
       return;
     }
     // Never interfere with normal keyboard editing in text controls.
@@ -1316,13 +1311,17 @@ export function createRoutingModule(hub) {
 
     const ctrl = e.ctrlKey || e.metaKey;
     if (ctrl && (e.key === 'c' || e.key === 'C')) {
-      const sole = soleSelectedNode();
-      if (sole) copyNode(sole);
+      copyNodes(selectedNodeIds);
+      e.preventDefault();
+      return;
+    }
+    if (ctrl && (e.key === 'd' || e.key === 'D')) {
+      duplicateNodes(selectedNodeIds);
       e.preventDefault();
       return;
     }
     if (ctrl && (e.key === 'a' || e.key === 'A')) {
-      setSelection(nodeBoxes().map((box) => box.id));
+      selectAll();
       e.preventDefault();
       return;
     }
@@ -1346,9 +1345,7 @@ export function createRoutingModule(hub) {
     // Native/system nodes are not in hub.nodes, so deleteNode ignores them and
     // they stay selected. Every other selected node goes, in one undo step --
     // the edit history settles after the last write.
-    let deleted = false;
-    for (const id of [...selectedNodeIds]) deleted = deleteNode(id) || deleted;
-    if (deleted) e.preventDefault();
+    if (deleteNodes([...selectedNodeIds])) e.preventDefault();
   }
 
   // ---------- helpers ----------
@@ -1515,7 +1512,6 @@ export function createRoutingModule(hub) {
     cablesLayer.addEventListener('click', onCableClick);
     nodesLayer.addEventListener('dblclick',onNodeDoubleClick);
     window.addEventListener('keydown', onKeyDown);
-    document.addEventListener('pointerdown', onGlobalPointerDown);
 
     const resetBtn = container.querySelector('#routing-reset');
     if (resetBtn) resetBtn.addEventListener('click', resetView);
@@ -1665,13 +1661,11 @@ export function createRoutingModule(hub) {
       }
       return;
     }
+    const cableId = rightPressCableId;
+    rightPressCableId = null;
     const nodeEl = e.target.closest('.node');
-    if (nodeEl) {
-      // Open the menu for the target node WITHOUT changing the current selection.
-      openNodeContextMenu(nodeEl.dataset.nodeId, e.clientX, e.clientY);
-    } else {
-      openCanvasContextMenu(e.clientX, e.clientY);
-    }
+    if (nodeEl) openNodeContextMenu(nodeEl.dataset.nodeId, e.clientX, e.clientY);
+    else if (!cableId || !openCableContextMenu(cableId, e.clientX, e.clientY)) openCanvasContextMenu(e.clientX, e.clientY);
   }
 
   /**
@@ -1821,7 +1815,7 @@ export function createRoutingModule(hub) {
     const unalignBtn = container && container.querySelector('#routing-unalign');
     if (unalignBtn) unalignBtn.removeEventListener('click', undoAlign);
     window.removeEventListener('keydown', onKeyDown);
-    document.removeEventListener('pointerdown', onGlobalPointerDown);
+    closeContextMenu();
     if (container) container.classList.remove('routing-host');
     container = null;
     svg = null;
@@ -1836,14 +1830,11 @@ export function createRoutingModule(hub) {
     viewport = { x: 0, y: 0, zoom: 1 };
     selectedCableId = null;
     selectedNodeIds = new Set();
-    contextNodeId = null;
     clipboard = null;
+    lastCanvasTap = null;
+    rightPressCableId = null;
     rightDown = null;
     lastPointerClient = null;
-    if (contextMenuEl) {
-      contextMenuEl.remove();
-      contextMenuEl = null;
-    }
     suppressContextMenu = false;
     if (suppressTimer) {
       clearTimeout(suppressTimer);

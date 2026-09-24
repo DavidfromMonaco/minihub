@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { makeHub } from './helpers.mjs';
-import { makeEl, installDom, fire, fireKey, findClass, lastCreatedWithClass } from './domShim.mjs';
+import { makeEl, installDom, fire, fireKey, findClass, lastCreatedWithClass, pickEntry } from './domShim.mjs';
 
 /**
  * Subscription and teardown contracts.
@@ -146,10 +146,7 @@ test('Delete key and context menu delete a node the same way', () => {
       fireKey('Delete', null);
     } else {
       fire(svg, 'contextmenu', { target: panelOf(nodeElFor(svg, node.id)), clientX: 10, clientY: 10 });
-      const menu = lastCreatedWithClass('node-context-menu');
-      const del = menu.children.find((c) => c.textContent === 'Delete Node');
-      assert.ok(del, 'the node context menu must offer Delete Node');
-      [...del._listeners['click']].forEach((fn) => fn());
+      pickEntry('Delete Node');
     }
 
     return {

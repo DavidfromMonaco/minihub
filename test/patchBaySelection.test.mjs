@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { makeHub } from './helpers.mjs';
 import { GRID_SIZE } from '../src/renderer/js/core/grid.js';
-import { makeEl, installDom, fire, fireKey, findClass } from './domShim.mjs';
+import { makeEl, installDom, fire, fireKey, findClass, openMenu, menuEntries, menuEntry, entryLabel, pickEntry, fireDocumentKey } from './domShim.mjs';
 
 // ---- DOM shim (only what the routing module touches) ------------------------
 function makeContainer() {
@@ -228,89 +228,101 @@ test('deleting the selected node clears the selection', () => {
 });
 
 // ---- context menu ----------------------------------------------------------------
-test('right-click on a node opens the context menu', () => {
+test('right-click on a node opens its menu', () => {
   const hub = setupHub();
   hub.nodes.create('vst');
-  const { container, svg, mod } = mount(hub);
+  const { svg, mod } = mount(hub);
   const layer = nodesLayerOf(svg);
   const vst = findNode(layer, 'vst-001');
   fire(svg, 'contextmenu', { target: nodePanel(vst), clientX: 100, clientY: 80 });
-  const menu = findClass(container, 'node-context-menu');
-  assert.ok(menu, 'context menu opened');
-  const item = findClass(menu, 'ctx-item');
-  assert.ok(item, 'Delete Node action present');
-  assert.equal(item.textContent, 'Delete Node');
-  assert.equal(item.disabled, false, 'deletable node -> enabled');
+  assert.ok(openMenu(), 'context menu opened');
+  assert.deepEqual(menuEntries().map(entryLabel),
+    ['Open Page', 'Duplicate', 'Copy', 'Disconnect All Cables', 'Delete Node']);
+  assert.equal(menuEntry('Delete Node').disabled, false, 'deletable node -> enabled');
+  assert.equal(menuEntry('Disconnect All Cables').disabled, true, 'nothing to unplug');
   mod.unmount();
+  assert.equal(openMenu(), null, 'leaving the Patch Bay closes its menu');
 });
 
-test('right-click on a node does NOT change the current selection', () => {
+test('right-click on an unselected node selects it alone; on a selected one keeps the selection', () => {
   const hub = setupHub();
   hub.nodes.create('vst'); // vst-001
   hub.nodes.create('vst'); // vst-002
-  const { container, svg, mod } = mount(hub);
-  const layer = nodesLayerOf(svg);
-  const a = findNode(layer, 'vst-001');
-  const b = findNode(layer, 'vst-002');
-  // Select A.
-  clickNode(svg, a);
-  assert.ok(a._classSet.has('selected'));
-  // Right-click B -> menu opens for B, but A stays selected.
-  fire(svg, 'contextmenu', { target: nodePanel(b), clientX: 200, clientY: 120 });
-  const menu = findClass(container, 'node-context-menu');
-  assert.ok(menu, 'menu opened for B');
-  assert.ok(a._classSet.has('selected'), 'A remains selected');
-  assert.ok(!b._classSet.has('selected'), 'B is not selected');
-  mod.unmount();
-});
-
-test('context-menu target is independent from the selected node', () => {
-  const hub = setupHub();
-  hub.nodes.create('vst'); // vst-001
-  hub.nodes.create('vst'); // vst-002
-  const { container, svg, mod } = mount(hub);
+  const { svg, mod } = mount(hub);
   const layer = nodesLayerOf(svg);
   const a = findNode(layer, 'vst-001');
   const b = findNode(layer, 'vst-002');
   clickNode(svg, a);
+  // As in a file manager: the menu acts on what is highlighted, so a
+  // right-click on something else highlights it first.
   fire(svg, 'contextmenu', { target: nodePanel(b), clientX: 200, clientY: 120 });
-  // Delete the context target (B).
-  const menu = findClass(container, 'node-context-menu');
-  const item = findClass(menu, 'ctx-item');
-  [...item._listeners['click']].forEach((fn) => fn());
-  assert.equal(hub.nodes.get('vst-002'), null, 'context target deleted');
-  assert.ok(hub.nodes.get('vst-001'), 'selected node untouched');
-  // A still selected.
-  const layerAfter = nodesLayerOf(svg);
-  const aAfter = findNode(layerAfter, 'vst-001');
-  assert.ok(aAfter && aAfter._classSet.has('selected'), 'selection preserved after deleting unselected target');
+  assert.ok(openMenu(), 'menu opened for B');
+  assert.deepEqual(selectedIds(nodesLayerOf(svg)), ['vst-002']);
+  clickNode(svg, findNode(nodesLayerOf(svg), 'vst-001'), { shiftKey: true });
+  fire(svg, 'contextmenu', { target: nodePanel(findNode(nodesLayerOf(svg), 'vst-002')), clientX: 200, clientY: 120 });
+  assert.deepEqual(selectedIds(nodesLayerOf(svg)), ['vst-001', 'vst-002'], 'a node already selected keeps the selection');
+  mod.unmount();
+});
+
+test('the menu of a node in a selection acts on the whole selection', () => {
+  const hub = setupHub();
+  hub.nodes.create('vst'); // vst-001
+  hub.nodes.create('vst'); // vst-002
+  hub.nodes.create('mixer');
+  const { svg, mod } = mount(hub);
+  clickNode(svg, findNode(nodesLayerOf(svg), 'vst-001'));
+  clickNode(svg, findNode(nodesLayerOf(svg), 'vst-002'), { shiftKey: true });
+  fire(svg, 'contextmenu', { target: nodePanel(findNode(nodesLayerOf(svg), 'vst-002')), clientX: 200, clientY: 120 });
+  assert.deepEqual(menuEntries().map(entryLabel),
+    ['Duplicate 2 Nodes', 'Copy 2 Nodes', 'Disconnect All Cables', 'Delete 2 Nodes'],
+    'no Open for several nodes, and every verb says how many');
+  pickEntry('Delete 2 Nodes');
+  assert.equal(hub.nodes.get('vst-001'), null);
+  assert.equal(hub.nodes.get('vst-002'), null);
+  assert.ok(hub.nodes.get('mixer-001'), 'a node outside the selection stays');
+  assert.equal(openMenu(), null, 'the menu is gone once it has acted');
   mod.unmount();
 });
 
 test('deleting the selected node via context menu clears selection', () => {
   const hub = setupHub();
   hub.nodes.create('vst'); // vst-001
-  const { container, svg, mod } = mount(hub);
+  const { svg, mod } = mount(hub);
   const layer = nodesLayerOf(svg);
   const vst = findNode(layer, 'vst-001');
   clickNode(svg, vst);
   fire(svg, 'contextmenu', { target: nodePanel(vst), clientX: 100, clientY: 80 });
-  const menu = findClass(container, 'node-context-menu');
-  const item = findClass(menu, 'ctx-item');
-  [...item._listeners['click']].forEach((fn) => fn());
+  pickEntry('Delete Node');
   assert.equal(hub.nodes.get('vst-001'), null);
   const layerAfter = nodesLayerOf(svg);
   assert.equal(layerAfter.children.filter((c) => c._classSet.has('selected')).length, 0);
   mod.unmount();
 });
 
-test('native node exposes no context menu (no Copy/Delete)', () => {
+test('a native node\'s menu offers no Copy, Duplicate or Delete, and can unplug it', () => {
   const hub = setupHub();
-  const { container, svg, mod } = mount(hub);
-  const layer = nodesLayerOf(svg);
-  const ml = findNode(layer, 'minilab-3');
+  hub.nodes.create('vst');
+  hub.network.connect('minilab-3', 'midi-out', 'vst-001', 'midi-in');
+  const { svg, mod } = mount(hub);
+  const ml = findNode(nodesLayerOf(svg), 'minilab-3');
   fire(svg, 'contextmenu', { target: nodePanel(ml), clientX: 100, clientY: 80 });
-  assert.ok(!findClass(container, 'node-context-menu'), 'no context menu for native node');
+  for (const label of ['Duplicate', 'Copy', 'Delete Node']) assert.equal(menuEntry(label).disabled, true, `${label} is not offered`);
+  pickEntry('Disconnect All Cables');
+  assert.equal(hub.network.connections().length, 0, 'its cable is unplugged');
+  assert.ok(hub.network.getNode('minilab-3'), 'and the node stays');
+  mod.unmount();
+});
+
+test('Disconnect All Cables unplugs every cable of the node, and only those', () => {
+  const hub = setupHub();
+  hub.nodes.create('vst'); // vst-001
+  hub.nodes.create('vst'); // vst-002
+  hub.network.connect('minilab-3', 'midi-out', 'vst-001', 'midi-in');
+  hub.network.connect('minilab-3', 'midi-out', 'vst-002', 'midi-in');
+  const { svg, mod } = mount(hub);
+  fire(svg, 'contextmenu', { target: nodePanel(findNode(nodesLayerOf(svg), 'vst-001')), clientX: 100, clientY: 80 });
+  pickEntry('Disconnect All Cables');
+  assert.deepEqual(hub.network.connections().map((c) => c.to.nodeId), ['vst-002']);
   mod.unmount();
 });
 
@@ -318,27 +330,30 @@ test('native node exposes no context menu (no Copy/Delete)', () => {
 test('context menu closes on outside click', () => {
   const hub = setupHub();
   hub.nodes.create('vst');
-  const { container, svg, mod } = mount(hub);
+  const { svg, mod } = mount(hub);
   const layer = nodesLayerOf(svg);
   const vst = findNode(layer, 'vst-001');
   fire(svg, 'contextmenu', { target: nodePanel(vst), clientX: 100, clientY: 80 });
-  assert.ok(findClass(container, 'node-context-menu'), 'menu open');
-  // Click outside the menu (target = svg).
+  assert.ok(openMenu(), 'menu open');
+  // A press inside the menu is the menu's own: it must survive it, or its
+  // entries never receive their click (they did not, until 2026-09-25).
+  fireDocumentPointer(menuEntry('Copy'));
+  assert.ok(openMenu(), 'a press on an entry does not close the menu');
   fireDocumentPointer(svg);
-  assert.ok(!findClass(container, 'node-context-menu'), 'menu closed on outside click');
+  assert.equal(openMenu(), null, 'menu closed on outside click');
   mod.unmount();
 });
 
-test('context menu closes on Escape', () => {
+test('context menu closes on Escape, and Escape then leaves the selection alone', () => {
   const hub = setupHub();
   hub.nodes.create('vst');
-  const { container, svg, mod } = mount(hub);
-  const layer = nodesLayerOf(svg);
-  const vst = findNode(layer, 'vst-001');
+  const { svg, mod } = mount(hub);
+  const vst = findNode(nodesLayerOf(svg), 'vst-001');
+  clickNode(svg, vst);
   fire(svg, 'contextmenu', { target: nodePanel(vst), clientX: 100, clientY: 80 });
-  assert.ok(findClass(container, 'node-context-menu'), 'menu open');
-  fireKey('Escape', svg);
-  assert.ok(!findClass(container, 'node-context-menu'), 'menu closed on Escape');
+  assert.ok(openMenu(), 'menu open');
+  fireDocumentKey('Escape');
+  assert.equal(openMenu(), null, 'menu closed on Escape');
   mod.unmount();
 });
 
@@ -346,15 +361,16 @@ test('opening another context menu replaces the previous one', () => {
   const hub = setupHub();
   hub.nodes.create('vst'); // vst-001
   hub.nodes.create('vst'); // vst-002
-  const { container, svg, mod } = mount(hub);
+  const { svg, mod } = mount(hub);
   const layer = nodesLayerOf(svg);
   const a = findNode(layer, 'vst-001');
   const b = findNode(layer, 'vst-002');
   fire(svg, 'contextmenu', { target: nodePanel(a), clientX: 100, clientY: 80 });
-  assert.ok(findClass(container, 'node-context-menu'));
-  fire(svg, 'contextmenu', { target: nodePanel(b), clientX: 300, clientY: 200 });
-  const menus = container.children.filter((c) => c._classSet.has('node-context-menu'));
+  assert.ok(openMenu());
+  fire(svg, 'contextmenu', { target: nodePanel(findNode(nodesLayerOf(svg), 'vst-002')), clientX: 300, clientY: 200 });
+  const menus = document.body.children.filter((c) => c._classSet.has('ctx-menu'));
   assert.equal(menus.length, 1, 'only one menu remains');
+  assert.ok(b, 'second node present');
   mod.unmount();
 });
 
@@ -362,7 +378,7 @@ test('opening another context menu replaces the previous one', () => {
 test('right-drag empty canvas still pans and does not open a node menu', () => {
   const hub = setupHub();
   hub.nodes.create('vst');
-  const { container, svg, mod } = mount(hub);
+  const { svg, mod } = mount(hub);
   const vbBefore = svg.getAttribute('viewBox');
   // Right-drag on empty canvas (target = svg). First move crosses the pan
   // threshold (starts the pan), subsequent moves actually pan.
@@ -376,7 +392,7 @@ test('right-drag empty canvas still pans and does not open a node menu', () => {
   const layer = nodesLayerOf(svg);
   const vst = findNode(layer, 'vst-001');
   fire(svg, 'contextmenu', { target: nodePanel(vst), clientX: 160, clientY: 140 });
-  assert.ok(!findClass(container, 'node-context-menu'), 'no menu opened after pan');
+  assert.equal(openMenu(), null, 'no menu opened after pan');
   mod.unmount();
 });
 

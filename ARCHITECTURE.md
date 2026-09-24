@@ -881,26 +881,31 @@ entrer dans `hub.graph`.
 
 ### Context menus
 
-There are **two implementations**, and that is a known duplication rather than a
-design.
+**One implementation** since 2026-09-25:
+[ui/contextMenu.js](src/renderer/js/ui/contextMenu.js), used by the Sequencer
+and the Patch Bay. It attaches to `document.body`, closes on Escape, on a press
+or right-click outside it, a wheel, a scroll, a blur, a resize and its caller's
+next render or unmount, removes every listener it added, and is built with
+`createElement` so a clip name reaching a label has no markup path to travel
+down (invariant 9 satisfied by construction). Position goes through the CSSOM
+(invariant 10). A press INSIDE it is not "outside": the document hears a press
+in capture, before the menu, and closing there removed the menu before its own
+click -- no entry ran in the application until that was seen.
 
-[ui/contextMenu.js](src/renderer/js/ui/contextMenu.js) is the shared one, used
-by the sequencer: it attaches to `document.body`, closes on Escape / a press
-anywhere / a wheel / a scroll / a blur / a resize / its caller's next render,
-removes every listener it added, and is built with `createElement` so a clip
-name reaching a label has no markup path to travel down (invariant 9 satisfied
-by construction). Position goes through the CSSOM (invariant 10).
+Entries are flat: `{ heading }` titles a group, `{ separator }` divides,
+`search` puts a field on top that narrows the entries as it is typed into
+(a heading stays only while it heads something), and the arrows and Enter walk
+and take them. The Patch Bay's canvas menu lists every node type under its
+family that way, where it used to nest three hover submenus
+(OmniBox > family > type); the author found those unergonomic. A double-click
+of the empty canvas opens the same list. A node's menu acts on the selection it
+belongs to -- a right-click on an unselected node selects it first, as a file
+manager does -- and a cable has one, to unplug it.
 
-`routingModule.js` still carries its own, older, hand-built pair — one on a
-node, one on the canvas. The shared module **borrows their `.ctx-item` /
-`.ctx-separator` vocabulary** rather than declaring a second look; a first
-attempt redeclared `.ctx-item` and, sitting later in `base.css`, silently
-restyled the Patch Bay's menus. A test in `test/contextMenu.test.mjs` is what
-stops that returning.
-
-Unifying them means teaching the shared module about **submenus** — the canvas
-menu's New Node family hierarchy — so it is a piece of work, not a move. It is
-named in [ROADMAP.md](ROADMAP.md) where items 10 and 11 are recorded.
+The Patch Bay's menus borrow the `.ctx-item` / `.ctx-separator` vocabulary
+their hand-built ancestors declared; a first attempt at the shared module
+redeclared `.ctx-item` and, sitting later in `base.css`, silently restyled
+them. A test in `test/contextMenu.test.mjs` is what stops that returning.
 
 The VST node's plugin list is not a third menu but a select's list, drawn by
 the page as the faceplate's are (`bindPearlLists`):

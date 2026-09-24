@@ -35,10 +35,20 @@ test as tried and working.
   in its content, sent as a level of zero). Seen in the application: a
   muted player at 0.000 while a second one played at 0.161; paused at 0.9 s,
   a step back landed on 0.0.
-- Waiting for the author: the Patch Bay's context menus, which he finds
-  unergonomic. A proposal is before him; nothing built. They are still
-  hand-built in `routingModule.js`; `ui/contextMenu.js` exists and only the
-  Sequencer uses it.
+- Done, in the author's test: the Patch Bay's context menus, which he found
+  unergonomic, rebuilt on `ui/contextMenu.js` as node editors do them. The
+  empty canvas (right-click or double-click) lists every node type under its
+  family, narrowed by typing, Enter taking the first; then Paste, Select All,
+  Align, Show All Nodes. A node offers Open Plugin Window, Open Page,
+  Duplicate (Ctrl+D, new), Copy, Disconnect All Cables, Delete -- on the whole
+  selection it belongs to, a right-click on an unselected node selecting it.
+  A cable offers Disconnect. Ctrl+C and Ctrl+V now carry several nodes, in
+  their arrangement. Found on the way: the shared menu never ran an entry in
+  the application (it closed on the press, before the click), so the
+  Sequencer's clip menu did nothing; fixed. Seen with real mouse and keys over
+  CDP: "arp" + Enter created an Arpeggiator, a cable's Disconnect unplugged it,
+  a double-click opened the list and a click on Mixer made one, Duplicate made
+  a selected copy that one undo removed, and the Sequencer's clip menu duplicated a clip.
 
 **One Ring, made native** — started 2026-09-16 on the author's word, in place
 of the Matrix node (ROADMAP item 7). One Ring becomes a node of MiniHub with

@@ -5,7 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { MINILAB_SURFACE } from '../src/renderer/js/ui/miniLabControlSurface.js';
 import { makeHub } from './helpers.mjs';
-import { makeEl, installDom, fire, fireKey, findClass } from './domShim.mjs';
+import { makeEl, installDom, fire, fireKey, findClass, openMenu, menuEntries, menuEntry, entryLabel, pickEntry } from './domShim.mjs';
 
 // ---- DOM shim (only what the routing module touches) ------------------------
 function makeContainer() {
@@ -37,12 +37,6 @@ const {
 const { fitViewport } = await import('../src/renderer/js/core/viewportMath.js');
 
 // ---- event simulation helpers -------------------------------------------------
-function clickMenuItem(menu, label) {
-  const item = [...menu.children].find((c) => c._classSet.has('ctx-item') && c.textContent === label);
-  assert.ok(item, `menu item "${label}" present`);
-  [...item._listeners['click']].forEach((fn) => fn());
-  return item;
-}
 
 // ---- fixtures -----------------------------------------------------------------
 function setupHub({ withMinilab = true, layout = {} } = {}) {
@@ -118,28 +112,22 @@ test('native MiniLab cannot be copied', () => {
   mod.unmount();
 });
 
-test('context-menu Copy copies the context target without changing selection', () => {
+test('context-menu Copy copies the node right-clicked, which becomes the selection', () => {
   const hub = setupHub({ withMinilab: false });
   hub.nodes.create('vst'); // vst-001
   hub.nodes.create('vst'); // vst-002
-  const { container, svg, mod } = mount(hub);
+  const { svg, mod } = mount(hub);
   const layer = nodesLayerOf(svg);
-  const a = findNode(layer, 'vst-001');
-  const b = findNode(layer, 'vst-002');
-  clickNode(svg, a); // select A
-  // Right-click B -> context menu for B.
-  fire(svg, 'contextmenu', { target: nodePanel(b), clientX: 200, clientY: 120 });
-  const menu = findClass(container, 'node-context-menu');
-  clickMenuItem(menu, 'Copy');
-  assert.ok(a._classSet.has('selected'), 'A remains selected after Copy');
-  assert.ok(!b._classSet.has('selected'), 'B not auto-selected');
+  clickNode(svg, findNode(layer, 'vst-001')); // select A
+  // Right-click B: B is what the menu acts on, so B is what is highlighted.
+  fire(svg, 'contextmenu', { target: nodePanel(findNode(nodesLayerOf(svg), 'vst-002')), clientX: 200, clientY: 120 });
+  pickEntry('Copy');
+  const selected = () => nodesLayerOf(svg).children.filter((c) => c._classSet.has('selected')).map((c) => c.dataset.nodeId);
+  assert.deepEqual(selected(), ['vst-002']);
   // Paste -> duplicates B (vst-002) -> vst-003, which becomes selected.
   fireKey('v', svg, { ctrlKey: true });
- const pasted = hub.nodes.get('vst-003');
-  assert.ok(pasted, 'pasted node created from context target');
-  const layerAfter = nodesLayerOf(svg);
-  const pastedEl = findNode(layerAfter, 'vst-003');
-  assert.ok(pastedEl && pastedEl._classSet.has('selected'), 'pasted node becomes selected');
+  assert.ok(hub.nodes.get('vst-003'), 'pasted node created from context target');
+  assert.deepEqual(selected(), ['vst-003'], 'pasted node becomes selected');
   mod.unmount();
 });
 
@@ -195,8 +183,7 @@ test('context Paste uses the context world position', () => {
   fireKey('c', svg, { ctrlKey: true });
   // Right-click empty canvas at (100,100) -> world (100,100).
   fire(svg, 'contextmenu', { target: svg, clientX: 100, clientY: 100 });
-  const menu = findClass(container, 'node-context-menu');
-  clickMenuItem(menu, 'Paste');
+  pickEntry('Paste');
   const pos = hub.settings.get('networkLayout')['vst-002'];
   assert.deepEqual(pos, { x: 100, y: 100 });
   mod.unmount();
@@ -251,14 +238,12 @@ test('copy/paste shortcuts are ignored in editable controls', () => {
 // ---- empty-canvas context menu ------------------------------------------------
 test('right-click empty canvas opens the canvas context menu', () => {
   const hub = setupHub({ withMinilab: false });
-  const { container, svg, mod } = mount(hub);
+  const { svg, mod } = mount(hub);
   fire(svg, 'contextmenu', { target: svg, clientX: 100, clientY: 80 });
-  const menu = findClass(container, 'node-context-menu');
+  const menu = openMenu();
   assert.ok(menu, 'canvas menu opened');
-  const sub = findClass(menu, 'ctx-sub');
-  assert.ok(sub, 'New Node submenu present');
-  const paste = [...menu.children].find((c) => c._classSet.has('ctx-item') && c.textContent === 'Paste');
-  assert.ok(paste, 'Paste item present');
+  assert.ok(findClass(menu, 'ctx-search'), 'the node list can be searched');
+  assert.deepEqual(menuEntries().map(entryLabel).slice(-4), ['Paste', 'Select All', 'Align', 'Show All Nodes']);
   mod.unmount();
 });
 
@@ -272,7 +257,7 @@ test('right-drag empty canvas pans and does not open a menu afterward', () => {
   fire(svg, 'pointerup', {});
   assert.notEqual(svg.getAttribute('viewBox'), vbBefore, 'viewBox changed -> panned');
   fire(svg, 'contextmenu', { target: svg, clientX: 220, clientY: 180 });
-  assert.ok(!findClass(container, 'node-context-menu'), 'no menu after pan');
+  assert.equal(openMenu(), null, 'no menu after pan');
   mod.unmount();
 });
 
@@ -298,7 +283,7 @@ test('a pan held for a second still ends without a context menu', (t) => {
     fire(svg, 'pointerup', {});
     assert.notEqual(svg.getAttribute('viewBox'), vbBefore, 'it panned');
     fire(svg, 'contextmenu', { target: svg, clientX: 300, clientY: 260 });
-    assert.ok(!findClass(container, 'node-context-menu'), 'and no menu followed it');
+    assert.equal(openMenu(), null, 'and no menu followed it');
 
     // The click is still a click: pressed and released without crossing the
     // threshold, the menu is the whole point of the right button.
@@ -306,7 +291,7 @@ test('a pan held for a second still ends without a context menu', (t) => {
     fire(svg, 'pointermove', { clientX: 302, clientY: 261 });
     fire(svg, 'pointerup', {});
     fire(svg, 'contextmenu', { target: svg, clientX: 302, clientY: 261 });
-    assert.ok(findClass(container, 'node-context-menu'), 'a right-click still opens the menu');
+    assert.ok(openMenu(), 'a right-click still opens the menu');
 
     mod.unmount();
   } finally {
@@ -318,66 +303,132 @@ test('Paste is disabled when the clipboard is empty', () => {
   const hub = setupHub({ withMinilab: false });
   const { container, svg, mod } = mount(hub);
   fire(svg, 'contextmenu', { target: svg, clientX: 100, clientY: 80 });
-  const menu = findClass(container, 'node-context-menu');
-  const paste = [...menu.children].find((c) => c._classSet.has('ctx-item') && c.textContent === 'Paste');
-  assert.equal(paste.disabled, true, 'Paste disabled with empty clipboard');
+  assert.equal(menuEntry('Paste').disabled, true, 'Paste disabled with empty clipboard');
   mod.unmount();
 });
 
-test('OmniBox submenu uses populated registry families', () => {
+test('the canvas menu lists every node type under its family, flat', () => {
   const hub = setupHub({ withMinilab: false });
-  const { container, svg, mod } = mount(hub);
+  const { svg, mod } = mount(hub);
   fire(svg, 'contextmenu', { target: svg, clientX: 100, clientY: 80 });
-  const menu = findClass(container, 'node-context-menu');
-  const sub = findClass(menu, 'ctx-sub');
-  const categories = [...sub.children].map((wrap) => ({
-    label: wrap.children[0].textContent.trim().split(/\s+/)[0],
-    types: [...wrap.children[1].children].map((item) => item.textContent)
-  }));
-  assert.deepEqual(categories, listOmniBoxCategories().map((category) => ({
+  const menu = openMenu();
+  // Headings and entries in the order drawn, up to the first separator.
+  const drawn = [];
+  for (const child of menu.children) {
+    if (child._classSet.has('ctx-separator')) break;
+    if (child._classSet.has('ctx-group')) drawn.push({ label: child.textContent, types: [] });
+    else if (child._classSet.has('ctx-item')) drawn.at(-1).types.push(entryLabel(child));
+  }
+  assert.deepEqual(drawn, listOmniBoxCategories().map((category) => ({
     label: category.label, types: category.types.map((type) => type.label)
-  })), 'hierarchy driven by populated registry families');
+  })), 'the families are headings, driven by the registry, and no entry hides behind a hover');
+  assert.equal(findClass(menu, 'ctx-sub'), null, 'no submenu left');
   mod.unmount();
 });
 
-test('nested OmniBox keeps exactly one active submenu path per level', () => {
+test('typing in the canvas menu narrows the node list, and Enter creates the first match', () => {
   const hub = setupHub({ withMinilab: false });
-  const { container, svg, mod } = mount(hub);
-  fire(svg, 'contextmenu', { target: svg, clientX: 100, clientY: 80 });
-  const menu = findClass(container, 'node-context-menu');
-  const rootWrap = menu.children.find((child) => child._classSet.has('ctx-submenu'));
-  const categories = rootWrap.children.find((child) => child._classSet.has('ctx-sub'));
-  const [midi, audio, plugin] = categories.children;
+  const { svg, mod } = mount(hub);
+  fire(svg, 'contextmenu', { target: svg, clientX: 700, clientY: 520 });
+  const menu = openMenu();
+  const field = findClass(menu, 'ctx-search');
+  assert.ok(field, 'a search field heads the menu');
+  field.value = 'mix';
+  fire(field, 'input');
+  const visible = menuEntries(menu).filter((entry) => entry.hidden !== true).map(entryLabel);
+  assert.deepEqual(visible, ['Mixer']);
+  const headings = menu.children.filter((child) => child._classSet.has('ctx-group') && child.hidden !== true)
+    .map((child) => child.textContent);
+  assert.deepEqual(headings, ['Audio'], 'only the family that still has an entry keeps its heading');
+  field.value = 'audio';
+  fire(field, 'input');
+  assert.ok(menuEntries(menu).filter((entry) => entry.hidden !== true).map(entryLabel).includes('Audio Player'),
+    'a family name finds its types');
+  field.value = 'mix';
+  fire(field, 'input');
+  fire(field, 'keydown', { key: 'Enter' });
+  assert.ok(hub.nodes.get('mixer-001'), 'Enter created the Mixer');
+  assert.deepEqual(hub.settings.get('networkLayout')['mixer-001'], { x: 700, y: 520 }, 'where the menu was opened');
+  assert.equal(openMenu(), null);
+  mod.unmount();
+});
 
-  assert.equal(rootWrap._classSet.has('ctx-expanded'), false, 'root starts collapsed');
-  assert.ok([midi, audio, plugin].every((item) => !item._classSet.has('ctx-expanded')),
-    'no category child starts exposed');
-
-  fire(rootWrap, 'pointerenter');
-  assert.equal(rootWrap._classSet.has('ctx-expanded'), true, 'hover opens only OmniBox categories');
-  fire(midi, 'pointerenter');
-  assert.equal(midi._classSet.has('ctx-expanded'), true, 'MIDI child opens');
-
-  fire(audio, 'pointerenter');
-  assert.equal(midi._classSet.has('ctx-expanded'), false, 'moving to Audio closes MIDI child');
-  assert.equal(audio._classSet.has('ctx-expanded'), true, 'Audio child opens');
-  assert.equal(plugin._classSet.has('ctx-expanded'), false, 'unrelated Plugin child remains closed');
+test('a double-click on the empty canvas opens the node list there', () => {
+  const hub = setupHub({ withMinilab: false });
+  const { svg, mod } = mount(hub);
+  fire(svg, 'pointerdown', { button: 0, target: svg, clientX: 650, clientY: 480 });
+  fire(svg, 'pointerup', {});
+  assert.equal(openMenu(), null, 'one click is a click');
+  fire(svg, 'pointerdown', { button: 0, target: svg, clientX: 651, clientY: 480 });
+  fire(svg, 'pointerup', {});
+  assert.ok(findClass(openMenu(), 'ctx-search'), 'two, in place, open the node list');
+  pickEntry('Arpeggiator');
+  assert.deepEqual(hub.settings.get('networkLayout')['arpeggiator-001'], { x: 651, y: 480 });
   mod.unmount();
 });
 
 test('created node appears at the context world position', () => {
   const hub = setupHub({ withMinilab: false, layout: { 'vst-001': { x: 500, y: 500 } } });
   hub.nodes.create('vst'); // vst-001
-  const { container, svg, mod } = mount(hub);
+  const { svg, mod } = mount(hub);
   fire(svg, 'contextmenu', { target: svg, clientX: 100, clientY: 100 });
-  const menu = findClass(container, 'node-context-menu');
-  const sub = findClass(menu, 'ctx-sub');
-  const pluginCategory = [...sub.children].find((c) => c.children[0].textContent.includes('Plugin'));
-  const vstItem = [...pluginCategory.children[1].children].find((c) => c.textContent === 'VST');
-  [...vstItem._listeners['click']].forEach((fn) => fn());
+  pickEntry('VST');
   const created = hub.nodes.get('vst-002');
-  assert.ok(created, 'node created from submenu');
+  assert.ok(created, 'node created from the menu');
   assert.deepEqual(hub.settings.get('networkLayout')['vst-002'], { x: 100, y: 100 });
+  mod.unmount();
+});
+
+test('a right-click on a cable offers to unplug it', () => {
+  const hub = setupHub({ withMinilab: true });
+  hub.nodes.create('vst'); // vst-001
+  hub.network.connect('minilab-3', 'midi-out', 'vst-001', 'midi-in');
+  const { svg, mod } = mount(hub);
+  const hit = findClass(svg, 'cable-hit');
+  assert.ok(hit?.dataset.cableId, 'the cable has a hit path');
+  fire(svg, 'pointerdown', { button: 2, target: hit, clientX: 50, clientY: 50 });
+  fire(svg, 'pointerup', {});
+  fire(svg, 'contextmenu', { target: svg, clientX: 50, clientY: 50 });
+  const heading = openMenu().children.find((child) => child._classSet.has('ctx-group'));
+  assert.equal(heading.textContent, 'MiniLab 3 → VST 1', 'the menu names what the cable joins');
+  pickEntry('Disconnect');
+  assert.equal(hub.network.connections().length, 0);
+  mod.unmount();
+});
+
+test('Ctrl+C copies every selected node, Ctrl+V pastes them in the same arrangement', () => {
+  const hub = setupHub({ withMinilab: false, layout: { 'vst-001': { x: 100, y: 100 }, 'mixer-001': { x: 400, y: 160 } } });
+  hub.nodes.create('vst');
+  hub.nodes.create('mixer');
+  const { svg, mod } = mount(hub);
+  fireKey('a', svg, { ctrlKey: true });
+  fireKey('c', svg, { ctrlKey: true });
+  fire(svg, 'pointermove', { clientX: 500, clientY: 400 });
+  fireKey('v', svg, { ctrlKey: true });
+  const layout = hub.settings.get('networkLayout');
+  assert.deepEqual(layout['vst-002'], { x: 500, y: 400 });
+  assert.deepEqual(layout['mixer-002'], { x: 800, y: 460 }, 'the second keeps its place against the first');
+  assert.deepEqual([...nodesLayerOf(svg).children].filter((c) => c._classSet.has('selected')).map((c) => c.dataset.nodeId).sort(),
+    ['mixer-002', 'vst-002'], 'what was pasted is selected');
+  mod.unmount();
+});
+
+test('Ctrl+D duplicates the selection beside it and leaves the clipboard alone', () => {
+  const hub = setupHub({ withMinilab: false, layout: { 'vst-001': { x: 2000, y: 2000 }, 'mixer-001': { x: 100, y: 100 } } });
+  hub.nodes.create('vst');
+  hub.nodes.create('mixer');
+  const { svg, mod } = mount(hub);
+  clickNode(svg, findNode(nodesLayerOf(svg), 'mixer-001'));
+  fireKey('c', svg, { ctrlKey: true });
+  clickNode(svg, findNode(nodesLayerOf(svg), 'vst-001'));
+  fireKey('d', svg, { ctrlKey: true });
+  assert.ok(hub.nodes.get('vst-002'), 'a copy of the VST');
+  const original = hub.settings.get('networkLayout')['vst-001'];
+  const copy = hub.settings.get('networkLayout')['vst-002'];
+  assert.ok(copy.x > original.x && copy.y > original.y, 'beside the original, not on it');
+  fire(svg, 'pointermove', { clientX: 600, clientY: 600 });
+  fireKey('v', svg, { ctrlKey: true });
+  assert.ok(hub.nodes.get('mixer-002'), 'the clipboard still holds the Mixer');
   mod.unmount();
 });
 

@@ -1249,16 +1249,6 @@ body {
 .routing-host {
   position: relative;
 }
-.node-context-menu {
-  position: absolute;
-  z-index: 50;
-  min-width: 150px;
-  background: var(--bg-panel);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-sm);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
-  padding: 4px;
-}
 .ctx-item {
   display: block;
   width: 100%;
@@ -1284,9 +1274,6 @@ body {
   background: var(--border);
   margin: 4px 6px;
 }
-.ctx-submenu {
-  position: relative;
-}
 .ctx-parent {
   display: flex;
   align-items: center;
@@ -1295,25 +1282,6 @@ body {
 }
 .ctx-caret {
   color: var(--text-faint);
-}
-.ctx-sub {
-  display: none;
-  position: absolute;
-  left: 100%;
-  top: -4px;
-  min-width: 140px;
-  background: var(--bg-panel);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-sm);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
-  padding: 4px;
-}
-.ctx-sub.ctx-flip-left { left:auto; right:100%; }
-/* A small overlap keeps the hover path continuous between nested panels. */
-.ctx-submenu > .ctx-sub { margin-left:-2px; }
-.ctx-sub.ctx-flip-left { margin-left:0; margin-right:-2px; }
-.ctx-submenu.ctx-expanded > .ctx-sub {
-  display: block;
 }
 
 /* --- VST plugin chain status + actions --- */
@@ -1961,6 +1929,14 @@ body {
 .ctx-menu .ctx-item:focus-visible:not(:disabled) { background:var(--bg-hover); outline:0; }
 .ctx-menu .ctx-item.danger:hover:not(:disabled) { background:rgba(196,71,71,.28); color:#ffd4cf; }
 .ctx-hint { color:var(--text-faint); font:10px var(--mono); }
+/* The Patch Bay's menus (routingModule.js): family headings, a search field
+   that narrows the node list, and a height that scrolls rather than leaving
+   the window. */
+.ctx-menu .ctx-group { display:block; padding:8px 10px 3px; color:var(--text-faint); font:600 10px var(--mono); letter-spacing:.08em; text-transform:uppercase; }
+.ctx-menu .ctx-group[hidden], .ctx-menu .ctx-item[hidden], .ctx-menu .ctx-separator[hidden] { display:none; }
+.ctx-search { display:block; width:100%; box-sizing:border-box; margin:0 0 4px; padding:6px 9px; border:1px solid var(--border-strong); border-radius:var(--radius-sm); background:var(--bg); color:var(--text); font-size:13px; }
+.ctx-search:focus { outline:0; border-color:var(--accent); }
+.patch-bay-menu { min-width:220px; max-height:min(560px, calc(100vh - 16px)); overflow-y:auto; }
 /* The plugin picker's list (ui/pluginMenu.js). A brand can hold more plugins
    than the screen has rows, so this panel scrolls where a context menu never
    needs to; every rule is scoped to it, like the ones above. */

@@ -124,9 +124,10 @@ the sequencer's from becoming a *third*, and it borrows the Patch Bay's existing
 `.ctx-item` / `.ctx-separator` vocabulary rather than inventing a second look —
 after a first attempt that declared `.ctx-item` again and silently restyled the
 Patch Bay's own menus, a test now keeps that from coming back.
-**Still to do**: adopt the module inside `routingModule.js` and delete the copy
-there. It is not a move — the canvas menu carries a New Node submenu the shared
-module has no concept of.
+**Done 2026-09-25**: the Patch Bay's menus use the module and the copy is gone.
+The New Node submenu did not move over: it became a flat list under family
+headings, narrowed by typing. On the way, the module was found never to run an
+entry in the application -- it closed on the press, before the click.
 
 **The scissor** — `splitClip`, non-destructive, at the playhead: D-034.
 

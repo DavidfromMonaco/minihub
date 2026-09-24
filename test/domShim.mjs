@@ -206,3 +206,40 @@ export function lastCreatedWithClass(cls) {
   }
   return null;
 }
+
+// ---- the context menu (ui/contextMenu.js attaches it to the body) -----------
+
+/** The menu open on the page, or null. */
+export function openMenu() {
+  return globalThis.document.body.children.find((child) => child._classSet.has('ctx-menu')) || null;
+}
+
+/** An entry's label: its first span, the second being its shortcut. */
+export function entryLabel(entry) {
+  return entry.children[0]?.textContent ?? '';
+}
+
+/** The menu's entries, in order, headings and separators left out. */
+export function menuEntries(menu = openMenu()) {
+  return menu ? menu.children.filter((child) => child._classSet.has('ctx-item')) : [];
+}
+
+/** The entry with this label, or undefined. */
+export function menuEntry(label, menu = openMenu()) {
+  return menuEntries(menu).find((entry) => entryLabel(entry) === label);
+}
+
+/** Click an entry by its label, as a user does. Throws when it is not there. */
+export function pickEntry(label, menu = openMenu()) {
+  const entry = menuEntry(label, menu);
+  if (!entry) throw new Error(`no menu entry "${label}" in [${menuEntries(menu).map(entryLabel).join(', ')}]`);
+  fire(entry, 'click');
+  return entry;
+}
+
+/** A key pressed while a menu is open: the menu listens on the document. */
+export function fireDocumentKey(key) {
+  const evt = { key, target: null, preventDefault() {}, stopPropagation() {} };
+  [...(globalThis.document._listeners.keydown || [])].forEach((fn) => fn(evt));
+  return evt;
+}
