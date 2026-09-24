@@ -25,7 +25,7 @@ const CHAIN_ID = /^[A-Za-z][A-Za-z0-9_-]*$/;
 const INSTANCE_ID = /^plugin-[1-9][0-9]*$/;
 // `<profileId>:<controlId>`, each a profile identifier (midi/controllerProfile.js).
 const CONTROL_ID = /^[a-z0-9]+(?:-[a-z0-9]+)*:[a-z0-9]+(?:-[a-z0-9]+)*$/;
-const ACTIONS = new Set(['select', 'learn', 'cancel', 'clear', 'open-controller', 'turn']);
+const ACTIONS = new Set(['select', 'learn', 'cancel', 'clear', 'range-min', 'range-max', 'range-full', 'open-controller', 'turn']);
 const MAX_HTML_LENGTH = 512 * 1024;
 // A keyboard has dozens of controls, not hundreds; the bound ones are fewer.
 const MAX_VALUES = 256;
@@ -40,6 +40,16 @@ const MAX_VALUES = 256;
  * and the bar covers the bottom of the plugin even with the plugin at the top.
  */
 const BAR_HEIGHT = 182;
+
+/**
+ * The narrowest the bar is under a plugin, in DIPs: the faceplate at the bar's
+ * scale, 520 x .82, the gap, and the help above the Learn toolbar at a width
+ * they can be read at. A bar as wide as a small plugin was not: under kHs Pitch
+ * Shifter, 236 px wide, it cut the help and the toolbar, and the author widened
+ * the plugin's window to read it -- which left the plugin in a corner of a white
+ * window (2026-09-24). Under a narrow plugin the bar runs past its right edge.
+ */
+const STRIP_MIN_WIDTH = 720;
 
 /**
  * The bar's width when it stands beside the plugin instead, in DIPs.
@@ -87,10 +97,16 @@ const keyOf = (chainId, instanceId) => `${chainId}/${instanceId}`;
 function placeBar(frame, clientTop, workArea, height = BAR_HEIGHT) {
   const under = frame.y + frame.height;
   const bottom = workArea.y + workArea.height;
+  const width = Math.max(STRIP_MIN_WIDTH, Math.round(frame.width));
+  // Only a bar wider than its frame is held on screen: a plugin dragged half
+  // off the edge takes its own-width bar along, as before.
+  const right = workArea.x + workArea.width;
+  const x = width > frame.width && frame.x + width > right
+    ? Math.max(workArea.x, right - width) : frame.x;
   const strip = (y) => ({
-    x: Math.round(frame.x),
+    x: Math.round(x),
     y: Math.round(y),
-    width: Math.max(1, Math.round(frame.width)),
+    width,
     height
   });
   if (under + height <= bottom) return strip(under);
@@ -422,5 +438,5 @@ class BindingsBarWindows {
 
 module.exports = {
   BindingsBarWindows, placeBar, validAction, validValues,
-  BAR_HEIGHT, COLUMN_WIDTH, COLUMN_MIN_WIDTH, COLUMN_MIN_HEIGHT
+  BAR_HEIGHT, STRIP_MIN_WIDTH, COLUMN_WIDTH, COLUMN_MIN_WIDTH, COLUMN_MIN_HEIGHT
 };

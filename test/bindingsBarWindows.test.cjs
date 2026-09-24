@@ -10,7 +10,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
-  BindingsBarWindows, placeBar, validAction, validValues, BAR_HEIGHT, COLUMN_WIDTH, COLUMN_MIN_HEIGHT
+  BindingsBarWindows, placeBar, validAction, validValues, BAR_HEIGHT, STRIP_MIN_WIDTH, COLUMN_WIDTH, COLUMN_MIN_HEIGHT
 } = require('../src/main/bindingsBarWindows');
 
 let nextWebContentsId = 100;
@@ -182,6 +182,18 @@ test('with room neither under nor beside, the bar rides over the bottom of the p
   assert.equal(placeBar({ x: -600, y: 0, width: 1400, height: 400 }, 31, work).x, -600);
 });
 
+test('under a narrow plugin the bar keeps a width it can be read at, and stays on screen', () => {
+  // kHs Pitch Shifter: 236 px of plugin, a bar as narrow cut its help and its
+  // toolbar, and the author widened the plugin window to read it (2026-09-24).
+  const work = { x: 0, y: 0, width: 1920, height: 1040 };
+  assert.deepEqual(placeBar({ x: 26, y: 26, width: 252, height: 363 }, 57, work),
+    { x: 26, y: 389, width: STRIP_MIN_WIDTH, height: BAR_HEIGHT });
+  // Near the right edge, it runs left rather than off the screen.
+  assert.equal(placeBar({ x: 1700, y: 26, width: 252, height: 363 }, 57, work).x, 1920 - STRIP_MIN_WIDTH);
+  // A plugin wider than that keeps a bar exactly as wide as itself.
+  assert.equal(placeBar({ x: 0, y: 0, width: 1400, height: 850 }, 31, work).width, 1400);
+});
+
 test('a column is placed in DIPs too', async () => {
   // At 150 % the fake work area is 1280 x 680 DIPs. A frame of 1050 x 900
   // physical pixels at (90, 60) is 700 x 600 DIPs at (60, 40): 182 under it
@@ -271,6 +283,9 @@ test('a bar reports clicks as bounded actions, addressed by the bar that sent th
   assert.equal(validAction({ kind: 'select' }), false);
   assert.equal(validAction({ kind: 'set-binding', controlId: 'minilab-3:k1' }), false, 'the bar asks what the panel can ask, nothing more');
   assert.equal(validAction({ kind: 'clear', controlId: '../k1' }), false);
+  for (const edge of ['min', 'max', 'full']) {
+    assert.equal(validAction({ kind: `range-${edge}`, controlId: 'minilab-3:k5' }), true, `the range's ${edge} crosses`);
+  }
   assert.equal(validAction({ kind: 'clear', controlId: 'minilab-3:k1'.repeat(20) }), false);
 });
 

@@ -7,31 +7,41 @@ finished, delete its entry**, in the same commit. What was done lives in git and
 
 ## Started, not finished
 
-**Five changes asked in one session — in progress** — asked 2026-09-24 by the
-author during a session, built after he quit MiniHub ("fais tout").
-- Done: a new node joins its own kind in the NODES list — VST, then Audio
-  Player, Audio Input, Mixer, Morpher, Arpeggiator, One Ring
-  (`NODE_LIST_ORDER` in `core/nodeTypes.js`). A default, not a sort: a node
-  dragged elsewhere stays, and the next of its kind follows it there. A
-  project opens in its saved order.
-- Done: a cable's input end, dragged onto another input, is plugged there
-  (`moveConnectionEnd` in `routing/routingCore.js`); refused there, it stays
-  where it was. Released on empty canvas it is still unplugged.
-- Done: several nodes selected in the Patch Bay. Shift or Ctrl + click adds
-  or removes one, a left-drag on empty canvas draws a frame that takes every
-  node it touches, a drag moves the whole selection, Delete removes it, Ctrl+A
-  selects all, Escape none. Ctrl+C still copies one node only.
-- Done: what Play plays — **Plays** All / Sequencer / Players in the header
-  (DECISIONS D-053), native flags on the players and on the sequencer's clips.
-  Native build 0 warnings, the four native test binaries pass. The agent
-  channel cannot set it yet.
-- Done: a range per knob assignment. In the bindings bar, a bound control
-  shows **Range** with Min, Max and Full: the parameter's value as the plugin
-  shows it now becomes the bottom or the top of the control; the plugin's own
-  words for the two ends are kept and shown ("-2.00 → +2.00"). Saved in the
-  binding (`range` in `core/controlBindings.js`); a reversed range turns the
-  control round.
-- To do: the white strip beside a narrow plugin window.
+**Five changes asked in one session — in the author's test** — asked
+2026-09-24 by the author during a session, built after he quit MiniHub
+("fais tout"). Each seen in the packaged application (agent channel and CDP):
+- A new node joins its own kind in the NODES list — VST, Audio Player, Audio
+  Input, Mixer, Morpher, Arpeggiator, One Ring (`NODE_LIST_ORDER` in
+  `core/nodeTypes.js`). A default, not a sort. Seen: five nodes created in a
+  mixed order listed by kind; Mixer 1 dragged between the VSTs stayed there,
+  Mixer 2 followed it, VST 3 went after VST 2.
+- A cable's input end dragged onto another input is plugged there
+  (`moveConnectionEnd`). Seen: moved to a Mixer, refused on a CTRL IN and left
+  in place, unplugged on empty canvas, and one Ctrl+Z put a move back.
+- Several nodes selected in the Patch Bay: Shift or Ctrl + click, a frame drawn
+  on empty canvas, a drag moving them all, Delete, Ctrl+A, Escape. Seen, with
+  the MiniLab left alone by Delete and one Ctrl+Z restoring two deleted nodes.
+  Ctrl+C still copies one node only.
+- **Plays** All / Sequencer / Players in the header (DECISIONS D-053). Seen:
+  three exports of Dexed plus an Audio Player, each holding only what the
+  scope plays; live, Sequencer left the player stopped under Play and All
+  started it mid-play. Under 1050 px the words Plays, Tempo and BPM drop so the
+  device pill keeps its text (111 px at 960).
+- A range per knob assignment: Range with Min, Max and Full in the bindings bar
+  (`range` in `core/controlBindings.js`). Seen with kHs Pitch Shifter (its
+  Pitch is ±24 semitones): Min at −2, Max at +2, the bar reading
+  "−2.00 → +2.00", the drawn K5 dragged to its top, bottom and middle giving
+  +2.00, −2.00 and +0.00. Not seen with the MiniLab itself, none being
+  connected.
+- The white strip beside kHs Pitch Shifter: its 236 px bar cut the help and the
+  toolbar, and a widened plugin window cannot stretch the plugin. The bar is
+  now at least 720 px under a plugin (`STRIP_MIN_WIDTH`), and a plugin that
+  cannot resize gets a window without a resizing border or Maximize
+  (`canResize` in `plugin_host.cpp`). Seen: a 252 x 363 frame, a 720 px bar,
+  help and toolbar whole.
+- Outside this repository, the author's to update: `../minihub-agent/AGENTS.md`
+  describes neither the Plays scope nor a binding's range, and the channel
+  cannot set either.
 
 **Navigation in the three timelines, and the NODES list in any order — in
 the author's test** — built 2026-09-24 on the author's word: "more precise

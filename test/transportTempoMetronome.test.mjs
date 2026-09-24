@@ -14,7 +14,7 @@ test('global transport carries Play, Stop, Record and the shared Tempo control',
   // word: a take can be started from any page.
   assert.match(transport, /id="transport-stop"[^>]*>Stop<\/button>\s*<button id="transport-record"[^>]*>Record<\/button>/,
     'Record sits beside Stop');
-  assert.match(transport, /Tempo[^<]*<input id="transport-bpm"[^>]*min="20"[^>]*max="300"/);
+  assert.match(transport, /Tempo<\/span> <input id="transport-bpm"[^>]*min="20"[^>]*max="300"/);
   assert.doesNotMatch(transport, /metronome|métronome|metro|volume/i);
 });
 

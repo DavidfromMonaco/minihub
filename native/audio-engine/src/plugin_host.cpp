@@ -926,11 +926,18 @@ private:
                       << "\" phase=create-host size=" << size.getWidth()
                       << 'x' << size.getHeight() << std::endl;
             registerClass();
+            // A plugin drawn at one size gets a window that keeps it: no
+            // resizing border and no Maximize. Stretched anyway, the window
+            // showed the plugin in a corner and blank host paint beside it
+            // (kHs Pitch Shifter, 2026-09-24). What other hosts do.
+            style_ = view_->canResize() == Steinberg::kResultTrue
+                ? WS_OVERLAPPEDWINDOW
+                : (WS_OVERLAPPEDWINDOW & ~(WS_THICKFRAME | WS_MAXIMIZEBOX));
             RECT outer {0, 0, size.getWidth(), size.getHeight()};
-            ::AdjustWindowRectEx(&outer, WS_OVERLAPPEDWINDOW, FALSE, 0);
+            ::AdjustWindowRectEx(&outer, style_, FALSE, 0);
             const auto title = pluginEditorWindowTitle(plugin_.owner_.name());
             window_ = ::CreateWindowExW(0, windowClassName(), title.toWideCharPointer(),
-                                        WS_OVERLAPPEDWINDOW,
+                                        style_,
                                         CW_USEDEFAULT, CW_USEDEFAULT,
                                         outer.right - outer.left, outer.bottom - outer.top,
                                         nullptr, nullptr, ::GetModuleHandleW(nullptr), this);
@@ -1250,7 +1257,7 @@ private:
             if (!window_ || !view_ || view != view_.get() || size == nullptr)
                 return Steinberg::kInvalidArgument;
             RECT outer {0, 0, size->getWidth(), size->getHeight()};
-            ::AdjustWindowRectEx(&outer, WS_OVERLAPPEDWINDOW, FALSE, 0);
+            ::AdjustWindowRectEx(&outer, style_, FALSE, 0);
             resizing_ = true;
             ::SetWindowPos(window_, nullptr, 0, 0,
                            outer.right - outer.left, outer.bottom - outer.top,
@@ -1291,6 +1298,7 @@ private:
         HWND contentWindow_ = nullptr;
         bool attached_ = false;
         bool resizing_ = false;
+        DWORD style_ = WS_OVERLAPPEDWINDOW;
         Steinberg::IPtr<Steinberg::IPlugView> view_;
         Steinberg::IPtr<Frame> frame_;
     };

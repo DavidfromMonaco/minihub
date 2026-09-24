@@ -142,6 +142,9 @@ body {
 /* What Play plays. Amber when it is not everything, like a Record that
    cannot start: something is left out on purpose, and it should show. */
 .transport select { height:26px; margin-left:4px; padding:0 4px; color:var(--text); background:var(--bg); border:1px solid var(--border); border-radius:5px; font-size:11px; }
+/* A narrow window drops the words beside the tempo and the Plays selector
+   before it squeezes the device pill to its dot; each keeps its tooltip. */
+@media (max-width: 1050px) { .transport .transport-word { display:none; } }
 .transport select.scoped { color:#ffdb76; border-color:rgba(245,196,81,.65); background:rgba(245,196,81,.08); }
 /* The four seek buttons. Square and drawn rather than written, because six
    named buttons across a 48px header is a wall of words. */
