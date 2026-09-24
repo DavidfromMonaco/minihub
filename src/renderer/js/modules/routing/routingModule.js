@@ -49,6 +49,7 @@ import {
   buildVisualConnections,
   createConnection,
   deleteConnection,
+  moveConnectionEnd,
   portTypeInfo
 } from './routingCore.js';
 import { appendMiniLabControlSurfaceSvg } from '../../ui/miniLabControlSurface.js';
@@ -846,7 +847,7 @@ export function createRoutingModule(hub) {
       return;
     }
 
-    // Left-drag a connected input endpoint to physically unplug that cable.
+    // Left-drag a connected input endpoint to unplug that cable or move it.
     if (portEl && portEl.dataset.side === 'input') {
       const conns = hub.network.connectionsTo(portEl.dataset.nodeId, portEl.dataset.portId);
       if (conns.length > 0) {
@@ -1189,10 +1190,16 @@ export function createRoutingModule(hub) {
     const target = document.elementFromPoint(e.clientX, e.clientY);
     const portEl = target && target.closest ? target.closest('.port') : null;
 
-    // Release on empty canvas (not over any port) disconnects; releasing over
-    // a port (original input or otherwise) keeps the connection unchanged.
+    // Released on empty canvas it is unplugged; on another input it is plugged
+    // there instead (asked 2026-09-24: moving a cable meant cutting it and
+    // drawing a new one); on its own input or an output it stays where it was.
     if (!portEl) {
       deleteConnection(hub.network, d.connection);
+    } else if (portEl.dataset.side === 'input') {
+      const result = moveConnectionEnd(hub.network, d.connection, {
+        nodeId: portEl.dataset.nodeId, portId: portEl.dataset.portId
+      });
+      if (!result.ok && result.reason !== 'same-port') flashReject(portEl, result.reason);
     }
 
     drag = null;

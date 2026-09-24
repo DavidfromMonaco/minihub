@@ -14,7 +14,10 @@ author during a session, built after he quit MiniHub ("fais tout").
   (`NODE_LIST_ORDER` in `core/nodeTypes.js`). A default, not a sort: a node
   dragged elsewhere stays, and the next of its kind follows it there. A
   project opens in its saved order.
-- To do: a cable's end moved from one input to another; several nodes
+- Done: a cable's input end, dragged onto another input, is plugged there
+  (`moveConnectionEnd` in `routing/routingCore.js`); refused there, it stays
+  where it was. Released on empty canvas it is still unplugged.
+- To do: several nodes
   selected (Shift, Ctrl, a frame drawn); what Play plays (All, Sequencer,
   Players); a range per knob assignment; the white strip beside a narrow
   plugin window.

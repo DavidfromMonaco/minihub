@@ -4,6 +4,7 @@ import { makeFullHub } from './helpers.mjs';
 import {
   createConnection,
   deleteConnection,
+  moveConnectionEnd,
   buildVisualConnections
 } from '../src/renderer/js/modules/routing/routingCore.js';
 import { dragPosition } from '../src/renderer/js/core/grid.js';
@@ -58,6 +59,31 @@ test('unplug: release back on original input preserves the connection', () => {
   // Released over a port (original input) -> no deleteConnection call.
   assert.equal(hub.network.connections().length, 1);
   assert.deepEqual(hub.network.connectionsTo('b', 'i')[0], connection);
+});
+
+// ---- moving a cable's end (asked 2026-09-24) --------------------------------
+const ends = (hub) => hub.network.connections().map((c) => `${c.from.nodeId}>${c.to.nodeId}`).sort();
+
+test('move: an input end released on another input is plugged there instead', () => {
+  const hub = makeFullHub();
+  seed(hub);
+  createConnection(hub.network, { nodeId: 'a', portId: 'o' }, { nodeId: 'b', portId: 'i' });
+  const connection = hub.network.connectionsTo('b', 'i')[0];
+  assert.deepEqual(moveConnectionEnd(hub.network, connection, { nodeId: 'c', portId: 'i' }), { ok: true });
+  assert.deepEqual(ends(hub), ['a>c']);
+});
+
+test('move: a refused destination leaves the cable where it was', () => {
+  const hub = makeFullHub();
+  seed(hub);
+  hub.network.addNode({ id: 'd', name: 'D', inputs: [{ id: 'i', type: 'audio' }] });
+  createConnection(hub.network, { nodeId: 'a', portId: 'o' }, { nodeId: 'b', portId: 'i' });
+  createConnection(hub.network, { nodeId: 'a', portId: 'o' }, { nodeId: 'c', portId: 'i' });
+  const connection = hub.network.connectionsTo('b', 'i')[0];
+  assert.equal(moveConnectionEnd(hub.network, connection, { nodeId: 'd', portId: 'i' }).ok, false, 'MIDI into audio');
+  assert.equal(moveConnectionEnd(hub.network, connection, { nodeId: 'c', portId: 'i' }).ok, false, 'already cabled there');
+  assert.equal(moveConnectionEnd(hub.network, connection, { nodeId: 'b', portId: 'i' }).reason, 'same-port');
+  assert.deepEqual(ends(hub), ['a>b', 'a>c']);
 });
 
 test('unplugging one branch preserves other fan-out connections', () => {

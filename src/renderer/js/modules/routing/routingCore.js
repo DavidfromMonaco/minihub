@@ -91,6 +91,25 @@ export function createConnection(network, from, to) {
   }
 }
 
+/**
+ * Move a cable's input end to another input, as one gesture: the old cable
+ * goes, the new one comes, and when the new one is refused the old one is put
+ * back. Unplugging first matters -- the cable being moved is not a duplicate of
+ * itself, nor part of a cycle it would close once moved.
+ */
+export function moveConnectionEnd(network, connection, to) {
+  const toNode = network.getNode(to.nodeId);
+  const toPort = toNode && toNode.inputs.find((p) => p.id === to.portId);
+  if (!toPort) return { ok: false, reason: 'unknown-port' };
+  if (connection.to.nodeId === to.nodeId && connection.to.portId === to.portId) {
+    return { ok: false, reason: 'same-port' };
+  }
+  if (!deleteConnection(network, connection)) return { ok: false, reason: 'gone' };
+  const result = createConnection(network, connection.from, to);
+  if (!result.ok) createConnection(network, connection.from, connection.to);
+  return result;
+}
+
 /** Remove a connection through the network API. Returns true if removed. */
 export function deleteConnection(network, connection) {
   return network.disconnect(
