@@ -106,20 +106,27 @@ export function renderControlBindings(instance, hub, selectedControlId = null) {
 
 /**
  * The part of the parameter the control sweeps, and how to narrow it: put the
- * parameter where an end should be, in the plugin, then Min or Max. Full gives
- * the whole parameter back. Shown only for a bound control, on its own line.
+ * parameter where an end should be, in the plugin, then Low = now or High =
+ * now. Full gives the whole parameter back. Shown only for a bound control.
+ *
+ * Named after the gesture, not after the result. "Min" and "Max" read as
+ * "the lowest possible": the author pressed Min with the pitch at +0.30 and
+ * found the knob unable to go lower, and the top, never set, still at +24
+ * (2026-09-24). Both ends are always written out for the same reason: an end
+ * left alone is the parameter's own, and says so.
  */
 function rangeControls(controlId, binding) {
   const range = binding.range;
-  const end = (text, fallback) => escapeHtml(text || fallback);
-  const span = range ? `${end(range.minText, 'set')} → ${end(range.maxText, 'set')}` : 'Full';
+  const end = (text, value, fallback) => escapeHtml(text
+    || (value === (fallback === 'min' ? 0 : 1) ? fallback : `${Math.round(value * 100)} %`));
+  const span = range ? `${end(range.minText, range.min, 'min')} → ${end(range.maxText, range.max, 'max')}` : 'Full';
   const button = (edge, label, title, enabled = true) =>
     `<button class="btn btn-sm" data-control-action="range-${edge}" data-source-control-id="${controlId}" title="${title}"${enabled ? '' : ' disabled'}>${label}</button>`;
   return `<div class="control-range">
         <span class="control-range-label">Range</span>
         <span class="control-range-span">${span}</span>
-        ${button('min', 'Min', 'The value the plugin shows now becomes the bottom of the control')}
-        ${button('max', 'Max', 'The value the plugin shows now becomes the top of the control')}
+        ${button('min', 'Low = now', 'Set the parameter in the plugin where the control should start, then press: the value the plugin shows now becomes the bottom of the control')}
+        ${button('max', 'High = now', 'Set the parameter in the plugin where the control should end, then press: the value the plugin shows now becomes the top of the control')}
         ${button('full', 'Full', 'The control sweeps the whole parameter again', Boolean(range))}
       </div>`;
 }

@@ -1553,9 +1553,12 @@ body {
 /* The range of the selected binding, on a line of its own under the toolbar's
    buttons, which leave no room beside them. */
 .bindings-bar > .control-learn-toolbar:has(.control-range) { flex-wrap:wrap; row-gap:4px; }
-.control-range { flex:1 0 100%; display:flex; align-items:center; gap:6px; min-width:0; font-size:11.5px; }
+.control-range { flex:1 0 100%; display:flex; flex-wrap:wrap; align-items:center; gap:4px 6px; min-width:0; font-size:11.5px; }
 .control-range-label { color:var(--text-dim); }
-.control-range-span { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-family:var(--mono); }
+/* The two ends first, whole; the buttons follow on the next line when the
+   column is too narrow for both. */
+.control-range-span { flex:1 0 auto; min-width:0; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-family:var(--mono); }
+.control-range .btn { white-space:nowrap; }
 /* Where the drawing is, in the toolbar's "Select a control …": on the left of it
    in the strip, above it in the column. */
 .bindings-bar .bar-where-column { display:none; }

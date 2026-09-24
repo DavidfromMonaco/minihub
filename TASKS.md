@@ -18,6 +18,9 @@ finished, delete its entry**, in the same commit. What was done lives in git and
 - A cable's input end dragged onto another input is plugged there
   (`moveConnectionEnd`). Seen: moved to a Mixer, refused on a CTRL IN and left
   in place, unplugged on empty canvas, and one Ctrl+Z put a move back.
+  Ctrl + click on a cable had stopped unplugging it (the selection frame took
+  the press); fixed the same day and seen: a click selects, Ctrl + click
+  unplugs.
 - Several nodes selected in the Patch Bay: Shift or Ctrl + click, a frame drawn
   on empty canvas, a drag moving them all, Delete, Ctrl+A, Escape. Seen, with
   the MiniLab left alone by Delete and one Ctrl+Z restoring two deleted nodes.
@@ -27,12 +30,16 @@ finished, delete its entry**, in the same commit. What was done lives in git and
   scope plays; live, Sequencer left the player stopped under Play and All
   started it mid-play. Under 1050 px the words Plays, Tempo and BPM drop so the
   device pill keeps its text (111 px at 960).
-- A range per knob assignment: Range with Min, Max and Full in the bindings bar
-  (`range` in `core/controlBindings.js`). Seen with kHs Pitch Shifter (its
-  Pitch is ±24 semitones): Min at −2, Max at +2, the bar reading
+- A range per knob assignment: Range with Low = now, High = now and Full in
+  the bindings bar (`range` in `core/controlBindings.js`). Seen with kHs Pitch
+  Shifter (its Pitch is ±24 semitones): ends at −2 and +2, the bar reading
   "−2.00 → +2.00", the drawn K5 dragged to its top, bottom and middle giving
-  +2.00, −2.00 and +0.00. Not seen with the MiniLab itself, none being
-  connected.
+  +2.00, −2.00 and +0.00. Tried by the author with the MiniLab's K5: "ça
+  fonctionne", once he understood that an end takes the value the plugin
+  shows. He had read "Min" as "the lowest possible", pressed it at +0.30 and
+  left the top at +24; the buttons are named after the gesture since, and the
+  range always writes both ends out ("+0.30 → max"). The renamed buttons are
+  not seen in the application yet: `dist/` waits for MiniHub to close.
 - The white strip beside kHs Pitch Shifter: its 236 px bar cut the help and the
   toolbar, and a widened plugin window cannot stretch the plugin. The bar is
   now at least 720 px under a plugin (`STRIP_MIN_WIDTH`), and a plugin that

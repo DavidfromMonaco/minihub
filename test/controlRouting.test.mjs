@@ -938,6 +938,7 @@ test('a binding sweeps the range set from where the parameter stands, and Full g
   const toolbar = renderControlBindings(node, hub, k1);
   assert.match(toolbar, /class="control-range-span">-2\.00 → \+2\.00</, 'the bar says the range in the plugin’s words');
   assert.match(toolbar, /data-control-action="range-full"[^>]*>Full</);
+  assert.match(toolbar, /data-control-action="range-min"[^>]*>Low = now</, 'named after the gesture');
   assert.doesNotMatch(renderControlBindings(node, hub, source('k2').id), /control-range/, 'an unbound control has no range');
 
   assert.equal((await hub.control.setRange(node.id, k1, 'min')).reason, 'empty-range',
@@ -945,6 +946,12 @@ test('a binding sweeps the range set from where the parameter stands, and Full g
   assert.equal((await hub.control.setRange(node.id, k1, 'full')).ok, true);
   assert.equal(hub.control.bindingFor(node.id, k1).range, undefined);
   assert.equal(routed(1), 1);
+
+  // One end set: the other is written out as the parameter's own.
+  standing = { normalizedValue: 0.5062, display: '+0.30' };
+  await hub.control.setRange(node.id, k1, 'min');
+  assert.match(renderControlBindings(node, hub, k1), /class="control-range-span">\+0\.30 → max</,
+    'a top never set says it is the top');
 });
 
 test('a range is validated like the rest of a binding, and a reversed one turns the control round', async () => {
