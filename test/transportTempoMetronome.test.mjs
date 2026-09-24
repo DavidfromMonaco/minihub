@@ -5,13 +5,17 @@ import fs from 'node:fs';
 import { bindTempoInput, normalizeTempo } from '../src/renderer/js/core/tempoControl.js';
 import { fire, installDom, makeEl } from './domShim.mjs';
 
-test('global transport contains only Play, Stop and the shared Tempo control', () => {
+test('global transport carries Play, Stop, Record and the shared Tempo control', () => {
   const html = fs.readFileSync(new URL('../src/renderer/index.html', import.meta.url), 'utf8');
   const transport = /<div class="transport"[^>]*>([\s\S]*?)<\/div>/.exec(html)?.[1] || '';
   assert.match(transport, /id="transport-play"[^>]*>Play<\/button>/);
   assert.match(transport, /id="transport-stop"[^>]*>Stop<\/button>/);
+  // Moved here from the Sequencer's toolbar on 2026-09-24, on the author's
+  // word: a take can be started from any page.
+  assert.match(transport, /id="transport-stop"[^>]*>Stop<\/button>\s*<button id="transport-record"[^>]*>Record<\/button>/,
+    'Record sits beside Stop');
   assert.match(transport, /Tempo[^<]*<input id="transport-bpm"[^>]*min="20"[^>]*max="300"/);
-  assert.doesNotMatch(transport, /metronome|métronome|metro|volume|transport-record/i);
+  assert.doesNotMatch(transport, /metronome|métronome|metro|volume/i);
 });
 
 test('tempo keeps keyboard entry and adds bounded progressive right-button vertical drag', () => {

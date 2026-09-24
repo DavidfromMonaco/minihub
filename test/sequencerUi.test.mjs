@@ -181,9 +181,9 @@ test('Sequencer renders actionable Record/Stop guidance and explicit per-track r
   const view = captureContainer();
   hub.modules.activate('sequencer', view.container);
 
-  assert.match(view.markup(), /data-action="start-record"/);
-  assert.match(view.markup(), /data-action="play"/);
-  assert.match(view.markup(), /data-action="stop" disabled/);
+  for (const action of ['go-start', 'go-end', 'play', 'start-record', 'stop']) {
+    assert.doesNotMatch(view.markup(), new RegExp(`data-action="${action}"`), `no ${action} of its own: the header carries it`);
+  }
   assert.match(view.markup(), /data-control="tempo"[^>]*min="20"[^>]*max="300"/);
   assert.match(view.markup(), />Métronome<\/span>/);
   assert.match(view.markup(), /role="switch"[^>]*data-action="toggle-metronome"/);
@@ -489,22 +489,40 @@ test('sub-threshold and cancelled arrangement drags cannot leave uncommitted can
     'a completed real drag publishes exactly one canonical arrangement update');
 });
 
-test('Sequencer Start/End buttons use the shared seek transport and authoritative arrangement end', async () => {
-  const { api, hub } = await runtime();
+test('Record is the header\'s: amber with its reason when a take cannot start, red while one runs', async () => {
+  const { hub } = await runtime();
   hub.nodes.create('sequencer');
-  const track = hub.sequencer.model.addTrack('midi');
-  hub.sequencer.model.addMidiClip(track.id, 6, 3);
-  hub.modules.register(createSequencerModule(hub));
-  const view = captureContainer();
-  hub.modules.activate('sequencer', view.container);
+  hub.nodes.create('vst');
+  hub.sequencer.model.setTrackArmed(hub.sequencer.model.addTrack('midi').id, true);
+  hub.engine.state = 'running';
+  const ids = new Map([['transport-record', makeEl('button')], ['transport-stop', makeEl('button')]]);
+  const previousGetElementById = document.getElementById;
+  document.getElementById = (id) => ids.get(id) || null;
+  try {
+    buildHeader(hub, makeEl('span'));
+  } finally {
+    document.getElementById = previousGetElementById;
+  }
+  const record = ids.get('transport-record');
+  const reason = hub.sequencer.recordBlockReason();
+  assert.ok(reason, 'this setup cannot record: its armed track has no MIDI input');
+  assert.equal(record.classList.contains('blocked'), true);
+  assert.equal(record.title, reason, 'the reason is the tooltip');
+  assert.equal(record.disabled, false, 'and it stays pressable: pressing it is how the reason is said');
 
-  assert.match(view.markup(), /data-action="go-start" title="Go to Start" aria-label="Go to Start"/);
-  assert.match(view.markup(), /data-action="go-end" title="Go to End" aria-label="Go to End"/);
-  fire(view.action('go-start'), 'click');
-  fire(view.action('go-end'), 'click');
-  await flush();
-  const seeks = api.sent.filter((message) => message.type === 'setTransport' && Object.hasOwn(message, 'seekPpq'));
-  assert.deepEqual(seeks.map((message) => message.seekPpq), [0, 9]);
+  const blocked = [];
+  hub.events.on('sequencer:record-blocked', (event) => blocked.push(event.message));
+  fire(record, 'click');
+  assert.deepEqual(blocked, [reason], 'the press asks the Sequencer, which says why');
+
+  hub.sequencer.recording = true;
+  hub.events.emit('sequencer:recording', true);
+  assert.equal(record.classList.contains('recording'), true, 'red while a take runs');
+  assert.equal(record.disabled, true);
+  assert.equal(ids.get('transport-stop').disabled, false, 'and Stop is there to end it');
+  hub.sequencer.recording = false;
+  hub.events.emit('sequencer:recording', false);
+  assert.equal(record.classList.contains('recording'), false);
 });
 
 test('Sequencer and header controls share one global Play/Stop transport state', async () => {
@@ -534,19 +552,18 @@ test('Sequencer and header controls share one global Play/Stop transport state',
     assert.equal(ids.get('transport-bpm').value, '111');
     assert.equal(view.control('tempo').value, '111', 'native authoritative tempo updates both views');
 
-    fire(view.action('play'), 'click');
+    fire(ids.get('transport-play'), 'click');
     assert.equal(ids.get('transport-play').classList.contains('playing'), true);
-    assert.equal(view.action('play').classList.contains('active'), true);
     assert.equal(api.sent.filter((message) => message.type === 'setTransport').at(-1).playing, true);
 
-    fire(view.action('stop'), 'click');
+    fire(ids.get('transport-stop'), 'click');
     assert.equal(ids.get('transport-play').classList.contains('playing'), false);
     assert.equal(api.sent.filter((message) => message.type === 'setTransport').at(-1).playing, false);
     assert.equal(api.sent.filter((message) => message.type === 'setTransport').at(-1).stopOneRings, true,
       'a Stop pressed stops the One Ring nodes too');
 
     fire(ids.get('transport-play'), 'click');
-    assert.equal(view.action('play').classList.contains('active'), true);
+    assert.equal(ids.get('transport-play').classList.contains('playing'), true);
     hub.events.emit('engine:transport', { playing: true, ppqPosition: 6.5 });
     assert.equal(hub.sequencer.playheadPpq, 6.5);
     assert.equal(hub.sequencer.model.state.loop.enabled, false);

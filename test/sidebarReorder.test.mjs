@@ -143,11 +143,8 @@ test('the arrangement transport row stays one line and compacts instead of widen
   const source = fs.readFileSync(new URL('../src/renderer/js/modules/sequencer/sequencerModule.js', import.meta.url), 'utf8');
   assert.match(css, /\.sequencer-page \{[^}]*grid-template-columns:minmax\(0,1fr\)/,
     'the page column is held to the window, not to its widest child');
-  assert.match(css, /\.seq-transport-row \{ flex-wrap:nowrap; \}/, 'never a second line: the author refused it');
+  assert.match(css, /\.seq-head-row \{ flex-wrap:nowrap; \}/, 'never a second line: the author refused it');
   assert.match(css, /\.seq-toolbar \{ container-type:inline-size; \}/, 'the steps follow the room the row has');
-  assert.equal((css.match(/@container \(max-width:/g) || []).length, 3);
-  for (const action of ['play', 'start-record', 'stop']) {
-    const button = new RegExp(`data-action="${action}"[^>]*aria-label="[^"]+"[^>]*>`);
-    assert.match(source, button, `${action} keeps an accessible name once only its symbol shows`);
-  }
+  assert.match(source, /<div class="row seq-head-row">/);
+  assert.match(source, /data-action="add-midi"[^>]*title="Add a MIDI track"/, 'a word it drops stays in its tooltip');
 });

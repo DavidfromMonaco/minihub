@@ -26,25 +26,26 @@ test('Sequencer dynamic layout remains compatible with the strict renderer CSP',
     'timeline geometry must be applied through the CSSOM after rendering');
 });
 
-test('Sequencer toolbar exposes shared Play, actionable Record, distinct Stop, and no Piano Roll UI', () => {
+test('Play, an actionable Record and Stop are the header\'s; the Sequencer keeps its status line and no Piano Roll UI', () => {
   const controllerSource = fs.readFileSync(new URL('../src/renderer/js/core/sequencerController.js', import.meta.url), 'utf8');
   const moduleSource = fs.readFileSync(new URL('../src/renderer/js/modules/sequencer/sequencerModule.js', import.meta.url), 'utf8');
+  const headerSource = fs.readFileSync(new URL('../src/renderer/js/ui/header.js', import.meta.url), 'utf8');
   assert.match(controllerSource, /recordBlockReason\(\)/);
   assert.match(controllerSource, /No MIDI input is detected or selected/);
-  assert.match(moduleSource, /data-action="start-record"/);
-  assert.match(moduleSource, /startRecording\(\{ notify: true \}\)/);
-  assert.match(moduleSource, /data-action="play"/);
-  assert.match(moduleSource, /playTransport\(\)/);
-  assert.match(moduleSource, /data-action="stop"/);
-  assert.match(moduleSource, /stopTransport\(\)/);
+  for (const action of ['go-start', 'go-end', 'play', 'start-record', 'stop']) {
+    assert.doesNotMatch(moduleSource, new RegExp(`data-action="${action}"`),
+      `the Sequencer's own ${action} is gone: the header's is the one (2026-09-24)`);
+  }
+  assert.match(headerSource, /startRecording\(\{ notify: true \}\)/);
+  assert.match(headerSource, /playTransport\(\)/);
+  assert.match(headerSource, /stopTransport\(\)/);
   assert.match(moduleSource, /seq-record-status/);
   assert.match(controllerSource, /liveBlockReason\(\)/,
     'the transport says why what is played is heard by nothing, not only why a take is blocked');
   assert.match(moduleSource, /data-track-inspector/);
   assert.match(moduleSource, /const TRACK_HEIGHT = 64;/,
     'a track is a lane with a clip in it, not a five-row form');
-  const idleRecord = /<button class="btn seq-record[\s\S]*?data-action="start-record"([\s\S]*?)<span class="seq-transport-label">Record<\/span><\/button>/.exec(moduleSource)?.[1] || '';
-  assert.doesNotMatch(idleRecord, /recordBlockReason[^\n]*disabled/,
+  assert.match(headerSource, /recordEl\.disabled = recording;/,
     'missing setup is reported by an actionable Record control instead of a silent grey button');
   assert.doesNotMatch(moduleSource, /Piano Roll|piano-(?:scroll|keyboard|grid|note)|pianoZoom|data-note-control/);
   const cssSource = fs.readFileSync(new URL('../src/renderer/styles/base.css', import.meta.url), 'utf8');

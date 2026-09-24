@@ -123,14 +123,24 @@ body {
 }
 .header-center > .transport { flex: 0 0 auto; }
 .header-center > .device-status { flex: 0 1 auto; min-width: 0; overflow: hidden; }
+/* Squeezed, the pill keeps one line and ends in an ellipsis, its whole text in
+   its tooltip. As a flex box its words wrapped instead: since Record joined
+   the transport (2026-09-24), a 960 px window drew "No MiniLab 3 / detected"
+   on two lines inside a pill made for one. Block layout is what lets
+   `text-overflow` reach the text; the dot is inline for the same reason. */
+.header-center > .device-status { display: block; white-space: nowrap; text-overflow: ellipsis; }
+.header-center > .device-status::before { display: inline-block; margin-right: 7px; vertical-align: 1px; }
 .transport { display:flex; align-items:center; gap:6px; font-size:11px; color:var(--text-dim); }
 .transport button,.transport input { height:26px; color:var(--text); background:var(--bg); border:1px solid var(--border); border-radius:5px; }
 .transport button { padding:0 10px; cursor:pointer; }
 .transport button.playing { color:var(--ok); border-color:rgba(62,207,126,.5); }
+/* Record: red while a take runs, amber when one cannot start -- the colours the
+   Sequencer's own Record button wore before it moved here. */
+.transport button.recording { color:#fff; background:#c44747; border-color:#ef6a5b; opacity:1; }
+.transport button.blocked { color:#ffdb76; border-color:rgba(245,196,81,.65); background:rgba(245,196,81,.08); }
 .transport input { width:62px; padding:0 5px; margin-left:4px; }
-/* The four seek buttons. Square and drawn rather than written, because they
-   are the same four commands the sequencer's toolbar draws (`.seq-nav-icon`)
-   and because six named buttons across a 48px header is a wall of words. */
+/* The four seek buttons. Square and drawn rather than written, because six
+   named buttons across a 48px header is a wall of words. */
 .transport .nav-icon { width:26px; padding:0; display:inline-grid; place-items:center; }
 .transport .nav-icon svg { width:15px; height:15px; fill:currentColor; stroke:currentColor; stroke-width:1.5; }
 .transport .nav-icon:hover { color:var(--text); border-color:var(--border-strong); background:var(--bg-hover); }
@@ -1856,36 +1866,27 @@ body {
 .seq-runtime-empty .page-title { margin:0; }
 .seq-runtime-empty p { max-width:620px; margin:0; color:var(--text-dim); line-height:1.6; }
 .seq-toolbar { padding:12px 14px; }
-/* The transport row stays ONE line at every window width, and gives up
-   words, not room. Spelled out it needs about 1120 px; MiniHub's narrowest
-   window leaves it 712. It used to squeeze its buttons to three lines of text
-   each and still push the page 12 px past the window at 1224 px, clipping the
-   + at the end of the navigation bar; wrapping it onto two lines was tried
-   next and refused by the author. So it compacts in steps, the way transport
-   bars do: first the words a control does not need (Tempo, Métronome, Track),
-   then Play, Record and Stop become their symbols and the track count goes,
-   then the last spare pixels. Every control keeps a tooltip and an
-   accessible name for what it no longer spells. The page column above is held
-   to the window for the same reason: an implicit grid column grows to its
-   widest child. */
+/* The title row stays ONE line at every window width, and gives up words,
+   not room. It used to squeeze its buttons to three lines of text each and
+   still push the page 12 px past a 1224 px window, clipping the + at the end
+   of the navigation bar; wrapping it onto two lines was tried next and
+   refused by the author. Its transport buttons have since moved to the header
+   (2026-09-24), so what is left needs about 830 px, and where it has less --
+   MiniHub's narrowest window leaves 712 -- it drops the words a control does
+   not need: Tempo, Métronome, Track. Each keeps a tooltip. The page column
+   above is held to the window for the same reason: an implicit grid column
+   grows to its widest child. */
 .seq-toolbar { container-type:inline-size; }
-.seq-transport-row { flex-wrap:nowrap; }
-.seq-transport-row > * { flex-shrink:0; }
-.seq-transport-row .btn { white-space:nowrap; }
+.seq-head-row { flex-wrap:nowrap; }
+.seq-head-row > * { flex-shrink:0; }
+.seq-head-row .btn { white-space:nowrap; }
 .seq-tempo-control .seq-tempo-label { color:inherit; font:inherit; }
-.seq-transport-icon { display:none; width:14px; height:14px; fill:currentColor; }
-@container (max-width:1139px) {
+@container (max-width:859px) {
   .seq-roomy, .seq-tempo-label, .seq-metronome-label { display:none; }
 }
-@container (max-width:959px) {
-  .seq-track-count { display:none; }
-  .seq-transport-label { display:none; }
-  .seq-transport-icon { display:block; }
-  .seq-transport-row .seq-play, .seq-transport-row .seq-record, .seq-transport-row .seq-stop { width:32px; padding:5px!important; display:inline-grid; place-items:center; }
-}
-@container (max-width:799px) {
-  .seq-transport-row { gap:6px; }
-  .seq-export-format { display:none; }
+@container (max-width:700px) {
+  .seq-head-row { gap:6px; }
+  .seq-track-count, .seq-export-format { display:none; }
 }
 .seq-toolbar .page-title { margin:0; }
 .seq-record-status { margin-top:9px; padding:7px 10px; border:1px solid var(--border); border-radius:6px; color:var(--text-dim); background:#191c20; font-size:11px; }
@@ -1935,13 +1936,8 @@ body {
 .seq-zoom-btn { height:22px; padding:0 8px!important; font-size:10px; }
 .seq-export-panel { display:flex; align-items:center; flex-wrap:wrap; gap:8px; padding:6px 8px; border:1px solid var(--border); border-radius:6px; background:#171a1e; }
 .seq-export-panel select { min-width:82px; }
-.seq-play.active { color:var(--ok); border-color:rgba(62,207,126,.5); }
-.seq-nav-icon { width:30px; padding:5px!important; display:inline-grid; place-items:center; }
-.seq-nav-icon svg { width:16px; height:16px; fill:currentColor; stroke:currentColor; stroke-width:1.5; }
-.seq-record.active,.seq-arm.active { color:#fff; background:#c44747; border-color:#ef6a5b; }
+.seq-arm.active { color:#fff; background:#c44747; border-color:#ef6a5b; }
 .seq-monitor.active { color:#07131c!important; background:#38bdf8!important; border-color:#7dd3fc!important; }
-.seq-record.blocked { color:#ffdb76; border-color:rgba(245,196,81,.65); background:rgba(245,196,81,.08); opacity:1; }
-.seq-stop:not(:disabled) { color:#fff; border-color:#ef6a5b; }
 /* The shell's scrollbars. Chromium's default is a wide light slab, which is a
    bright gash across a dark application. Scoped under `body` so the
    `.omni-pearl` faceplate keeps its own (D-012: it consumes nothing from

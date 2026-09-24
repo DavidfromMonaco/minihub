@@ -39,6 +39,14 @@ rail hid itself and was not found.
   Métronome and "Track" go, then Play, Record and Stop become symbols and the
   track count goes, then the export format; each keeps a tooltip. Seen on one
   line with nothing clipped at 960, 1100, 1224, 1400 and 1700 px.
+- Then, on the author's word, the Sequencer's own transport buttons (start,
+  end, Play, Record, Stop) are gone and Record joined the header's Play and
+  Stop, visible from every page: amber with its reason as tooltip when a take
+  cannot start (pressing it says why), red while one runs. The Sequencer keeps
+  its status line. What is left of its title row drops Tempo, Métronome and
+  "Track" under about 860 px. The header's device pill now ends in an ellipsis
+  rather than wrapping when squeezed. Seen at 960 and 1224 px; a take started
+  from the header not seen, no MIDI keyboard being connected during the check.
 
 **The plugin list folds a brand — in the author's test** — built 2026-09-21 on
 the author's word, after Kilohearts' 35 "kHs" effects filled the VST node's

@@ -48,6 +48,7 @@ export function buildHeader(hub, statusEl) {
    */
   const playEl = document.getElementById('transport-play');
   const stopEl = document.getElementById('transport-stop');
+  const recordEl = document.getElementById('transport-record');
   const bpmEl = document.getElementById('transport-bpm');
   const positionEl = document.getElementById('transport-position');
   const navEls = {
@@ -101,6 +102,33 @@ export function buildHeader(hub, statusEl) {
     renderTransport();
   };
   for (const name of ['audioPlayer:status', 'audioPlayer:gone']) hub.events.on(name, renderPlayers);
+  /**
+   * Record, beside Play and Stop, reachable from every page.
+   *
+   * It lived in the Sequencer's own toolbar, which only exists while that page
+   * is on screen: arming a track on the Sequencer and then going to a VST's
+   * page to play left no Record in reach. The author moved it here on
+   * 2026-09-24, with the Sequencer's other transport buttons removed.
+   *
+   * It keeps what the Sequencer's button said. Red while a take runs. Amber,
+   * and still pressable, when a take cannot start -- pressing it is how the
+   * reason is shown -- with that reason as its tooltip. The reason depends on
+   * tracks, cables, MIDI ports and the audio device, so it is asked again
+   * whenever any of those moves.
+   */
+  const renderRecord = () => {
+    if (!recordEl) return;
+    const recording = hub.sequencer?.recording === true;
+    const blocked = recording ? '' : (hub.sequencer?.recordBlockReason?.() || '');
+    recordEl.classList.toggle('recording', recording);
+    recordEl.classList.toggle('blocked', Boolean(blocked));
+    recordEl.disabled = recording;
+    recordEl.title = recording ? 'Recording — press Stop to finish and keep the take' : (blocked || 'Start recording');
+    recordEl.setAttribute('aria-pressed', String(recording));
+  };
+  recordEl?.addEventListener('click', () => hub.sequencer?.startRecording({ notify: true }));
+  for (const name of ['sequencer:recording', 'sequencer:changed', 'sequencer:count-in', 'network:change',
+    'midi:ports', 'midi:preference', 'engine:deviceState']) hub.events.on(name, renderRecord);
   playEl?.addEventListener('click', () => {
     if (playing) hub.sequencer?.pauseTransport();
     else hub.sequencer?.playTransport();
@@ -130,6 +158,7 @@ export function buildHeader(hub, statusEl) {
   });
   hub.events.on('engine:transport',(state)=>{if(typeof state?.playing!=='boolean')return;playing=state.playing;renderTransport();});
   renderTransport();
+  renderRecord();
   // The engine's first position report is 100 ms away at best, and a reload
   // lands on whatever the transport already holds -- not necessarily bar one.
   renderPosition(hub.sequencer?.playheadPpq ?? 0);
@@ -163,6 +192,8 @@ export function buildHeader(hub, statusEl) {
       statusEl.textContent = device ? `No ${device} detected` : 'No controller detected';
       statusEl.className = 'device-status idle';
     }
+    // A narrow window cuts the pill short; the tooltip keeps the whole sentence.
+    statusEl.title = statusEl.textContent;
   };
 
   hub.events.on('midi:ports', update);

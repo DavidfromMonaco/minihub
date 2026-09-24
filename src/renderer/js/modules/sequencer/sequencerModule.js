@@ -898,13 +898,8 @@ export function createSequencerModule(hub) {
     closeContextMenu();
     container.innerHTML = `<div class="sequencer-page">
       <section class="panel seq-toolbar">
-        <div class="row seq-transport-row"><h1 class="page-title">Sequencer</h1><span class="pill seq-track-count">${state.tracks.length} tracks</span><span class="spacer"></span>
+        <div class="row seq-head-row"><h1 class="page-title">Sequencer</h1><span class="pill seq-track-count">${state.tracks.length} tracks</span><span class="spacer"></span>
           <button class="btn" data-action="add-midi" ${atTrackLimit ? 'disabled title="64-track project limit reached"' : 'title="Add a MIDI track"'}><span>+ MIDI<span class="seq-roomy"> Track</span></span></button><button class="btn" data-action="add-audio" ${atTrackLimit ? 'disabled title="64-track project limit reached"' : 'title="Add an audio track"'}><span>+ Audio<span class="seq-roomy"> Track</span></span></button>
-          <button class="btn seq-nav-icon" data-action="go-start" title="Go to Start" aria-label="Go to Start"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4v16M19 5l-10 7 10 7z"/></svg></button>
-          <button class="btn seq-nav-icon" data-action="go-end" title="Go to End" aria-label="Go to End"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 4v16M5 5l10 7-10 7z"/></svg></button>
-          <button class="btn seq-play ${controller.playing ? 'active' : ''}" data-action="play" aria-pressed="${controller.playing}" title="Play" aria-label="Play"><svg class="seq-transport-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5v14l12-7z"/></svg><span class="seq-transport-label">Play</span></button>
-          <button class="btn seq-record ${controller.recording ? 'active' : (recordBlockReason ? 'blocked' : '')}" data-action="start-record" ${controller.recording ? 'disabled' : ''} title="${escapeHtml(recordBlockReason || 'Start recording')}" aria-label="Record"><svg class="seq-transport-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="6"/></svg><span class="seq-transport-label">Record</span></button>
-          <button class="btn seq-stop" data-action="stop" ${controller.playing || controller.recording ? '' : 'disabled'} title="Stop" aria-label="Stop"><svg class="seq-transport-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6h12v12H6z"/></svg><span class="seq-transport-label">Stop</span></button>
           <label class="seq-tempo-control" title="Tempo"><span class="seq-tempo-label">Tempo</span><input class="tempo-input" data-control="tempo" type="number" min="20" max="300" step="1" value="${controller.tempo}" aria-label="Sequencer tempo in BPM"><span>BPM</span></label>
           <div class="seq-metronome-control" title="Métronome">
             <span class="seq-metronome-label">Métronome</span>
@@ -972,11 +967,6 @@ export function createSequencerModule(hub) {
   function bind() {
     container.querySelector('[data-action="add-midi"]')?.addEventListener('click', () => { addTrack('midi'); });
     container.querySelector('[data-action="add-audio"]')?.addEventListener('click', () => { addTrack('audio'); });
-    container.querySelector('[data-action="go-start"]')?.addEventListener('click', () => controller.goToStart());
-    container.querySelector('[data-action="go-end"]')?.addEventListener('click', () => controller.goToEnd());
-    container.querySelector('[data-action="play"]')?.addEventListener('click', () => controller.playTransport());
-    container.querySelector('[data-action="start-record"]')?.addEventListener('click', () => controller.startRecording({ notify: true }));
-    container.querySelector('[data-action="stop"]')?.addEventListener('click', () => controller.stopTransport());
     const tempoInput = container.querySelector('[data-control="tempo"]');
     tempoBindingCleanup = bindTempoInput(tempoInput, (tempo) => controller.setTempo(tempo));
     container.querySelector('[data-action="toggle-metronome"]')?.addEventListener('click', () => {
@@ -1095,24 +1085,14 @@ export function createSequencerModule(hub) {
     element.textContent = status.text;
   }
 
-  function renderTransportState() {
-    const play = container?.querySelector('[data-action="play"]');
-    play?.classList.toggle('active', controller.playing);
-    play?.setAttribute('aria-pressed', controller.playing ? 'true' : 'false');
-    const stop = container?.querySelector('[data-action="stop"]');
-    if (stop) stop.disabled = !(controller.playing || controller.recording);
-  }
-
+  /**
+   * Play, Record and Stop are the header's (`ui/header.js`): the author removed
+   * this page's own on 2026-09-24, so a take can be started from any page. What
+   * stays here is the sentence under the title -- why nothing is heard, why a
+   * take cannot start, that one is running -- because it reads this page's
+   * tracks and it is here that you fix what it names.
+   */
   function renderRecordingState() {
-    const record = container?.querySelector('[data-action="start-record"]');
-    const blockReason = controller.recordBlockReason();
-    record?.classList.toggle('active', controller.recording);
-    record?.classList.toggle('blocked', !controller.recording && Boolean(blockReason));
-    if (record) {
-      record.disabled = controller.recording;
-      record.title = blockReason || 'Start recording';
-    }
-    renderTransportState();
     renderCountInState({ active: controller.preCounting });
   }
 
@@ -1590,7 +1570,6 @@ export function createSequencerModule(hub) {
       hub.events.on('sequencer:changed', render),
       hub.events.on('sequencer:recording', renderRecordingState),
       hub.events.on('sequencer:count-in', renderCountInState),
-      hub.events.on('sequencer:transport', renderTransportState),
       hub.events.on('sequencer:tempo', renderTempoValue),
       hub.events.on('sequencer:metronome', renderMetronomeState),
       hub.events.on('sequencer:metronome-tick', pulseMetronome),
