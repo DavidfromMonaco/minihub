@@ -5,6 +5,7 @@ import { bindTempoInput } from '../../core/tempoControl.js';
 import { isCanonicalMidiIngress } from '../../core/sequencerController.js';
 import { closeContextMenu, openContextMenu } from '../../ui/contextMenu.js';
 import { sequencerCommands } from '../../core/sequencerCommands.js';
+import { STRIDES } from '../../ui/secondsRuler.js';
 
 /**
  * The two numbers that decide how much arrangement fits on a screen.
@@ -471,17 +472,19 @@ export function gridPx(zoom) {
  *
  * A ladder and not a formula: a mark every 7 seconds is arithmetically fine
  * and unreadable, because nobody counts in sevens. These are the intervals a
- * clock is divided into -- a second, two, five, a quarter minute, a minute,
- * five, and up to the hour.
+ * clock is divided into -- a hundredth, a tenth, half a second, a second,
+ * five, a quarter minute, a minute, and up to the hour.
  *
- * It stops AT the second. Half-second rungs were tried and the default zoom
- * lands on them, so the row read `0:00.5  0:01.0  0:01.5` across the screen --
- * precision the bar ruler already provides, in the units this row exists to
- * escape. This one answers "where am I in the piece"; a thirty-second note is
- * the other ruler's business.
+ * It goes below the second, as far as the zoom does. It stopped at the second
+ * once, on the argument that the bar ruler under it already carries the fine
+ * divisions; the author had asked for the opposite, and was right. This row
+ * measures TIME, independently of the bars: a sound designer lining a hit up
+ * to 0:12.35 is not helped by being told it is somewhere in bar 7, and the
+ * two scales only coincide at a tempo that happens to divide a second.
+ * The ladder is the audio take's (`ui/secondsRuler.js`): one clock, not two.
  */
-const TIME_STRIDES = Object.freeze([1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 1800, 3600]);
-/** Wider than the bar ruler's: `0:00` is a longer label than `17`. */
+const TIME_STRIDES = STRIDES;
+/** Wider than the bar ruler's: `0:00.25` is a longer label than `17`. */
 const TIME_MIN_MARK_PX = 62;
 
 /** Seconds per quarter at this tempo. The only place the two units meet. */
@@ -494,12 +497,14 @@ export function secondsPerQuarter(bpm) {
  * How many seconds one mark of the clock ruler covers.
  *
  * Two floors, like `rulerStride`'s: the marks stay far enough apart to be read,
- * and a long arrangement never emits more than 512 of them however far out you
- * are -- an hour at one mark a second is 3,600 buttons nobody will click.
+ * and the span drawn never carries more than 512 of them -- an hour at one
+ * mark a second is 3,600 buttons nobody will click. The span is what is drawn,
+ * not the arrangement: only the marks around the view exist, which is what
+ * lets a long piece be read to the hundredth.
  */
-export function timeStride(pxPerSecond, totalSeconds = 0) {
+export function timeStride(pxPerSecond, spanSeconds = 0) {
   const scale = Number(pxPerSecond);
-  const span = Math.max(0, Number(totalSeconds) || 0);
+  const span = Math.max(0, Number(spanSeconds) || 0);
   if (!Number.isFinite(scale) || scale <= 0) return TIME_STRIDES.at(-1);
   for (const stride of TIME_STRIDES) {
     if (stride * scale >= TIME_MIN_MARK_PX && span / stride <= 512) return stride;
@@ -508,20 +513,26 @@ export function timeStride(pxPerSecond, totalSeconds = 0) {
 }
 
 /**
- * A duration as a clock reads it: `m:ss`, and `h:mm:ss` once there is an hour
- * to write. Whole seconds, because that is the finest rung of the ladder.
+ * A position as a clock reads it: `m:ss`, `h:mm:ss` once there is an hour to
+ * write, and as many decimals as the stride needs -- none for whole seconds,
+ * one for tenths, two for hundredths.
  */
-export function formatClock(seconds) {
+export function formatClock(seconds, stride = 1) {
   const total = Number(seconds);
-  if (!Number.isFinite(total) || total < 0) return '0:00';
+  const decimals = stride >= 1 ? 0 : stride >= 0.1 ? 1 : 2;
+  if (!Number.isFinite(total) || total < 0) return decimals ? `0:00.${'0'.repeat(decimals)}` : '0:00';
   // Rounded FIRST, then split. Rounding each field after the split is what
   // prints `:60`, and what turns 59:59.6 into `60:00` instead of the hour it
-  // has just reached.
-  const rounded = Math.round(total);
-  const hours = Math.floor(rounded / 3600);
-  const minutes = Math.floor((rounded % 3600) / 60);
+  // has just reached. Counted in whole units of the last decimal, so 0.1 + 0.2
+  // cannot print 0:00.30000000000000004.
+  const unit = 10 ** decimals;
+  const units = Math.round(total * unit);
+  const whole = Math.floor(units / unit);
+  const hours = Math.floor(whole / 3600);
+  const minutes = Math.floor((whole % 3600) / 60);
   const pad = (value) => String(value).padStart(2, '0');
-  const secs = pad(rounded % 60);
+  const fraction = decimals ? `.${String(units % unit).padStart(decimals, '0')}` : '';
+  const secs = `${pad(whole % 60)}${fraction}`;
   return hours > 0 ? `${hours}:${pad(minutes)}:${secs}` : `${minutes}:${secs}`;
 }
 
@@ -532,22 +543,32 @@ export function rulerStride(bars, zoom) {
 }
 
 /**
- * The clock ruler's marks.
+ * The clock ruler's marks, between `fromPpq` and `toPpq` only.
  *
  * Positioned in pixels like the bar ruler's, and carrying the same `data-seek`
  * in quarters -- clicking 1:30 seeks there, which is the point of a ruler you
  * can read. The mapping is linear because MiniHub has one tempo and no tempo
  * map: seconds are quarters times 60 over the BPM. The day there is a tempo
  * map, this is the function that has to walk it.
+ *
+ * Windowed like the clips: at a hundredth of a second, a five-minute piece is
+ * thirty thousand marks, and the scroll listener already repaints when the
+ * view leaves what was drawn.
  */
-function timeRulerMarkup(endPpq, zoom, bpm) {
+function timeRulerMarkup(endPpq, zoom, bpm, fromPpq = 0, toPpq = endPpq) {
   const perQuarter = secondsPerQuarter(bpm);
-  const totalSeconds = Math.max(0, Number(endPpq) || 0) * perQuarter;
+  const endSeconds = Math.max(0, Number(endPpq) || 0) * perQuarter;
+  const fromSeconds = Math.max(0, Number(fromPpq) || 0) * perQuarter;
+  const toSeconds = Math.min(endSeconds, Math.max(fromSeconds, Number(toPpq) || 0) * perQuarter);
   const pxPerSecond = Math.max(0.0001, (Number(zoom) || 0) / perQuarter);
-  const stride = timeStride(pxPerSecond, totalSeconds);
-  const count = Math.max(1, Math.ceil(totalSeconds / stride));
-  return Array.from({ length: count }, (_, index) => index * stride)
-    .map((seconds) => `<button class="seq-time-mark" data-seek="${seconds / perQuarter}" data-seq-left="${seconds * pxPerSecond}" data-seq-width="${stride * pxPerSecond}"><strong>${formatClock(seconds)}</strong></button>`)
+  const stride = timeStride(pxPerSecond, toSeconds - fromSeconds);
+  const first = Math.floor(fromSeconds / stride);
+  const last = Math.max(first, Math.ceil(toSeconds / stride) - 1);
+  const marks = [];
+  // Multiplied, never accumulated: adding 0.01 a thousand times drifts.
+  for (let index = first; index <= last; index += 1) marks.push(index * stride);
+  return marks
+    .map((seconds) => `<button class="seq-time-mark" data-seek="${seconds / perQuarter}" data-seq-left="${seconds * pxPerSecond}" data-seq-width="${stride * pxPerSecond}"><strong>${formatClock(seconds, stride)}</strong></button>`)
     .join('');
 }
 
@@ -932,7 +953,7 @@ export function createSequencerModule(hub) {
       <section class="panel seq-arrangement">
         <div class="seq-scroll" data-timeline-scroll>
           <div class="seq-canvas" data-seq-canvas data-seq-head="${TRACK_HEADER}" data-seq-time-ruler="${TIME_RULER_HEIGHT}" data-seq-bar-ruler="${RULER_HEIGHT}" data-seq-width="${TRACK_HEADER + timelineWidth}" data-seq-height="${HEAD_HEIGHT + Math.max(1, state.tracks.length) * TRACK_HEIGHT}">
-            <div class="seq-corner">TRACKS</div><div class="seq-time-ruler" data-seq-time-scale data-seq-left="${TRACK_HEADER}" data-seq-width="${timelineWidth}">${timeRulerMarkup(endPpq, zoom, controller.tempo)}</div><div class="seq-ruler" data-seq-left="${TRACK_HEADER}" data-seq-width="${timelineWidth}" data-seq-beat="${gridLinePx}">${rulerMarkup(endPpq, zoom)}</div>
+            <div class="seq-corner">TRACKS</div><div class="seq-time-ruler" data-seq-time-scale data-seq-left="${TRACK_HEADER}" data-seq-width="${timelineWidth}">${timeRulerMarkup(endPpq, zoom, controller.tempo, visibleStart, visibleEnd)}</div><div class="seq-ruler" data-seq-left="${TRACK_HEADER}" data-seq-width="${timelineWidth}" data-seq-beat="${gridLinePx}">${rulerMarkup(endPpq, zoom)}</div>
             <div class="seq-loop-range ${state.loop.enabled ? 'enabled' : ''}" data-seq-left="${TRACK_HEADER + state.loop.startPpq * zoom}" data-seq-width="${(state.loop.endPpq - state.loop.startPpq) * zoom}" data-seq-height="${HEAD_HEIGHT + Math.max(1, state.tracks.length) * TRACK_HEIGHT}"></div>
             ${state.tracks.length ? state.tracks.map((track, index) => `<div class="seq-track ${state.focusedTrackId === track.id ? 'focused' : ''}" data-track-id="${track.id}" data-seq-top="${HEAD_HEIGHT + index * TRACK_HEIGHT}" data-seq-height="${TRACK_HEIGHT}">
               <div class="seq-track-head" data-seq-width="${TRACK_HEADER}">
@@ -1066,7 +1087,7 @@ export function createSequencerModule(hub) {
       scrollPpq,
       viewportPpq: Math.max(16, ((container?.clientWidth || 0) - TRACK_HEADER) / zoom)
     });
-    row.innerHTML = timeRulerMarkup(endPpq, zoom, controller.tempo);
+    row.innerHTML = timeRulerMarkup(endPpq, zoom, controller.tempo, drawnWindow.startPpq, drawnWindow.endPpq);
     applyDynamicStyles(row);
     bindSeeks(row);
   }

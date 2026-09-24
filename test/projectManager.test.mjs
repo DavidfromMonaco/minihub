@@ -631,3 +631,39 @@ test('a profile change hands the open project to the reload, unsaved edits inclu
   assert.equal(handed.options.discardApproved, true,
     'nothing is discarded, so nothing is asked: the project is handed over, not replaced');
 });
+
+test('a saved project is called what its file is called', async () => {
+  const { projectNameFromPath } = await import('../src/renderer/js/core/projectManager.js');
+  assert.equal(projectNameFromPath(String.raw`C:\Users\me\Download\Codex.minihub`), 'Codex');
+  assert.equal(projectNameFromPath('C:/Projects/Live Set.MINIHUB'), 'Live Set');
+  assert.equal(projectNameFromPath(null, 'From template'), 'From template', 'no file: the stored name');
+  assert.equal(projectNameFromPath('', ''), 'Untitled');
+
+  // The Codex session of 2026-09-24: an open "Untitled" saved by the agent
+  // channel to Codex.minihub kept "Untitled", inside the file and on screen,
+  // because only a first save or a Save As took the file's name.
+  const written = [];
+  const identities = [];
+  const hub = {
+    events: { emit(type, state) { if (type === 'project:identity') identities.push(state.currentProjectName); } },
+    network: { serialize: () => [] },
+    settings: { data: {}, get: () => null, async setMany() {} },
+    sequencer: { model: { snapshot: () => null } }
+  };
+  const api = {
+    capturePluginStates: async () => ({ ok: true }),
+    async projectWrite(filePath, project) { written.push([filePath, project.name]); return { ok: true }; }
+  };
+  const manager = new ProjectManager(hub, api);
+  Object.assign(manager, { currentProjectPath: 'C:/Download/Untitled.minihub', currentProjectName: 'Untitled', _loading: false });
+  assert.equal((await manager.saveTo('C:/Download/Codex.minihub')).ok, true);
+  assert.deepEqual(written.at(-1), ['C:/Download/Codex.minihub', 'Codex'], 'the file carries its own name');
+  assert.equal(identities.at(-1), 'Codex', 'and the header says it');
+
+  // A file written before this, still holding "Untitled", opens under its
+  // file's name -- as does one renamed in the Explorer.
+  manager.applySnapshot({ projectId: 'p', name: 'Untitled' }, 'C:/Download/Codex.minihub');
+  assert.equal(manager.currentProjectName, 'Codex');
+  manager.applySnapshot({ projectId: 'p', name: 'From template' }, null);
+  assert.equal(manager.currentProjectName, 'From template', 'a project with no file keeps the stored name');
+});

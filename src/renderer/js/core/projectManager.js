@@ -5,6 +5,21 @@ const STAGED_KEY = 'minihub.stagedProject';
 export const PROJECT_WORKSPACE_MODULE = 'routing';
 const newId = () => globalThis.crypto?.randomUUID?.() || `project-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 export const shouldConsumeStagedProject = (navigationType) => navigationType === 'reload';
+/**
+ * A saved project is called what its file is called.
+ *
+ * The name stored inside the file used to win, and it only followed the file
+ * on a first save or a Save As. A save to a path given by the agent channel
+ * kept the old one: a session saved as `Codex.minihub` reopened as "Untitled",
+ * and no reload could correct it, because the file itself said so. A file
+ * renamed or copied in the Explorer had the same fate. A workstation shows the
+ * file's name; the stored one is only the fallback for a project with no file
+ * yet (one started from a template, whose name seeds the first Save dialog).
+ */
+export const projectNameFromPath = (filePath, fallback = 'Untitled') => {
+  const base = typeof filePath === 'string' ? filePath.split(/[\\/]/).pop().replace(/\.minihub$/i, '') : '';
+  return base || fallback || 'Untitled';
+};
 
 export class ProjectManager {
   constructor(hub, api) {
@@ -42,7 +57,7 @@ export class ProjectManager {
     // `network`: an old project opens once and is saved forward.
     const network = project.network || project.graph || {};
     Object.assign(this.hub.settings.data, { nodeInstances: project.nodeInstances, networkConnections: network.connections || [], networkLayout: network.layout || {}, networkViewport: network.viewport || null, transportBpm: project.transport?.bpm || 120, sequencerState: project.sequencer || null, [MASTER_OUTPUT_KEY]: normalizeMasterOutput(project.master) });
-    Object.assign(this, { projectId: project.projectId, currentProjectName: project.name, createdAt: project.createdAt, currentProjectPath: filePath, dirty: false });
+    Object.assign(this, { projectId: project.projectId, currentProjectName: filePath ? projectNameFromPath(filePath, project.name) : (project.name || 'Untitled'), createdAt: project.createdAt, currentProjectPath: filePath, dirty: false });
   }
   markDirty() { if (!this._loading && !this.dirty) { this.dirty = true; this.publish(); } }
   publish() {
@@ -154,9 +169,7 @@ export class ProjectManager {
     let filePath = chosenPath || (as ? null : this.currentProjectPath);
     if (!filePath) filePath = await this.api.projectPickSave(this.currentProjectName);
     if (!filePath) return { ok: false, reason: 'cancelled' };
-    const nextProjectName = (!this.currentProjectPath || as)
-      ? (filePath.split(/[\\/]/).pop().replace(/\.minihub$/i, '') || this.currentProjectName)
-      : this.currentProjectName;
+    const nextProjectName = projectNameFromPath(filePath, this.currentProjectName);
     const result = await this.api.projectWrite(filePath, this.snapshot({ name: nextProjectName }));
     if (!result?.ok) {
       return refuse('project-write-failed', `Could not save project: ${result?.error || 'unknown error'}`);
@@ -192,7 +205,7 @@ export class ProjectManager {
     if (!filePath) return false;
     // The template is named by its file, as a project is, and that name is what
     // a project started from it carries into its first Save dialog.
-    const name = filePath.split(/[\\/]/).pop().replace(/\.minihub$/i, '') || this.currentProjectName;
+    const name = projectNameFromPath(filePath, this.currentProjectName);
     const result = await this.api.projectWrite(filePath, this.snapshot({ name }));
     if (!result?.ok) {
       return refuse('template-write-failed', `Could not save template: ${result?.error || 'unknown error'}`);

@@ -101,7 +101,14 @@ body {
   gap: 9px;
   font-weight: 600;
   letter-spacing: 0.2px;
+  /* The project's name lives here, and a name can be long: it gives way
+     before the transport does. */
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 260px;
 }
+.brand-mark { flex: 0 0 auto; }
+.brand-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .brand-mark {
   width: 14px;
@@ -1885,7 +1892,6 @@ body {
   .home-card-title { font-size: 21px; }
   .home-about-title { font-size: 27px; }
 }
-.project-identity { color: var(--muted, #a7abb2); font-size: 13px; margin-right: 8px; }
 
 /* --- Integrated MIDI + audio Sequencer ---------------------------------- */
 .sequencer-page { display:grid; grid-template-columns:minmax(0,1fr); grid-template-rows:max-content minmax(0,1fr); gap:0; width:100%; height:100%; min-width:0; min-height:0; }

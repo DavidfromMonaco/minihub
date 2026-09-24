@@ -6,8 +6,20 @@ import { barBeat } from '../core/musicalTime.js';
  * Header device status. Reflects the controller's connection state.
  */
 export function buildHeader(hub, statusEl) {
+  /**
+   * The open project's name, where the product's name used to be.
+   *
+   * It was a second, grey label at the far right while the left said
+   * "MiniHub" -- the one thing on screen that never changes. A workstation's
+   * top left names the work. The tooltip carries the whole name, since a long
+   * one is cut short to leave the transport its room.
+   */
   const projectEl = document.getElementById('project-identity');
-  const renderProject = (state) => { if (projectEl) projectEl.textContent = `${state.currentProjectName}${state.dirty ? ' •' : ''}`; };
+  const renderProject = (state) => {
+    if (!projectEl) return;
+    projectEl.textContent = `${state.currentProjectName}${state.dirty ? ' •' : ''}`;
+    projectEl.title = state.dirty ? `${state.currentProjectName} — unsaved changes` : state.currentProjectName;
+  };
   hub.events.on('project:identity', renderProject);
   renderProject(hub.project);
   /**

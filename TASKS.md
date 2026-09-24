@@ -7,159 +7,31 @@ finished, delete its entry**, in the same commit. What was done lives in git and
 
 ## Started, not finished
 
-**Five changes asked in one session — in the author's test** — asked
-2026-09-24 by the author during a session, built after he quit MiniHub
-("fais tout"). Each seen in the packaged application (agent channel and CDP):
-- A new node joins its own kind in the NODES list — VST, Audio Player, Audio
-  Input, Mixer, Morpher, Arpeggiator, One Ring (`NODE_LIST_ORDER` in
-  `core/nodeTypes.js`). A default, not a sort. Seen: five nodes created in a
-  mixed order listed by kind; Mixer 1 dragged between the VSTs stayed there,
-  Mixer 2 followed it, VST 3 went after VST 2.
-- A cable's input end dragged onto another input is plugged there
-  (`moveConnectionEnd`). Seen: moved to a Mixer, refused on a CTRL IN and left
-  in place, unplugged on empty canvas, and one Ctrl+Z put a move back.
-  Ctrl + click on a cable had stopped unplugging it (the selection frame took
-  the press); fixed the same day and seen: a click selects, Ctrl + click
-  unplugs.
-- Several nodes selected in the Patch Bay: Shift or Ctrl + click, a frame drawn
-  on empty canvas, a drag moving them all, Delete, Ctrl+A, Escape. Seen, with
-  the MiniLab left alone by Delete and one Ctrl+Z restoring two deleted nodes.
-  Ctrl+C still copies one node only.
-- **Plays** All / Sequencer / Players in the header (DECISIONS D-053). Seen:
-  three exports of Dexed plus an Audio Player, each holding only what the
-  scope plays; live, Sequencer left the player stopped under Play and All
-  started it mid-play. Under 1050 px the words Plays, Tempo and BPM drop so the
-  device pill keeps its text (111 px at 960).
-- A range per knob assignment: "Range [Low] −2.00 [High] +2.00 [Full]" in
-  the bindings bar, each button beside the end it sets, as the author laid it
-  out (`range` in `core/controlBindings.js`). Seen with kHs Pitch
-  Shifter (its Pitch is ±24 semitones): ends at −2 and +2, the bar reading
-  "−2.00 → +2.00", the drawn K5 dragged to its top, bottom and middle giving
-  +2.00, −2.00 and +0.00. Tried by the author with the MiniLab's K5: "ça
-  fonctionne", once he understood that an end takes the value the plugin
-  shows. He had read "Min" as "the lowest possible", pressed it at +0.30 and
-  left the top at +24; each button stands beside its value since, and both
-  ends are always written out ("max" for a top never set). Seen in the bar since:
-  the Range line on one row, the help whole, the bar 860 px under a narrow
-  plugin. The Plays list opens dark (its options carry the shell's colours).
-- The white strip beside kHs Pitch Shifter: its 236 px bar cut the help and the
-  toolbar, and a widened plugin window cannot stretch the plugin. The bar is
-  now at least 860 px under a plugin (`STRIP_MIN_WIDTH`), and a plugin that
-  cannot resize gets a window without a resizing border or Maximize
-  (`canResize` in `plugin_host.cpp`). Seen: a 252 x 363 frame, a 720 px bar (860 since),
-  help and toolbar whole.
-- Outside this repository, the author's to update: `../minihub-agent/AGENTS.md`
-  describes neither the Plays scope nor a binding's range, and the channel
-  cannot set either.
-
-**Navigation in the three timelines, and the NODES list in any order — in
-the author's test** — built 2026-09-24 on the author's word: "more precise
-navigation tools, present in all three" (the arrangement, an audio take's
-Clip Editor, a MIDI clip's), the navigation bar first, zoom in and out too.
-He reported that the arrangement had no navigation bar: its four-pixel grey
-rail hid itself and was not found.
-- One bar for the three (`ui/navigationBar.js`), in its own row under the
-  timeline: drag the thumb to travel, press beside it to jump there, drag one
-  of its ends to zoom with the other end held, − and + for a step. It replaces
-  `ui/scrollRail.js`.
-- An audio take is no longer a fixed picture of the whole file: it zooms
-  (the bar, Ctrl+wheel under the cursor, Fit) under a clock ruler down to the
-  hundredth of a second (`ui/secondsRuler.js`).
-- Seen in the application over CDP: the bar under all three, the thumb drag,
-  an end drag (the other end did not move), −, +, Fit, Ctrl+wheel on a take.
-- Still coarse: a take's waveform is the engine's 256 peaks for the whole
-  file, so zoomed in it is an outline, not the signal. Finer peaks, asked of
-  the engine for what is on screen, is the next step, and needs native work.
-- The sidebar's NODES list is ordered by dragging a node, the other half of
-  the same request ("just grab them and move them, no arrows"). The order is
-  `hub.nodes`' own and so the project's (`NodeInstanceManager.move`); a press
-  that barely moves is still a click; Escape cancels; Routing stays first; a
-  node an undo brings back returns to its place. Reordering is not an undo
-  step. Seen in the application: a drag up, a drag down, the line and the
-  pale node mid-drag, a click after it, the order after a save and a reload.
-- The arrangement's transport row stays one line at every window width and
-  compacts in steps instead of widening the page (at 1224 px it was 12 px too
-  wide and clipped the + at the end of the navigation bar). Wrapping it onto
-  two lines was tried first and refused by the author. First Tempo,
-  Métronome and "Track" go, then Play, Record and Stop become symbols and the
-  track count goes, then the export format; each keeps a tooltip. Seen on one
-  line with nothing clipped at 960, 1100, 1224, 1400 and 1700 px.
-- Then, on the author's word, the Sequencer's own transport buttons (start,
-  end, Play, Record, Stop) are gone and Record joined the header's Play and
-  Stop, visible from every page: amber with its reason as tooltip when a take
-  cannot start (pressing it says why), red while one runs. The Sequencer keeps
-  its status line. What is left of its title row drops Tempo, Métronome and
-  "Track" under about 860 px. The header's device pill now ends in an ellipsis
-  rather than wrapping when squeezed. Seen at 960 and 1224 px; a take started
-  from the header not seen, no MIDI keyboard being connected during the check.
-
-**The plugin list folds a brand — in the author's test** — built 2026-09-21 on
-the author's word, after Kilohearts' 35 "kHs" effects filled the VST node's
-plugin list. A brand with two plugins or more in a family is one row, its
-plugins opening beside it; a lone plugin stays a line; the families stay the
-headings. The page draws that list (`ui/pluginMenu.js`, `foldPluginsByBrand`
-in `core/vstChain.js`), so it no longer opens white; the select still holds
-the choice that "+ Add VST" reads.
-- Checked by `npm test` and `npm run check` only. The author tries it himself
-  in MiniHub.
-
-**Kilohearts plugins load — in the author's test** — fixed 2026-09-21. Every
-"kHs" effect ended in "setProcessing(true) failed": they keep the VST3 SDK's
-own answer to that call, `kNotImplemented`, which the engine took for a
-refusal. It is accepted now, as JUCE's host does (`processingStartAccepted`
-in `plugin_host.cpp`), and a real refusal names its code. All 35 installed
-kHs load through the engine's host in `mlh_native_tests --load-plugin <path>`;
-not seen in MiniHub yet.
-
-**An Audio Player node — in the author's test** — built 2026-09-21 on the
-author's word: an OmniBox he can put an audio file in, "at least WAV and MP3",
-to cable into VSTs and process the audio. An Audio OmniBox with one AUDIO OUT:
-a WAV, MP3, AIFF, FLAC or OGG file chosen on its page, Play/Pause, Stop, Loop,
-Level, a click on the overview to place it; the Play, Pause and Stop at the top
-of MiniHub drive it too (DECISIONS D-051, ARCHITECTURE §7 *`AudioPlayer`*).
-- Seen in the application through the agent channel, on the 48 kHz headphone
-  output: a 44.1 kHz WAV and an MP3 of it, through ValhallaSupermassive to the
-  output; the transport's Play, Pause, resume and Stop, the loop's wrap, an MP3
-  without loop ending at its start, the node's own buttons, and the header's
-  Stop ending a player started alone. An export with the plugin bypassed
-  differs from one without, so the file really is processed. The page and the
-  Patch Bay card seen in a capture.
-- Not heard by the author yet. The page is plain (`base.css`) until he says what
-  it should look like.
-- Outside this repository, the author's to update: `../minihub-agent/AGENTS.md`
-  does not describe `create-node audio-player`, its content
-  `{ filePath, loop, level }`, nor the `audio-player` request (`play`, `pause`,
-  `stop`, `seek` with `seconds`).
-
-**Templates, and a Home that says what MiniHub is** — built 2026-09-18 on the
-author's word, replacing the "Basic template" placeholder, which only ever made
-an empty project under another name.
-- File > Save as Template writes the open project into
-  `Documents/MiniHub/Templates`, beside Projects and with its own folder memory,
-  and moves nothing about the project: not its file, not its name, not its
-  dirty flag, not the recent-project keys Home reads.
-- Home's Templates card and File > New from Template both open that folder. A
-  project started from a template has no file and a fresh identity, so the
-  first Ctrl+S goes to the projects folder and the template is never
-  overwritten. Changing a template means Save as Template again.
-- An empty templates folder opens no dialog: MiniHub says how one is made.
-- The controller node's input port is called MIDI In. "Hardware" narrowed it to
-  an external machine, which it never was.
-- Home now opens on the sentence that MiniHub works with any MIDI controller,
-  in bold and in the mixer accent, above what the four cards do.
-- MiniHub ships one template, made by the author on 2026-09-18: the controller
-  into an empty VST node, that node into the audio output. It is copied into
-  the user's templates folder at startup when it is not already there, so it
-  reaches the installer, the portable ZIP and an existing install alike.
-- Not seen yet: the Home sentence on screen, the two dialogs in the author's
-  hands, and the shipped template arriving on a machine that never had one.
-- What it is for, the author's words: an example for somebody who has no idea
-  how to use MiniHub. Its cables name the shipped profile's controller node on
-  purpose — replacing it with one's own keyboard and saving a template, or an
-  ordinary project, is what the example is teaching.
-- Left as found: a cable into the controller's MIDI In is dropped in silence
-  when no MIDI output is selected on its page (`midiManager.send` answers
-  `false` and nothing says so). Reported to the author, not acted on.
+**The project's name, the clock ruler, and a question on track mute** —
+asked 2026-09-25 by the author, the day he reported every entry awaiting his
+test as tried and working.
+- Done, in the author's test: the header's top left names the open project
+  where it said "MiniHub", with a • while it has unsaved changes; the grey
+  name at the far right is gone. A saved project is called what its file is
+  called (`projectNameFromPath` in `core/projectManager.js`): a save by the
+  agent channel to another path used to keep the old name, which is how
+  Codex's `Codex.minihub` of 2026-09-24 kept reopening as "Untitled". Seen in
+  the application: a file holding "Essai A" inside, saved as `Essai B`,
+  opens as "Essai B".
+- Done, in the author's test: the arrangement's clock ruler measures time on
+  its own, down to the hundredth of a second as the zoom allows, instead of
+  stopping at the second and leaving the fine divisions to the bar ruler — the
+  opposite of what he had asked. It draws only the marks around the view.
+  Seen in the application: 0:28.0, 0:28.2, 0:28.4 at the top zoom.
+- Waiting for the author: muting a Sequencer audio track silences what the
+  track monitors, and in Codex's session the two Audio Players reached the
+  output only through the Mixer → Sequencer AUDIO IN → armed track "Audio 1".
+  Every DAW mutes a monitored input with its track; he reported it as a
+  defect. Not changed until he says which it should be.
+- Waiting for the author: the Patch Bay's context menus, which he finds
+  unergonomic. A proposal is before him; nothing built. They are still
+  hand-built in `routingModule.js`; `ui/contextMenu.js` exists and only the
+  Sequencer uses it.
 
 **One Ring, made native** — started 2026-09-16 on the author's word, in place
 of the Matrix node (ROADMAP item 7). One Ring becomes a node of MiniHub with
@@ -168,7 +40,8 @@ same CTRL OUT path, and a new page after hardware sequencers.
 Steps 0 to 15 of 19 done or waived: the node runs in MiniHub and its page
 works, both tried by the author on 2026-09-17; requests answer One Ring's
 vocabulary; scenes go from A1 to D8. Step 16, the page of part two in tabs,
-is built and waits for the author's trial.
+was tried by the author and reported working on 2026-09-25. Left: the
+demonstration with him (step 17) and the documents (step 18).
 - Part two, asked 2026-09-17: One Ring plays notes — it captures what reaches
   a new MIDI IN, varies it through its channels and scenes, plays instruments,
   and writes its generations into new Sequencer tracks, which can feed the
@@ -176,7 +49,7 @@ is built and waits for the author's trial.
   every change that can be made in the meantime. Built and checked while the
   author was away: the material and its capture, four voices, the writer and
   feedback, and their requests (steps 11 to 13), and their page, in tabs
-  (step 16), tried in a browser on a fake engine only.
+  (step 16).
 - Set aside by the author on 2026-09-17, to be rethought: One Ring creating
   the node a new generation's track plays.
 - Found while planning it: every Sequencer sync panicked every chain, so a
@@ -228,9 +101,6 @@ the author tests).
   redraw an open bindings bar.
 - Gap: the sequencer's Loop, From and To cannot be set through the channel,
   nor read in `describe` (reported by Codex for Metamorphose).
-- Gap, outside this repository: `../minihub-agent/AGENTS.md` does not describe
-  the transport operations added on 2026-09-18 (`pause`, `go-end`, `bars`) —
-  the author's to update.
 
 **Splice asks to log in again — in the author's test** — diagnosed 2026-09-16. Splice keeps its login
 in its own folder under AppData, and Windows files that folder inside a
@@ -271,8 +141,6 @@ for One Ring.
 - Not seen yet: the drawn knob following the plugin's own knob, or the MiniLab's.
 Plan: [plans/done/bindings-bar-docked.md](plans/done/bindings-bar-docked.md).
 
-**The Patch Bay's context menus** — still hand-built in `routingModule.js`;
-`ui/contextMenu.js` exists and only the sequencer uses it.
 
 ## Kept for the author, not started
 
@@ -307,3 +175,20 @@ canvas, its rectangle and the band element; a repaint replaces all three, and
 the band is left drawing on a detached node. It takes a repaint DURING the
 drag, which only playback's follow-scroll can cause, so it needs the transport
 running and a rubber band at the same time. Not reproduced in the application.
+
+**A take's waveform, zoomed in, is an outline** — left from the timelines'
+navigation (2026-09-24): a take draws the engine's 256 peaks for the whole
+file, so zoomed in it is not the signal. Finer peaks for what is on screen
+need native work. Not started.
+
+**A cable into the controller's MIDI In is dropped in silence** — found
+2026-09-18 while building templates: when no MIDI output is selected on the
+controller's page, `midiManager.send` answers `false` and nothing says so.
+Reported to the author, not acted on.
+
+**`../minihub-agent/AGENTS.md` is behind** — outside this repository, the
+author's to update. It describes neither the Plays scope, nor a binding's
+range (the channel cannot set either), nor `create-node audio-player` with
+its content `{ filePath, loop, level }` and the `audio-player` request
+(`play`, `pause`, `stop`, `seek` with `seconds`), nor the transport's
+`pause`, `go-end` and `bars`.

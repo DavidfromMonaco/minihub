@@ -1,15 +1,13 @@
 /**
  * The clock ruler over an audio take, down to the hundredth of a second.
  *
- * The arrangement's clock ruler stops at the second on purpose: a bar ruler
- * sits under it and carries the fine divisions. An audio take has no bars --
- * it is a file, measured in time -- so this ruler is the only scale on screen
- * and has to go as fine as the zoom does. Hence a ladder of its own, with the
- * sub-second rungs the other one refuses.
+ * An audio take has no bars -- it is a file, measured in time -- so this
+ * ruler is the only scale on screen and has to go as fine as the zoom does.
+ * The arrangement's clock row reads the same ladder.
  */
 
 /** Intervals a clock is read in: nobody counts in sevens, or in 0.07s. */
-const STRIDES = Object.freeze([0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 1800, 3600]);
+export const STRIDES = Object.freeze([0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 1800, 3600]);
 /** `0:00.25` is a longer label than a bar number. */
 const MIN_MARK_PX = 72;
 

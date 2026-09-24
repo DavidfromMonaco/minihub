@@ -802,24 +802,30 @@ test('the arrangement is measured in minutes as well as bars', async () => {
   assert.equal(secondsPerQuarter(60), 1);
   assert.equal(secondsPerQuarter(0), 0.5, 'a tempo that cannot be read falls back to 120');
 
-  // A clock reads in ones, fives, quarter minutes and minutes. A mark every 7
-  // seconds is arithmetically fine and nobody counts in sevens.
-  // Whole seconds at the finest: this row says where you are in the piece,
-  // and a `0:01.5` next to a bar ruler is the bar ruler's job done twice.
-  const ladder = [1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 1800, 3600];
-  for (const pxPerSecond of [0.5, 2, 6, 16, 48, 144, 480, 2000]) {
-    const stride = timeStride(pxPerSecond, 600);
+  // A clock reads in hundredths, tenths, ones, fives, quarter minutes and
+  // minutes. A mark every 7 seconds is arithmetically fine and nobody counts
+  // in sevens.
+  const ladder = [0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 1800, 3600];
+  for (const pxPerSecond of [0.5, 2, 6, 16, 48, 144, 480, 2000, 8000]) {
+    const stride = timeStride(pxPerSecond, 2);
     assert.ok(ladder.includes(stride), `${stride}s is not a number a clock is divided into`);
-    assert.ok(stride * pxPerSecond >= 62 || stride === 1 || stride === 3600,
+    assert.ok(stride * pxPerSecond >= 62 || stride === 0.01 || stride === 3600,
       `marks ${(stride * pxPerSecond).toFixed(0)}px apart at ${pxPerSecond}px/s are unreadable`);
   }
-  // Zoomed all the way in the visible span is seconds, not minutes, and a
-  // second is as fine as this ruler gets.
-  assert.equal(timeStride(2000, 20), 1);
-  // Pulled far out, the ruler thins rather than emitting a mark per second.
+  // Zoomed in, the clock goes BELOW the second: it measures time on its own,
+  // not as a coarser copy of the bar ruler under it (asked by the author).
+  assert.ok(timeStride(480, 20) < 1, 'the default top zoom at 120 BPM reads fractions of a second');
+  assert.equal(timeStride(8000, 2), 0.01, 'as far as a hundredth');
+  // Pulled far out, the span drawn thins rather than emitting a mark per second.
   assert.ok(600 / timeStride(2, 600) <= 512);
   assert.ok(36000 / timeStride(480, 36000) <= 512, 'ten hours stays bounded');
 
+  // As many decimals as the stride needs, rounded before being split.
+  assert.equal(formatClock(12.35, 0.05), '0:12.35');
+  assert.equal(formatClock(0.1 + 0.2, 0.1), '0:00.3');
+  assert.equal(formatClock(59.996, 0.01), '1:00.00');
+  assert.equal(formatClock(3725.5, 0.5), '1:02:05.5');
+  assert.equal(formatClock(0, 0.01), '0:00.00');
   assert.equal(formatClock(0), '0:00');
   assert.equal(formatClock(62), '1:02');
   assert.equal(formatClock(125), '2:05');
@@ -850,7 +856,8 @@ test('the clock ruler sits above the bars, seeks like them, and follows the temp
   const marks = [...view.markup().matchAll(/<button class="seq-time-mark" data-seek="([^"]+)"[^>]*><strong>([^<]+)</g)]
     .map(([, seek, label]) => [Number(seek), label]);
   assert.ok(marks.length >= 2, 'the ruler has marks');
-  assert.deepEqual(marks[0], [0, '0:00']);
+  assert.equal(marks[0][0], 0);
+  assert.match(marks[0][1], /^0:00(.0+)?$/, 'the first mark is the start, at whatever precision the zoom asks');
   // At 120 BPM a quarter is half a second, so a mark at 0:30 is quarter 60.
   const thirty = marks.find(([, label]) => label === '0:30');
   if (thirty) assert.equal(thirty[0], 60, '0:30 at 120 BPM is quarter 60');
