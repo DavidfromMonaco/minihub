@@ -33,7 +33,7 @@ function makeContainer() {
     svg.setAttribute('id', 'routing-svg');
     container.appendChild(svg);
     const buttons = {};
-    for (const id of ['routing-align', 'routing-unalign', 'routing-reset', 'routing-new-node']) {
+    for (const id of ['routing-align', 'routing-unalign', 'routing-reset', 'routing-zoom-in', 'routing-zoom-out', 'routing-add']) {
       const btn = makeEl('button');
       btn.setAttribute('id', id);
       btn.hidden = id === 'routing-unalign';
@@ -167,3 +167,24 @@ test('unmount removes the button listeners', () => {
   mod.unmount();
   assert.equal(align._listeners.click.size, 0, 'invariant 8: unmount removes everything');
 });
+
+// ---- the zoom buttons (D-055) ------------------------------------------------------
+
+test('the zoom buttons zoom about the middle of the view, say so, and are remembered', () => {
+  const { hub } = setupHub();
+  const { parts, mod } = mount(hub);
+  const zoomOf = () => hub.settings.data.networkViewport?.zoom;
+  const before = zoomOf();
+
+  click(parts().buttons['routing-zoom-in']);
+  const zoomed = zoomOf();
+  assert.ok(zoomed > before, 'in is closer');
+  click(parts().buttons['routing-zoom-out']);
+  assert.ok(Math.abs(zoomOf() - before) < 1e-9, 'and out undoes it exactly');
+
+  mod.unmount();
+  for (const id of ['routing-zoom-in', 'routing-zoom-out', 'routing-add']) {
+    assert.equal(parts().buttons[id]._listeners.click?.size ?? 0, 0, `${id}: unmount removes its listener`);
+  }
+});
+

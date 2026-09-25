@@ -73,3 +73,27 @@ test('unsubscribing stops the menu, and no API is not a crash', () => {
   assert.deepEqual(hub.calls, [], 'a page that unbound is no longer driven by the menu');
   assert.equal(typeof bindMenuCommands(hub, {}), 'function', 'a preload without the channel is survivable');
 });
+
+// ---- the header's File / Edit / View (D-055) ---------------------------------
+
+test('the header pops the menu\'s own submenu under the button, and nothing else', () => {
+  const popped = [];
+  const submenu = (name) => ({ popup: (options) => popped.push({ name, ...options }) });
+  const menu = { items: mainMenu.POPUP_MENUS.map((name) => ({ submenu: submenu(name) })) };
+  const window = { isDestroyed: () => false };
+
+  assert.deepEqual(mainMenu.POPUP_MENUS, ['file', 'edit', 'view'], 'in the order the template builds them');
+  assert.equal(mainMenu.popupAppMenu({ menu, window, which: 'edit', x: 100.4, y: 36, zoomFactor: 1.25 }), true);
+  assert.deepEqual(popped, [{ name: 'edit', window, x: 126, y: 45 }], 'CSS pixels scaled by the zoom, then rounded');
+
+  for (const which of ['help', '__proto__', '', undefined]) {
+    assert.equal(mainMenu.popupAppMenu({ menu, window, which, x: 0, y: 0 }), false, `refuses ${String(which)}`);
+  }
+  assert.equal(mainMenu.popupAppMenu({ menu, window, which: 'file', x: Number.NaN, y: 0 }), false, 'refuses a point that is not one');
+  assert.equal(popped.length, 1);
+});
+
+test('the three popup names are the template\'s three menus', () => {
+  const labels = mainMenu.appMenuTemplate(() => {}).map((item) => item.label.replace('&', '').toLowerCase());
+  assert.deepEqual(labels, mainMenu.POPUP_MENUS);
+});

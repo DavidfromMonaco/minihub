@@ -2944,3 +2944,65 @@ One alternative was refused:
 **Proof in the code** — `renderAudioForOutput` and `midiTrackGainForOutput`
 in `native/audio-engine/src/sequencer.cpp`. Tests: "a muted track still
 passes its input" and the series mute in `native/audio-engine/test/native_tests.cpp`.
+
+## D-055 — The shell looks like the One Ring, darker, and draws its own title bar
+
+**Status**: in force · 2026-09-25 · **implemented**, amends D-012 for the shell's look
+
+**Context** — The author found MiniHub looked like "an Electron app": the
+Windows title bar with a text menu under it, the system font, the blue every
+dark application wears, cards with 8 px corners and wide margins. He asked
+whether dressing it like the One Ring's faceplate, darker, would make it much
+heavier, then approved a mockup of the Patch Bay in a flat, dense direction
+with the faceplate's orange and black readouts, and asked for it everywhere.
+Two changes of his on the mockup: a node's family shown by its card's top-left
+corner, drawn heavier than the outline in the family's colour, instead of a
+bar across the top; and the Rear View button replaced by the Tab key.
+
+**Decision** — `base.css` is redrawn in the faceplate's spirit, not replaced
+by it: one accent (the One Ring's `#ff8b2c`, near-black text on it), a darker
+neutral ground (`#0e0f11`), 4 px corners, hairlines rather than shadows, Geist
+and Geist Mono bundled (`styles/fonts`, OFL), values in a black readout. The
+window has no native title bar (`titleBarStyle: 'hidden'` with a
+`titleBarOverlay`): the header is the top of the window, Windows keeps its
+three caption buttons, and File / Edit / View pop the application menu's own
+submenus (`menu:popup`). A status bar holds the controller and the audio
+engine. On the Patch Bay a card wears its family (`nodeFamily`) as a corner,
+a bracket four times the outline's weight that stands a little outside the
+card's edge (asked on the running build, same day), a readout says what it
+holds, cables take their type's colour, and Tab turns the canvas round.
+
+The faceplate itself (`omni-pearl.css`) keeps its own lighter plate: it is a
+device lying on this desk, and reads as one because the desk is darker. D-012
+stands -- two vocabularies, never mixed in a subtree -- and the shell is still
+never given a faceplate.
+
+Refused:
+
+- **Put `.omni-pearl` on the whole shell.** Two vocabularies in one screen, two
+  kinds of slider, and nothing left to tell an instrument surface from the
+  rest. D-012 exists to prevent exactly that.
+- **Menus drawn in HTML.** A second list of items to keep in step with
+  `appMenu.js`, without the roles (Exit, Zoom, Full Screen) only Electron
+  performs.
+- **A drop shadow per card**, as in the mockup. A filter on every card is what
+  a drag repaints each frame; the outline does the job.
+
+**Consequences**
+
+- The menu's accelerators still work with the menu bar hidden -- checked with
+  real keystrokes, Ctrl+− and Ctrl+0, against the build with the native bar.
+- A drag region wins over what is drawn above it, so the header stops being
+  one while a dialog or a menu is open (`body:has(...)` in `base.css`).
+- Video and Image lost their only way in with the toolbar's list of every
+  type; the canvas menu lists them under Media.
+- Below 1000 px the menu words hide, as the readout's labels do below 1100:
+  the menus stay reachable by their shortcuts, and the transport keeps its room.
+
+**Proof in the code** — `src/main/appMenu.js` (`popupAppMenu`),
+`src/main/main.js` (the window), `src/renderer/styles/base.css`,
+`core/nodeSummary.js`, `core/nodeTypes.js` (`nodeFamily`),
+`modules/routing/routingModule.js`. Tests: `test/nodeSummary.test.mjs`, "Tab
+turns the canvas round" in `test/routing.test.mjs`, the family corner in
+`test/patchBayCopyPaste.test.mjs`, the Add field in
+`test/nodeCreationPaths.test.mjs`.

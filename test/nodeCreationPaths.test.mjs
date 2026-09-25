@@ -5,11 +5,11 @@ import { makeHub } from './helpers.mjs';
 /**
  * Contract: every UI route that creates a node produces an equivalent node.
  *
- * The Patch Bay toolbar ("+ New Node") and the canvas context menu
- * ("New Node > VST") must agree on naming, network registration, layout
- * placement and selection. They used to disagree: the toolbar called
- * `hub.nodes.create()` directly, so its nodes were never placed and never
- * selected.
+ * The Patch Bay's Add field (top-left of the canvas) and the canvas context
+ * menu must agree on naming, network registration, layout placement and
+ * selection. A toolbar "+ New Node" once called `hub.nodes.create()` directly,
+ * so its nodes were never placed and never selected; since D-055 the field
+ * opens the canvas menu itself, and this pins that it stays one path.
  */
 
 import { makeEl, installDom, findClass, lastCreatedWithClass, menuEntry, pickEntry } from './domShim.mjs';
@@ -20,28 +20,31 @@ const { ModuleSystem } = await import('../src/renderer/js/core/moduleSystem.js')
 const { NodeInstanceManager } = await import('../src/renderer/js/core/nodeInstances.js');
 
 /**
- * A container whose `innerHTML` setter rebuilds the real toolbar controls, so
- * the toolbar path is exercised rather than silently skipped.
+ * A container whose `innerHTML` setter rebuilds the real Add field, so that
+ * path is exercised rather than silently skipped.
  */
 function makeContainer() {
   const container = makeEl('div');
   const svg = makeEl('svg');
   svg.setAttribute('id', 'routing-svg');
-  const newBtn = makeEl('button');
-  newBtn.setAttribute('id', 'routing-new-node');
-  const newType = makeEl('select');
-  newType.setAttribute('id', 'routing-new-type');
+  const addBtn = makeEl('button');
+  addBtn.setAttribute('id', 'routing-add');
   Object.defineProperty(container, 'innerHTML', {
     get: () => '',
     set: () => {
       container.children.length = 0;
       container.appendChild(svg);
-      container.appendChild(newBtn);
-      container.appendChild(newType);
+      container.appendChild(addBtn);
     },
     configurable: true
   });
-  return { container, svg, newBtn, newType };
+  return { container, svg, addBtn };
+}
+
+/** Press the Add field, then take `label` in the menu it opens. */
+function addFromField(addBtn, label) {
+  [...addBtn._listeners['click']].forEach((fn) => fn({ currentTarget: addBtn }));
+  return clickMenuLabel(label);
 }
 
 function setupHub() {
@@ -73,29 +76,27 @@ function clickMenuLabel(label) {
 
 // ---- tests ------------------------------------------------------------------
 
-test('the Patch Bay toolbar creates a placed, selected node', () => {
+test('the Patch Bay Add field creates a placed, selected node', () => {
   const hub = setupHub();
-  const { container, svg, newBtn, newType } = makeContainer();
+  const { container, svg, addBtn } = makeContainer();
   createRoutingModule(hub).mount(container);
 
-  newType.value = 'vst';
-  [...newBtn._listeners['click']].forEach((fn) => fn());
+  assert.ok(addFromField(addBtn, 'VST'), 'the field opens the menu of node types');
 
   const [instance] = hub.nodes.list();
-  assert.ok(instance, 'the toolbar must actually create an instance');
+  assert.ok(instance, 'the field must actually create an instance');
   assert.equal(instance.name, 'VST 1');
   assert.ok(hub.network.getNode(instance.id), 'registered in the routing network');
   assert.ok(hub.settings.get('networkLayout')[instance.id], 'given a layout position');
   assert.ok(nodeEl(svg, instance.id)._classSet.has('selected'), 'and selected');
 });
 
-test('toolbar and context menu produce equivalent nodes', () => {
+test('the Add field and the context menu produce equivalent nodes', () => {
   const viaToolbar = (() => {
     const hub = setupHub();
-    const { container, newBtn, newType } = makeContainer();
+    const { container, addBtn } = makeContainer();
     createRoutingModule(hub).mount(container);
-    newType.value = 'vst';
-    [...newBtn._listeners['click']].forEach((fn) => fn());
+    assert.ok(addFromField(addBtn, 'VST'));
     return hub;
   })();
 
@@ -150,14 +151,15 @@ test('Arpeggiator menu creation uses native defaults and persisted instance mode
   assert.deepEqual(stored.content,arp.content);
 });
 
-test('every node type can be created from the toolbar with correct naming', () => {
+test('every node type can be created from the Add field with correct naming', () => {
   const hub = setupHub();
-  const { container, newBtn, newType } = makeContainer();
+  const { container, addBtn } = makeContainer();
   createRoutingModule(hub).mount(container);
 
-  for (const type of ['vst', 'video', 'image']) {
-    newType.value = type;
-    [...newBtn._listeners['click']].forEach((fn) => fn());
+  // Video and Image included: they are no OmniBox, and lost their only way in
+  // when the toolbar's list of every type went, until Media joined the menu.
+  for (const label of ['VST', 'Video', 'Image']) {
+    assert.ok(addFromField(addBtn, label), `the menu offers ${label}`);
   }
 
   assert.deepEqual(

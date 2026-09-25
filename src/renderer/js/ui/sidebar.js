@@ -1,5 +1,6 @@
 import { icon } from './icons.js';
 import { escapeHtml } from '../core/html.js';
+import { nodeFamily } from '../core/nodeTypes.js';
 
 /**
  * Builds the sidebar from registered modules and keeps it in sync.
@@ -106,7 +107,8 @@ export function buildSidebar(hub, sidebarEl, contentEl) {
 
       modules.forEach((module) => {
         const item = document.createElement('button');
-        const accent = module.navEntry.accent ? ` accent-${module.navEntry.accent}` : '';
+        const accent = module.navEntry.accent
+          ? ` accent-${module.navEntry.accent} family-${nodeFamily(module.navEntry.accent)}` : '';
         const fixed = module.navEntry.fixed ? ' nav-fixed' : '';
         const dot = module.navEntry.accent ? '<span class="nav-accent"></span>' : '';
         item.setAttribute(

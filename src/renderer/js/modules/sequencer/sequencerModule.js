@@ -866,9 +866,9 @@ export function createSequencerModule(hub) {
     if (!sequencerNode) {
       scrollRenderQueued = false;
       container.innerHTML = `<div class="sequencer-page"><section class="panel seq-runtime-empty" data-sequencer-empty>
-        <span class="pill accent-sequencer">Patch Bay required</span>
+        <span class="pill accent-sequencer family-midi">Patch Bay required</span>
         <h1 class="page-title">Add a Sequencer node to start arranging</h1>
-        <p>The timeline runs through a real Sequencer node and its visible cables. Open Patch Bay, choose <strong>Sequencer</strong>, then click <strong>+ New Node</strong>.</p>
+        <p>The timeline runs through a real Sequencer node and its visible cables. Open the Patch Bay, click <strong>Add a node</strong> and choose <strong>Sequencer</strong>.</p>
         <button class="btn primary" data-action="open-routing">Open Patch Bay</button>
       </section></div>`;
       container.querySelector('[data-action="open-routing"]')?.addEventListener('click', () => {

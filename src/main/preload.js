@@ -65,6 +65,8 @@ contextBridge.exposeInMainWorld('hubAPI', {
     ipcRenderer.on('menu:command', listener);
     return () => ipcRenderer.removeListener('menu:command', listener);
   },
+  // File, Edit and View in the header open that same menu, under the button.
+  popupAppMenu: (menu, x, y) => ipcRenderer.send('menu:popup', { menu, x, y }),
   capturePluginStates: () => ipcRenderer.invoke('engine:capture-states'),
   focusMainWindow: () => ipcRenderer.invoke('window:focus-main'),
   clipEditorOpen: (clipId) => ipcRenderer.invoke('clip-editor:open', clipId),

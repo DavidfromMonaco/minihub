@@ -1,33 +1,64 @@
+/* Geist, bundled (styles/fonts, OFL.txt beside it): the typeface of the site,
+   so the application and its page read as one product. Local files, so
+   `block` costs nothing and never shows the fallback first. */
+@font-face { font-family: "Geist"; font-style: normal; font-weight: 100 900; font-display: block;
+  src: url("fonts/geist-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308,
+    U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113,
+    U+2C60-2C7F, U+A720-A7FF; }
+@font-face { font-family: "Geist"; font-style: normal; font-weight: 100 900; font-display: block;
+  src: url("fonts/geist-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304,
+    U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+@font-face { font-family: "Geist Mono"; font-style: normal; font-weight: 100 900; font-display: block;
+  src: url("fonts/geist-mono-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308,
+    U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113,
+    U+2C60-2C7F, U+A720-A7FF; }
+@font-face { font-family: "Geist Mono"; font-style: normal; font-weight: 100 900; font-display: block;
+  src: url("fonts/geist-mono-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304,
+    U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+
 /* The application is dark, and so are the widgets Chromium paints itself: a
    select's popup list, the scrollbar inside it, a field's caret and selection.
    Without this they come out white -- which is what a One Ring menu looked
-   like against its graphite faceplate. The fields below keep the light face
-   they were given, so they keep the dark text that used to come with it. */
+   like against its graphite faceplate. */
 :root {
   color-scheme: dark;
 
-  /* Surfaces */
-  --bg: #191b1e;
-  --bg-raised: #1f2226;
-  --bg-panel: #23262b;
-  --bg-hover: #2a2e34;
-  --bg-active: #30353c;
-  --sidebar-bg: #1c1f23;
-  --nav-fixed-bg: #181b1f;
+  /* Surfaces. Darker than the One Ring's faceplate, which is meant to read as
+     a device lying on this desk rather than as more of the desk. */
+  --bg: #0e0f11;
+  --bg-canvas: #0b0c0e;
+  --bg-raised: #131416;
+  --bg-panel: #17181b;
+  --bg-hover: #1f2024;
+  --bg-active: #26282c;
+  --sidebar-bg: #111214;
+  --nav-fixed-bg: transparent;
+  /* The black readout the One Ring puts its numbers in: the transport, a
+     node's summary on the Patch Bay. A value on a screen, not a label. */
+  --lcd: #070808;
+  --lcd-edge: #1d1e22;
+  --lcd-text: #f2efe8;
 
   /* Borders */
-  --border: #2e3238;
-  --border-strong: #3a3f46;
+  --border: #232428;
+  --border-strong: #2e3035;
 
-  /* Text */
-  --text: #e6e8eb;
-  --text-dim: #9aa1a9;
-  --text-faint: #6b727a;
+  /* Text. Warm rather than blue-grey, like the faceplate's silkscreen. */
+  --text: #e8e6e1;
+  --text-dim: #9d9fa4;
+  --text-faint: #6b6e74;
 
-  /* Accent */
-  --accent: #4f8cff;
-  --accent-dim: #2f5fbf;
-  --accent-soft: rgba(79, 140, 255, 0.14);
+  /* Accent: the One Ring's orange, and the only one. Text on it is near-black:
+     white on this orange is about 2.6:1. */
+  --accent: #ff8b2c;
+  --accent-dim: #d9690d;
+  --accent-soft: rgba(255, 139, 44, 0.14);
+  --accent-line: rgba(255, 139, 44, 0.45);
+  --accent-ink: #1d1a16;
 
   /* Status */
   --ok: #3ecf7e;
@@ -35,8 +66,8 @@
   --danger: #e05a5a;
 
   /* Routing port types (color is secondary to shape/label) */
-  --midi: #4f8cff;
-  --audio: #e0b04c;
+  --midi: #5b8def;
+  --audio: #e0b24a;
   --control: #c77dff;
 
   /* Node type accents (defined centrally; change in one place) */
@@ -47,6 +78,15 @@
   --accent-mixer: #38bdf8;
   --accent-morpher: #f472b6;
 
+  /* A node's family -- the OmniBox category it is listed under -- is the one
+     colour it wears: the corner of its card, its dot in the sidebar. A type
+     colour per node was six colours for three families. */
+  --family-midi: #a78bfa;
+  --family-audio: #38bdf8;
+  --family-plugin: #e08a3c;
+  --family-media: #7ec96b;
+  --family-system: #9aa3ad;
+
   /* Internal VST plugin role accents (mirror vstChain.js VST_ROLES) */
   --vst-role-instrument: #f5c451;
   --vst-role-audio-effect: #ef6a5b;
@@ -54,10 +94,12 @@
   --vst-role-utility: #48b8cc;
   --vst-role-unknown: #94a3b8;
 
-  --radius: 8px;
-  --radius-sm: 6px;
-  --font: -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  --mono: "SF Mono", "Cascadia Code", Consolas, "Roboto Mono", monospace;
+  --radius: 4px;
+  --radius-sm: 3px;
+  --font: "Geist", "Segoe UI", system-ui, sans-serif;
+  --mono: "Geist Mono", "Cascadia Code", Consolas, monospace;
+  --header-h: 44px;
+  --statusbar-h: 24px;
 }
 
 * {
@@ -83,16 +125,35 @@ body {
   user-select: none;
 }
 
-/* ---------- Header ---------- */
+/* ---------- Title bar (D-055) ----------
+   The header is the top of the window: Windows draws only its three caption
+   buttons, over `.caption-space` at the right end. Everything else here is a
+   handle for moving the window, except what can be clicked. */
 .app-header {
-  height: 48px;
-  flex: 0 0 48px;
+  height: var(--header-h);
+  flex: 0 0 var(--header-h);
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 0 16px;
+  gap: 12px;
+  padding: 0 0 0 14px;
   background: var(--bg-raised);
-  border-bottom: 1px solid var(--border);
+  box-shadow: inset 0 -1px 0 var(--border);
+  -webkit-app-region: drag;
+}
+.app-header button, .app-header input, .app-header select, .app-header label, .app-header output,
+.app-header .brand-name { -webkit-app-region: no-drag; }
+/* A drag region wins over whatever is drawn above it: under an open dialog's
+   backdrop or a menu, a click on the header would move the window instead of
+   reaching them. While one is open, the header is not a handle. */
+body:has(.modal-root:not(.hidden)) .app-header,
+body:has(.ctx-menu) .app-header { -webkit-app-region: no-drag; }
+/* Windows' caption buttons are laid over this. `env(titlebar-area-*)` says
+   where they begin when the overlay is on; 138 px is their width otherwise. */
+.caption-space {
+  flex: 0 0 auto;
+  align-self: stretch;
+  width: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, calc(100vw - 138px)));
+  box-shadow: inset 1px 0 0 var(--border);
 }
 
 .brand {
@@ -100,75 +161,99 @@ body {
   align-items: center;
   gap: 9px;
   font-weight: 600;
-  letter-spacing: 0.2px;
+  font-size: 13px;
   /* The project's name lives here, and a name can be long: it gives way
      before the transport does. */
   flex: 0 1 auto;
   min-width: 0;
-  max-width: 260px;
+  max-width: 240px;
 }
-.brand-mark { flex: 0 0 auto; }
-.brand-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.brand-mark { flex: 0 0 auto; width: 16px; height: 16px; fill: none; stroke: var(--accent); stroke-width: 2.2; }
+.brand-mark .brand-mark-core { fill: var(--accent); stroke: none; }
+.brand-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; letter-spacing: -0.005em; }
 
-.brand-mark {
-  width: 14px;
-  height: 14px;
-  border-radius: 4px;
-  background: linear-gradient(135deg, var(--accent), #7aa5ff);
+.app-menus { display: flex; gap: 1px; flex: 0 0 auto; }
+.app-menu {
+  height: 28px; padding: 0 9px; border: 0; border-radius: var(--radius-sm);
+  background: transparent; color: var(--text-dim); font: 12.5px var(--font);
 }
+.app-menu:hover, .app-menu:focus-visible { background: var(--bg-hover); color: var(--text); outline: 0; }
 
 .header-center {
   flex: 1;
   display: flex;
   justify-content: center;
-  gap: 12px;
-  /* The window goes down to 960px (`minWidth` in main.js) and the transport
-     cluster grew by four buttons and a readout. Neither this row nor the
-     status pill may squeeze the transport: a status you cannot read in full is
-     an inconvenience, a Play button 9 pixels wide is a broken instrument. */
+  /* The window goes down to 960px (`minWidth` in main.js). Nothing in this row
+     may squeeze the transport: a Play button 9 pixels wide is a broken
+     instrument. */
   min-width: 0;
 }
 .header-center > .transport { flex: 0 0 auto; }
-.header-center > .device-status { flex: 0 1 auto; min-width: 0; overflow: hidden; }
-/* Squeezed, the pill keeps one line and ends in an ellipsis, its whole text in
-   its tooltip. As a flex box its words wrapped instead: since Record joined
-   the transport (2026-09-24), a 960 px window drew "No MiniLab 3 / detected"
-   on two lines inside a pill made for one. Block layout is what lets
-   `text-overflow` reach the text; the dot is inline for the same reason. */
-.header-center > .device-status { display: block; white-space: nowrap; text-overflow: ellipsis; }
-.header-center > .device-status::before { display: inline-block; margin-right: 7px; vertical-align: 1px; }
-.transport { display:flex; align-items:center; gap:6px; font-size:11px; color:var(--text-dim); }
-.transport button,.transport input { height:26px; color:var(--text); background:var(--bg); border:1px solid var(--border); border-radius:5px; }
-.transport button { padding:0 10px; cursor:pointer; }
-.transport button.playing { color:var(--ok); border-color:rgba(62,207,126,.5); }
-/* Record: red while a take runs, amber when one cannot start -- the colours the
+.transport { display: flex; align-items: center; gap: 10px; }
+.transport-keys { display: flex; gap: 3px; }
+/* The transport's keys: drawn, not written -- six named buttons across the
+   header were a wall of words -- with a keycap's inner edge for a border. */
+.transport-key {
+  width: 30px; height: 28px; padding: 0; display: inline-grid; place-items: center;
+  border: 0; border-radius: var(--radius-sm); background: var(--bg-panel);
+  box-shadow: inset 0 0 0 1px var(--border-strong); color: #b5b7bc;
+}
+.transport-key svg { width: 14px; height: 14px; fill: currentColor; stroke: currentColor; stroke-width: 1.5; stroke-linejoin: round; }
+.transport-key:hover:not(:disabled) { background: var(--bg-hover); color: var(--text); }
+.transport-key:disabled { color: var(--text-faint); opacity: .55; }
+.transport-play { width: 38px; color: var(--text); }
+.transport-play .icon-pause { display: none; }
+.transport-play.playing .icon-play { display: none; }
+.transport-play.playing .icon-pause { display: block; }
+.transport-play.playing, .transport-play.playing:hover:not(:disabled) { color: var(--accent-ink); background: var(--accent); box-shadow: none; }
+.transport-stop svg, .transport-record svg { width: 12px; height: 12px; stroke: none; }
+.transport-record { color: #e5574b; }
+/* Red while a take runs, amber when one cannot start -- the colours the
    Sequencer's own Record button wore before it moved here. */
-.transport button.recording { color:#fff; background:#c44747; border-color:#ef6a5b; opacity:1; }
-.transport button.blocked { color:#ffdb76; border-color:rgba(245,196,81,.65); background:rgba(245,196,81,.08); }
-.transport input { width:62px; padding:0 5px; margin-left:4px; }
-/* What Play plays. Amber when it is not everything, like a Record that
-   cannot start: something is left out on purpose, and it should show. */
-.transport select { height:26px; margin-left:4px; padding:0 4px; color:var(--text); background:var(--bg); border:1px solid var(--border); border-radius:5px; font-size:11px; }
-/* A narrow window drops the words beside the tempo and the Plays selector
-   before it squeezes the device pill to its dot; each keeps its tooltip. */
-@media (max-width: 1050px) { .transport .transport-word { display:none; } }
-/* The list the selector opens is a window Windows draws itself, white whatever
-   `color-scheme` says; what it does take is each option's own colours. Without
-   them the list was white, its entries in the amber of a scoped selector. */
-.transport select option { background-color:var(--bg-panel); color:var(--text); }
-.transport select.scoped { color:#ffdb76; border-color:rgba(245,196,81,.65); background:rgba(245,196,81,.08); }
-/* The four seek buttons. Square and drawn rather than written, because six
-   named buttons across a 48px header is a wall of words. */
-.transport .nav-icon { width:26px; padding:0; display:inline-grid; place-items:center; }
-.transport .nav-icon svg { width:15px; height:15px; fill:currentColor; stroke:currentColor; stroke-width:1.5; }
-.transport .nav-icon:hover { color:var(--text); border-color:var(--border-strong); background:var(--bg-hover); }
-/* Bar and beat. Monospace and a fixed width, or the header's buttons shuffle
-   sideways every time the bar count gains a digit. */
-.transport-position { min-width:46px; padding:0 6px; font:12px var(--mono); color:var(--text); text-align:center; }
-.transport-position.playing { color:var(--ok); }
-.tempo-input { cursor:text; font-family:var(--mono); text-align:center; appearance:textfield; }
-.tempo-input[data-tempo-dragging="true"] { cursor:ns-resize; user-select:none; }
-.tempo-input::-webkit-inner-spin-button,.tempo-input::-webkit-outer-spin-button { appearance:none; margin:0; }
+.transport-record.recording { color: #fff; background: #c44747; box-shadow: inset 0 0 0 1px #ef6a5b; opacity: 1; }
+.transport-record.blocked { color: #ffdb76; background: rgba(245, 196, 81, .08); box-shadow: inset 0 0 0 1px rgba(245, 196, 81, .65); }
+
+/* The readout: the One Ring's black screen, holding what the transport says
+   -- where, how fast, what Play plays. Values in the monospace, labels in
+   small capitals, the way a device prints them. */
+.transport-readout {
+  height: 30px; display: flex; align-items: center; padding: 0 4px;
+  background: var(--lcd); border-radius: var(--radius-sm);
+  box-shadow: inset 0 0 0 1px var(--lcd-edge), inset 0 2px 4px rgba(0, 0, 0, .6);
+}
+.readout-cell { display: inline-flex; align-items: center; gap: 6px; padding: 0 10px; }
+.readout-cell + .readout-cell { box-shadow: inset 1px 0 0 #222428; }
+.readout-label { font: 600 9px var(--font); letter-spacing: .12em; text-transform: uppercase; color: var(--text-faint); }
+/* Bar and beat. Monospace and a fixed width, or the header shuffles sideways
+   every time the bar count gains a digit. */
+.transport-position { min-width: 40px; font: 500 15px var(--mono); color: var(--lcd-text); font-variant-numeric: tabular-nums; }
+.transport-position.playing { color: var(--accent); }
+.tempo-input {
+  width: 46px; height: 22px; padding: 0; border: 0; background: transparent;
+  color: var(--accent); font: 500 15px var(--mono); text-align: right; font-variant-numeric: tabular-nums;
+  cursor: text; appearance: textfield;
+}
+.tempo-input:focus { outline: 0; color: var(--lcd-text); }
+.tempo-input[data-tempo-dragging="true"] { cursor: ns-resize; user-select: none; }
+.tempo-input::-webkit-inner-spin-button, .tempo-input::-webkit-outer-spin-button { appearance: none; margin: 0; }
+.transport-scope select {
+  height: 22px; padding: 0 2px; border: 0; background: transparent; color: #d6d3cc;
+  font: 500 11px var(--mono); text-transform: uppercase;
+}
+.transport-scope select:focus-visible { outline: 1px solid var(--accent-line); }
+/* The list the selector opens is a window Windows draws itself; what it does
+   take is each option's own colours. */
+.transport-scope select option { background-color: var(--bg-panel); color: var(--text); text-transform: none; }
+/* Amber when it is not everything, like a Record that cannot start: something
+   is left out on purpose, and it should show. */
+.transport-scope select.scoped { color: #ffdb76; }
+/* A narrow window drops the readout's labels, then the menu words, before it
+   squeezes a key. Each cell keeps its tooltip; the menus keep Alt and their
+   accelerators. */
+@media (max-width: 1100px) { .transport-readout .readout-label { display: none; } }
+@media (max-width: 1000px) { .app-menus { display: none; } }
+
+
 .morph-steps { display:grid; grid-template-columns:repeat(8,minmax(44px,1fr)); gap:6px; margin-top:12px; }
 .morph-steps label { padding:5px; border:1px solid var(--border); border-radius:5px; text-align:center; }
 .morph-steps label.active { border-color:var(--accent-morpher); background:rgba(244,114,182,.12); }
@@ -194,67 +279,33 @@ body {
 .ap-play.playing { border-color:var(--audio); color:var(--audio); }
 .btn.ap-nav { width:34px; padding:7px 0; justify-content:center; }
 .btn.ap-nav svg { flex:0 0 auto; width:14px; height:14px; fill:currentColor; stroke:currentColor; stroke-width:1.5; }
-.btn.ap-mute.active { border-color:#f5c451; background:#f5c451; color:#17191d; }
+.btn.ap-mute.active { border-color:#f5c451; background:#f5c451; color:#121315; }
 .ap-time { min-width:124px; font-family:var(--mono); font-size:12px; color:var(--text-dim); }
 .ap-check, .ap-level { display:inline-flex; align-items:center; gap:6px; }
 .ap-level-value { min-width:40px; font-family:var(--mono); font-size:12px; color:var(--text-dim); text-align:right; }
 .ap-hint { margin:14px 0 0; font-size:12px; }
 
-.device-status {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  font-size: 12px;
-  color: var(--text-dim);
-  padding: 4px 10px;
-  border-radius: 999px;
-  border: 1px solid var(--border);
-  background: var(--bg);
-}
-
-.device-status::before {
-  content: "";
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--text-faint);
-}
-
-.device-status.ok {
-  color: var(--ok);
-  border-color: rgba(62, 207, 126, 0.35);
-}
-.device-status.ok::before {
-  background: var(--ok);
-  box-shadow: 0 0 6px rgba(62, 207, 126, 0.7);
-}
-
-.device-status.idle::before {
-  background: var(--text-faint);
-}
-
 .header-actions {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 2px;
+  padding-right: 6px;
 }
 
 .icon-button {
-  width: 32px;
-  height: 32px;
+  width: 30px;
+  height: 28px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   border-radius: var(--radius-sm);
-  border: 1px solid transparent;
+  border: 0;
   background: transparent;
   color: var(--text-dim);
-  cursor: pointer;
 }
 .icon-button:hover {
   background: var(--bg-hover);
   color: var(--text);
-  border-color: var(--border);
 }
 .icon-button:active {
   background: var(--bg-active);
@@ -263,17 +314,42 @@ body {
    header gains two invisible gaps. Dimmed and inert, never gone. */
 .icon-button:disabled {
   opacity: 0.32;
-  cursor: default;
 }
 .icon-button:disabled:hover {
   background: transparent;
-  border-color: transparent;
   color: var(--text-dim);
 }
 .history-controls {
   display: inline-flex;
   gap: 2px;
 }
+
+/* ---------- Status bar ----------
+   The controller and the audio engine, at the foot of the window, where a
+   desktop application says what it is connected to (D-055). */
+.status-bar {
+  height: var(--statusbar-h);
+  flex: 0 0 var(--statusbar-h);
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 0 14px;
+  background: var(--bg-raised);
+  box-shadow: inset 0 1px 0 var(--border);
+  font-size: 11px;
+  color: var(--text-faint);
+  white-space: nowrap;
+  overflow: hidden;
+}
+.device-status, .engine-status { display: inline-flex; align-items: center; gap: 7px; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.device-status::before, .engine-status::before {
+  content: ""; flex: 0 0 auto; width: 6px; height: 6px; border-radius: 50%; background: var(--text-faint);
+}
+.device-status.ok::before, .engine-status.ok::before { background: var(--ok); }
+.engine-status.warn::before { background: var(--warn); }
+.engine-status.danger { color: var(--danger); }
+.engine-status.danger::before { background: var(--danger); }
+.audio-device-status { font: 10.5px var(--mono); color: var(--text-faint); overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 
 /* ---------- Body layout ---------- */
 .app-body {
@@ -284,39 +360,34 @@ body {
 
 /* ---------- Sidebar ---------- */
 .sidebar {
-  width: 220px;
-  flex: 0 0 220px;
+  width: 208px;
+  flex: 0 0 208px;
   background: var(--sidebar-bg);
-  border-right: 1px solid var(--border);
-  padding: 12px 10px;
+  box-shadow: inset -1px 0 0 var(--border);
+  padding: 14px 8px;
   overflow-y: auto;
 }
 
 .sidebar-label {
-  font-size: 10px;
+  font: 600 9.5px var(--font);
   text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--text-faint);
-  padding: 8px 10px 6px;
+  letter-spacing: 0.14em;
+  color: #5f6268;
+  padding: 8px 8px 6px;
 }
 
-/* Grouped sidebar sections: HOME / SYSTEM / NODES */
+/* Grouped sidebar sections: HOME / SYSTEM / NODES, printed like a panel's
+   silkscreen rather than ruled off. */
 .sidebar-group-label {
-  font-size: 10px;
+  font: 600 9.5px var(--font);
   text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--text-faint);
-  padding: 12px 10px 6px;
+  letter-spacing: 0.14em;
+  color: #5f6268;
+  padding: 18px 8px 6px;
 }
 
 .sidebar-group-label:first-child {
   padding-top: 0;
-}
-
-.sidebar-group-label:not(:first-child) {
-  margin-top: 6px;
-  border-top: 1px solid var(--border);
-  padding-top: 12px;
 }
 
 .nav-item {
@@ -324,20 +395,18 @@ body {
   align-items: center;
   gap: 10px;
   width: 100%;
-  padding: 8px 10px;
-  margin-bottom: 2px;
-  border: 1px solid transparent;
+  height: 28px;
+  padding: 0 8px;
+  margin-bottom: 1px;
+  border: 0;
   border-radius: var(--radius-sm);
   background: transparent;
-  color: var(--text-dim);
-  font-size: 13px;
+  color: #b5b7bc;
+  font: 12.5px var(--font);
   text-align: left;
-  cursor: pointer;
 }
+.nav-item > span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/* Fixed MiniHub navigation items get a subtly darker resting background than
-   the sidebar so they read as permanent, while dynamic node entries stay
-   neutral. Active/hover states still win (declared later). */
 .nav-item.nav-fixed {
   background: var(--nav-fixed-bg);
 }
@@ -347,10 +416,20 @@ body {
   color: var(--text);
 }
 
+/* The page on screen: lit, and the accent's LED at the end of its row. */
 .nav-item.active {
-  background: var(--accent-soft);
-  color: var(--text);
-  border-color: rgba(79, 140, 255, 0.25);
+  background: #1c1d21;
+  color: #f2efe8;
+  font-weight: 500;
+}
+.nav-item.active::after {
+  content: "";
+  flex: 0 0 auto;
+  width: 5px;
+  height: 5px;
+  margin-left: auto;
+  border-radius: 50%;
+  background: var(--accent);
 }
 
 /* A node in NODES is dragged to reorder the list (ui/sidebar.js). The node
@@ -364,12 +443,18 @@ body {
 
 .nav-icon {
   display: inline-flex;
-  width: 18px;
-  height: 18px;
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
   align-items: center;
   justify-content: center;
-  color: var(--text-faint);
+  color: #7d8086;
 }
+.nav-icon svg { width: 15px; height: 15px; }
+/* A node is named by its family's dot; its type's icon beside it was a second
+   picture of the same fact. */
+.nav-item[class*="family-"] .nav-icon { display: none; }
+.nav-item[class*="family-"] .nav-accent { margin: 0 4px; }
 
 .nav-item.active .nav-icon {
   color: var(--accent);
@@ -435,13 +520,12 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 7px 14px;
+  padding: 6px 12px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border-strong);
   background: var(--bg-raised);
   color: var(--text);
-  font-size: 13px;
-  cursor: pointer;
+  font: 12.5px var(--font);
 }
 .btn:hover {
   background: var(--bg-hover);
@@ -453,25 +537,36 @@ body {
   opacity: 0.45;
   cursor: not-allowed;
 }
+/* The accent's button: near-black on orange, never white (2.6:1). */
 .btn.primary {
-  background: var(--accent-dim);
-  border-color: var(--accent-dim);
-  color: #fff;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 600;
 }
 .btn.primary:hover {
-  background: var(--accent);
+  background: #ffa254;
+  border-color: #ffa254;
 }
 
 /* ---------- Fields no rule dresses ----------
    Chromium paints them plain white, which glared against this dark shell: the
-   sequencer's Snap, Format, From and To, the Morpher's step count. Light gray
-   is their default. `:where` keeps the rule at zero specificity, so a field
+   sequencer's Snap, Format, From and To, the Morpher's step count. They were
+   light grey until D-055; on the darker shell they are its own dark field.
+   `:where` keeps the rule at zero specificity, so a field
    that a rule does dress -- `.select`, the track inspector, the clip editor,
    the faceplate -- keeps its own look. */
 :where(select, textarea, input:not([type]), input[type="text"], input[type="number"], input[type="search"]) {
-  background-color: #c8cdd4;
-  color: #17191d;
+  background-color: var(--bg-raised);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  font-family: var(--font);
 }
+
+/* Sliders and ticks Chromium paints itself take the accent, not its own blue:
+   the Mixer's levels, a Mute box. Zero specificity, like the fields above. */
+:where(input[type="range"], input[type="checkbox"], input[type="radio"]) { accent-color: var(--accent); }
 
 /* ---------- Selects ---------- */
 .select {
@@ -796,47 +891,56 @@ body {
   min-height: 0;
 }
 
-.routing-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 10px 16px;
-  background: var(--bg-raised);
-  border-bottom: 1px solid var(--border);
-  flex: 0 0 auto;
+/* The canvas takes the page; the toolbar it had is four groups floating in
+   its corners (D-055), above the SVG and out of the way of the nodes. */
+.routing-canvas {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  background: var(--bg-canvas);
 }
+.routing-float { position: absolute; z-index: 2; display: flex; align-items: center; }
+.routing-top-left { left: 16px; top: 14px; gap: 14px; }
+.routing-top-right { right: 16px; top: 22px; }
+.routing-bottom-left { left: 16px; bottom: 14px; gap: 8px; pointer-events: none; }
+.routing-bottom-right { right: 16px; bottom: 14px; gap: 8px; }
 
-.routing-title {
-  font-weight: 600;
-  letter-spacing: 0.2px;
-}
+.routing-heading { display: flex; flex-direction: column; gap: 1px; }
+.routing-title { font: 600 10.5px var(--font); letter-spacing: .14em; text-transform: uppercase; color: #d6d3cc; }
+.routing-count { font: 10.5px var(--mono); color: var(--text-faint); }
 
-.routing-hint {
-  font-size: 11px;
-  color: var(--text-faint);
+/* The way in to the canvas menu, dressed as the search field it opens. */
+.routing-add {
+  width: 300px; height: 30px; display: flex; align-items: center; gap: 8px; padding: 0 10px;
+  border: 0; border-radius: var(--radius-sm); background: var(--bg-raised);
+  box-shadow: inset 0 0 0 1px var(--border-strong); color: var(--text-faint);
+  font: 12.5px var(--font); text-align: left;
 }
+.routing-add svg { flex: 0 0 auto; width: 13px; height: 13px; fill: none; stroke: var(--text-dim); stroke-width: 2; stroke-linecap: round; }
+.routing-add:hover { box-shadow: inset 0 0 0 1px #3a3c42; color: var(--text-dim); }
+.routing-add:focus-visible { outline: 0; box-shadow: inset 0 0 0 1px var(--accent-line); }
 
 .legend {
   display: inline-flex;
   align-items: center;
-  gap: 14px;
-  font-size: 11px;
-  color: var(--text-dim);
+  gap: 16px;
 }
-
 .legend-item {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 7px;
+  font: 500 10px var(--font);
+  letter-spacing: .09em;
+  text-transform: uppercase;
+  color: var(--text-dim);
 }
-
 .jack-dot {
   width: 9px;
   height: 9px;
   display: inline-block;
 }
 .jack-dot.square {
-  border-radius: 2px;
+  border-radius: 1.5px;
   background: var(--midi);
 }
 .jack-dot.circle {
@@ -852,11 +956,34 @@ body {
   background: transparent;
 }
 
-.routing-canvas {
-  flex: 1;
-  min-height: 0;
-  position: relative;
-  background: var(--bg);
+/* What Tab does next, where a node editor prints its shortcuts. */
+.routing-keyhint { font-size: 11px; color: var(--text-faint); }
+.routing-keyhint kbd {
+  height: 18px; display: inline-flex; align-items: center; padding: 0 6px;
+  border-radius: 2px; background: var(--bg-panel); box-shadow: inset 0 0 0 1px var(--border-strong), inset 0 -1px 0 var(--border-strong);
+  font: 500 9.5px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: #b5b7bc;
+}
+
+.viewport-controls { display: inline-flex; align-items: center; gap: 8px; }
+.routing-zoom-group {
+  display: inline-flex; align-items: center; height: 28px;
+  border-radius: var(--radius-sm); background: var(--bg-raised); box-shadow: inset 0 0 0 1px var(--border-strong);
+}
+.routing-tool {
+  height: 28px; min-width: 28px; padding: 0 10px; border: 0; border-radius: var(--radius-sm);
+  background: var(--bg-raised); box-shadow: inset 0 0 0 1px var(--border-strong);
+  color: var(--text-dim); font: 600 9.5px var(--font); letter-spacing: .12em; text-transform: uppercase;
+}
+.routing-zoom-group .routing-tool { background: transparent; box-shadow: none; }
+.routing-zoom-group #routing-zoom-out, .routing-zoom-group #routing-zoom-in { padding: 0; font: 14px var(--font); letter-spacing: 0; }
+.routing-zoom-group #routing-reset { box-shadow: inset 1px 0 0 var(--border-strong); border-radius: 0 var(--radius-sm) var(--radius-sm) 0; }
+.routing-tool:hover { color: var(--text); background: var(--bg-hover); }
+.routing-tool[hidden] { display: none; }
+.zoom-readout {
+  font: 11px var(--mono);
+  color: #d6d3cc;
+  min-width: 44px;
+  text-align: center;
 }
 
 .routing-svg {
@@ -872,41 +999,14 @@ body {
   cursor: grabbing;
 }
 
-.viewport-controls {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-}
-
 /* `.btn` is inline-flex, which outranks the `hidden` attribute's own display:
-   none. Undo Align is the button that needs it -- it exists only after an
-   Align -- and without this rule it is simply always there. */
+   none. */
 .btn[hidden] { display: none; }
-
-.view-side-switch { cursor: pointer; }
-.view-side-switch-bg { fill: var(--bg-raised); stroke: var(--border-strong); stroke-width: 1; }
-.view-side-switch-label { fill: var(--text-dim); font: 600 9px var(--font); pointer-events: none; }
-.view-side-switch:hover .view-side-switch-bg { stroke: var(--accent); }
-.view-side-switch:hover .view-side-switch-label { fill: var(--text); }
-.view-side-switch.active .view-side-switch-bg { fill: color-mix(in srgb, var(--control) 14%, var(--bg-raised)); stroke: var(--control); }
-.view-side-switch.active .view-side-switch-label { fill: var(--control); }
 
 /* Rear view deliberately exposes cable runs over module faceplates. */
 .cables.rear .cable {
   opacity: 1;
   stroke-width: 2.4;
-  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .85));
-}
-.routing-svg.rear-view .node-panel {
-  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, .25));
-}
-
-.zoom-readout {
-  font-family: var(--mono);
-  font-size: 11px;
-  color: var(--text-dim);
-  min-width: 40px;
-  text-align: right;
 }
 
 .btn-sm {
@@ -928,29 +1028,25 @@ body {
   font-size: 12px;
 }
 
-.new-node-control {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-}
-
-/* Node type accent dots (sidebar) and pills (editor shell) */
+/* A node's family (core/nodeTypes.js nodeFamily): its dot in the sidebar and
+   the pill on its page, in the one colour the Patch Bay draws its corner in. */
 .nav-accent {
-  width: 8px;
-  height: 8px;
-  border-radius: 2px;
-  background: var(--text-faint);
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--family-system);
   flex: 0 0 auto;
 }
-.nav-item.accent-vst .nav-accent { background: var(--accent-vst); }
-.nav-item.accent-video .nav-accent { background: var(--accent-video); }
-.nav-item.accent-image .nav-accent { background: var(--accent-image); }
-.nav-item.accent-sequencer .nav-accent { background: var(--accent-sequencer); }
+.nav-item.family-midi .nav-accent { background: var(--family-midi); }
+.nav-item.family-audio .nav-accent { background: var(--family-audio); }
+.nav-item.family-plugin .nav-accent { background: var(--family-plugin); }
+.nav-item.family-media .nav-accent { background: var(--family-media); }
 
-.pill.accent-vst { color: var(--accent-vst); border-color: rgba(224, 138, 60, 0.4); }
-.pill.accent-video { color: var(--accent-video); border-color: rgba(63, 182, 201, 0.4); }
-.pill.accent-image { color: var(--accent-image); border-color: rgba(126, 201, 107, 0.4); }
-.pill.accent-sequencer { color: var(--accent-sequencer); border-color: rgba(167, 139, 250, 0.4); }
+.pill.family-midi { color: var(--family-midi); border-color: color-mix(in srgb, var(--family-midi) 40%, transparent); }
+.pill.family-audio { color: var(--family-audio); border-color: color-mix(in srgb, var(--family-audio) 40%, transparent); }
+.pill.family-plugin { color: var(--family-plugin); border-color: color-mix(in srgb, var(--family-plugin) 40%, transparent); }
+.pill.family-media { color: var(--family-media); border-color: color-mix(in srgb, var(--family-media) 40%, transparent); }
+.pill[class*="family-"]::before { display: none; }
 
 /* --- VST plugin chain / role cards --- */
 .empty-state {
@@ -1005,19 +1101,24 @@ body {
   margin-left: auto;
 }
 
+/* The canvas grid: dots at the crossings would be the mockup's, but a pattern
+   of lines is what zooms without shimmering. Kept as lines, drawn fainter. */
 .grid-line {
-  stroke: #23272c;
+  stroke: #15161a;
   stroke-width: 1;
 }
 .grid-line-major {
-  stroke: #2b3036;
+  stroke: #1c1d21;
   stroke-width: 1;
 }
 /* A grid too fine to be a grid is a wash of grey over the canvas. Which of the
    two tiles is still worth painting is `gridVisible`'s call. */
 .grid-bg.off { display: none; }
 
-/* --- nodes --- */
+/* --- nodes (D-055) ---
+   Flat cards: one outline, no drop shadow -- a filter on every card is what a
+   drag repaints sixty times a second -- and the family in the top-left corner
+   only. */
 .node {
   cursor: grab;
 }
@@ -1029,148 +1130,95 @@ body {
   fill: var(--bg-panel);
   stroke: var(--border-strong);
   stroke-width: 1;
-  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.35));
 }
 .node.dragging .node-panel {
-  stroke: var(--accent);
+  stroke: #45484e;
 }
-
-/* Selected node: blue outline on top of the preserved family/type colors. */
+/* Selected: the accent round the outline. */
 .node.selected .node-panel {
   stroke: var(--accent);
-  stroke-width: 2;
-  filter: drop-shadow(0 0 5px rgba(79, 140, 255, 0.55)) drop-shadow(0 4px 10px rgba(0, 0, 0, 0.35));
+  stroke-width: 1.5;
+  paint-order: stroke;
 }
 
-/* Upper identity/content surface: dark, family-tinted (not saturated). */
-.node-identity {
-  fill: var(--bg-panel);
-}
-.node-type-vst .node-identity { fill: color-mix(in srgb, var(--accent-vst) 18%, var(--bg-panel)); }
-.node-type-video .node-identity { fill: color-mix(in srgb, var(--accent-video) 18%, var(--bg-panel)); }
-.node-type-image .node-identity { fill: color-mix(in srgb, var(--accent-image) 18%, var(--bg-panel)); }
-.node-type-sequencer .node-identity { fill: color-mix(in srgb, var(--accent-sequencer) 18%, var(--bg-panel)); }
-.node-native .node-identity { fill: color-mix(in srgb, var(--accent) 18%, var(--bg-panel)); }
+.node-identity { fill: var(--bg-panel); }
+.node-dock { fill: #131417; }
+.node-dock-divider { fill: var(--border); }
 
-/* Lower I/O dock: dark/neutral, holds the routing ports. */
-.node-dock {
-  fill: var(--bg);
+/* The family's corner: a bracket four times the outline's weight, in the
+   family's colour, standing out past the card's edge (CORNER_OUT in
+   routingModule.js). Butt ends: the legs stop square on the edge. */
+.node-corner {
+  fill: none;
+  stroke: var(--family-system);
+  stroke-width: 4;
+  stroke-linecap: butt;
+  pointer-events: none;
 }
-.node-dock-divider {
-  fill: var(--border);
-}
-
-/* Strong family accent bar at the top of the identity area. */
-.node-accent {
-  fill: var(--text-faint);
-}
-.node-type-vst .node-accent { fill: var(--accent-vst); }
-.node-type-video .node-accent { fill: var(--accent-video); }
-.node-type-image .node-accent { fill: var(--accent-image); }
-.node-type-sequencer .node-accent { fill: var(--accent-sequencer); }
-.node-native .node-accent { fill: var(--accent); }
+.node.family-midi .node-corner { stroke: var(--family-midi); }
+.node.family-audio .node-corner { stroke: var(--family-audio); }
+.node.family-plugin .node-corner { stroke: var(--family-plugin); }
+.node.family-media .node-corner { stroke: var(--family-media); }
 
 .node-title {
-  fill: var(--text);
+  fill: #ece9e3;
   /* Grows as the canvas pulls back, so the one thing worth reading far out
-     survives the shrinking. `nodeDetail` sets it; 12 is the near-view size. */
-  font-size: var(--node-title-size, 12px);
+     survives the shrinking. `nodeDetail` sets it; 12.5 is the near-view size. */
+  font-size: var(--node-title-size, 12.5px);
   font-weight: 600;
   font-family: var(--font);
 }
 
+/* The readout: the One Ring's black screen, with what the node holds. */
+.node-readout-screen { fill: var(--lcd); stroke: var(--lcd-edge); stroke-width: 1; }
+.node-readout-text { font: 11px var(--mono); fill: #d6d3cc; }
+.node-readout-text.tone-value { fill: var(--lcd-text); }
+.node-readout-text.tone-dim { fill: var(--text-faint); }
+.node-readout-text.tone-accent { fill: var(--accent); }
+.node-readout-tag { font: 500 9px var(--mono); letter-spacing: .08em; fill: var(--text-faint); }
+.node-type-vst .node-readout-tag { fill: var(--family-plugin); }
+
 /* --- level of detail: what a node is worth drawing when it is small -------
    Set on the SVG by `applyDetailLevel`. Far out, every legend on the card is
-   grain rather than information: two badges, a subtitle, a port name per jack
-   and the faceplate's own silkscreen, all under six pixels tall. They go; the
+   grain rather than information: the readout's text, a port name per jack and
+   the faceplate's own silkscreen, all under six pixels tall. They go; the
    sockets and the faceplate's BODIES stay -- a cable still lands where it
    lands, every socket is still there to be grabbed, and a controller still
    reads as its own keyboard. `zoom-mute` is past even the name. */
-.routing-svg.zoom-far .node-badge,
-.routing-svg.zoom-far .node-subtitle,
+.routing-svg.zoom-far .node-readout-text,
+.routing-svg.zoom-far .node-readout-tag,
 .routing-svg.zoom-far .node-open-control,
-.routing-svg.zoom-far .view-side-switch,
 .routing-svg.zoom-far .port-label,
 .routing-svg.zoom-far .ml-svg-label,
 .routing-svg.zoom-far .ml-svg-tiny { display: none; }
 .routing-svg.zoom-mute .node-title { display: none; }
 
-.node-subtitle {
-  fill: var(--text-dim);
-  font-size: 10px;
-  font-family: var(--font);
-}
-
 /* "OPEN" chip on a Patch Bay card: one click reaches that node's own page. */
-.node-open-control { cursor:pointer; }
-.node-open-control rect { fill:var(--bg-raised);stroke:var(--border-strong);stroke-width:1; }
-.node-open-control text { fill:var(--text-dim);font:700 8px var(--mono);letter-spacing:.08em;pointer-events:none; }
-.node-open-control:hover rect { stroke:var(--accent);fill:var(--bg-hover); }
-.node-open-control:hover text { fill:var(--text); }
+.node-open-control { cursor: pointer; }
+.node-open-control rect { fill: #1d1e22; stroke: #2c2e33; stroke-width: 1; }
+.node-open-control text { fill: #b5b7bc; font: 600 8.5px var(--font); letter-spacing: .12em; pointer-events: none; }
+.node-open-control:hover rect { stroke: var(--accent-line); fill: var(--bg-hover); }
+.node-open-control:hover text { fill: var(--text); }
 
-
-/* --- node badges (family + type) --- */
-.node-badge-bg {
-  fill: var(--bg-raised);
-  stroke: var(--border-strong);
-  stroke-width: 1;
-}
-.node-badge-text {
-  fill: var(--text);
-  font-size: 9px;
-  font-weight: 700;
-  font-family: var(--mono);
-  letter-spacing: 0.04em;
-}
-
-/* Family badge: carries the centralized family color. */
-.node-type-vst .node-badge.family .node-badge-bg { fill: color-mix(in srgb, var(--accent-vst) 26%, var(--bg-panel)); stroke: var(--accent-vst); }
-.node-type-vst .node-badge.family .node-badge-text { fill: var(--accent-vst); }
-.node-type-video .node-badge.family .node-badge-bg { fill: color-mix(in srgb, var(--accent-video) 26%, var(--bg-panel)); stroke: var(--accent-video); }
-.node-type-video .node-badge.family .node-badge-text { fill: var(--accent-video); }
-.node-type-image .node-badge.family .node-badge-bg { fill: color-mix(in srgb, var(--accent-image) 26%, var(--bg-panel)); stroke: var(--accent-image); }
-.node-type-image .node-badge.family .node-badge-text { fill: var(--accent-image); }
-.node-type-sequencer .node-badge.family .node-badge-bg { fill: color-mix(in srgb, var(--accent-sequencer) 26%, var(--bg-panel)); stroke: var(--accent-sequencer); }
-.node-type-sequencer .node-badge.family .node-badge-text { fill: var(--accent-sequencer); }
-
-/* Type badge: EMPTY is neutral; VST roles use the centralized role colors. */
-.node-badge.type.empty .node-badge-bg { fill: var(--bg-panel); stroke: var(--text-faint); }
-.node-badge.type.empty .node-badge-text { fill: var(--text-dim); }
-.node-badge.type.role-instrument .node-badge-bg { fill: color-mix(in srgb, var(--vst-role-instrument) 26%, var(--bg-panel)); stroke: var(--vst-role-instrument); }
-.node-badge.type.role-instrument .node-badge-text { fill: var(--vst-role-instrument); }
-.node-badge.type.role-audio-effect .node-badge-bg { fill: color-mix(in srgb, var(--vst-role-audio-effect) 26%, var(--bg-panel)); stroke: var(--vst-role-audio-effect); }
-.node-badge.type.role-audio-effect .node-badge-text { fill: var(--vst-role-audio-effect); }
-.node-badge.type.role-midi-effect .node-badge-bg { fill: color-mix(in srgb, var(--vst-role-midi-effect) 26%, var(--bg-panel)); stroke: var(--vst-role-midi-effect); }
-.node-badge.type.role-midi-effect .node-badge-text { fill: var(--vst-role-midi-effect); }
-.node-badge.type.role-utility .node-badge-bg { fill: color-mix(in srgb, var(--vst-role-utility) 26%, var(--bg-panel)); stroke: var(--vst-role-utility); }
-.node-badge.type.role-utility .node-badge-text { fill: var(--vst-role-utility); }
-.node-badge.type.mixed .node-badge-bg { fill: color-mix(in srgb, var(--vst-role-unknown) 26%, var(--bg-panel)); stroke: var(--vst-role-unknown); }
-.node-badge.type.mixed .node-badge-text { fill: var(--vst-role-unknown); }
-
-/* --- ports / jacks --- */
+/* --- ports / jacks ---
+   Hollow while free, filled once a cable is on them. */
 .port {
   cursor: crosshair;
 }
-
 .jack {
-  fill: var(--bg);
+  fill: var(--bg-panel);
   stroke: var(--text-faint);
-  stroke-width: 1.6;
+  stroke-width: 1.5;
 }
-
-.type-midi .jack {
-  stroke: var(--midi);
-}
-.type-audio .jack {
-  stroke: var(--audio);
-}
-.type-control .jack {
-  stroke: var(--control);
-}
+.type-midi .jack { stroke: var(--midi); }
+.type-audio .jack { stroke: var(--audio); }
+.type-control .jack { stroke: var(--control); }
+.port.plugged.type-midi .jack { fill: var(--midi); }
+.port.plugged.type-audio .jack { fill: var(--audio); }
+.port.plugged.type-control .jack { fill: var(--control); }
 
 .port:hover .jack {
   stroke-width: 2.4;
-  filter: drop-shadow(0 0 4px currentColor);
 }
 .port.active .jack {
   stroke: var(--text);
@@ -1183,25 +1231,32 @@ body {
 
 .port-label {
   fill: var(--text-dim);
-  font-size: 10px;
-  font-family: var(--font);
+  font: 500 9.5px var(--font);
+  letter-spacing: .09em;
+  text-transform: uppercase;
 }
+.port.plugged .port-label { fill: #d6d3cc; }
 .port:hover .port-label {
   fill: var(--text);
 }
 
-/* --- cables --- */
+/* --- cables ---
+   Coloured by what they carry, a control cable dashed: it carries values and
+   commands, not a stream. */
 .cable {
   fill: none;
   stroke: var(--text-faint);
-  stroke-width: 2;
+  stroke-width: 1.8;
   stroke-linecap: round;
-  opacity: 0.85;
+  opacity: 0.9;
   cursor: pointer;
 }
+.cable.type-midi { stroke: var(--midi); }
+.cable.type-audio { stroke: var(--audio); }
+.cable.type-control { stroke: var(--control); stroke-dasharray: 5 4; }
 .cable:hover {
-  stroke: var(--text-dim);
   opacity: 1;
+  stroke-width: 2.4;
 }
 .cable.selected {
   stroke: var(--accent);
@@ -1210,7 +1265,7 @@ body {
 }
 /* The frame a left-drag on empty Patch Bay canvas draws to select nodes. */
 .selection-frame {
-  fill: color-mix(in srgb, var(--accent) 10%, transparent);
+  fill: color-mix(in srgb, var(--accent) 8%, transparent);
   stroke: var(--accent);
   stroke-width: 1;
   stroke-dasharray: 4 3;
@@ -1396,7 +1451,7 @@ body {
   min-width: 520px;
   border: 1px solid var(--border-strong);
   border-radius: 14px;
-  background: linear-gradient(155deg, #343941, #202329 62%);
+  background: linear-gradient(155deg, #26282c, #141517 62%);
   box-shadow: inset 0 1px rgba(255,255,255,.08), 0 8px 24px rgba(0,0,0,.24);
   overflow: hidden;
   color: var(--text-dim);
@@ -1413,32 +1468,32 @@ body {
 .ml-utility-control,.ml-surface-control,.ml-main-turn,.ml-main-click { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .ml-cramped { font-size:0; min-width:11px; min-height:11px; }
 .ml-utility-control { font:600 8px var(--mono); text-align:center; white-space:nowrap; }
-.ml-display-readout { width:12%; aspect-ratio:1.1; border-radius:5px; background:#080a0c; border:2px solid #4a515c; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; }
+.ml-display-readout { width:12%; aspect-ratio:1.1; border-radius:5px; background:#070808; border:2px solid #4a515c; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; }
 .ml-display-readout small { font:8px var(--mono); color:#8191a9; }.ml-display-readout strong { font:11px var(--mono); color:#c5d7f5; }
-.ml-display-readout i { display:block; width:38%; aspect-ratio:1; border-radius:50%; background:radial-gradient(circle at 35% 30%,#59616b,#17191d 68%); }
+.ml-display-readout i { display:block; width:38%; aspect-ratio:1; border-radius:50%; background:radial-gradient(circle at 35% 30%,#4a4c52,#121315 68%); }
 .ml-main-turn,.ml-main-click { font:7px var(--mono); text-align:center; white-space:nowrap; }
 .ml-surface-knob { appearance:none; border:0; background:transparent; color:var(--text-dim); font:700 10px var(--mono); display:flex; flex-direction:column; align-items:center; gap:3px; cursor:pointer; border-radius:8px; padding:2px; }
-.ml-knob-cap { display:block; width:25px; height:25px; border-radius:50%; border:2px solid #6a727d; background:radial-gradient(circle at 35% 30%,#59616b,#17191d 68%); box-shadow:0 2px 4px #000; }
-.ml-surface-knob:hover,.ml-surface-knob.selected { color:var(--text); background:rgba(79,140,255,.12); }
-.ml-surface-knob.selected .ml-knob-cap { border-color:var(--accent); box-shadow:0 0 8px rgba(79,140,255,.65); }
+.ml-knob-cap { display:block; width:25px; height:25px; border-radius:50%; border:2px solid #55585e; background:radial-gradient(circle at 35% 30%,#4a4c52,#121315 68%); box-shadow:0 2px 4px #000; }
+.ml-surface-knob:hover,.ml-surface-knob.selected { color:var(--text); background:rgba(255, 139, 44, .12); }
+.ml-surface-knob.selected .ml-knob-cap { border-color:var(--accent); box-shadow:0 0 6px rgba(255, 139, 44, .55); }
 .ml-surface-knob.state-mapped .ml-knob-cap { border-color:#4ade82; }.ml-surface-knob.state-learn-armed .ml-knob-cap { border-color:#f5c451; box-shadow:0 0 10px #f5c451; }
 /* Learned, and doing nothing for now: its cable pulled out in the Patch Bay
    (unplugged), or its plugin not running (inactive). Kept, and not drawn as if it
    worked. Every control can be learned now, so none is drawn unavailable. */
 .ml-surface-knob.state-unplugged .ml-knob-cap,
 .ml-surface-knob.state-inactive .ml-knob-cap { border-color:#4ade82; border-style:dashed; }
-.ml-surface-fader { position:absolute; display:flex; flex-direction:column; align-items:center; gap:4px; font:700 9px var(--mono); opacity:.55; }.ml-surface-fader i { width:7px; height:58px; border-radius:4px; background:#080a0d; border:1px solid #5d6570; }
+.ml-surface-fader { position:absolute; display:flex; flex-direction:column; align-items:center; gap:4px; font:700 9px var(--mono); opacity:.55; }.ml-surface-fader i { width:7px; height:58px; border-radius:4px; background:#080a0d; border:1px solid #45484e; }
 /* The cap sits where the profile put the control; the stagger that used to
    offset every other fader was decoration standing in for a coordinate. */
 .ml-surface-fader::after { content:''; position:absolute; top:19px; width:26px; height:9px; border-radius:4px; background:linear-gradient(#aeb2b7,#555a60); box-shadow:0 2px 3px #000; }
 /* One pad looks like the next: the four colours here were the MiniLab 3's own
    backlighting, picked by position in a grid, and they were painted onto any
    keyboard whose fourth control happened to be a pad. */
-.ml-surface-pad { width:7%; aspect-ratio:1; display:flex; flex-direction:column; align-items:center; justify-content:center; border:2px solid #40aaff; box-shadow:0 0 4px #40aaff; border-radius:6px; background:#22262b; font:700 8px var(--mono); opacity:.65; }.ml-surface-pad small { color:var(--text-faint); }
+.ml-surface-pad { width:7%; aspect-ratio:1; display:flex; flex-direction:column; align-items:center; justify-content:center; border:2px solid #40aaff; box-shadow:0 0 4px #40aaff; border-radius:6px; background:#17181b; font:700 8px var(--mono); opacity:.65; }.ml-surface-pad small { color:var(--text-faint); }
 .control-learn-toolbar { margin-top:12px; display:flex; align-items:center; gap:10px; padding:10px; border:1px solid var(--border); border-radius:8px; }
 .control-learn-toolbar .control-binding-target { color:var(--text-dim); }
-.ml-svg-body { fill:#24282e; stroke:#59616d; }.ml-svg-display { fill:#080a0c; stroke:#59616d; }.ml-svg-utility { fill:#15181c; stroke:#697381; }
-.ml-svg-strip,.ml-svg-fader { fill:#111419; stroke:#68717d; }.ml-svg-fader-cap { fill:#92979e; stroke:#c5c8cc; }.ml-svg-knob { fill:#171a1f; stroke:#747e8b; stroke-width:2; }.ml-svg-pad { fill:#20242a; stroke:#40aaff; stroke-width:2; }
+.ml-svg-body { fill:#1a1b1e; stroke:#3e4046; }.ml-svg-display { fill:#070808; stroke:#3e4046; }.ml-svg-utility { fill:#111214; stroke:#4a4c52; }
+.ml-svg-strip,.ml-svg-fader { fill:#0e0f11; stroke:#45484e; }.ml-svg-fader-cap { fill:#92979e; stroke:#c5c8cc; }.ml-svg-knob { fill:#171a1f; stroke:#55585e; stroke-width:2; }.ml-svg-pad { fill:#20242a; stroke:#40aaff; stroke-width:2; }
 .ml-svg-label,.ml-svg-tiny { fill:#aab2be; font-family:var(--mono); font-size:9px; pointer-events:none; }.ml-svg-tiny { font-size:6px; }.ml-svg-control.connected .ml-svg-knob { stroke:#4ade82; filter:drop-shadow(0 0 4px #4ade82); }
 .ml-svg-label.unsupported { opacity:.5; }
 
@@ -1447,11 +1502,11 @@ body {
 .ml-utility-control,.ml-main-turn,.ml-main-click,.ml-strip-control,.ml-surface-fader,.ml-surface-pad {
   appearance:none; color:inherit; font:inherit; cursor:pointer;
 }
-.ml-utility-control { padding:4px 2px; border:1px solid #59616d; border-radius:9px; background:#17191d; }
-.ml-main-turn { width:31px; height:31px; border-radius:50%; border:2px solid #66707d; color:transparent; background:radial-gradient(circle at 35% 30%,#59616b,#17191d 68%); }
-.ml-main-click { padding:1px 3px; border:1px solid #59616d; border-radius:3px; background:#17191d; color:var(--text-faint); font:7px var(--mono); }
+.ml-utility-control { padding:4px 2px; border:1px solid #3e4046; border-radius:9px; background:#121315; }
+.ml-main-turn { width:31px; height:31px; border-radius:50%; border:2px solid #55585e; color:transparent; background:radial-gradient(circle at 35% 30%,#4a4c52,#121315 68%); }
+.ml-main-click { padding:1px 3px; border:1px solid #3e4046; border-radius:3px; background:#121315; color:var(--text-faint); font:7px var(--mono); }
 .ml-strip-control { border:0; padding:0; background:transparent; display:flex; flex-direction:column; align-items:center; gap:4px; font:8px var(--mono); }
-.ml-strip-control i { display:block; width:13px; height:62px; border-radius:8px; background:linear-gradient(#13161a,#576171,#13161a); border:1px solid #697381; }
+.ml-strip-control i { display:block; width:13px; height:62px; border-radius:8px; background:linear-gradient(#0f1012,#45484e,#0f1012); border:1px solid #4a4c52; }
 .ml-surface-fader { border:0; background:transparent; opacity:1; }
 .ml-surface-pad { opacity:1; }
 .ml-surface-fader.selected,.ml-surface-pad.selected,.ml-strip-control.selected,.ml-main-turn.selected,.ml-main-click.selected,.ml-utility-control.selected { filter:drop-shadow(0 0 6px var(--accent)); color:var(--text); }
@@ -1477,10 +1532,10 @@ body {
    that is the one thing such a profile does say about how the device is
    organised. `em` is the text printed on the hardware -- dimmer than the label,
    never absent. */
-.minilab-control-list { display:flex; flex-direction:column; gap:14px; padding:16px; border:1px solid var(--border-strong); border-radius:14px; background:linear-gradient(155deg,#343941,#202329 62%); }
+.minilab-control-list { display:flex; flex-direction:column; gap:14px; padding:16px; border:1px solid var(--border-strong); border-radius:14px; background:linear-gradient(155deg,#26282c,#141517 62%); }
 .ml-list-group h4 { margin:0 0 6px; font:600 10px var(--mono); letter-spacing:.08em; text-transform:uppercase; color:var(--text-faint); }
 .ml-list-row { display:flex; flex-wrap:wrap; gap:6px; }
-.ml-list-control { appearance:none; display:flex; align-items:baseline; gap:6px; padding:6px 9px; border:1px solid #59616d; border-radius:8px; background:#17191d; color:var(--text-dim); font:600 11px var(--mono); cursor:pointer; }
+.ml-list-control { appearance:none; display:flex; align-items:baseline; gap:6px; padding:6px 9px; border:1px solid #3e4046; border-radius:8px; background:#121315; color:var(--text-dim); font:600 11px var(--mono); cursor:pointer; }
 .ml-list-control em { font-style:normal; font-size:9px; color:var(--text-faint); }
 .ml-list-control:hover,.ml-list-control.selected { color:var(--text); border-color:var(--accent); }
 .ml-list-control.state-mapped { border-color:#4ade82; }
@@ -1491,7 +1546,7 @@ body {
 /* A family this drawing has no body for: a breath controller, a pedal. It is
    drawn plainly, but on its own coordinate like everything else -- it used to be
    swept into a strip along the bottom, away from where the control really sits. */
-.ml-surface-control { appearance:none; color:inherit; font:inherit; cursor:pointer; padding:4px 6px; border:1px solid #59616d; border-radius:7px; background:#17191d; }
+.ml-surface-control { appearance:none; color:inherit; font:inherit; cursor:pointer; padding:4px 6px; border:1px solid #3e4046; border-radius:7px; background:#121315; }
 .ml-surface-control.selected { filter:drop-shadow(0 0 6px var(--accent)); color:var(--text); }
 
 /* The bindings bar: the Learn panel as a strip docked under a plugin editor
@@ -1588,7 +1643,7 @@ body {
 .ml-surface-knob.ml-live .ml-knob-cap::after,
 .ml-main-turn.ml-live::after {
   content:''; position:absolute; left:50%; top:50%; width:2px; height:42%; margin-left:-1px;
-  border-radius:1px; background:#e6e8eb; transform-origin:50% 0; pointer-events:none;
+  border-radius:1px; background:#e8e6e1; transform-origin:50% 0; pointer-events:none;
   transform:rotate(calc(45deg + var(--ml-value, 0) * 270deg));
 }
 .ml-surface-fader.ml-live::after { top:calc((1 - var(--ml-value, .5)) * 49px); }
@@ -1647,7 +1702,7 @@ body {
 /* Per-card accent: the icon's ink, and the focus ring. Read by homeIcons.js
    drawings through `--home-accent`, never spelled inside a drawing. */
 .home-card[data-accent='amber']  { --home-accent: #f5a623; }
-.home-card[data-accent='blue']   { --home-accent: #4f8cff; }
+.home-card[data-accent='blue']   { --home-accent: #5b8def; }
 .home-card[data-accent='purple'] { --home-accent: #a78bfa; }
 
 .home-card-frame {
@@ -1661,7 +1716,7 @@ body {
 .home-card-face {
   position: absolute;
   inset: 1px;
-  background: #15181b;
+  background: #111214;
   clip-path: var(--home-card-shape);
   overflow: hidden;
 }
@@ -1674,7 +1729,7 @@ body {
 .home-card-art-face {
   position: absolute;
   inset: 1px;
-  background: #0f1214;
+  background: #0b0c0e;
   clip-path: var(--home-art-shape);
   overflow: hidden;
 }
@@ -1896,7 +1951,7 @@ body {
   .seq-track-count, .seq-export-format { display:none; }
 }
 .seq-toolbar .page-title { margin:0; }
-.seq-record-status { margin-top:9px; padding:7px 10px; border:1px solid var(--border); border-radius:6px; color:var(--text-dim); background:#191c20; font-size:11px; }
+.seq-record-status { margin-top:9px; padding:7px 10px; border:1px solid var(--border); border-radius:6px; color:var(--text-dim); background:#121315; font-size:11px; }
 .seq-record-status.ready { color:#7fdaa5; border-color:rgba(62,207,126,.4); }
 .seq-record-status.blocked { color:#f5c451; border-color:rgba(245,196,81,.4); }
 .seq-record-status.active { color:#fff; border-color:#ef6a5b; background:rgba(196,71,71,.22); }
@@ -1904,18 +1959,18 @@ body {
 .seq-tools { flex-wrap:wrap; font-size:12px; }
 .seq-tools label { display:flex; align-items:center; gap:6px; color:var(--text-dim); }
 .seq-tools input[type="number"] { width:68px; }
-.seq-tempo-control { display:inline-flex; align-items:center; gap:6px; height:30px; padding:0 8px; border:1px solid var(--border); border-radius:7px; background:#171a1e; color:var(--text-dim); font-size:11px; }
+.seq-tempo-control { display:inline-flex; align-items:center; gap:6px; height:30px; padding:0 8px; border:1px solid var(--border); border-radius:7px; background:#111214; color:var(--text-dim); font-size:11px; }
 .seq-tempo-control .tempo-input { width:54px; height:24px; padding:0 5px; color:var(--text); background:var(--bg); border:1px solid var(--border); border-radius:5px; }
 .seq-tempo-control span { color:var(--text-faint); font:9px var(--mono); }
-.seq-metronome-control { display:inline-flex; align-items:center; gap:8px; height:30px; padding:0 9px; border:1px solid var(--border); border-radius:7px; background:#171a1e; }
+.seq-metronome-control { display:inline-flex; align-items:center; gap:8px; height:30px; padding:0 9px; border:1px solid var(--border); border-radius:7px; background:#111214; }
 .seq-metronome-label { color:var(--text-dim); font-size:11px; }
-.seq-metronome-switch { position:relative; width:34px; height:18px; padding:0; border:1px solid #4b515a; border-radius:999px; background:#292d33; cursor:pointer; transition:background .15s ease,border-color .15s ease; }
-.seq-metronome-switch > span { position:absolute; left:2px; top:2px; width:12px; height:12px; border-radius:50%; background:#a5abb4; box-shadow:0 1px 3px rgba(0,0,0,.6); transition:transform .15s ease,background .15s ease; }
-.seq-metronome-switch.active { border-color:rgba(79,140,255,.8); background:rgba(79,140,255,.42); }
+.seq-metronome-switch { position:relative; width:34px; height:18px; padding:0; border:1px solid #3a3c42; border-radius:999px; background:#1f2024; cursor:pointer; transition:background .15s ease,border-color .15s ease; }
+.seq-metronome-switch > span { position:absolute; left:2px; top:2px; width:12px; height:12px; border-radius:50%; background:#a3a5aa; box-shadow:0 1px 3px rgba(0,0,0,.6); transition:transform .15s ease,background .15s ease; }
+.seq-metronome-switch.active { border-color:rgba(255, 139, 44, .8); background:rgba(255, 139, 44, .42); }
 .seq-metronome-switch.active > span { transform:translateX(16px); background:#fff; }
 .seq-metronome-switch:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
-.seq-metronome-light { width:10px; height:10px; flex:0 0 10px; border-radius:50%; background:#30343a; border:1px solid #484d55; box-shadow:inset 0 0 3px rgba(0,0,0,.75); }
-.seq-metronome-light.pulse-precount { background:#3f8cff; border-color:#83b5ff; box-shadow:0 0 10px rgba(63,140,255,.95); }
+.seq-metronome-light { width:10px; height:10px; flex:0 0 10px; border-radius:50%; background:#232428; border:1px solid #3a3c42; box-shadow:inset 0 0 3px rgba(0,0,0,.75); }
+.seq-metronome-light.pulse-precount { background:var(--accent); border-color:#ffb271; box-shadow:0 0 10px rgba(255,139,44,.9); }
 .seq-metronome-light.pulse-accent { background:#44dc83; border-color:#9af0bc; box-shadow:0 0 10px rgba(68,220,131,.9); }
 .seq-metronome-light.pulse-beat { background:#176637; border-color:#2b8a50; box-shadow:0 0 6px rgba(23,102,55,.75); }
 /* ui/contextMenu.js. It borrows the menu vocabulary that already exists above
@@ -1949,7 +2004,7 @@ body {
 .seq-zoom-control { gap:5px!important; }
 .seq-zoom-control input[type="range"] { width:96px; }
 .seq-zoom-btn { height:22px; padding:0 8px!important; font-size:10px; }
-.seq-export-panel { display:flex; align-items:center; flex-wrap:wrap; gap:8px; padding:6px 8px; border:1px solid var(--border); border-radius:6px; background:#171a1e; }
+.seq-export-panel { display:flex; align-items:center; flex-wrap:wrap; gap:8px; padding:6px 8px; border:1px solid var(--border); border-radius:6px; background:#111214; }
 .seq-export-panel select { min-width:82px; }
 .seq-arm.active { color:#fff; background:#c44747; border-color:#ef6a5b; }
 .seq-monitor.active { color:#07131c!important; background:#38bdf8!important; border-color:#7dd3fc!important; }
@@ -1959,8 +2014,8 @@ body {
    here, and its rule is more specific). */
 body ::-webkit-scrollbar { width:10px; height:10px; }
 body ::-webkit-scrollbar-track { background:transparent; }
-body ::-webkit-scrollbar-thumb { border:3px solid transparent; border-radius:8px; background:#40464f; background-clip:content-box; }
-body ::-webkit-scrollbar-thumb:hover { background:#5b636e; background-clip:content-box; }
+body ::-webkit-scrollbar-thumb { border:3px solid transparent; border-radius:8px; background:#2e3035; background-clip:content-box; }
+body ::-webkit-scrollbar-thumb:hover { background:#45484e; background-clip:content-box; }
 body ::-webkit-scrollbar-corner { background:transparent; }
 
 .seq-arrangement { position:relative; display:flex; flex-direction:column; min-height:0; padding:0; overflow:hidden; }
@@ -1977,53 +2032,53 @@ body ::-webkit-scrollbar-corner { background:transparent; }
    dark panel and hid itself whenever the view fitted, and it was not found.
    The ends of the thumb are handles -- dragging one zooms, as in Cubase,
    Studio One and Bitwig. */
-.nav-bar { flex:0 0 auto; display:flex; align-items:center; gap:4px; height:22px; padding:0 6px 0 4px; box-sizing:border-box; background:#1b1e22; border-top:1px solid var(--border); }
-.nav-track { position:relative; flex:1 1 auto; min-width:40px; height:14px; border-radius:7px; background:#111316; box-shadow:inset 0 1px 2px rgba(0,0,0,.5); cursor:pointer; touch-action:none; }
-.nav-thumb { position:absolute; top:1px; bottom:1px; border-radius:6px; background:#5d6672; box-shadow:0 0 0 1px rgba(255,255,255,.08); cursor:grab; }
+.nav-bar { flex:0 0 auto; display:flex; align-items:center; gap:4px; height:22px; padding:0 6px 0 4px; box-sizing:border-box; background:#131416; border-top:1px solid var(--border); }
+.nav-track { position:relative; flex:1 1 auto; min-width:40px; height:14px; border-radius:7px; background:#0b0c0e; box-shadow:inset 0 1px 2px rgba(0,0,0,.5); cursor:pointer; touch-action:none; }
+.nav-thumb { position:absolute; top:1px; bottom:1px; border-radius:6px; background:#45484e; box-shadow:0 0 0 1px rgba(255,255,255,.08); cursor:grab; }
 .nav-thumb[hidden] { display:none; }
-.nav-track:hover .nav-thumb { background:#727c89; }
-.nav-track.dragging .nav-thumb { background:#8a95a3; cursor:grabbing; }
+.nav-track:hover .nav-thumb { background:#56595f; }
+.nav-track.dragging .nav-thumb { background:#6b6e74; cursor:grabbing; }
 .nav-edge { position:absolute; top:0; bottom:0; width:8px; cursor:ew-resize; }
 .nav-edge::after { content:''; position:absolute; top:3px; bottom:3px; width:2px; border-radius:1px; background:rgba(255,255,255,.35); }
 .nav-edge-start { left:0; }
 .nav-edge-start::after { left:3px; }
 .nav-edge-end { right:0; }
 .nav-edge-end::after { right:3px; }
-.nav-zoom { flex:0 0 auto; width:22px; height:18px; padding:0; border:1px solid var(--border); border-radius:4px; color:var(--text-dim); background:#23272c; font:600 13px/1 var(--mono); cursor:pointer; }
-.nav-zoom:hover { color:var(--text); background:#2c3137; }
+.nav-zoom { flex:0 0 auto; width:22px; height:18px; padding:0; border:1px solid var(--border); border-radius:4px; color:var(--text-dim); background:#1a1b1e; font:600 13px/1 var(--mono); cursor:pointer; }
+.nav-zoom:hover { color:var(--text); background:#222428; }
 .seq-scroll.panning { cursor:grabbing; }
-.seq-canvas { position:relative; background:#15171a; }
+.seq-canvas { position:relative; background:#0e0f11; }
 /* The corner covers BOTH ruler rows: their heights come from the module
    (`--seq-time-ruler`, `--seq-bar-ruler`), never spelled here. */
-.seq-corner { position:sticky; left:0; top:0; z-index:9; width:var(--seq-head,260px); height:calc(var(--seq-time-ruler,18px) + var(--seq-bar-ruler,30px)); padding:8px 12px; box-sizing:border-box; background:#22262b; border-right:1px solid var(--border); border-bottom:1px solid var(--border); color:var(--text-faint); font:10px var(--mono); letter-spacing:.12em; display:grid; align-content:end; }
+.seq-corner { position:sticky; left:0; top:0; z-index:9; width:var(--seq-head,260px); height:calc(var(--seq-time-ruler,18px) + var(--seq-bar-ruler,30px)); padding:8px 12px; box-sizing:border-box; background:#17181b; border-right:1px solid var(--border); border-bottom:1px solid var(--border); color:var(--text-faint); font:10px var(--mono); letter-spacing:.12em; display:grid; align-content:end; }
 /* Minutes and seconds, above the bars. Dimmer and shorter on purpose: the
    bars are where the work happens, the clock says where you are in the piece.
    It carries the same `data-seek` as a bar mark, so it can be clicked. */
-.seq-time-ruler { position:absolute; top:0; height:var(--seq-time-ruler,18px); z-index:3; background-color:#191c20; border-bottom:1px solid #2a2f35; }
-.seq-time-mark { position:absolute; top:0; height:var(--seq-time-ruler,18px); border:0; border-left:1px solid #3a4048; background:transparent; color:var(--text-faint); text-align:left; padding:0 4px; cursor:pointer; overflow:hidden; white-space:nowrap; }
+.seq-time-ruler { position:absolute; top:0; height:var(--seq-time-ruler,18px); z-index:3; background-color:#121315; border-bottom:1px solid #1f2024; }
+.seq-time-mark { position:absolute; top:0; height:var(--seq-time-ruler,18px); border:0; border-left:1px solid #2a2c31; background:transparent; color:var(--text-faint); text-align:left; padding:0 4px; cursor:pointer; overflow:hidden; white-space:nowrap; }
 .seq-time-mark strong { font:10px var(--mono); font-weight:500; }
-.seq-time-mark:hover { background:rgba(79,140,255,.12); color:var(--text-dim); }
-.seq-ruler { position:absolute; top:var(--seq-time-ruler,18px); height:var(--seq-bar-ruler,30px); z-index:3; background-color:#1b1e22; background-image:repeating-linear-gradient(to right,transparent 0,transparent calc(var(--seq-beat) - 1px),rgba(255,255,255,.07) var(--seq-beat)); border-bottom:1px solid var(--border); }
-.seq-ruler-mark { position:absolute; top:0; height:var(--seq-bar-ruler,30px); border:0; border-left:1px solid #444a52; background:transparent; color:var(--text-dim); text-align:left; padding:3px 5px; cursor:pointer; }
-.seq-ruler-mark:hover { background:rgba(79,140,255,.12); }
+.seq-time-mark:hover { background:rgba(255, 139, 44, .12); color:var(--text-dim); }
+.seq-ruler { position:absolute; top:var(--seq-time-ruler,18px); height:var(--seq-bar-ruler,30px); z-index:3; background-color:#131416; background-image:repeating-linear-gradient(to right,transparent 0,transparent calc(var(--seq-beat) - 1px),rgba(255,255,255,.07) var(--seq-beat)); border-bottom:1px solid var(--border); }
+.seq-ruler-mark { position:absolute; top:0; height:var(--seq-bar-ruler,30px); border:0; border-left:1px solid #34363b; background:transparent; color:var(--text-dim); text-align:left; padding:3px 5px; cursor:pointer; }
+.seq-ruler-mark:hover { background:rgba(255, 139, 44, .12); }
 .seq-ruler-mark strong { font:10px var(--mono); }
-.seq-ruler-mark i { position:absolute; bottom:0; height:6px; border-left:1px solid #333840; }
+.seq-ruler-mark i { position:absolute; bottom:0; height:6px; border-left:1px solid #26282c; }
 .seq-ruler-mark i:nth-of-type(1){left:25%}.seq-ruler-mark i:nth-of-type(2){left:50%}.seq-ruler-mark i:nth-of-type(3){left:75%}
-.seq-track { position:absolute; left:0; right:0; border-bottom:1px solid #30343a; }
-.seq-track.focused .seq-track-head { background:#262832; }
+.seq-track { position:absolute; left:0; right:0; border-bottom:1px solid #232428; }
+.seq-track.focused .seq-track-head { background:#1c1d21; }
 /* Two rows, performance controls only. Input, Destination and the route
    sentences live in .seq-inspector -- they are what made this five rows tall. */
-.seq-track-head { position:sticky; left:0; z-index:7; height:100%; box-sizing:border-box; display:grid; grid-template-columns:26px 26px minmax(0,1fr) 26px 22px; grid-template-rows:26px minmax(0,1fr); gap:3px 4px; padding:5px 8px 5px 32px; background:#22262b; border-right:1px solid #3a3f46; }
-.seq-track-head button { padding:0; border:1px solid var(--border); border-radius:4px; color:var(--text-dim); background:#191c20; font:600 10px var(--font); cursor:pointer; }
+.seq-track-head { position:sticky; left:0; z-index:7; height:100%; box-sizing:border-box; display:grid; grid-template-columns:26px 26px minmax(0,1fr) 26px 22px; grid-template-rows:26px minmax(0,1fr); gap:3px 4px; padding:5px 8px 5px 32px; background:#17181b; border-right:1px solid #2e3035; }
+.seq-track-head button { padding:0; border:1px solid var(--border); border-radius:4px; color:var(--text-dim); background:#121315; font:600 10px var(--font); cursor:pointer; }
 /* The track's select button, on its left edge: the rest of a 64 px head is
    controls, and a click meant to select the track kept landing on one of them.
    A thin strip there went unseen, so it is a full-height button with a mark,
    filled in the sequencer's violet on the selected track. */
-.seq-track-head .seq-track-select { position:absolute; left:5px; top:5px; bottom:5px; width:20px; border-color:#6b7380; background:#353a42; }
-.seq-track-head .seq-track-select::after { content:""; position:absolute; left:50%; top:50%; width:10px; height:10px; margin:-5px 0 0 -5px; box-sizing:border-box; border:2px solid #9aa2ae; border-radius:50%; }
-.seq-track-head .seq-track-select:hover { background:#4a505a; }
+.seq-track-head .seq-track-select { position:absolute; left:5px; top:5px; bottom:5px; width:20px; border-color:#4a4d53; background:#26282c; }
+.seq-track-head .seq-track-select::after { content:""; position:absolute; left:50%; top:50%; width:10px; height:10px; margin:-5px 0 0 -5px; box-sizing:border-box; border:2px solid #8d8f94; border-radius:50%; }
+.seq-track-head .seq-track-select:hover { background:#34363b; }
 .seq-track.focused .seq-track-head .seq-track-select { border-color:var(--accent-sequencer); background:var(--accent-sequencer); }
-.seq-track.focused .seq-track-head .seq-track-select::after { border-color:#17191d; background:#17191d; }
+.seq-track.focused .seq-track-head .seq-track-select::after { border-color:#121315; background:#121315; }
 .seq-track-level { grid-column:1 / 5; grid-row:2; display:grid; grid-template-columns:minmax(0,1fr) 50px; align-items:center; gap:6px; }
 .seq-track-level input[type="range"] { width:100%; height:14px; margin:0; }
 .seq-track-level output { color:var(--text-faint); font:9px var(--mono); text-align:right; }
@@ -2031,7 +2086,7 @@ body ::-webkit-scrollbar-corner { background:transparent; }
 .seq-route-dots i { width:9px; height:9px; display:grid; place-items:center; border-radius:50%; font:normal 7px var(--mono); font-style:normal; line-height:1; }
 .seq-route-dots i.seq-route-ok { color:#0d1f14; background:#4ade82; }
 .seq-route-dots i.seq-route-warning { color:#2a1f04; background:#f5c451; }
-.seq-route-dots i.seq-route-idle { color:var(--text-faint); background:#30343a; }
+.seq-route-dots i.seq-route-idle { color:var(--text-faint); background:#232428; }
 .seq-route-summary { display:flex; align-items:center; gap:14px; overflow:hidden; font:9px var(--mono); white-space:nowrap; }
 .seq-route-summary span { overflow:hidden; text-overflow:ellipsis; }
 .seq-route-ok { color:#4ade82; }
@@ -2039,12 +2094,12 @@ body ::-webkit-scrollbar-corner { background:transparent; }
 .seq-route-idle { color:var(--text-faint); }
 .seq-track-name { min-width:0; border:0; border-bottom:1px solid transparent; background:transparent; color:var(--text); font-weight:600; font-size:11px; }
 .seq-track-name:focus { border-bottom-color:var(--accent); outline:0; }
-.seq-inspector { display:flex; align-items:center; flex-wrap:wrap; gap:10px; margin-top:9px; padding:7px 10px; border:1px solid var(--border); border-radius:6px; background:#191c20; font-size:11px; }
+.seq-inspector { display:flex; align-items:center; flex-wrap:wrap; gap:10px; margin-top:9px; padding:7px 10px; border:1px solid var(--border); border-radius:6px; background:#121315; font-size:11px; }
 .seq-inspector-label { color:var(--text-faint); font:9px var(--mono); text-transform:uppercase; letter-spacing:.1em; }
 .seq-inspector-name { max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--accent-sequencer); font-size:12px; }
 .seq-inspector-hint { color:var(--text-dim); }
 .seq-inspector-field { display:grid; grid-template-columns:max-content minmax(110px,210px); align-items:center; gap:6px; color:var(--text-faint); font:9px var(--mono); text-transform:uppercase; letter-spacing:.06em; }
-.seq-inspector-field select { width:100%; height:24px; padding:0 5px; color:var(--text-dim); background:#15171a; border:1px solid var(--border); border-radius:5px; font-size:11px; text-transform:none; letter-spacing:normal; }
+.seq-inspector-field select { width:100%; height:24px; padding:0 5px; color:var(--text-dim); background:#0e0f11; border:1px solid var(--border); border-radius:5px; font-size:11px; text-transform:none; letter-spacing:normal; }
 /* Where the notes go, in the VST node's own orange: the most read field here.
    A long chain of plugin names is cut, not wrapped. */
 .seq-inspector-destination > span { color:var(--accent-vst); font-weight:700; }
@@ -2052,7 +2107,7 @@ body ::-webkit-scrollbar-corner { background:transparent; }
 .seq-inspector-destination select.routed { color:var(--accent-vst); font-weight:600; }
 .seq-inspector-destination select.routed option { color:var(--text); font-weight:400; }
 .seq-inspector .seq-route-summary { margin-left:auto; }
-.seq-mute.active { color:#17191d!important; background:#f5c451!important; }
+.seq-mute.active { color:#121315!important; background:#f5c451!important; }
 .seq-track-delete:hover { color:#ef6a5b; }
 .seq-track-lane { position:absolute; top:0; height:100%; background-image:repeating-linear-gradient(to right,transparent 0,transparent calc(var(--seq-beat,72px) - 1px),rgba(255,255,255,.035) var(--seq-beat,72px)); }
 /* No height: top and bottom inset it into whatever the lane is. A fixed 62px
@@ -2074,9 +2129,9 @@ body ::-webkit-scrollbar-corner { background:transparent; }
 .seq-midi-preview,.seq-waveform { position:absolute; left:3px; right:4px; top:15px; bottom:3px; pointer-events:none; }
 .seq-midi-preview i { position:absolute; height:3px; min-width:2px; background:rgba(255,255,255,.75); border-radius:1px; }
 .seq-waveform i,.seq-audio-detail i { position:absolute; top:50%; width:2px; background:rgba(220,255,245,.7); transform:translateY(-50%); }
-.seq-marquee { position:absolute; z-index:6; border:1px solid rgba(79,140,255,.9); border-radius:2px; background:rgba(79,140,255,.14); pointer-events:none; }
+.seq-marquee { position:absolute; z-index:6; border:1px solid rgba(255, 139, 44, .9); border-radius:2px; background:rgba(255, 139, 44, .14); pointer-events:none; }
 .seq-loop-range { position:absolute; top:0; z-index:1; pointer-events:none; border-left:1px solid transparent; border-right:1px solid transparent; }
-.seq-loop-range.enabled { background:rgba(79,140,255,.055); border-color:rgba(79,140,255,.45); }
+.seq-loop-range.enabled { background:rgba(255, 139, 44, .055); border-color:rgba(255, 139, 44, .45); }
 /* Under .seq-track-head (7), and that single digit is the whole rule: the
    heads are sticky at the left edge, so a cursor scrolled out of the timeline
    passes BEHIND them instead of being drawn across a track's own buttons and

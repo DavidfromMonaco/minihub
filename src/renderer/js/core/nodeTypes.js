@@ -212,3 +212,17 @@ export function listOmniBoxCategories() {
     types: listNodeTypes().filter((type) => type.omniBoxCategory === label)
   })).filter((category) => category.types.length > 0);
 }
+
+/**
+ * The family a node is drawn in: its OmniBox category, lower-cased, which
+ * `base.css` turns into one colour (`--family-*`). Video and Image are no
+ * OmniBox and share `media`; anything that is not a node type -- the
+ * controller, the output -- is `system`. One colour per family, where each
+ * type used to wear its own: three families read at a glance, seven hues did
+ * not (asked 2026-09-25).
+ */
+export function nodeFamily(typeId) {
+  const type = getNodeType(typeId);
+  if (!type) return 'system';
+  return type.omniBoxCategory ? type.omniBoxCategory.toLowerCase() : 'media';
+}

@@ -12,7 +12,7 @@ import { createConnection } from '../src/renderer/js/modules/routing/routingCore
 import { createMiniLabModule } from '../src/renderer/js/modules/minilab/minilabModule.js';
 import { createAudioOutputModule } from '../src/renderer/js/modules/audioOutput/audioOutputModule.js';
 import projectFiles from '../src/main/projectFiles.js';
-import { makeEl, installDom, fire } from './domShim.mjs';
+import { makeEl, installDom, fire, pickEntry } from './domShim.mjs';
 
 installDom();
 const { createRoutingModule } = await import('../src/renderer/js/modules/routing/routingModule.js');
@@ -111,21 +111,24 @@ function routingContainer() {
   const container = makeEl('div');
   const svg = makeEl('svg');
   svg.setAttribute('id', 'routing-svg');
-  const newButton = makeEl('button');
-  newButton.setAttribute('id', 'routing-new-node');
-  const newType = makeEl('select');
-  newType.setAttribute('id', 'routing-new-type');
+  const addButton = makeEl('button');
+  addButton.setAttribute('id', 'routing-add');
   Object.defineProperty(container, 'innerHTML', {
     get: () => '',
     set: () => {
       container.children.length = 0;
       container.appendChild(svg);
-      container.appendChild(newButton);
-      container.appendChild(newType);
+      container.appendChild(addButton);
     },
     configurable: true
   });
-  return { container, svg, newButton, newType };
+  return { container, svg, addButton };
+}
+
+/** The Patch Bay's Add field, then a node type in the menu it opens. */
+function addNode(addButton, label) {
+  fire(addButton, 'click', { currentTarget: addButton });
+  pickEntry(label);
 }
 
 test('Sequencer node type declares the exact four-port Patch Bay contract', () => {
@@ -149,17 +152,16 @@ test('MiniLab hardware MIDI input is a real network sink, not a hidden route', (
   assert.deepEqual(delivered, [[0x90, 60, 100]], 'only a network delivery to MIDI IN reaches hardware');
 });
 
-test('Patch Bay + New Node explicitly creates and persists a routable Sequencer', async () => {
+test('the Patch Bay Add field explicitly creates and persists a routable Sequencer', async () => {
   const { hub } = await makeRuntime({ networkViewport: { x: 0, y: 0, zoom: 1 } });
   registerSystemNodes(hub);
-  const { container, newButton, newType } = routingContainer();
+  const { container, addButton } = routingContainer();
   const routing = createRoutingModule(hub);
   routing.mount(container);
   try {
     assert.equal(hub.nodes.list().some((node) => node.type === 'sequencer'), false,
       'opening Patch Bay does not create a Sequencer');
-    newType.value = 'sequencer';
-    fire(newButton, 'click');
+    addNode(addButton, 'Sequencer');
 
     const created = hub.nodes.list().filter((node) => node.type === 'sequencer');
     assert.equal(created.length, 1, 'one explicit click creates the requested Sequencer');
@@ -181,12 +183,11 @@ test('fresh project has only MiniLab and Audio Output; Audio Input is explicit, 
   assert.deepEqual(hub.network.listNodes().map((node) => node.id).sort(), ['audio-output', 'minilab-3']);
   assert.equal(hub.nodes.list().some((node) => node.type === 'audio-input'), false);
 
-  const { container, newButton, newType } = routingContainer();
+  const { container, addButton } = routingContainer();
   const routing = createRoutingModule(hub);
   routing.mount(container);
   try {
-    newType.value = 'audio-input';
-    fire(newButton, 'click');
+    addNode(addButton, 'Audio Input');
   } finally {
     routing.unmount();
   }

@@ -1,5 +1,6 @@
 import { registerNodeEditor } from '../../core/nodeEditors.js';
 import { escapeHtml } from '../../core/html.js';
+import { nodeFamily } from '../../core/nodeTypes.js';
 import { LEVEL_MAX, fileNameOf, formatPlayerTime } from '../../core/audioPlayerState.js';
 
 /**
@@ -106,7 +107,7 @@ function render({ instance, type, hub }) {
   const disabled = view.ready ? '' : ' disabled';
   const muted = view.content.muted === true;
   return `<div class="panel audio-player" data-audio-player>
-    <div class="row"><h1 class="page-title">${escapeHtml(instance.name)}</h1><span class="spacer"></span><span class="pill accent-${type.id}">${escapeHtml(type.label)}</span></div>
+    <div class="row"><h1 class="page-title">${escapeHtml(instance.name)}</h1><span class="spacer"></span><span class="pill accent-${type.id} family-${nodeFamily(type.id)}">${escapeHtml(type.label)}</span></div>
     <div class="panel mt-16 ap-deck">
       <div class="ap-file-row">
         <div class="ap-file">

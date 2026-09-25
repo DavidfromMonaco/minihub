@@ -1,6 +1,7 @@
 import { createHub } from './core/hub.js';
 import { buildSidebar } from './ui/sidebar.js';
 import { buildHeader } from './ui/header.js';
+import { buildStatusBar } from './ui/statusBar.js';
 import { buildSettingsModal } from './ui/settingsModal.js';
 import { createHomeModule } from './modules/home/homeModule.js';
 import { createMiniLabModule } from './modules/minilab/minilabModule.js';
@@ -103,6 +104,10 @@ async function main() {
   // is up, pulls devices + device state + the VST3 registry once per engine
   // run. Modules read those cached values instead of each issuing their own
   // requests when they happen to be opened.
+  buildStatusBar(hub, {
+    engineEl: document.getElementById('engine-status'),
+    deviceEl: document.getElementById('audio-device-status')
+  });
   hub.engine.init();
   setupMasterOutput(hub);
   const syncRouting = setupEngineSync(hub);

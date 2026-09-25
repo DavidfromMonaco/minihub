@@ -50,7 +50,7 @@ const { ClipEditorWindows } = require('./clipEditorWindows');
 const { BindingsBarWindows } = require('./bindingsBarWindows');
 const { installProjectCloseGuard } = require('./projectCloseGuard');
 const { quitOnRequest } = require('./quitRequest');
-const { installAppMenu } = require('./appMenu');
+const { installAppMenu, popupAppMenu, POPUP_CHANNEL } = require('./appMenu');
 const { AgentChannel } = require('./agentChannel');
 const { PluginBrowser, withWebViewDebugging } = require('./pluginBrowser');
 
@@ -66,6 +66,7 @@ let engineRestartAttempts = 0;
 let clipEditorWindows = null;
 let bindingsBars = null;
 let projectCloseGuard = null;
+let appMenu = null;
 const processStartedAt = Date.now() - Math.round(process.uptime() * 1000);
 const startupMark = (name) => diagnostics.log(`startup:${name} elapsedMs=${Date.now() - processStartedAt}`);
 
@@ -76,8 +77,15 @@ function createWindow() {
     height: 820,
     minWidth: 960,
     minHeight: 620,
-    backgroundColor: '#191b1e',
+    backgroundColor: '#0e0f11',
     title: 'MiniHub',
+    // The page draws the title bar (D-055): the header IS the top of the
+    // window, and Windows keeps only its three caption buttons, laid over the
+    // header's right end in its colours. They stay the system's own -- snap
+    // layouts on hover, the red close -- which a drawn copy would lose. The
+    // height is the header's (`--header-h` in base.css).
+    titleBarStyle: 'hidden',
+    titleBarOverlay: { color: '#131416', symbolColor: '#9d9fa4', height: 44 },
     // Custom app icon (window + taskbar). On Windows the packaged exe already
     // carries the same icon via rcedit; this also covers dev mode (`npm start`)
     // where no custom exe resource exists.
@@ -91,7 +99,7 @@ function createWindow() {
   });
   // Before the page loads: the menu is the only place the project actions
   // live, so it must exist even if the renderer never finishes starting.
-  installAppMenu({ Menu, window: mainWindow });
+  appMenu = installAppMenu({ Menu, window: mainWindow });
   projectCloseGuard = installProjectCloseGuard({
     window: mainWindow,
     dialog,
@@ -403,6 +411,13 @@ app.on('before-quit', async (event) => {
 });
 
 // --- Settings IPC -----------------------------------------------------------
+ipcMain.on(POPUP_CHANNEL, (event, request) => {
+  if (!mainWindow || event.sender !== mainWindow.webContents) return;
+  popupAppMenu({
+    menu: appMenu, window: mainWindow, which: request?.menu, x: request?.x, y: request?.y,
+    zoomFactor: mainWindow.webContents.getZoomFactor()
+  });
+});
 ipcMain.handle('settings:load', () => loadSettings());
 ipcMain.handle('settings:save', (_event, settings) => saveSettings(settings));
 ipcMain.on('project:close-state', (event, state) => {

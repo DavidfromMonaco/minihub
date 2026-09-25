@@ -11,50 +11,59 @@
 <body>
   <header id="app-header" class="app-header">
     <div class="brand">
-      <span class="brand-mark" aria-hidden="true"></span>
+      <svg class="brand-mark" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.5"/><circle class="brand-mark-core" cx="8" cy="8" r="1.6"/></svg>
       <span id="project-identity" class="brand-name">Untitled</span>
     </div>
+    <nav class="app-menus" aria-label="Menus">
+      <button class="app-menu" type="button" data-app-menu="file" aria-haspopup="menu">File</button>
+      <button class="app-menu" type="button" data-app-menu="edit" aria-haspopup="menu">Edit</button>
+      <button class="app-menu" type="button" data-app-menu="view" aria-haspopup="menu">View</button>
+    </nav>
     <div class="header-center">
-      <span id="device-status" class="device-status idle">Initializing MIDI…</span>
       <div class="transport" aria-label="MiniHub transport">
-        <button id="transport-start" class="nav-icon" type="button" title="Back to the start" aria-label="Back to the start"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4v16M19 5l-10 7 10 7z"/></svg></button>
-        <button id="transport-back" class="nav-icon" type="button" title="Back one bar" aria-label="Back one bar"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5l-7 7 7 7zM20 5l-7 7 7 7z"/></svg></button>
-        <button id="transport-play" type="button" aria-pressed="false">Play</button>
-        <button id="transport-stop" type="button" disabled>Stop</button>
-        <button id="transport-record" type="button" title="Start recording">Record</button>
-        <button id="transport-forward" class="nav-icon" type="button" title="Forward one bar" aria-label="Forward one bar"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 5l7 7-7 7zM4 5l7 7-7 7z"/></svg></button>
-        <button id="transport-end" class="nav-icon" type="button" title="To the end of the arrangement" aria-label="To the end of the arrangement"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 4v16M5 5l10 7-10 7z"/></svg></button>
-        <output id="transport-position" class="transport-position" title="Bar and beat" aria-label="Playhead position, bar and beat">1.1</output>
-        <label class="transport-scope" title="What Play plays: everything, the Sequencer's clips without the Audio Players, or the Audio Players without the Sequencer"><span class="transport-word">Plays</span> <select id="transport-scope" aria-label="What Play plays">
-          <option value="all">All</option>
-          <option value="sequencer">Sequencer</option>
-          <option value="players">Players</option>
-        </select></label>
-        <label title="Tempo, in BPM"><span class="transport-word">Tempo</span> <input id="transport-bpm" class="tempo-input" type="number" min="20" max="300" step="1" value="120" aria-label="Global tempo in BPM"> <span class="transport-word">BPM</span></label>
+        <div class="transport-keys">
+          <button id="transport-start" class="transport-key" type="button" title="Back to the start" aria-label="Back to the start"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4v16M19 5l-10 7 10 7z"/></svg></button>
+          <button id="transport-back" class="transport-key" type="button" title="Back one bar" aria-label="Back one bar"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5l-7 7 7 7zM20 5l-7 7 7 7z"/></svg></button>
+          <button id="transport-play" class="transport-key transport-play" type="button" title="Play" aria-label="Play" aria-pressed="false"><svg class="icon-play" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5l12 7.5-12 7.5z"/></svg><svg class="icon-pause" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z"/></svg></button>
+          <button id="transport-stop" class="transport-key transport-stop" type="button" title="Stop" aria-label="Stop" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="1.5"/></svg></button>
+          <button id="transport-record" class="transport-key transport-record" type="button" title="Start recording" aria-label="Record"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="6"/></svg></button>
+          <button id="transport-forward" class="transport-key" type="button" title="Forward one bar" aria-label="Forward one bar"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 5l7 7-7 7zM4 5l7 7-7 7z"/></svg></button>
+          <button id="transport-end" class="transport-key" type="button" title="To the end of the arrangement" aria-label="To the end of the arrangement"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 4v16M5 5l10 7-10 7z"/></svg></button>
+        </div>
+        <div class="transport-readout">
+          <span class="readout-cell" title="Bar and beat"><span class="readout-label">Bar</span><output id="transport-position" class="transport-position" aria-label="Playhead position, bar and beat">1.1</output></span>
+          <span class="readout-cell" title="Tempo, in BPM"><input id="transport-bpm" class="tempo-input" type="number" min="20" max="300" step="1" value="120" aria-label="Global tempo in BPM"><span class="readout-label">BPM</span></span>
+          <label class="readout-cell transport-scope" title="What Play plays: everything, the Sequencer's clips without the Audio Players, or the Audio Players without the Sequencer"><span class="readout-label">Plays</span><select id="transport-scope" aria-label="What Play plays">
+            <option value="all">All</option>
+            <option value="sequencer">Sequencer</option>
+            <option value="players">Players</option>
+          </select></label>
+        </div>
       </div>
     </div>
     <div class="header-actions">
       <div class="history-controls" aria-label="Edit history">
         <button id="history-undo" class="icon-button" type="button" title="Undo (Ctrl+Z)" aria-label="Undo" disabled>
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
             <path d="M4 10h9a5 5 0 0 1 0 10h-3"/>
             <path d="M4 10l4-4M4 10l4 4"/>
           </svg>
         </button>
         <button id="history-redo" class="icon-button" type="button" title="Redo (Ctrl+Shift+Z)" aria-label="Redo" disabled>
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
             <path d="M20 10h-9a5 5 0 0 0 0 10h3"/>
             <path d="M20 10l-4-4M20 10l-4 4"/>
           </svg>
         </button>
       </div>
-      <button id="settings-button" class="icon-button" title="Settings" aria-label="Settings">
-        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <button id="settings-button" class="icon-button" type="button" title="Settings" aria-label="Settings">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="12" cy="12" r="3"/>
           <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
         </svg>
       </button>
     </div>
+    <div class="caption-space" aria-hidden="true"></div>
   </header>
 
   <div class="app-body">
@@ -62,6 +71,12 @@
     <main id="content" class="content"></main>
   </div>
 
+  <footer class="status-bar" aria-label="Status">
+    <span id="device-status" class="device-status idle">Initializing MIDI…</span>
+    <span id="engine-status" class="engine-status idle">Audio engine starting</span>
+    <span class="spacer"></span>
+    <span id="audio-device-status" class="audio-device-status"></span>
+  </footer>
   <div id="modal-root" class="modal-root hidden"></div>
 
   <script type="module" src="js/app.js"></script>

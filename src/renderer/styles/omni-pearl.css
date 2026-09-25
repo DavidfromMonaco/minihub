@@ -1356,7 +1356,7 @@ button.op-legend:disabled {
   background: var(--op-lcd);
   box-shadow: var(--op-lcd-inset);
   color: var(--op-lcd-text);
-  font-family: "Cascadia Code", Consolas, "Roboto Mono", monospace;
+  font-family: "Geist Mono", "Cascadia Code", Consolas, "Roboto Mono", monospace;
   font-size: 13px;
   letter-spacing: 0.06em;
   white-space: nowrap;
@@ -1436,7 +1436,7 @@ input.op-lcd:disabled {
   background: var(--op-lcd);
   box-shadow: var(--op-lcd-inset);
   color: var(--op-lcd-text);
-  font-family: "Cascadia Code", Consolas, "Roboto Mono", monospace;
+  font-family: "Geist Mono", "Cascadia Code", Consolas, "Roboto Mono", monospace;
   font-size: 11px;
   white-space: nowrap;
 }
@@ -1632,7 +1632,7 @@ input.op-lcd:disabled {
   bottom: 5px;
   left: 7px;
   color: var(--op-text-faint);
-  font-family: "Cascadia Code", Consolas, "Roboto Mono", monospace;
+  font-family: "Geist Mono", "Cascadia Code", Consolas, "Roboto Mono", monospace;
   font-size: 9px;
 }
 
@@ -1825,7 +1825,7 @@ input.op-lcd:disabled {
   background: var(--op-display-bg);
   box-shadow: var(--op-display-inset);
   color: var(--op-display-text);
-  font-family: "Cascadia Code", Consolas, "Roboto Mono", monospace;
+  font-family: "Geist Mono", "Cascadia Code", Consolas, "Roboto Mono", monospace;
   text-shadow: var(--op-display-glow);
 }
 
@@ -2041,7 +2041,7 @@ input.op-lcd:disabled {
 
 .op-ring-chan-id {
   color: var(--op-text);
-  font-family: "Cascadia Code", Consolas, "Roboto Mono", monospace;
+  font-family: "Geist Mono", "Cascadia Code", Consolas, "Roboto Mono", monospace;
   font-size: 22px;
   font-weight: 700;
   letter-spacing: 0.02em;
@@ -2096,7 +2096,7 @@ input.op-lcd:disabled {
   align-items: center;
   justify-content: flex-end;
   color: var(--op-text-faint);
-  font-family: "Cascadia Code", Consolas, "Roboto Mono", monospace;
+  font-family: "Geist Mono", "Cascadia Code", Consolas, "Roboto Mono", monospace;
   font-size: 10px;
 }
 
@@ -2215,7 +2215,7 @@ input.op-lcd:disabled {
 
 .op-ring-follow-index {
   color: var(--op-orange);
-  font-family: "Cascadia Code", Consolas, "Roboto Mono", monospace;
+  font-family: "Geist Mono", "Cascadia Code", Consolas, "Roboto Mono", monospace;
   font-size: 11px;
   text-align: right;
 }
@@ -2324,7 +2324,7 @@ input.op-lcd:disabled {
   flex-direction: column;
   justify-content: space-between;
   color: var(--op-text-faint);
-  font-family: "Cascadia Code", Consolas, "Roboto Mono", monospace;
+  font-family: "Geist Mono", "Cascadia Code", Consolas, "Roboto Mono", monospace;
   font-size: 10px;
   text-align: right;
 }

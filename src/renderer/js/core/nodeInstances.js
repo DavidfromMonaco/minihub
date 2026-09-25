@@ -37,7 +37,7 @@
  * Responsibilities are kept separate: `nodeInstances` owns instances,
  * `networkLayout` owns positions, `networkConnections` owns routing.
  */
-import { defaultListPlace, getNodeType, nodeDisplayName } from './nodeTypes.js';
+import { defaultListPlace, getNodeType, nodeDisplayName, nodeFamily } from './nodeTypes.js';
 import { NetworkLayout } from './networkLayout.js';
 import { VstChain, getVstRole, duplicateVstContent, groupPluginsByFamily } from './vstChain.js';
 import { bindPluginMenu, closePluginMenu } from '../ui/pluginMenu.js';
@@ -68,7 +68,7 @@ function renderGenericShell(instance, type) {
       <div class="row">
         <h1 class="page-title">${escapeHtml(instance.name)}</h1>
         <span class="spacer"></span>
-        <span class="pill accent-${type.id}">${type.label}</span>
+        <span class="pill accent-${type.id} family-${nodeFamily(type.id)}">${type.label}</span>
       </div>
       <div class="panel mt-16">
         <h2 class="panel-title">Content</h2>
@@ -91,7 +91,7 @@ function renderNativeAudioEditor(instance, type, hub) {
     <label><input data-native-control="mute" type="checkbox" ${input.muted ? 'checked' : ''}> Mute</label></div>`).join('');
   const steps = type.id === 'morpher' ? `<div class="row mt-16"><label>Steps <select data-native-control="stepCount">${[4,8,16,32].map((n)=>`<option ${content.stepCount===n?'selected':''}>${n}</option>`).join('')}</select></label></div>
     <div class="morph-steps">${content.steps.slice(0,content.stepCount).map((v,i)=>`<label data-morph-step="${i}"> ${i+1}<input data-native-step="${i}" type="range" min="0" max="1" step="0.01" value="${v}"></label>`).join('')}</div>` : '';
-  return `<div class="panel"><div class="row"><h1 class="page-title">${escapeHtml(instance.name)}</h1><span class="spacer"></span><span class="pill accent-${type.id}">${type.label}</span></div>
+  return `<div class="panel"><div class="row"><h1 class="page-title">${escapeHtml(instance.name)}</h1><span class="spacer"></span><span class="pill accent-${type.id} family-${nodeFamily(type.id)}">${type.label}</span></div>
     <div class="panel mt-16"><h2 class="panel-title">Ordered Audio Inputs</h2>${channels}${steps}${type.id==='mixer'?`<div class="row mt-16"><label>Master <input data-native-control="masterLevel" type="range" min="0" max="2" step="0.01" value="${content.masterLevel}"></label></div>`:''}</div>
     <div class="row mt-16"><span class="spacer"></span><button id="node-delete" class="btn danger">Delete Node</button></div></div>`;
 }
@@ -212,7 +212,7 @@ function renderVstEditor(instance, type, hub, statusMap, editorNotes) {
       <div class="row">
         <h1 class="page-title">${escapeHtml(instance.name)}</h1>
         <span class="spacer"></span>
-        <span class="pill accent-vst">VST</span>
+        <span class="pill accent-vst family-plugin">VST</span>
         <span id="vst-engine-status" class="pill ${engineDown ? 'off' : 'ok'}">${engineDown ? 'Engine unavailable' : 'Engine ready'}</span>
       </div>
       <div class="panel mt-16">

@@ -78,9 +78,10 @@ function clickNode(svg, nodeG) {
   fire(svg, 'pointerup', {});
 }
 
-function badgeText(badgeG) {
-  const t = badgeG.children.find((c) => c._classSet.has('node-badge-text'));
-  return t ? t.textContent : null;
+/** The lines of a card's readout, as printed. */
+function readoutText(nodeG) {
+  const readout = findClass(nodeG, 'node-readout');
+  return readout ? readout.children.filter((c) => c._classSet.has('node-readout-text')).map((c) => c.textContent) : null;
 }
 
 // ---- copy / paste -------------------------------------------------------------
@@ -319,9 +320,11 @@ test('the canvas menu lists every node type under its family, flat', () => {
     if (child._classSet.has('ctx-group')) drawn.push({ label: child.textContent, types: [] });
     else if (child._classSet.has('ctx-item')) drawn.at(-1).types.push(entryLabel(child));
   }
-  assert.deepEqual(drawn, listOmniBoxCategories().map((category) => ({
+  // Media last: Video and Image are no OmniBox, and this menu became their way
+  // in when the toolbar's list of every type went (D-055).
+  assert.deepEqual(drawn, [...listOmniBoxCategories().map((category) => ({
     label: category.label, types: category.types.map((type) => type.label)
-  })), 'the families are headings, driven by the registry, and no entry hides behind a hover');
+  })), { label: 'Media', types: ['Video', 'Image'] }], 'the families are headings, driven by the registry, and no entry hides behind a hover');
   assert.equal(findClass(menu, 'ctx-sub'), null, 'no submenu left');
   mod.unmount();
 });
@@ -481,16 +484,17 @@ test('Ctrl+D duplicates the selection beside it and leaves the clipboard alone',
 });
 
 // ---- visual / node model -------------------------------------------------------
-test('family identity comes from the central registry class', () => {
+test('family identity comes from the central registry, drawn as the card corner', () => {
   const hub = setupHub({ withMinilab: false });
   hub.nodes.create('vst');
+  hub.nodes.create('arpeggiator');
   const { svg, mod } = mount(hub);
   const layer = nodesLayerOf(svg);
   const vst = findNode(layer, 'vst-001');
-  assert.ok(vst._classSet.has('node-type-vst'), 'family class present');
-  const familyBadge = findClass(vst, 'family');
-  assert.ok(familyBadge, 'family badge present');
-  assert.equal(badgeText(familyBadge), 'VST');
+  assert.ok(vst._classSet.has('node-type-vst'), 'type class present');
+  assert.ok(vst._classSet.has('family-plugin'), 'a VST is of the Plugin family');
+  assert.ok(findNode(layer, 'arpeggiator-001')._classSet.has('family-midi'), 'an Arpeggiator of the MIDI one');
+  assert.ok(findClass(vst, 'node-corner'), 'the family is drawn as the top-left corner');
   mod.unmount();
 });
 
@@ -500,16 +504,13 @@ test('VST family keeps the exact centralized orange identity', () => {
   assert.match(css, /--accent-vst:\s*#e08a3c/i, 'centralized orange VST accent');
 });
 
-test('EMPTY uses a neutral type identity', () => {
+test('an empty VST says so on its readout, dimmed', () => {
   const hub = setupHub({ withMinilab: false });
   hub.nodes.create('vst');
   const { svg, mod } = mount(hub);
-  const layer = nodesLayerOf(svg);
-  const vst = findNode(layer, 'vst-001');
-  const typeBadge = findClass(vst, 'type');
-  assert.ok(typeBadge, 'type badge present');
-  assert.ok(typeBadge._classSet.has('empty'), 'empty type class');
-  assert.equal(badgeText(typeBadge), 'EMPTY');
+  const vst = findNode(nodesLayerOf(svg), 'vst-001');
+  assert.deepEqual(readoutText(vst), ['No plugin']);
+  assert.ok(findClass(vst, 'node-readout-text')._classSet.has('tone-dim'), 'an absence is dimmed');
   mod.unmount();
 });
 
@@ -521,9 +522,10 @@ test('selected state is independent from family/type state', () => {
   const vst = findNode(layer, 'vst-001');
   clickNode(svg, vst);
   assert.ok(vst._classSet.has('selected'), 'selected');
-  assert.ok(vst._classSet.has('node-type-vst'), 'family preserved while selected');
-  assert.ok(findClass(vst, 'family'), 'family badge preserved');
-  assert.ok(findClass(vst, 'type'), 'type badge preserved');
+  assert.ok(vst._classSet.has('node-type-vst'), 'type preserved while selected');
+  assert.ok(vst._classSet.has('family-plugin'), 'family preserved while selected');
+  assert.ok(findClass(vst, 'node-corner'), 'family corner preserved');
+  assert.ok(findClass(vst, 'node-readout'), 'readout preserved');
   mod.unmount();
 });
 

@@ -27,16 +27,16 @@
 .clip-piano-scroll::-webkit-scrollbar:horizontal { height:0; }
 /* Under the grid, not under the keyboard: the thumb is a picture of the grid. */
 .clip-piano-shell > .nav-bar { padding-left:calc(var(--ce-keys,80px) + 4px); }
-.clip-piano-canvas { position:relative; min-width:100%; background:#131518; }
-.clip-piano-keys { position:sticky; left:0; top:0; z-index:5; background:#202328; border-right:1px solid #4a4f57; }
+.clip-piano-canvas { position:relative; min-width:100%; background:#0e0f11; }
+.clip-piano-keys { position:sticky; left:0; top:0; z-index:5; background:#141517; border-right:1px solid #3a3c42; }
 /* The gutter width and the row height come from --ce-keys / --ce-row, set on
    .clip-piano-canvas from the one place that owns the zoom. They used to be
    80px and 18px spelled here as well as in JavaScript. */
-.clip-key { position:absolute; left:0; width:var(--ce-keys,80px); padding:1px 5px; box-sizing:border-box; overflow:hidden; border:0; border-bottom:1px solid #343941; border-radius:0; color:#9aa1a9; background:#e2e5e8; font:400 min(9px,calc(var(--ce-row,18px) * .6)) var(--mono); line-height:1; text-align:right; cursor:pointer; }
+.clip-key { position:absolute; left:0; width:var(--ce-keys,80px); padding:1px 5px; box-sizing:border-box; overflow:hidden; border:0; border-bottom:1px solid #26282c; border-radius:0; color:#9d9fa4; background:#e8e6e1; font:400 min(9px,calc(var(--ce-row,18px) * .6)) var(--mono); line-height:1; text-align:right; cursor:pointer; }
 .clip-key:active { background:#8f7ddb; color:#fff; }
 .clip-key.black:active { background:#6b57b8; color:#fff; }
 .clip-key:focus-visible { outline:1px solid var(--accent); outline-offset:-1px; }
-.clip-key.black { width:calc(var(--ce-keys,80px) * .66); color:#d5d8dc; background:#282c32; border-color:#111; }
+.clip-key.black { width:calc(var(--ce-keys,80px) * .66); color:#d6d3cc; background:#1c1d21; border-color:#111; }
 .clip-piano-grid { position:absolute; top:0; background-image:repeating-linear-gradient(to right,transparent 0,transparent calc(var(--ce-beat) - 1px),rgba(255,255,255,.09) var(--ce-beat)),repeating-linear-gradient(to bottom,transparent 0,transparent calc(var(--ce-row,18px) - 1px),rgba(255,255,255,.055) var(--ce-row,18px)); }
 /* A rubber band over the grid. Ignores the pointer that is drawing it. */
 .clip-marquee { position:absolute; z-index:3; border:1px solid rgba(115,89,199,.95); border-radius:2px; background:rgba(115,89,199,.18); pointer-events:none; }

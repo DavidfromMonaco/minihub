@@ -59,6 +59,16 @@ const MENU_COMMANDS = Object.freeze(
 
 const CHANNEL = 'menu:command';
 
+/**
+ * The window has no native title bar since 2026-09-25 (D-055): the header is
+ * drawn by the page and carries File, Edit and View as buttons. A button opens
+ * the SAME menu, popped up under it -- never a copy drawn in HTML, which would
+ * be a second list of items to keep in step with this one, and would lose the
+ * roles (Exit, Zoom, Full Screen) that only Electron can perform.
+ */
+const POPUP_CHANNEL = 'menu:popup';
+const POPUP_MENUS = Object.freeze(['file', 'edit', 'view']);
+
 function appMenuTemplate(send) {
   const projectItems = PROJECT_ITEMS.map((item) => (item.separator
     ? { type: 'separator' }
@@ -106,4 +116,22 @@ function installAppMenu({ Menu, window }) {
   return menu;
 }
 
-module.exports = { CHANNEL, MENU_COMMANDS, appMenuTemplate, installAppMenu };
+/**
+ * Pop one of the menu's three submenus at a point of the window.
+ *
+ * `x` and `y` come from the page in CSS pixels; the window's zoom (View > Zoom
+ * In) makes those larger than the DIPs a popup is placed in, hence the factor.
+ * Anything but a known menu name and two finite numbers is ignored: the page
+ * asks, it does not describe a menu.
+ */
+function popupAppMenu({ menu, window, which, x, y, zoomFactor = 1 }) {
+  if (!menu || !window || window.isDestroyed?.()) return false;
+  if (!POPUP_MENUS.includes(which) || !Number.isFinite(x) || !Number.isFinite(y)) return false;
+  const item = menu.items?.[POPUP_MENUS.indexOf(which)];
+  if (!item?.submenu) return false;
+  const factor = Number.isFinite(zoomFactor) && zoomFactor > 0 ? zoomFactor : 1;
+  item.submenu.popup({ window, x: Math.round(x * factor), y: Math.round(y * factor) });
+  return true;
+}
+
+module.exports = { CHANNEL, POPUP_CHANNEL, POPUP_MENUS, MENU_COMMANDS, appMenuTemplate, installAppMenu, popupAppMenu };

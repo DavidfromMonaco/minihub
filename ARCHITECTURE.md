@@ -823,19 +823,32 @@ différé, parce qu'il retirerait le callback qui pilote les deux contextes.
 
 ### La coquille
 
-[index.html](src/renderer/index.html) définit quatre zones fixes :
+[index.html](src/renderer/index.html) defines five fixed zones:
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│ #app-header   marque · état MIDI · transport · projet   │
+│ #app-header  project · File Edit View · transport · ─□× │
 ├───────────┬─────────────────────────────────────────────┤
 │ #sidebar  │ #content                                    │
 │ HOME      │  (le module actif y est monté)              │
 │ SYSTEM    │                                             │
 │ NODES     │                                             │
-└───────────┴─────────────────────────────────────────────┘
+├───────────┴─────────────────────────────────────────────┤
+│ .status-bar   controller · audio engine · device        │
+└─────────────────────────────────────────────────────────┘
                                           #modal-root
 ```
+
+Since D-055 the header **is** the window's title bar: the window is created
+with `titleBarStyle: 'hidden'` and a `titleBarOverlay`, so Windows draws only
+its three caption buttons, over `.caption-space`, and the rest of the header is
+a drag region (`-webkit-app-region`), switched off while a dialog or a menu is
+open over it. File, Edit and View are buttons that ask main (`menu:popup`) to
+pop the application menu's own submenu under them -- one menu, with its roles
+and accelerators, whichever way it is reached. The transport's values sit in a
+black readout; the controller and the audio engine moved to the status bar
+([ui/statusBar.js](src/renderer/js/ui/statusBar.js), fed by `engine:state` and
+`engine:deviceState`).
 
 L'en-tête **affiche** le projet, il ne le pilote pas : les actions de projet
 sont dans le menu de l'application ([appMenu.js](src/main/appMenu.js)), avec
@@ -860,6 +873,17 @@ Interactions : glisser un nœud, tirer un câble d'une sortie vers une entrée
 compatible, cliquer un câble puis Suppr, Ctrl+C/Ctrl+V, menus contextuels sur
 nœud et sur canevas, pan au clic droit glissé (seuil `PAN_THRESHOLD` = 4 px pour
 distinguer clic et glissement), zoom à la molette.
+
+Since D-055 the canvas takes the whole page and its controls float in its
+corners: the Add field (it opens the canvas menu, under it), the cable legend,
+the Tab hint, and Align / zoom / Fit. **Tab** turns the canvas round to the rear
+view, where each controller card used to carry a switch. A card is flat: its
+family (`nodeFamily` in `core/nodeTypes.js` -- the OmniBox category, `media` or
+`system`) is the one colour it wears, as its top-left corner; under the title a
+black readout says what the node holds (`core/nodeSummary.js`); a jack is
+filled once a cable is on it, and a cable takes its type's colour, a control
+cable dashed. No drop shadow on a card: a filter per card is what a drag
+repaints every frame.
 
 La géométrie est centralisée dans
 [nodeGeometry.js](src/renderer/js/core/nodeGeometry.js) : largeur 200,

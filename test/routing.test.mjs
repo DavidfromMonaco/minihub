@@ -490,11 +490,6 @@ test('port elements carry the correct node id for cable drag', () => {
   const minilab = nodesLayer.children.find((c) => c.dataset.nodeId === 'minilab-3');
   const vst = nodesLayer.children.find((c) => c.dataset.nodeId === 'vst-001');
   assert.ok(minilab && vst, 'both nodes should render');
-  const viewSwitch = findClass(minilab, 'view-side-switch');
-  assert.ok(viewSwitch, 'Front/Rear control lives inside the MiniLab node');
-  assert.equal(viewSwitch.children.find((child) => child._classSet.has('view-side-switch-label')).textContent, 'Rear View');
-  fire(svg, 'pointerdown', { target: viewSwitch, button: 0 });
-  assert.equal(mod.isRearView(), true, 'node-local control switches to Rear view');
 
   const minilabOut = minilab.children.find((c) => c.dataset.side === 'output');
   const vstIn = vst.children.find((c) => c.dataset.side === 'input');
@@ -551,11 +546,10 @@ test('a knob cannot be dropped on a CTRL IN that takes commands only', () => {
   assert.equal(canConnect(commands, vstControl), true);
 });
 
-test('every controller node labels its own Front/Rear switch', () => {
+test('Tab turns the canvas round, and no card carries a Rear View button any more', () => {
   const hub = makeHub();
-  // Two controller profiles means two surface nodes. The switch used to be held
-  // in a single reference, so only the last one drawn ever received its text:
-  // the earlier controllers showed an empty button.
+  // Two controller profiles means two surface nodes: each used to draw its own
+  // Front/Rear switch. Tab replaced them (asked 2026-09-25, D-055).
   hub.network.addNode({ id: 'minilab-3', name: 'MiniLab 3', surface: MINILAB_SURFACE, outputs: [{ id: 'midi-out', type: 'midi' }] });
   hub.network.addNode({ id: 'beatstep', name: 'BeatStep', surface: MINILAB_SURFACE, outputs: [{ id: 'midi-out', type: 'midi' }] });
 
@@ -563,16 +557,20 @@ test('every controller node labels its own Front/Rear switch', () => {
   const mod = createRoutingModule(hub);
   mod.mount(container);
   const nodesLayer = findClass(svg, 'nodes');
-  const labels = ['minilab-3', 'beatstep'].map((id) => {
+  for (const id of ['minilab-3', 'beatstep']) {
     const node = nodesLayer.children.find((c) => c.dataset.nodeId === id);
     assert.ok(node, `${id} should render`);
-    const group = findClass(node, 'view-side-switch');
-    assert.ok(group, `${id} should carry its own Front/Rear control`);
-    return group.children.find((child) => child._classSet.has('view-side-switch-label'));
-  });
-  labels.forEach((label) => assert.equal(label.textContent, 'Rear View'));
-  mod.setRearView(true);
-  labels.forEach((label) => assert.equal(label.textContent, 'Front View'));
+    assert.equal(findClass(node, 'view-side-switch'), null, `${id} has no switch of its own`);
+  }
+
+  fireKey('Tab');
+  assert.equal(mod.isRearView(), true, 'Tab shows the rear');
+  fireKey('Tab');
+  assert.equal(mod.isRearView(), false, 'and Tab again the front');
+
+  const field = makeEl('input');
+  fireKey('Tab', field);
+  assert.equal(mod.isRearView(), false, 'a Tab from a field moves the focus, as it always did');
   mod.unmount();
 });
 

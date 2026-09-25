@@ -7,14 +7,16 @@ import { fire, installDom, makeEl } from './domShim.mjs';
 
 test('global transport carries Play, Stop, Record and the shared Tempo control', () => {
   const html = fs.readFileSync(new URL('../src/renderer/index.html', import.meta.url), 'utf8');
-  const transport = /<div class="transport"[^>]*>([\s\S]*?)<\/div>/.exec(html)?.[1] || '';
-  assert.match(transport, /id="transport-play"[^>]*>Play<\/button>/);
-  assert.match(transport, /id="transport-stop"[^>]*>Stop<\/button>/);
+  const start = html.indexOf('<div class="transport"');
+  const transport = start < 0 ? '' : html.slice(start, html.indexOf('<div class="header-actions"', start));
+  // Drawn keys since D-055, each named by its aria-label.
+  assert.match(transport, /id="transport-play"[^>]*aria-label="Play"/);
+  assert.match(transport, /id="transport-stop"[^>]*aria-label="Stop"/);
   // Moved here from the Sequencer's toolbar on 2026-09-24, on the author's
   // word: a take can be started from any page.
-  assert.match(transport, /id="transport-stop"[^>]*>Stop<\/button>\s*<button id="transport-record"[^>]*>Record<\/button>/,
+  assert.match(transport, /id="transport-stop"[\s\S]*?<\/button>\s*<button id="transport-record"[^>]*aria-label="Record"/,
     'Record sits beside Stop');
-  assert.match(transport, /Tempo<\/span> <input id="transport-bpm"[^>]*min="20"[^>]*max="300"/);
+  assert.match(transport, /<input id="transport-bpm"[^>]*min="20"[^>]*max="300"[^>]*>\s*<span class="readout-label">BPM<\/span>/);
   assert.doesNotMatch(transport, /metronome|métronome|metro|volume/i);
 });
 

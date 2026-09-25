@@ -281,7 +281,7 @@ test('Sequencer page is a Patch Bay empty-state until an explicit node exists', 
 
   hub.modules.activate('sequencer', view.container);
   assert.match(view.markup(), /data-sequencer-empty/);
-  assert.match(view.markup(), /choose <strong>Sequencer<\/strong>.*<strong>\+ New Node<\/strong>/s);
+  assert.match(view.markup(), /<strong>Add a node<\/strong> and choose <strong>Sequencer<\/strong>/);
   assert.doesNotMatch(view.markup(), /data-action="add-(?:midi|audio)"/,
     'tracks cannot be created or configured without the runtime node');
   assert.equal(hub.nodes.list().some((node) => node.type === 'sequencer'), false,
@@ -620,8 +620,11 @@ test('the shell transport seeks by bars, says where it is, and pauses without st
     assert.equal(ids.get('transport-position').textContent, '1.1');
 
     // Play doubles as Pause, and the two are not the same command.
-    assert.equal(ids.get('transport-play').textContent, 'Pause',
+    // Drawn since D-055: a play and a pause glyph, the `playing` class showing
+    // one, and the name moving to aria-label.
+    assert.equal(ids.get('transport-play').getAttribute('aria-label'), 'Pause',
       'the button says what pressing it does, and the transport is playing');
+    assert.equal(ids.get('transport-play').classList.contains('playing'), true);
     fire(ids.get('transport-play'), 'click');
     const paused = api.sent.filter((message) => message.type === 'setTransport').at(-1);
     assert.equal(paused.playing, false);
@@ -629,7 +632,8 @@ test('the shell transport seeks by bars, says where it is, and pauses without st
       'a pause holds the arrangement and leaves a One Ring on its own clock running');
 
     hub.events.emit('engine:transport', { playing: false, ppqPosition: 0 });
-    assert.equal(ids.get('transport-play').textContent, 'Play');
+    assert.equal(ids.get('transport-play').getAttribute('aria-label'), 'Play');
+    assert.equal(ids.get('transport-play').classList.contains('playing'), false);
     fire(ids.get('transport-play'), 'click');
     assert.equal(api.sent.filter((message) => message.type === 'setTransport').at(-1).playing, true,
       'and pressing it again plays');

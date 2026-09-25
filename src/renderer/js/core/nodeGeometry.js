@@ -30,11 +30,11 @@ const PAD_BOTTOM = 12; // padding below the last port row
  */
 export const SURFACE_Y = 32;
 export const SURFACE_X = 3;
-/** Room under the panel: the view switch, and the row of the node's own ports. */
+/** Room under the panel, down to the row of the node's own ports. */
 const SURFACE_DOCK_H = 41;
-// The port row, then the view switch under it, then a margin. The switch used
-// to be drawn ON the port row, across the input port's label.
-const SURFACE_PAD_BOTTOM = 42;
+// The port row, then a margin. A Rear View switch sat under the row until
+// 2026-09-25, when Tab replaced it (D-055) and this gave its 24 units back.
+const SURFACE_PAD_BOTTOM = 18;
 
 /**
  * How far the device's own coordinates are shrunk to fit the node.

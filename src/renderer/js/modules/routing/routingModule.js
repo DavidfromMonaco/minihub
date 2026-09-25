@@ -29,8 +29,9 @@ import { NetworkLayout, separateOverlaps, alignPositions, framedNodes, NODE_GAP 
 import { NetworkViewport } from '../../core/networkViewport.js';
 import { GRID_SIZE, dragPosition } from '../../core/grid.js';
 import { closeContextMenu, openContextMenu } from '../../ui/contextMenu.js';
-import { getNodeType, listNodeTypes, listOmniBoxCategories } from '../../core/nodeTypes.js';
-import { AUDIO_PLAYER_TYPE, fileNameOf } from '../../core/audioPlayerState.js';
+import { getNodeType, listNodeTypes, listOmniBoxCategories, nodeFamily } from '../../core/nodeTypes.js';
+import { audioOutputLines, nodeSummaryLines } from '../../core/nodeSummary.js';
+import { AUDIO_OUTPUT_NODE_ID } from '../../core/systemNodes.js';
 import {
   NODE_WIDTH,
   nodeWidth,
@@ -42,7 +43,6 @@ import {
   portY,
   nodeGeometry
 } from '../../core/nodeGeometry.js';
-import { getVstRole } from '../../core/vstChain.js';
 import {
   screenToWorld,
   zoomAt,
@@ -67,6 +67,22 @@ const SVG_NS = 'http://www.w3.org/2000/svg';
 // Right-button click vs drag threshold (screen px): beyond this the gesture is
 // treated as a pan, otherwise it is a context click.
 const PAN_THRESHOLD = 4;
+
+// A card's shape (D-055): square-ish corners, the family's corner drawn over
+// the outline for CORNER_LEG units each way, and the readout under the title.
+// IDENTITY_H (core/nodeGeometry.js) is what these have to fit in.
+//
+// The corner is a bracket CORNER_WIDTH thick whose middle runs CORNER_OUT
+// outside the outline: it overlaps the edge and stands a little proud of it,
+// a clip fitted on the card rather than a line printed on it (asked
+// 2026-09-25). Its arc follows the card's, enlarged by the same offset.
+const NODE_RADIUS = 4;
+const CORNER_LEG = 20;
+const CORNER_OUT = 1.5;
+const READOUT = Object.freeze({ x: 10, y: 34, h: 42, line: 15 });
+// One press of the zoom buttons: a quarter of an octave of scale, the wheel's
+// step at a notch and a half.
+const ZOOM_STEP = Math.pow(2, 0.25);
 
 function svgEl(tag, attrs = {}) {
   const el = document.createElementNS(SVG_NS, tag);
@@ -119,9 +135,6 @@ export function createRoutingModule(hub) {
   let suppressTimer = null;
   let drag = null; // node drag, cable drag, or pan state
   let rearView = false; // front hides cable runs beneath panels; rear exposes them
-  // One switch per surface node: every controller profile draws its own
-  // keyboard, so a single reference left every earlier one unlabelled.
-  let viewSideSwitches = [];
 
   // Internal Patch Bay clipboard (temporary app state, never persisted).
   let clipboard = null; // { type, content } serializable snapshot
@@ -184,7 +197,6 @@ export function createRoutingModule(hub) {
     cableHits.clear();
     cablesLayer.innerHTML = '';
     nodesLayer.innerHTML = '';
-    viewSideSwitches = [];
     if (clipDefs) clipDefs.innerHTML = '';
 
     const geo = new Map();
@@ -205,7 +217,9 @@ export function createRoutingModule(hub) {
       cablesLayer.appendChild(hit);
       cableHits.set(cable.id, hit);
 
-      const path = svgEl('path', { class: 'cable', d });
+      // Coloured by what it carries, like the jacks at its two ends; a cable's
+      // type is its source port's, which the network already checked matches.
+      const path = svgEl('path', { class: `cable type-${portTypeInfo(fromPort.port.type).className}`, d });
       path.dataset.cableId = cable.id;
       path.dataset.fromNodeId = cable.from.nodeId;
       path.dataset.fromPortId = cable.from.portId;
@@ -225,30 +239,30 @@ export function createRoutingModule(hub) {
       const type = getNodeType(node.type);
       if (type) g.classList.add(`node-type-${node.type}`);
       else g.classList.add('node-native'); // native/system node (e.g. MiniLab)
+      g.classList.add(`family-${nodeFamily(node.type)}`);
 
       // A controller node is as wide as its device needs; everything else keeps
       // NODE_WIDTH. Read once here so the panel, the dock, the divider and the
       // output ports cannot disagree about where the right edge is.
       const width = nodeWidth(node);
 
-      // Clip the identity/dock surfaces to the rounded panel outline.
+      // Clip the identity/dock surfaces to the panel outline.
       const clipId = `node-clip-${node.id}`;
       const clip = svgEl('clipPath', { id: clipId });
-      clip.appendChild(svgEl('rect', { x: 0, y: 0, width, height, rx: 8 }));
+      clip.appendChild(svgEl('rect', { x: 0, y: 0, width, height, rx: NODE_RADIUS }));
       clipDefs.appendChild(clip);
 
       // Base panel (fill + border + selection outline).
-      g.appendChild(svgEl('rect', { class: 'node-panel', x: 0, y: 0, width, height, rx: 8 }));
+      g.appendChild(svgEl('rect', { class: 'node-panel', x: 0, y: 0, width, height, rx: NODE_RADIUS }));
 
       const clipped = svgEl('g', { 'clip-path': `url(#${clipId})` });
-      // Upper identity/content surface (family-tinted) + lower I/O dock.
-      const identityH=IDENTITY_H;
+      // Upper identity/content surface + lower I/O dock.
+      const identityH = IDENTITY_H;
       clipped.appendChild(svgEl('rect', { class: 'node-identity', x: 0, y: 0, width, height: identityH }));
       clipped.appendChild(svgEl('rect', { class: 'node-dock', x: 0, y: identityH, width, height: height - identityH }));
       clipped.appendChild(svgEl('rect', { class: 'node-dock-divider', x: 0, y: identityH, width, height: 1 }));
-      clipped.appendChild(svgEl('rect', { class: 'node-accent', x: 0, y: 0, width, height: 4 }));
 
-      const title = svgEl('text', { class: 'node-title', x: 12, y: 24 });
+      const title = svgEl('text', { class: 'node-title', x: 12, y: 23 });
       title.textContent = node.name;
       clipped.appendChild(title);
 
@@ -257,38 +271,22 @@ export function createRoutingModule(hub) {
       // the synthesized click that pointer capture retargets during a drag.
       if (type && hub.modules?.get(node.id)) clipped.appendChild(buildOpenControl(node, width));
 
-      // Family + type badges and content info (dynamic nodes only).
-      if (type) {
-        const familyLabel = type.label.toUpperCase();
-        const familyW = Math.round(familyLabel.length * 7.2) + 18;
-        clipped.appendChild(buildBadge(familyLabel, 'family', 12, 44));
-
-        let typeInfo;
-        if (node.type === 'vst') {
-          const inst = hub.nodes && hub.nodes.get(node.id);
-          const plugins = inst && inst.content && Array.isArray(inst.content.plugins)
-            ? inst.content.plugins
-            : [];
-          typeInfo = vstTypeBadge(plugins);
-          const sub = svgEl('text', { class: 'node-subtitle', x: 12, y: 76 });
-          sub.textContent = `${plugins.length} plugin${plugins.length === 1 ? '' : 's'}`;
-          clipped.appendChild(sub);
-        } else if (node.type === AUDIO_PLAYER_TYPE) {
-          // The file it plays, by name, and its format: two players on a
-          // canvas are told apart by what they hold.
-          const name = fileNameOf(hub.nodes?.get(node.id)?.content?.filePath);
-          const extension = /\.([A-Za-z0-9]{1,5})$/.exec(name)?.[1]?.toUpperCase();
-          typeInfo = name ? { text: extension || 'FILE', className: 'file' } : { text: 'EMPTY', className: 'empty' };
-          const sub = svgEl('text', { class: 'node-subtitle', x: 12, y: 76 });
-          sub.textContent = !name ? 'No file' : name.length > 28 ? `${name.slice(0, 27)}…` : name;
-          clipped.appendChild(sub);
-        } else {
-          typeInfo = { text: 'EMPTY', className: 'empty' };
-        }
-        clipped.appendChild(buildBadge(typeInfo.text, `type ${typeInfo.className}`, 12 + familyW + 6, 44));
+      // The readout: what this node holds, on the One Ring's black screen. The
+      // output has no content; its readout is the device the engine plays on.
+      if (type) clipped.appendChild(buildReadout(readoutLines(node, type), width));
+      else if (node.id === AUDIO_OUTPUT_NODE_ID) {
+        clipped.appendChild(buildReadout(audioOutputLines(hub.engine?.deviceState), width));
       }
 
       g.appendChild(clipped);
+      // The family, as the card's top-left corner drawn heavier than its
+      // outline and in the family's colour (asked 2026-09-25, in place of a
+      // bar across the top). Outside the clip, so the stroke is whole.
+      g.appendChild(svgEl('path', {
+        class: 'node-corner',
+        d: `M ${-CORNER_OUT} ${CORNER_LEG} V ${NODE_RADIUS} `
+          + `A ${NODE_RADIUS + CORNER_OUT} ${NODE_RADIUS + CORNER_OUT} 0 0 1 ${NODE_RADIUS} ${-CORNER_OUT} H ${CORNER_LEG}`
+      }));
 
       if (node.surface) {
         const connectedPortIds = new Set(cables
@@ -312,11 +310,8 @@ export function createRoutingModule(hub) {
           )
         });
         g.appendChild(surfaceHolder);
-        const viewSideSwitch = buildViewSideSwitch(portRowY, width);
-        viewSideSwitches.push(viewSideSwitch);
-        g.appendChild(viewSideSwitch);
         const midi = node.outputs.find((port) => port.id === 'midi-out');
-        if (midi) g.appendChild(buildPort(midi, 'output', width, portRowY, node.id));
+        if (midi) g.appendChild(markPlugged(buildPort(midi, 'output', width, portRowY, node.id), cables));
       }
       // Inputs on the left (I/O dock). A surface node keeps them in one row
       // BELOW the panel -- which is where `nodeGeometry` has always attached
@@ -325,7 +320,7 @@ export function createRoutingModule(hub) {
       // the pads and the cable met nothing.
       node.inputs.forEach((port, i) => {
         const y = node.surface ? surfacePortRowY(node.surface) : portY(node, i);
-        g.appendChild(buildPort(port, 'input', 0, y, node.id));
+        g.appendChild(markPlugged(buildPort(port, 'input', 0, y, node.id), cables));
       });
       // Outputs on the right (I/O dock). A CTRL OUT that sends commands has a
       // jack only where something can send them -- a plugin in the chain that
@@ -334,76 +329,68 @@ export function createRoutingModule(hub) {
       if (!node.surface) node.outputs.forEach((port, i) => {
           if (port.commands && !hub.commands?.sendsCommands(node.id)
               && !cables.some((cable) => cable.from.nodeId === node.id && cable.from.portId === port.id)) return;
-          g.appendChild(buildPort(port, 'output', width, portY(node, i), node.id));
+          g.appendChild(markPlugged(buildPort(port, 'output', width, portY(node, i), node.id), cables));
         });
 
       nodesLayer.appendChild(g);
       nodeEls.set(node.id, g);
     });
-    updateViewSideSwitch();
-  }
-
-  function buildViewSideSwitch(portRowY, nodeW) {
-    const group = svgEl('g', {
-      // Below the port row, centred: it used to sit ON it, where the input
-      // port's own label ("MIDI In") is written.
-      class: 'view-side-switch', transform: `translate(${Math.round(nodeW / 2 - 33)} ${portRowY + 14})`,
-      role: 'button', tabindex: '0', 'aria-label': 'Show rear cable view'
-    });
-    group.appendChild(svgEl('rect', { class: 'view-side-switch-bg', width: 66, height: 22, rx: 5 }));
-    group.appendChild(svgEl('text', { class: 'view-side-switch-label', x: 33, y: 15, 'text-anchor': 'middle' }));
-    return group;
+    renderCount(nodes.length, cables.length);
   }
 
   function buildOpenControl(node, nodeW) {
-    const width = 46;
+    const width = 42;
     const group = svgEl('g', {
-      class: 'node-open-control', transform: `translate(${nodeW - 12 - width} 11)`,
+      class: 'node-open-control', transform: `translate(${nodeW - 10 - width} 9)`,
       role: 'button', tabindex: '0', 'aria-label': `Open ${node.name}`
     });
     group.dataset.nodeAction = 'open';
     const tooltip = svgEl('title');
     tooltip.textContent = `Open ${node.name}`;
     group.appendChild(tooltip);
-    group.appendChild(svgEl('rect', { width, height: 18, rx: 4 }));
+    group.appendChild(svgEl('rect', { width, height: 18, rx: 2 }));
     const label = svgEl('text', { x: width / 2, y: 12.5, 'text-anchor': 'middle' });
     label.textContent = 'OPEN';
     group.appendChild(label);
     return group;
   }
 
-  function updateViewSideSwitch() {
-    viewSideSwitches.forEach((group) => {
-      group.classList.toggle('active', rearView);
-      group.setAttribute('aria-pressed', rearView ? 'true' : 'false');
-      group.setAttribute('aria-label', rearView ? 'Return to front cable view' : 'Show rear cable view');
-      const label = Array.from(group.children).find((child) => child.classList?.contains('view-side-switch-label'));
-      if (label) label.textContent = rearView ? 'Front View' : 'Rear View';
+  /**
+   * The readout on a card: a black screen under the title with at most two
+   * lines of what the node holds (`core/nodeSummary.js`). A type with nothing
+   * to say shows its family, dimmed, so every card keeps the same anatomy.
+   */
+  function readoutLines(node, type) {
+    const lines = nodeSummaryLines(node.type, hub.nodes?.get(node.id)?.content);
+    return lines.length ? lines : [{ text: (type.omniBoxCategory || type.label).toUpperCase(), tone: 'dim', tag: '' }];
+  }
+
+  function buildReadout(shown, width) {
+    const g = svgEl('g', { class: 'node-readout', transform: `translate(${READOUT.x} ${READOUT.y})` });
+    g.appendChild(svgEl('rect', { class: 'node-readout-screen', width: width - READOUT.x * 2, height: READOUT.h, rx: 2 }));
+    const top = shown.length === 1 ? READOUT.h / 2 + 4 : READOUT.h / 2 - 4;
+    shown.forEach((entry, i) => {
+      const y = top + i * READOUT.line;
+      const text = svgEl('text', { class: `node-readout-text tone-${entry.tone}`, x: 9, y });
+      text.textContent = entry.text;
+      g.appendChild(text);
+      if (entry.tag) {
+        const tag = svgEl('text', { class: 'node-readout-tag', x: width - READOUT.x * 2 - 8, y, 'text-anchor': 'end' });
+        tag.textContent = entry.tag;
+        g.appendChild(tag);
+      }
     });
-  }
-
-  /** Semantic type badge for a VST node based on its plugin chain. */
-  function vstTypeBadge(plugins) {
-    if (!plugins || plugins.length === 0) {
-      return { text: 'EMPTY', className: 'empty' };
-    }
-    const roles = new Set(plugins.map((p) => getVstRole(p.role).id));
-    if (roles.size === 1) {
-      const role = getVstRole(plugins[0].role);
-      return { text: role.badge, className: `role-${role.id}` };
-    }
-    return { text: 'MIXED', className: 'mixed' };
-  }
-
-  /** Build a compact pill badge (rect + text) with an estimated width. */
-  function buildBadge(text, className, x, y) {
-    const w = Math.round(text.length * 7.2) + 18;
-    const g = svgEl('g', { class: `node-badge ${className}`, transform: `translate(${x} ${y})` });
-    g.appendChild(svgEl('rect', { class: 'node-badge-bg', width: w, height: 16, rx: 8 }));
-    const t = svgEl('text', { class: 'node-badge-text', x: 9, y: 11 });
-    t.textContent = text;
-    g.appendChild(t);
     return g;
+  }
+
+  /** A jack with a cable on it is drawn filled; a free one is hollow. */
+  function markPlugged(portEl, cables) {
+    const { nodeId, portId, side } = portEl.dataset;
+    const plugged = cables.some((cable) => (side === 'input'
+      ? cable.to.nodeId === nodeId && cable.to.portId === portId
+      : cable.from.nodeId === nodeId && cable.from.portId === portId));
+    portEl.classList.toggle('plugged', plugged);
+    return portEl;
   }
 
   /**
@@ -798,13 +785,22 @@ export function createRoutingModule(hub) {
    * search, not one to read -- and come after the node types, so "mix" still
    * means the Mixer.
    */
-  function openCanvasContextMenu(clientX, clientY) {
+  function openCanvasContextMenu(clientX, clientY, place = null) {
     const r = svgRect();
-    const world = screenToWorld(viewport, { x: clientX - r.left, y: clientY - r.top });
+    const world = place || screenToWorld(viewport, { x: clientX - r.left, y: clientY - r.top });
     const items = [];
     for (const category of listOmniBoxCategories()) {
       items.push({ heading: category.label });
       for (const type of category.types) {
+        items.push({ label: type.label, keywords: type.id, action: () => createNodeAt(type.id, world) });
+      }
+    }
+    // Video and Image are no OmniBox, and the toolbar's list of every type was
+    // their only way in until that list went (D-055). They follow, under Media.
+    const media = listNodeTypes().filter((type) => nodeFamily(type.id) === 'media');
+    if (media.length) {
+      items.push({ heading: 'Media' });
+      for (const type of media) {
         items.push({ label: type.label, keywords: type.id, action: () => createNodeAt(type.id, world) });
       }
     }
@@ -839,6 +835,16 @@ export function createRoutingModule(hub) {
     setSelection(nodeBoxes().map((box) => box.id));
   }
 
+  /**
+   * The field in the top-left corner: the canvas menu, opened under it, with
+   * its search already taking keys. A node made from it lands in the middle of
+   * the view, since the pointer is on the button, not on the canvas.
+   */
+  function openAddMenu(e) {
+    const box = e?.currentTarget?.getBoundingClientRect?.();
+    openCanvasContextMenu(box ? box.left : 0, box ? box.bottom + 4 : 0, viewportCenterWorld());
+  }
+
   // ---------- interactions ----------
 
   function onPointerDown(e) {
@@ -847,12 +853,6 @@ export function createRoutingModule(hub) {
       e.preventDefault();
       e.stopPropagation();
       openNodeAction(openEl.closest('.node')?.dataset.nodeId);
-      return;
-    }
-    if (e.target.closest?.('.view-side-switch')) {
-      e.preventDefault();
-      e.stopPropagation();
-      toggleViewSide();
       return;
     }
     // Right button: potential context click or pan start on empty canvas.
@@ -1344,6 +1344,15 @@ export function createRoutingModule(hub) {
     if (isEditableTarget(e.target)) return;
 
     const ctrl = e.ctrlKey || e.metaKey;
+    // Tab turns the canvas round: the cables drawn over the cards, as behind a
+    // rack, and back. It replaced a Rear View button on each controller card
+    // (asked 2026-09-25). Only while the focus is on the page or the canvas --
+    // a Tab from a field or the header still moves the focus.
+    if (e.key === 'Tab' && !ctrl && !e.altKey && !e.shiftKey && ownsKeyboard(e.target)) {
+      e.preventDefault();
+      toggleViewSide();
+      return;
+    }
     if (ctrl && (e.key === 'c' || e.key === 'C')) {
       copyNodes(selectedNodeIds);
       e.preventDefault();
@@ -1383,6 +1392,12 @@ export function createRoutingModule(hub) {
   }
 
   // ---------- helpers ----------
+
+  /** The focus is nowhere in particular, or somewhere on this canvas. */
+  function ownsKeyboard(target) {
+    if (!target || target === document.body || target === document.documentElement) return true;
+    return Boolean(container && typeof container.contains === 'function' && container.contains(target));
+  }
 
   function svgRect() {
     return svg.getBoundingClientRect();
@@ -1472,7 +1487,7 @@ export function createRoutingModule(hub) {
     }
     cablesLayer.classList.toggle('rear', rearView);
     svg.classList.toggle('rear-view', rearView);
-    updateViewSideSwitch();
+    renderViewSideHint();
   }
 
   function setRearView(enabled) {
@@ -1493,32 +1508,40 @@ export function createRoutingModule(hub) {
     const hasPersisted = isPersistedViewport(hub.settings.get('networkViewport'));
     viewport = viewportStore.load();
 
+    // The canvas takes the whole page; what used to be a toolbar row floats in
+    // its corners, as in the mockup the author approved (D-055).
     container.innerHTML = `
       <div class="routing-view">
-        <div class="routing-toolbar">
-          <span class="routing-title">Patch Bay</span>
-          <span class="routing-hint">Double-click a node to edit · wheel to zoom · right-drag to pan · right-click for menu · drag output to input to connect</span>
-          <span class="spacer"></span>
-          <span class="legend">
-            <span class="legend-item type-midi"><i class="jack-dot square"></i>MIDI</span>
-            <span class="legend-item type-audio"><i class="jack-dot circle"></i>AUDIO</span>
-            <span class="legend-item type-control"><i class="jack-dot triangle"></i>CTRL</span>
-          </span>
-          <span class="viewport-controls">
-            <span id="routing-zoom" class="zoom-readout">100%</span>
-            <button id="routing-align" class="btn btn-sm" title="Lay the nodes out along the signal, once">Align</button>
-            <button id="routing-unalign" class="btn btn-sm" title="Put the nodes back where they were before Align" hidden>Undo Align</button>
-            <button id="routing-reset" class="btn btn-sm">Reset View</button>
-          </span>
-          <span class="new-node-control">
-            <select id="routing-new-type" class="select select-sm">
-              ${listNodeTypes().map((t) => `<option value="${t.id}">${t.label}</option>`).join('')}
-            </select>
-            <button id="routing-new-node" class="btn btn-sm primary">+ New Node</button>
-          </span>
-        </div>
         <div class="routing-canvas">
           <svg class="routing-svg" id="routing-svg"></svg>
+          <div class="routing-float routing-top-left">
+            <div class="routing-heading" title="Double-click a node to open it · wheel to zoom · right-drag to pan · right-click for a menu · drag an output to an input to connect">
+              <span class="routing-title">Patch Bay</span>
+              <span id="routing-count" class="routing-count"></span>
+            </div>
+            <button id="routing-add" class="routing-add" type="button" aria-haspopup="menu" title="Add a node, or a VST with a plugin already in it">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+              <span>Add a node, or type a plugin name</span>
+            </button>
+          </div>
+          <div class="routing-float routing-top-right legend" aria-label="Cable types">
+            <span class="legend-item type-midi"><i class="jack-dot square"></i>MIDI</span>
+            <span class="legend-item type-audio"><i class="jack-dot circle"></i>Audio</span>
+            <span class="legend-item type-control"><i class="jack-dot triangle"></i>Control</span>
+          </div>
+          <div class="routing-float routing-bottom-left routing-keyhint">
+            <kbd>Tab</kbd><span id="routing-side-hint">Rear view</span>
+          </div>
+          <div class="routing-float routing-bottom-right viewport-controls">
+            <button id="routing-align" class="routing-tool" type="button" title="Lay the nodes out along the signal, once">Align</button>
+            <button id="routing-unalign" class="routing-tool" type="button" title="Put the nodes back where they were before Align" hidden>Undo Align</button>
+            <span class="routing-zoom-group">
+              <button id="routing-zoom-out" class="routing-tool" type="button" aria-label="Zoom out" title="Zoom out">−</button>
+              <span id="routing-zoom" class="zoom-readout">100%</span>
+              <button id="routing-zoom-in" class="routing-tool" type="button" aria-label="Zoom in" title="Zoom in">+</button>
+              <button id="routing-reset" class="routing-tool" type="button" title="Show all nodes">Fit</button>
+            </span>
+          </div>
         </div>
       </div>`;
 
@@ -1555,16 +1578,14 @@ export function createRoutingModule(hub) {
     const unalignBtn = container.querySelector('#routing-unalign');
     if (unalignBtn) unalignBtn.addEventListener('click', undoAlign);
 
-    const newBtn = container.querySelector('#routing-new-node');
-    const newType = container.querySelector('#routing-new-type');
-    if (newBtn && hub.nodes) {
-      // Same path as the canvas context menu: place it, select it, render.
-      // Calling hub.nodes.create() directly left the node unplaced and
-      // unselected, so "+ New Node" and "right-click > New Node" disagreed.
-      newBtn.addEventListener('click', () => {
-        createNodeAt(newType ? newType.value : 'vst', viewportCenterWorld());
-      });
-    }
+    const zoomOutBtn = container.querySelector('#routing-zoom-out');
+    if (zoomOutBtn) zoomOutBtn.addEventListener('click', zoomOut);
+    const zoomInBtn = container.querySelector('#routing-zoom-in');
+    if (zoomInBtn) zoomInBtn.addEventListener('click', zoomIn);
+
+    const addBtn = container.querySelector('#routing-add');
+    if (addBtn && hub.nodes) addBtn.addEventListener('click', openAddMenu);
+    renderViewSideHint();
 
     applyViewBox();
     updateZoomDisplay();
@@ -1581,6 +1602,8 @@ export function createRoutingModule(hub) {
       hub.events.on('network:change', onNetworkChange),
       // A plugin that sends commands finished loading, or left: its node's CTRL OUT jack follows.
       hub.events.on('commands:sourcesChanged', () => render()),
+      // The output's readout names the device; a new one redraws it.
+      hub.events.on('engine:deviceState', () => render()),
       // An undo rewrote `networkLayout` under us. The cache below only fills in
       // positions it is MISSING, so without this the nodes stay where they were
       // and the canvas quietly disagrees with the project.
@@ -1668,6 +1691,31 @@ export function createRoutingModule(hub) {
   function updateZoomDisplay() {
     const el = container && container.querySelector('#routing-zoom');
     if (el) el.textContent = `${Math.round(viewport.zoom * 100)}%`;
+  }
+
+  /** The zoom buttons: about the middle of the view, as the wheel is about the pointer. */
+  function zoomBy(factor) {
+    const r = svgRect();
+    viewport = zoomAt(viewport, { x: r.width / 2, y: r.height / 2 }, viewport.zoom * factor);
+    applyViewBox();
+    updateZoomDisplay();
+    viewportStore.save(viewport.x, viewport.y, viewport.zoom);
+  }
+  function zoomIn() { zoomBy(ZOOM_STEP); }
+  function zoomOut() { zoomBy(1 / ZOOM_STEP); }
+
+  /** The corner hint says what Tab will do next. */
+  function renderViewSideHint() {
+    const el = container && container.querySelector('#routing-side-hint');
+    if (el) el.textContent = rearView ? 'Front view' : 'Rear view';
+  }
+
+  /** "6 nodes · 5 cables", under the page's name. */
+  function renderCount(nodeCount, cableCount) {
+    const el = container && container.querySelector('#routing-count');
+    if (!el) return;
+    const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+    el.textContent = `${plural(nodeCount, 'node')} · ${plural(cableCount, 'cable')}`;
   }
 
   function onWheel(e) {
@@ -1848,6 +1896,12 @@ export function createRoutingModule(hub) {
     if (alignBtn) alignBtn.removeEventListener('click', alignNodes);
     const unalignBtn = container && container.querySelector('#routing-unalign');
     if (unalignBtn) unalignBtn.removeEventListener('click', undoAlign);
+    const zoomOutBtn = container && container.querySelector('#routing-zoom-out');
+    if (zoomOutBtn) zoomOutBtn.removeEventListener('click', zoomOut);
+    const zoomInBtn = container && container.querySelector('#routing-zoom-in');
+    if (zoomInBtn) zoomInBtn.removeEventListener('click', zoomIn);
+    const addBtn = container && container.querySelector('#routing-add');
+    if (addBtn) addBtn.removeEventListener('click', openAddMenu);
     window.removeEventListener('keydown', onKeyDown);
     closeContextMenu();
     if (container) container.classList.remove('routing-host');
@@ -1877,7 +1931,6 @@ export function createRoutingModule(hub) {
     drag = null;
     alignUndo = null;
     rearView = false;
-    viewSideSwitches = [];
   }
 
   return {

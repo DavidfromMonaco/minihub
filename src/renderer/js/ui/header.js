@@ -7,6 +7,17 @@ import { barBeat } from '../core/musicalTime.js';
  */
 export function buildHeader(hub, statusEl) {
   /**
+   * File, Edit and View. The window has no native menu bar any more (D-055);
+   * each button asks main to open that menu under it, so there is one menu,
+   * with its roles and its accelerators, whichever way it is reached.
+   */
+  document.querySelectorAll?.('[data-app-menu]')?.forEach((button) => {
+    button.addEventListener('click', () => {
+      const box = button.getBoundingClientRect();
+      window.hubAPI?.popupAppMenu?.(button.dataset.appMenu, box.left, box.bottom);
+    });
+  });
+  /**
    * The open project's name, where the product's name used to be.
    *
    * It was a second, grey label at the far right while the left said
@@ -80,9 +91,11 @@ export function buildHeader(hub, statusEl) {
   if (bpmEl) bpmEl.value = String(hub.sequencer.tempo);
   const renderTransport = () => {
     playEl?.classList.toggle('playing', playing);
+    // Drawn, not written: the button holds a play and a pause glyph and the
+    // `playing` class shows one. Its name moves to aria-label with the state.
     if (playEl) {
-      playEl.textContent = playing ? 'Pause' : 'Play';
-      playEl.title = playing ? 'Hold here — a One Ring keeps running' : 'Play';
+      playEl.title = playing ? 'Pause — a One Ring keeps running' : 'Play';
+      playEl.setAttribute('aria-label', playing ? 'Pause' : 'Play');
       playEl.setAttribute('aria-pressed', String(playing));
     }
     if (stopEl) stopEl.disabled = !playing && hub.sequencer?.recording !== true && !oneRingPlaying && !playerPlaying;

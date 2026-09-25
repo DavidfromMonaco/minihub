@@ -449,7 +449,7 @@ function render() {
   const previousScroll = root.querySelector('[data-piano-scroll]');
   if (!scrollIntent && previousScroll) pianoScroll = { left: previousScroll.scrollLeft, top: previousScroll.scrollTop };
   const type = current.track.type;
-  root.innerHTML = `<header class="clip-editor-header"><div class="clip-editor-title"><span class="pill accent-sequencer">${type === 'midi' ? 'MIDI Clip' : 'Audio Clip'}</span><h1>${escapeHtml(current.clip.name)}</h1><p>${escapeHtml(current.track.name)}</p></div>${transportMarkup()}<span class="clip-editor-status" data-editor-status role="status"></span></header>
+  root.innerHTML = `<header class="clip-editor-header"><div class="clip-editor-title"><span class="pill accent-sequencer family-midi">${type === 'midi' ? 'MIDI Clip' : 'Audio Clip'}</span><h1>${escapeHtml(current.clip.name)}</h1><p>${escapeHtml(current.track.name)}</p></div>${transportMarkup()}<span class="clip-editor-status" data-editor-status role="status"></span></header>
     ${type === 'midi' ? midiMarkup(current) : audioMarkup(current)}`;
   document.title = `${current.clip.name} — MiniHub Clip Editor`;
   applyDynamicStyles();
