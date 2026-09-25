@@ -88,12 +88,16 @@ export function setupChainSync(hub, syncRouting) {
   // node came back listing plugins that made no sound and could not be opened
   // (2026-09-15). With a rebuild still to come -- the engine not running yet --
   // that rebuild already covers the node, so nothing is created twice.
-  hub.events.on('nodes:restored', (msg) => {
+  // A copy -- Duplicate, Ctrl+D, a paste -- is the same case: a node listing
+  // plugins the engine has never been asked for.
+  const createListed = (msg) => {
     const instance = hub.nodes?.get(msg?.nodeId);
     if (instance?.type !== 'vst' || needsRebuild || hub.engine?.state !== 'running') return;
     createChain(instance, hub.engine.runtimeGeneration);
     if (typeof syncRouting === 'function') syncRouting();
-  });
+  };
+  hub.events.on('nodes:restored', createListed);
+  hub.events.on('nodes:copied', createListed);
 
   const maybeRebuild = () => {
     if (!needsRebuild) return;

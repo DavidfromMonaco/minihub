@@ -161,6 +161,8 @@ export function fire(el, type, init = {}) {
     // position use it rather than `target`.
     currentTarget: init.currentTarget || el,
     button: init.button ?? 0,
+    // A mouse click counts its presses; a click the keyboard made is 0.
+    detail: init.detail ?? 0,
     clientX: init.clientX ?? 0,
     clientY: init.clientY ?? 0,
     pointerId: init.pointerId ?? 1,

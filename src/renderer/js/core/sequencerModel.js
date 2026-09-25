@@ -173,6 +173,9 @@ function normalizeTrack(track, index) {
     monitored: track?.monitored === true,
     muted: track?.muted === true,
     volume: clampFinite(finite(track?.volume, 1), 0, 2),
+    // Balance, -1 (left) to 1 (right). A project from before pans reads 0,
+    // which the engine plays exactly as it played without one.
+    pan: clampFinite(finite(track?.pan, 0), -1, 1),
     inputId: typeof track?.inputId === 'string' ? track.inputId : '',
     // What `inputId` means depends on the track: a Patch Bay node id for audio,
     // a Web MIDI port id for MIDI -- and a Web MIDI id is only valid for as long
@@ -347,6 +350,7 @@ export class SequencerModel {
     if ('monitored' in changes) track.monitored = changes.monitored === true;
     if ('muted' in changes) track.muted = changes.muted === true;
     if ('volume' in changes) track.volume = clampFinite(changes.volume, 0, 2);
+    if ('pan' in changes) track.pan = clampFinite(finite(changes.pan, 0), -1, 1);
     if ('inputId' in changes) track.inputId = String(changes.inputId || '');
     if ('inputPort' in changes) {
       track.inputPort = track.type === 'midi' ? normalizePortPreference(changes.inputPort) : null;

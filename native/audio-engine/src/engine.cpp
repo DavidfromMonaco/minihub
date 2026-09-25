@@ -1804,7 +1804,7 @@ void Engine::cmdSyncAudioNetwork(const juce::var& msg)
         if (const auto* inputs = value["inputs"].getArray())
         {
             if (inputs->size() > 64) { reject("too many audio inputs"); return; }
-            for (const auto& item : *inputs) { AudioNetworkInput input; input.portId=item["portId"].toString().toStdString(); input.sourceNodeId=item["sourceNodeId"].toString().toStdString(); input.sourcePortId=item["sourcePortId"].toString().toStdString(); input.level=item.hasProperty("level")?(float)(double)item["level"]:1.0f; input.muted=item["muted"].isBool()?(bool)item["muted"]:false; node.inputs.push_back(std::move(input)); }
+            for (const auto& item : *inputs) { AudioNetworkInput input; input.portId=item["portId"].toString().toStdString(); input.sourceNodeId=item["sourceNodeId"].toString().toStdString(); input.sourcePortId=item["sourcePortId"].toString().toStdString(); input.level=item.hasProperty("level")?(float)(double)item["level"]:1.0f; input.muted=item["muted"].isBool()?(bool)item["muted"]:false; input.pan=(item["pan"].isInt()||item["pan"].isInt64()||item["pan"].isDouble())?boundedPan((float)(double)item["pan"]):0.0f; node.inputs.push_back(std::move(input)); }
         }
         spec.nodes.push_back(std::move(node));
     }
@@ -1896,6 +1896,13 @@ void Engine::cmdSetAudioNodeValues(const juce::var& msg)
                 node->setMuted(inputIndex, muted);
                 spec->inputs[inputIndex].level = std::clamp(level, 0.0f, 2.0f);
                 spec->inputs[inputIndex].muted = muted;
+                // Optional: a sender that predates the pan leaves it where it is.
+                if (item["pan"].isInt() || item["pan"].isInt64() || item["pan"].isDouble())
+                {
+                    const auto pan = boundedPan(static_cast<float>(static_cast<double>(item["pan"])));
+                    node->setPan(inputIndex, pan);
+                    spec->inputs[inputIndex].pan = pan;
+                }
             }
     }
 
@@ -2012,10 +2019,12 @@ void Engine::cmdSetSequencerTrackControl(const juce::var& msg)
         sendError("sequencer-track-control-invalid","Malformed Sequencer track control");return;
     }
     const double rawGain=(double)msg["gain"];
-    if(!std::isfinite(rawGain)||!sequencer_.setTrackControl(trackId.toStdString(),(float)rawGain,(bool)msg["muted"])){
+    const bool hasPan=msg["pan"].isInt()||msg["pan"].isInt64()||msg["pan"].isDouble();
+    const float pan=hasPan?boundedPan((float)(double)msg["pan"]):std::numeric_limits<float>::quiet_NaN();
+    if(!std::isfinite(rawGain)||!sequencer_.setTrackControl(trackId.toStdString(),(float)rawGain,(bool)msg["muted"],pan)){
         sendError("sequencer-track-not-found","Sequencer track is unavailable: "+trackId);return;
     }
-    juce::var out=makeObject();setProp(out,"type","sequencerTrackControl");setProp(out,"trackId",trackId);setProp(out,"gain",juce::jlimit(0.0,2.0,rawGain));setProp(out,"muted",(bool)msg["muted"]);ipc_.send(out);
+    juce::var out=makeObject();setProp(out,"type","sequencerTrackControl");setProp(out,"trackId",trackId);setProp(out,"gain",juce::jlimit(0.0,2.0,rawGain));setProp(out,"muted",(bool)msg["muted"]);if(hasPan)setProp(out,"pan",(double)pan);ipc_.send(out);
 }
 
 void Engine::cmdSequencerMidiInput(const juce::var& msg)

@@ -1,11 +1,12 @@
 import { escapeHtml } from '../../core/html.js';
 import { attachNavigationBar, navigationBarMarkup } from '../../ui/navigationBar.js';
-import { SEQUENCER_LIMITS, SNAP_STEPS, ZOOM_MAX, ZOOM_MIN, snapStep } from '../../core/sequencerModel.js';
+import { SEQUENCER_LIMITS, SNAP_STEPS, ZOOM_MAX, ZOOM_MIN, snapPpq, snapStep } from '../../core/sequencerModel.js';
 import { bindTempoInput } from '../../core/tempoControl.js';
 import { isCanonicalMidiIngress } from '../../core/sequencerController.js';
 import { closeContextMenu, openContextMenu } from '../../ui/contextMenu.js';
 import { sequencerCommands } from '../../core/sequencerCommands.js';
 import { STRIDES } from '../../ui/secondsRuler.js';
+import { formatPan } from '../../core/pan.js';
 
 /**
  * The two numbers that decide how much arrangement fits on a screen.
@@ -28,6 +29,12 @@ import { STRIDES } from '../../ui/secondsRuler.js';
 const TRACK_HEADER = 260;
 const TRACK_HEIGHT = 64;
 const RULER_HEIGHT = 30;
+
+/** The metronome's two keys: its mode, the key's label, and its tooltip. */
+const METRONOME_KEYS = Object.freeze([
+  ['rec', 'Rec', 'Clicks during a take and its count-in only'],
+  ['play-rec', 'Play + Rec', 'Clicks whenever the transport runs']
+]);
 /**
  * The clock ruler, above the bars.
  *
@@ -536,6 +543,16 @@ export function formatClock(seconds, stride = 1) {
   return hours > 0 ? `${hours}:${pad(minutes)}:${secs}` : `${minutes}:${secs}`;
 }
 
+/**
+ * The position a press on the timeline names: `clientX` against the left edge
+ * of the timeline's zero, on the Snap grid unless `free` (Alt held).
+ */
+export function timelinePpqAt(clientX, originX, zoom, snap, free = false) {
+  const raw = Math.max(0, (Number(clientX) - Number(originX)) / Math.max(0.01, Number(zoom) || 0));
+  if (!Number.isFinite(raw)) return 0;
+  return free ? raw : snapPpq(raw, snap);
+}
+
 export function rulerStride(bars, zoom) {
   const barPx = Math.max(0.01, 4 * (Number(zoom) || 0));
   const wanted = Math.max(RULER_MIN_MARK_PX / barPx, Math.max(1, Number(bars) || 1) / 512, 1);
@@ -617,6 +634,8 @@ export function createSequencerModule(hub) {
   let suppressSelectionClickId = null;
   let marquee = null;
   let suppressLaneClick = false;
+  // The playhead being dragged, from a ruler or its grip: `{ ppq }`.
+  let scrub = null;
   let tempoBindingCleanup = null;
   let metronomePulseTimer = null;
 
@@ -794,15 +813,21 @@ export function createSequencerModule(hub) {
     return true;
   }
 
+  function drawPlayhead(ppq) {
+    const head = container?.querySelector('[data-playhead]');
+    if (head) head.style.left = `${TRACK_HEADER + ppq * controller.model.state.zoom}px`;
+  }
+
   /** Move the cursor, and carry the view with it when it would leave the
    *  screen. Recording used to pin the viewport to the opening bars while the
    *  take ran on somewhere off-screen, so the timeline stopped answering the
    *  one question it exists to answer: where am I. */
   function movePlayhead(ppq) {
-    if (!container) return;
+    // A drag during playback holds the line where the pointer is; the engine's
+    // position takes it back on release, with the seek.
+    if (!container || (scrub && controller.playing)) return;
     const zoom = controller.model.state.zoom;
-    const head = container.querySelector('[data-playhead]');
-    if (head) head.style.left = `${TRACK_HEADER + ppq * zoom}px`;
+    drawPlayhead(ppq);
     const scroller = container.querySelector('[data-timeline-scroll]');
     if (!scroller) return;
     const viewportPpq = Math.max(16, (container.clientWidth - TRACK_HEADER) / zoom);
@@ -906,6 +931,7 @@ export function createSequencerModule(hub) {
             <span class="seq-metronome-label">Métronome</span>
             <button class="seq-metronome-switch ${controller.metronomeEnabled ? 'active' : ''}" type="button" role="switch" aria-checked="${controller.metronomeEnabled}" data-action="toggle-metronome" aria-label="Activer ou désactiver le métronome"><span aria-hidden="true"></span></button>
             <span class="seq-metronome-light" data-metronome-light aria-label="Voyant du métronome" role="status"></span>
+            <span class="seq-metronome-mode" role="group" aria-label="When the metronome clicks">${METRONOME_KEYS.map(([mode, label, hint]) => `<button type="button" data-metronome-mode="${mode}" aria-pressed="${controller.metronomeMode === mode}" title="${hint}">${label}</button>`).join('')}</span>
           </div>
         </div>
         <div class="seq-record-status ${status.tone}" role="status">${escapeHtml(status.text)}</div>
@@ -930,12 +956,12 @@ export function createSequencerModule(hub) {
                 <input class="seq-track-name" data-track-control="name" value="${escapeHtml(track.name)}">
                 <button class="seq-mute ${track.muted ? 'active' : ''}" data-track-action="mute" title="Mute">M</button>
                 <button class="seq-track-delete" data-track-action="delete" title="Delete track">×</button>
-                <label class="seq-track-level"><input data-track-control="volume" type="range" min="-60" max="6" step="0.1" value="${gainToDb(track.volume)}" aria-label="${escapeHtml(track.name)} level in dB"><output data-track-level-value>${formatGainDb(track.volume)}</output></label>
+                <div class="seq-track-level"><input data-track-control="volume" type="range" min="-60" max="6" step="0.1" value="${gainToDb(track.volume)}" aria-label="${escapeHtml(track.name)} level in dB"><output data-track-level-value>${formatGainDb(track.volume)}</output><input class="seq-track-pan" data-track-control="pan" type="range" min="-100" max="100" step="1" value="${Math.round((track.pan || 0) * 100)}" title="Pan (double-click: centre)" aria-label="${escapeHtml(track.name)} pan"><output data-track-pan-value>${formatPan(track.pan)}</output></div>
                 ${routeDots(routeStates(hub, track, sequencerNode.id))}
               </div>
               <div class="seq-track-lane" data-seq-left="${TRACK_HEADER}" data-seq-width="${timelineWidth}" data-seq-beat="${gridLinePx}">${track.clips.filter((clip) => clip.startPpq + clip.lengthPpq >= visibleStart && clip.startPpq <= visibleEnd).map((clip) => clipMarkup(track, clip, zoom, selectedClipIds.has(clip.id))).join('')}</div>
             </div>`).join('') : `<div class="seq-empty" data-seq-top="${HEAD_HEIGHT}">Create a MIDI or audio track to begin.</div>`}
-            <div class="seq-playhead" data-playhead data-seq-left="${TRACK_HEADER + controller.playheadPpq * zoom}" data-seq-height="${HEAD_HEIGHT + Math.max(1, state.tracks.length) * TRACK_HEIGHT}"></div>
+            <div class="seq-playhead" data-playhead data-seq-left="${TRACK_HEADER + controller.playheadPpq * zoom}" data-seq-height="${HEAD_HEIGHT + Math.max(1, state.tracks.length) * TRACK_HEIGHT}"><span class="seq-playhead-grip" data-playhead-grip title="Drag to move the playhead (Alt: off the grid)"></span></div>
           </div>
         </div>
         ${navigationBarMarkup(`data-seq-head="${TRACK_HEADER}"`)}
@@ -960,6 +986,9 @@ export function createSequencerModule(hub) {
     container.querySelector('[data-action="toggle-metronome"]')?.addEventListener('click', () => {
       renderMetronomeState(controller.setMetronome(!controller.metronomeEnabled));
     });
+    container.querySelectorAll('[data-metronome-mode]').forEach((button) => button.addEventListener('click', () => {
+      controller.setMetronomeMode(button.dataset.metronomeMode);
+    }));
     container.querySelector('[data-action="duplicate-clip"]')?.addEventListener('click', () => controller.duplicateSelectedClips());
     container.querySelector('[data-control="snap"]')?.addEventListener('change', (event) => { controller.model.state.snap = event.target.value; controller.changed(); });
     // On `change`, not `input`: a render rebuilds the whole page, which would
@@ -999,6 +1028,7 @@ export function createSequencerModule(hub) {
       });
     }
     bindSeeks(container);
+    bindScrub();
     container.querySelectorAll('.seq-track').forEach(bindTrack);
     container.querySelectorAll('.seq-clip').forEach(bindClip);
     bindNavigation();
@@ -1021,8 +1051,71 @@ export function createSequencerModule(hub) {
    * are marks that stop answering until the next full render.
    */
   function bindSeeks(root) {
+    // The keyboard's click only (`detail` 0): a mouse press is the row's, in
+    // `bindScrub`, which lands where the pointer is rather than on the mark's
+    // first beat -- and a mouse click here would put it back on that beat.
     root?.querySelectorAll('[data-seek]')
-      .forEach((element) => element.addEventListener('click', () => controller.seek(Number(element.dataset.seek))));
+      .forEach((element) => element.addEventListener('click', (event) => {
+        if (event.detail) return;
+        controller.seek(Number(element.dataset.seek));
+      }));
+  }
+
+  /**
+   * Pressing either ruler puts the playhead where the pointer is, on the Snap
+   * grid, and holding it drags it; so does the grip on the red line's head.
+   *
+   * The author could not choose where a take would start (2026-09-26): the
+   * line took no pointer at all, a click in a lane did not move it, and a
+   * ruler mark only knew its own first beat. Alt places it off the grid.
+   *
+   * Stopped, the playhead follows the pointer, and the header's Bar with it.
+   * Playing, the line alone follows and the one seek is on release: a seek
+   * releases every held note, and a seek per pixel would stutter the music.
+   */
+  function bindScrub() {
+    const rows = ['.seq-ruler', '.seq-time-ruler', '[data-playhead-grip]'];
+    for (const selector of rows) {
+      container.querySelector(selector)?.addEventListener('pointerdown', startScrub);
+    }
+  }
+
+  function startScrub(event) {
+    // A seek ends a take; a slip of the hand on the ruler must not.
+    if (event.button !== 0 || controller.recording || controller.preCounting) return;
+    const ruler = container?.querySelector('.seq-ruler');
+    if (!ruler) return;
+    event.preventDefault();
+    const origin = ruler.getBoundingClientRect().left;
+    const at = (pointer) => timelinePpqAt(pointer.clientX, origin, controller.model.state.zoom,
+      controller.model.state.snap, pointer.altKey);
+    const live = !controller.playing;
+    scrub = { ppq: at(event) };
+    const place = () => {
+      if (!scrub) return;
+      if (live) controller.seek(scrub.ppq);
+      else drawPlayhead(scrub.ppq);
+    };
+    place();
+    let queued = false;
+    const move = (moveEvent) => {
+      if (!scrub) return;
+      scrub.ppq = at(moveEvent);
+      if (queued) return;
+      queued = true;
+      requestAnimationFrame(() => { queued = false; place(); });
+    };
+    const up = (upEvent) => {
+      document.removeEventListener('pointermove', move);
+      document.removeEventListener('pointerup', up);
+      document.removeEventListener('pointercancel', cancel);
+      const done = scrub; scrub = null;
+      if (done) controller.seek(upEvent ? at(upEvent) : done.ppq);
+    };
+    const cancel = () => up(null);
+    document.addEventListener('pointermove', move);
+    document.addEventListener('pointerup', up);
+    document.addEventListener('pointercancel', cancel);
   }
 
   /** Redraw the clock ruler in place, for a tempo that moved under it. */
@@ -1045,6 +1138,11 @@ export function createSequencerModule(hub) {
     const toggle = container?.querySelector('[data-action="toggle-metronome"]');
     toggle?.classList.toggle('active', enabled === true);
     toggle?.setAttribute('aria-checked', enabled === true ? 'true' : 'false');
+  }
+
+  function renderMetronomeMode(mode) {
+    container?.querySelectorAll('[data-metronome-mode]')
+      .forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.metronomeMode === mode)));
   }
 
   function renderCountInState(event) {
@@ -1109,6 +1207,23 @@ export function createSequencerModule(hub) {
     volume?.addEventListener('change', (event) => controller.setTrackControl(
       trackId, { volume: dbToGain(Number(event.target.value)) }, { render: true }
     ));
+    // The pan follows the fader's pattern: the engine hears every step of the
+    // drag, the page is redrawn once, on release. A double-click centres it,
+    // as a pan does in every workstation.
+    const pan = element.querySelector('[data-track-control="pan"]');
+    const showPan = (value) => {
+      const output = element.querySelector('[data-track-pan-value]');
+      if (output) output.textContent = formatPan(value);
+    };
+    pan?.addEventListener('input', (event) => {
+      const value = Number(event.target.value) / 100;
+      showPan(value);
+      controller.setTrackControl(trackId, { pan: value }, { render: false });
+    });
+    pan?.addEventListener('change', (event) => controller.setTrackControl(
+      trackId, { pan: Number(event.target.value) / 100 }, { render: true }
+    ));
+    pan?.addEventListener('dblclick', () => controller.setTrackControl(trackId, { pan: 0 }, { render: true }));
     const lane = element.querySelector('.seq-track-lane');
     element.addEventListener('click', (event) => {
       if (event.target.closest?.('.seq-clip,input,select,button,textarea,[contenteditable="true"]')) return;
@@ -1124,7 +1239,13 @@ export function createSequencerModule(hub) {
     lane?.addEventListener('click', (event) => {
       if (event.target.closest?.('.seq-clip')) return;
       if (suppressLaneClick) { suppressLaneClick = false; return; }
+      // A click in the empty lane also places the playhead, as in Ableton and
+      // Reaper. Not during a take: a seek ends it. Measured before the
+      // deselection, whose render replaces this lane.
+      const state = controller.model.state;
+      const ppq = timelinePpqAt(event.clientX, lane.getBoundingClientRect().left, state.zoom, state.snap, event.altKey);
       controller.selectClip(null);
+      if (!controller.recording && !controller.preCounting) controller.seek(ppq);
     });
     lane?.addEventListener('contextmenu', (event) => {
       if (event.target.closest?.('.seq-clip')) return;
@@ -1542,6 +1663,7 @@ export function createSequencerModule(hub) {
       hub.events.on('sequencer:count-in', renderCountInState),
       hub.events.on('sequencer:tempo', renderTempoValue),
       hub.events.on('sequencer:metronome', renderMetronomeState),
+      hub.events.on('sequencer:metronome-mode', renderMetronomeMode),
       hub.events.on('sequencer:metronome-tick', pulseMetronome),
       hub.events.on('engine:deviceState', render),
       hub.events.on('midi:ports', render),
@@ -1564,7 +1686,7 @@ export function createSequencerModule(hub) {
     globalThis.window?.removeEventListener?.('resize', resizeRender);
     resizeRenderQueued = false;
     container?.classList.remove('sequencer-workspace');
-    container = null; drag = null; marquee = null; suppressLaneClick = false;
+    container = null; drag = null; marquee = null; suppressLaneClick = false; scrub = null;
     scrollTopPx = 0;
   }
 

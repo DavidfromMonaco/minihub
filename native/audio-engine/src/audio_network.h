@@ -1,5 +1,6 @@
 #pragma once
 #include "chain.h"
+#include "pan_law.h"
 #include "audio_signal_meter.h"
 #include "transport.h"
 #include <juce_audio_basics/juce_audio_basics.h>
@@ -25,6 +26,7 @@ struct AudioNetworkInput {
     std::string sourcePortId;
     float level = 1.0f;
     bool muted = false;
+    float pan = 0.0f; // a Mixer strip's balance, pan_law.h
 };
 
 struct AudioNetworkNodeSpec {
@@ -67,6 +69,7 @@ struct NodeValues final {
     std::array<std::atomic<float>, kMaxSteps> steps {};
     std::array<std::atomic<float>, kMaxInputs> levels {};
     std::array<std::atomic<bool>, kMaxInputs> mutes {};
+    std::array<std::atomic<float>, kMaxInputs> pans {};
 };
 
 /** What a Mixer or Morpher card shows on the Patch Bay (D-055): the peak each
@@ -135,6 +138,11 @@ public:
             return input < NodeValues::kMaxInputs
                 && values->mutes[input].load(std::memory_order_relaxed);
         }
+        [[nodiscard]] float pan(size_t input) const noexcept
+        {
+            return input < NodeValues::kMaxInputs
+                ? values->pans[input].load(std::memory_order_relaxed) : 0.0f;
+        }
         [[nodiscard]] float masterLevel() const noexcept
         {
             return values->masterLevel.load(std::memory_order_relaxed);
@@ -157,6 +165,11 @@ public:
         {
             if (input < NodeValues::kMaxInputs)
                 values->mutes[input].store(value, std::memory_order_relaxed);
+        }
+        void setPan(size_t input, float value) noexcept
+        {
+            if (input < NodeValues::kMaxInputs)
+                values->pans[input].store(boundedPan(value), std::memory_order_relaxed);
         }
         void setMasterLevel(float value) noexcept
         {

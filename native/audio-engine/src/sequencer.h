@@ -3,6 +3,8 @@
 #include "chain.h"
 #include "audio_take_writer.h"
 #include "transport.h"
+#include "pan_law.h"
+#include <limits>
 
 #include <juce_audio_formats/juce_audio_formats.h>
 
@@ -130,10 +132,13 @@ public:
     struct MidiTrackGain {
         bool controlled = false;
         float gain = 1.0f;
+        float pan = 0.0f; // the track's balance, applied to its instrument
     };
 
-    /** Update the live DSP control without rebuilding the immutable clip plan. */
-    bool setTrackControl(const std::string& trackId, float gain, bool muted) noexcept;
+    /** Update the live DSP control without rebuilding the immutable clip plan.
+     *  A NaN pan leaves the track's pan as it is: a sender that predates it. */
+    bool setTrackControl(const std::string& trackId, float gain, bool muted,
+                         float pan = std::numeric_limits<float>::quiet_NaN()) noexcept;
     /** True while Play is set to play the Audio Players alone: no clip sounds,
      *  in playback or in an export, but what is played into a track still is --
      *  its input, its monitoring, its recording. Unlike a mute, it leaves every
@@ -186,6 +191,7 @@ private:
     struct TrackRuntime {
         std::atomic<float> gain { 1.0f };
         std::atomic<bool> muted { false };
+        std::atomic<float> pan { 0.0f };
         std::atomic<int> activeClips { 0 };
         std::atomic<float> peakBeforeSum { 0.0f };
         std::atomic<float> peakAfterSum { 0.0f };

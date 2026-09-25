@@ -302,6 +302,35 @@ test('a VST node Ctrl+Z brings back has its plugins created in the engine again'
   assert.deepEqual(sentOf(api, 'setBypass').map((m) => m.instanceId), [plugin.id], 'and its bypass');
 });
 
+/**
+ * A duplicated VST node came up with an empty page and no sound: the copy
+ * listed Analog Lab V and its preset, and nobody asked the engine for it until
+ * the project was reopened (the author, 2026-09-26).
+ */
+test('a duplicated or pasted VST node has its plugins created in the engine, with their state', async () => {
+  const api = mockApi();
+  const hub = createHub(api);
+  await hub.settings.load();
+  const node = hub.nodes.create('vst');
+  hub.nodes.getChain(node.id).append({ pluginId: 'A', name: 'Analog Lab V', role: 'instrument', state: 'preset' });
+  setupChainSync(hub, () => {});
+  await hub.engine.init();
+
+  for (const make of [() => hub.nodes.duplicate(node.id),
+    () => hub.nodes.createFromSnapshot({ type: 'vst', content: hub.nodes.get(node.id).content })]) {
+    api.sent.length = 0;
+    const copy = make();
+    const [plugin] = copy.content.plugins;
+    const created = sentOf(api, 'createInstance');
+    assert.deepEqual(created.map((c) => [c.chainId, c.instanceId, c.pluginId]), [[copy.id, plugin.id, 'A']]);
+    api.emitEvent({
+      type: 'instanceStatus', status: 'ready', requestId: created[0].requestId,
+      chainId: copy.id, instanceId: plugin.id, pluginId: 'A', generation: 7
+    });
+    assert.deepEqual(sentOf(api, 'setState').map((m) => [m.chainId, m.state]), [[copy.id, 'preset']]);
+  }
+});
+
 test('the rebuild happens once per engine run, and again after a restart', async () => {
   const api = mockApi();
   const hub = createHub(api);

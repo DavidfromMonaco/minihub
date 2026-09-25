@@ -230,6 +230,7 @@ bool SequencerEngine::sync(const juce::var& project,
         track.runtime->muted.store(value["muted"].isBool()?(bool)value["muted"]:false,
                                    std::memory_order_relaxed);
         track.runtime->gain.store(boundedGain(value["volume"]),std::memory_order_relaxed);
+        track.runtime->pan.store((value["pan"].isInt()||value["pan"].isInt64()||value["pan"].isDouble())?boundedPan((float)(double)value["pan"]):0.0f,std::memory_order_relaxed);
         if (track.type=="midi" && !track.outputId.empty()) {
             const auto outputKind=value["outputKind"].toString();
             // The kind decides, never the id. The renderer sends the node's type
@@ -534,7 +535,7 @@ void SequencerEngine::renderAudioForOutput(juce::AudioBuffer<float>& out,int cou
         // both, as it did.
         const bool trackMuted=track.runtime&&track.runtime->muted.load(std::memory_order_acquire);
         if(playing&&!trackMuted&&!clipsSilenced_.load(std::memory_order_acquire))for(const auto& clip:track.audio){if(!clip.asset)continue;bool active=false;for(int sample=0;sample<count;++sample){const double q=transport.ppqAtSample(sample);if(exportContext&&q>=exportSourceEndPpq())continue;if(q<clip.startPpq||q>=clip.startPpq+clip.lengthPpq)continue;const double seconds=clip.trimStartSeconds+(q-clip.startPpq)*60.0/bpm;if(seconds<clip.trimStartSeconds||seconds>=clip.trimEndSeconds)continue;const double source=seconds*clip.asset->sampleRate;const int i=(int)source;if(i<0||i+1>=clip.asset->samples.getNumSamples())continue;active=true;const float f=(float)(source-i);for(int ch=0;ch<2;++ch){const float* data=clip.asset->samples.getReadPointer(ch);const float value=(data[i]+(data[i+1]-data[i])*f)*clip.gain;peakBeforeSum=std::max(peakBeforeSum,std::abs(value));sum.addSample(ch,sample,value);}}if(active)++activeClips;}
-        const float peakAfterSum=std::max(sum.getMagnitude(0,0,count),sum.getMagnitude(1,0,count));const float gain=track.runtime?track.runtime->gain.load(std::memory_order_acquire):1.0f;if(gain!=1.0f)sum.applyGain(0,count,gain);const float peakAfterGain=std::max(sum.getMagnitude(0,0,count),sum.getMagnitude(1,0,count));
+        const float peakAfterSum=std::max(sum.getMagnitude(0,0,count),sum.getMagnitude(1,0,count));const float gain=track.runtime?track.runtime->gain.load(std::memory_order_acquire):1.0f;if(gain!=1.0f)sum.applyGain(0,count,gain);const auto sides=balanceGains(track.runtime?track.runtime->pan.load(std::memory_order_acquire):0.0f);if(sides.left!=1.0f)sum.applyGain(0,0,count,sides.left);if(sides.right!=1.0f)sum.applyGain(1,0,count,sides.right);const float peakAfterGain=std::max(sum.getMagnitude(0,0,count),sum.getMagnitude(1,0,count));
         if(track.runtime){track.runtime->activeClips.store(activeClips,std::memory_order_release);track.runtime->peakBeforeSum.store(peakBeforeSum,std::memory_order_release);track.runtime->peakAfterSum.store(peakAfterSum,std::memory_order_release);track.runtime->gainApplied.store(gain,std::memory_order_release);track.runtime->peakAfterGain.store(peakAfterGain,std::memory_order_release);}for(int ch=0;ch<2;++ch)out.addFrom(ch,0,sum,ch,0,count);
     }
     releasePlan(exportContext);
@@ -551,10 +552,10 @@ void SequencerEngine::setClipsSilenced(bool silenced) noexcept
     else needsChase_.store(true,std::memory_order_release);
 }
 
-bool SequencerEngine::setTrackControl(const std::string& trackId,float gain,bool muted) noexcept
+bool SequencerEngine::setTrackControl(const std::string& trackId,float gain,bool muted,float pan) noexcept
 {
     if(!std::isfinite(gain))return false;auto* plan=activePlan_.load(std::memory_order_acquire);if(!plan)return false;
-    for(auto& track:plan->tracks)if(track.id==trackId&&track.runtime){track.runtime->gain.store(std::clamp(gain,0.0f,2.0f),std::memory_order_release);const bool wasMuted=track.runtime->muted.exchange(muted,std::memory_order_acq_rel);if(track.type=="midi"&&muted&&!wasMuted){midiCleanupPending_.store(true,std::memory_order_release);panicDestinations(track);}return true;}return false;
+    for(auto& track:plan->tracks)if(track.id==trackId&&track.runtime){track.runtime->gain.store(std::clamp(gain,0.0f,2.0f),std::memory_order_release);if(!std::isnan(pan))track.runtime->pan.store(boundedPan(pan),std::memory_order_release);const bool wasMuted=track.runtime->muted.exchange(muted,std::memory_order_acq_rel);if(track.type=="midi"&&muted&&!wasMuted){midiCleanupPending_.store(true,std::memory_order_release);panicDestinations(track);}return true;}return false;
 }
 
 // Both lookups run on the audio thread once per VST node per block, between
@@ -568,7 +569,7 @@ SequencerEngine::MidiTrackGain SequencerEngine::midiTrackGainForOutput(const std
     // and releases what it held (processMidi, setTrackControl); zeroing the
     // instrument's output as well silenced everything else that instrument
     // plays -- an Audio Player cabled into it, a keyboard played live.
-    const auto apply=[&result](Track& track){const float gain=track.runtime->gain.load(std::memory_order_acquire);track.runtime->gainApplied.store(gain,std::memory_order_release);result={true,gain};};
+    const auto apply=[&result](Track& track){const float gain=track.runtime->gain.load(std::memory_order_acquire);track.runtime->gainApplied.store(gain,std::memory_order_release);result={true,gain,track.runtime->pan.load(std::memory_order_acquire)};};
     for(auto& track:plan->tracks)if(track.type=="midi"&&track.midiOutputKind==Track::MidiOutputKind::chain&&track.outputId==outputId&&track.runtime){apply(track);break;}
     // An instrument further down a track's series answers to that track's fader
     // and mute too (D-039): lowering the track must lower all of it, not one
@@ -665,7 +666,7 @@ bool SequencerEngine::prepareExportPlan(
     auto* source=activePlan_.load(std::memory_order_acquire);
     if(!source){error="Sequencer arrangement is unavailable";return false;}
     auto next=std::make_unique<Plan>();next->generation=source->generation;next->tracks.reserve(source->tracks.size());
-    for(const auto& original:source->tracks){Track track;track.id=original.id;track.type=original.type;track.inputId=original.inputId;track.outputId=original.outputId;track.armed=original.armed;track.monitored=original.monitored;track.midiOutputKind=original.midiOutputKind;track.midi=original.midi;track.audio=original.audio;track.clips=original.clips;track.runtime=std::make_shared<TrackRuntime>();if(original.runtime){track.runtime->gain.store(original.runtime->gain.load(std::memory_order_acquire),std::memory_order_relaxed);track.runtime->muted.store(original.runtime->muted.load(std::memory_order_acquire),std::memory_order_relaxed);}if(track.type=="audio"){track.audioSumScratch.setSize(2,std::max(blockSize_,4096),false,true,false);track.audioSumScratch.clear();track.inputScratch.setSize(2,std::max(blockSize_,4096),false,true,false);track.inputScratch.clear();}
+    for(const auto& original:source->tracks){Track track;track.id=original.id;track.type=original.type;track.inputId=original.inputId;track.outputId=original.outputId;track.armed=original.armed;track.monitored=original.monitored;track.midiOutputKind=original.midiOutputKind;track.midi=original.midi;track.audio=original.audio;track.clips=original.clips;track.runtime=std::make_shared<TrackRuntime>();if(original.runtime){track.runtime->gain.store(original.runtime->gain.load(std::memory_order_acquire),std::memory_order_relaxed);track.runtime->muted.store(original.runtime->muted.load(std::memory_order_acquire),std::memory_order_relaxed);track.runtime->pan.store(original.runtime->pan.load(std::memory_order_acquire),std::memory_order_relaxed);}if(track.type=="audio"){track.audioSumScratch.setSize(2,std::max(blockSize_,4096),false,true,false);track.audioSumScratch.clear();track.inputScratch.setSize(2,std::max(blockSize_,4096),false,true,false);track.inputScratch.clear();}
         if(track.type=="midi"&&track.midiOutputKind==Track::MidiOutputKind::chain&&!track.outputId.empty()){track.destination=chainLookup(track.outputId);if(!track.destination){error="Export destination is unavailable: "+track.outputId;return false;}}
         // The series is bounced too, against the export's own cloned chains: an
         // instrument heard while playing and missing from the file is exactly

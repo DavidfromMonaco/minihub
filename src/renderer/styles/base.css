@@ -288,6 +288,8 @@ body:has(.export-panel) .app-header { -webkit-app-region: no-drag; }
 @media (max-width: 1000px) { .app-menus { display: none; } }
 
 
+.mixer-pan { width:90px; vertical-align:middle; }
+.mixer-pan-value { display:inline-block; width:30px; margin-left:4px; color:var(--text-faint); font:10px var(--mono); }
 .morph-steps { display:grid; grid-template-columns:repeat(8,minmax(44px,1fr)); gap:6px; margin-top:12px; }
 .morph-steps label { padding:5px; border:1px solid var(--border); border-radius:5px; text-align:center; }
 .morph-steps label.active { border-color:var(--accent-morpher); background:rgba(244,114,182,.12); }
@@ -2041,6 +2043,12 @@ body:has(.export-panel) .app-header { -webkit-app-region: no-drag; }
 .seq-metronome-light { width:10px; height:10px; flex:0 0 10px; border-radius:50%; background:#232428; border:1px solid #3a3c42; box-shadow:inset 0 0 3px rgba(0,0,0,.75); }
 .seq-metronome-light.pulse-precount { background:var(--accent); border-color:#ffb271; box-shadow:0 0 10px rgba(255,139,44,.9); }
 .seq-metronome-light.pulse-accent { background:#44dc83; border-color:#9af0bc; box-shadow:0 0 10px rgba(68,220,131,.9); }
+/* Two small keys, the chosen one lit like the switch beside them. */
+.seq-metronome-mode { display:inline-flex; margin-left:2px; border:1px solid #3a3c42; border-radius:6px; overflow:hidden; }
+.seq-metronome-mode button { height:20px; padding:0 7px; border:0; background:#1f2024; color:var(--text-dim); font-size:10.5px; cursor:pointer; }
+.seq-metronome-mode button + button { border-left:1px solid #3a3c42; }
+.seq-metronome-mode button[aria-pressed="true"] { background:rgba(255, 139, 44, .42); color:#fff; }
+.seq-metronome-mode button:focus-visible { outline:2px solid var(--accent); outline-offset:-2px; }
 .seq-metronome-light.pulse-beat { background:#176637; border-color:#2b8a50; box-shadow:0 0 6px rgba(23,102,55,.75); }
 /* ui/contextMenu.js. It borrows the menu vocabulary that already exists above
    for the Patch Bay -- .ctx-item and .ctx-separator -- and adds only what is
@@ -2158,9 +2166,12 @@ body ::-webkit-scrollbar-corner { background:transparent; }
 .seq-track-head .seq-track-select:hover { background:#34363b; }
 .seq-track.focused .seq-track-head .seq-track-select { border-color:var(--accent-sequencer); background:var(--accent-sequencer); }
 .seq-track.focused .seq-track-head .seq-track-select::after { border-color:#121315; background:#121315; }
-.seq-track-level { grid-column:1 / 5; grid-row:2; display:grid; grid-template-columns:minmax(0,1fr) 50px; align-items:center; gap:6px; }
+/* Fader, its dB, then the pan and where it points: one row, the performance
+   row, rather than a third that would make every track taller. */
+.seq-track-level { grid-column:1 / 5; grid-row:2; display:grid; grid-template-columns:minmax(0,1fr) 42px 48px 24px; align-items:center; gap:4px; }
 .seq-track-level input[type="range"] { width:100%; height:14px; margin:0; }
 .seq-track-level output { color:var(--text-faint); font:9px var(--mono); text-align:right; }
+.seq-track-level .seq-track-pan { accent-color:var(--accent-sequencer); }
 .seq-route-dots { grid-column:5; grid-row:2; display:flex; align-items:center; justify-content:flex-end; gap:3px; }
 .seq-route-dots i { width:9px; height:9px; display:grid; place-items:center; border-radius:50%; font:normal 7px var(--mono); font-style:normal; line-height:1; }
 .seq-route-dots i.seq-route-ok { color:#0d1f14; background:#4ade82; }
@@ -2219,6 +2230,9 @@ body ::-webkit-scrollbar-corner { background:transparent; }
    ruler and covers the cursor at the top left for the same reason. */
 .seq-playhead { position:absolute; top:0; z-index:6; width:1px; background:#ef6a5b; pointer-events:none; box-shadow:0 0 4px rgba(239,106,91,.8); }
 .seq-playhead::before { content:''; position:absolute; top:0; left:-4px; border-left:4px solid transparent; border-right:4px solid transparent; border-top:7px solid #ef6a5b; }
+/* The line lets clicks through to the clips; its head over the rulers is the
+   one part that takes the pointer, wide enough to catch without aiming. */
+.seq-playhead-grip { position:absolute; top:0; left:-7px; width:15px; height:calc(var(--seq-time-ruler,18px) + var(--seq-bar-ruler,30px)); pointer-events:auto; cursor:ew-resize; }
 .seq-empty { position:absolute; left:var(--seq-head,260px); right:0; padding:44px 20px; color:var(--text-faint); text-align:center; }
 .seq-editor { min-height:120px; overflow:hidden; }
 .seq-audio-detail { position:relative; height:90px; margin-top:14px; border:1px solid var(--border); border-radius:5px; background:#15201e; overflow:hidden; }

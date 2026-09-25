@@ -19,7 +19,9 @@ export function describeAudioNetwork(hub) {
     const incoming = hub.network.connectionsTo(node.id);
     const inputs = node.inputs.filter((p)=>p.type==='audio').flatMap((port)=>incoming.filter((c)=>c.to.portId===port.id)).map((c) => {
       const state = content.inputs?.find((p) => p.id === c.to.portId);
-      return { portId:c.to.portId, sourceNodeId:c.from.nodeId, sourcePortId:c.from.portId, level:Number.isFinite(state?.level)?state.level:1, muted:state?.muted===true };
+      return { portId:c.to.portId, sourceNodeId:c.from.nodeId, sourcePortId:c.from.portId, level:Number.isFinite(state?.level)?state.level:1, muted:state?.muted===true,
+        // A Mixer strip's balance; a Morpher has none to send.
+        ...(node.type==='mixer'?{pan:Number.isFinite(state?.pan)?Math.max(-1,Math.min(1,state.pan)):0}:{}) };
     });
     return { id:node.id, nodeType:node.type, inputs,
       ...(node.type==='mixer'?{masterLevel:content.masterLevel??1}:{}),
@@ -118,7 +120,8 @@ export function audioNodeValues(nodes) {
   return nodes.map((node) => ({
     id: node.id,
     inputs: node.inputs.map((input) => ({
-      portId: input.portId, level: input.level, muted: input.muted
+      portId: input.portId, level: input.level, muted: input.muted,
+      ...(input.pan !== undefined ? { pan: input.pan } : {})
     })),
     ...(node.masterLevel !== undefined ? { masterLevel: node.masterLevel } : {}),
     ...(node.steps !== undefined ? { steps: node.steps } : {})

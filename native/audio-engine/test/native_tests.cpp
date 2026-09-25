@@ -560,6 +560,40 @@ void testMixerAndMorpherNumerics()
     expect(std::abs(last.first)<.0001f&&std::abs(last.second-1)<.0001f,"Morpher exact last boundary");
 }
 
+/** The one pan law (pan_law.h): the centre moves nothing, a side is never
+ *  raised, the far side reaches silence -- and a Mixer strip applies it. */
+void testBalancePanLawAndMixerStripPan()
+{
+    const auto centre=mlh::balanceGains(0.0f),left=mlh::balanceGains(-1.0f),right=mlh::balanceGains(1.0f),half=mlh::balanceGains(0.5f);
+    expect(centre.left==1.0f&&centre.right==1.0f,"a centred pan is exactly unity on both sides");
+    expect(left.left==1.0f&&left.right==0.0f&&right.left==0.0f&&right.right==1.0f,"hard left and hard right are exact");
+    expect(half.right==1.0f&&std::abs(half.left-std::sqrt(2.0f)*std::cos(0.75f*1.5707963f))<1.0e-5f,"halfway right lowers the left on a quarter sine and leaves the right whole");
+    expect(mlh::balanceGains(std::numeric_limits<float>::quiet_NaN()).left==1.0f&&mlh::balanceGains(7.0f).left==0.0f,"a pan out of range is bounded, a NaN is the centre");
+
+    static constexpr int blockSize=64;
+    mlh::AudioNetworkSpec spec;
+    auto input=networkNode("audio-input",mlh::AudioNodeKind::input);
+    auto mix=networkNode("mixer-pan",mlh::AudioNodeKind::mixer);
+    mix.inputs={{"audio-in-1","audio-input","audio-out",1.0f,false,-1.0f}};
+    auto output=networkNode("audio-output",mlh::AudioNodeKind::output);
+    output.inputs={{"audio-in","mixer-pan","audio-out",1.0f,false}};
+    spec.nodes={output,mix,input};std::string error;
+    auto plan=mlh::AudioExecutionPlan::compile(spec,[](const std::string&){return (mlh::Chain*)nullptr;},nullptr,blockSize,error);
+    expect(plan!=nullptr,"a Mixer with a panned strip compiles");
+    if(!plan)return;
+    juce::AudioBuffer<float> source(2,blockSize);
+    for(int channel=0;channel<2;++channel)for(int sample=0;sample<blockSize;++sample)source.setSample(channel,sample,.5f);
+    auto render=[&](){float l[blockSize]{},r[blockSize]{};float* hw[]={l,r};mlh::Transport transport;transport.setSampleRate(48000);transport.beginBlock();juce::MidiBuffer midi;plan->process(hw,2,blockSize,transport,midi,&source);return std::pair<float,float>{juce::FloatVectorOperations::findMaximum(l,blockSize),juce::FloatVectorOperations::findMaximum(r,blockSize)};};
+    auto hard=render();
+    expect(std::abs(hard.first-.5f)<1.0e-6f&&hard.second==0.0f,"a strip panned hard left reaches the output on the left only");
+    auto* node=plan->findNode("mixer-pan");
+    expect(node!=nullptr,"the strip is found to be moved in place");
+    if(!node)return;
+    node->setPan(0,0.0f);
+    auto centred=render();
+    expect(std::abs(centred.first-.5f)<1.0e-6f&&std::abs(centred.second-.5f)<1.0e-6f,"moved back to the centre in place, without a recompile");
+}
+
 void testLinearFloatSummationAndMasterMetering()
 {
     constexpr int blockSize = 256;
@@ -1539,7 +1573,7 @@ void testSequencerTrackSumGainAndTrace()
     const auto a=clip("clip-a",0,4);const auto b=clip("clip-b",0,4);const auto c=clip("clip-c",0,4);auto single=render(track({a}));auto doubled=render(track({a,b}));auto tripled=render(track({a,b,c}));float doubleError=0,tripleError=0;for(int ch=0;ch<2;++ch)for(int sample=0;sample<1024;++sample){doubleError=std::max(doubleError,std::abs(doubled.getSample(ch,sample)-2.0f*single.getSample(ch,sample)));tripleError=std::max(tripleError,std::abs(tripled.getSample(ch,sample)-3.0f*single.getSample(ch,sample)));}const float singlePeak=single.getMagnitude(0,1024),doublePeak=doubled.getMagnitude(0,1024);expect(doubleError<1.0e-6f&&std::abs(doublePeak/singlePeak-2.0f)<1.0e-6f,"two identical aligned clips equal exactly 2A");expect(std::abs(juce::Decibels::gainToDecibels(doublePeak/singlePeak)-6.0206f)<.0002f,"two identical aligned clips measure +6.0206 dB");expect(tripleError<2.0e-6f,"three simultaneous clips equal exactly 3A");
     const double samplePpq=1.0/24000.0;auto firstOnly=render(track({clip("clip-first",0,.03125)}));auto shiftedOnly=render(track({clip("clip-shifted",128*samplePpq,.03125)}));auto partial=render(track({clip("clip-first",0,.03125),clip("clip-shifted",128*samplePpq,.03125)}));float partialError=0;for(int ch=0;ch<2;++ch)for(int sample=0;sample<1024;++sample)partialError=std::max(partialError,std::abs(partial.getSample(ch,sample)-firstOnly.getSample(ch,sample)-shiftedOnly.getSample(ch,sample)));expect(partialError<1.0e-6f,"partial overlap and clips starting/ending inside one block equal the independent buffer sum");
     auto loopTrack=track({clip("clip-loop-a",0,.03125),clip("clip-loop-b",0,.03125)});juce::Array<juce::var> loopTracks;loopTracks.add(loopTrack);expect(sequencer.sync(makeSequencerProject(loopTracks),[](const std::string&){return (mlh::Chain*)nullptr;},48000,1024,info,error),"loop overlap arrangement compiles");transport.setLoop(true,0,.03125);transport.seekPpq(0);transport.beginBlock();juce::AudioBuffer<float> loopDouble(2,1024);sequencer.renderAudio(loopDouble,1024,transport);auto oneLoopTrack=track({clip("clip-loop-single",0,.03125)});loopTracks.clear();loopTracks.add(oneLoopTrack);expect(sequencer.sync(makeSequencerProject(loopTracks),[](const std::string&){return (mlh::Chain*)nullptr;},48000,1024,info,error),"single loop arrangement compiles");transport.seekPpq(0);transport.beginBlock();juce::AudioBuffer<float> loopSingle(2,1024);sequencer.renderAudio(loopSingle,1024,transport);float loopError=0;for(int ch=0;ch<2;++ch)for(int sample=0;sample<1024;++sample)loopError=std::max(loopError,std::abs(loopDouble.getSample(ch,sample)-2.0f*loopSingle.getSample(ch,sample)));expect(loopError<1.0e-6f,"two clips remain an exact 2A sum across the loop wrap");
-    loopTracks.clear();loopTracks.add(track({a,b}));expect(sequencer.sync(makeSequencerProject(loopTracks),[](const std::string&){return (mlh::Chain*)nullptr;},48000,1024,info,error),"dynamic track-gain arrangement compiles");transport.setLoop(false,0,4);auto renderControl=[&](float gain,bool muted){expect(sequencer.setTrackControl("track-correctness",gain,muted),"live track control updates without rebuilding the clip plan");transport.seekPpq(0);transport.beginBlock();juce::AudioBuffer<float> result(2,1024);sequencer.renderAudio(result,1024,transport);return result;};auto unity=renderControl(1.0f,false);auto minusSix=renderControl(.501187f,false);auto plusSix=renderControl(1.995262f,false);auto muted=renderControl(1.0f,true);const float unityPeak=unity.getMagnitude(0,1024);expect(std::abs(minusSix.getMagnitude(0,1024)/unityPeak-.501187f)<1.0e-6f,"-6 dB track fader applies 0.501187 after the 2A clip sum");expect(std::abs(plusSix.getMagnitude(0,1024)/unityPeak-1.995262f)<1.0e-6f,"+6 dB track fader applies 1.995262 after the 2A clip sum");expect(muted.getMagnitude(0,1024)==0,"track mute outputs exact zero without stopping transport");auto minusTwelve=renderControl(.251189f,false);auto restored=renderControl(1.0f,false);expect(std::abs(minusTwelve.getMagnitude(0,1024)/unityPeak-.251189f)<1.0e-6f&&std::abs(restored.getMagnitude(0,1024)-unityPeak)<1.0e-6f,"dynamic 0 dB -> -12 dB -> 0 dB reacts on consecutive live blocks");const auto trace=sequencer.trackSignalTrace(&transport);expect(trace.size()==1&&trace[0].activeClips==2&&std::abs(trace[0].peakAfterSum-2.0f*trace[0].peakBeforeSum)<.0001f&&trace[0].gainApplied==1.0f&&std::abs(trace[0].peakAfterGain-trace[0].peakAfterSum)<.0001f&&trace[0].destinationBuffer=="mixer-001:audio-in","instrumentation reports clips -> SUM -> gain -> destination without resetting a clip buffer");sourceFile.deleteFile();
+    loopTracks.clear();loopTracks.add(track({a,b}));expect(sequencer.sync(makeSequencerProject(loopTracks),[](const std::string&){return (mlh::Chain*)nullptr;},48000,1024,info,error),"dynamic track-gain arrangement compiles");transport.setLoop(false,0,4);auto renderControl=[&](float gain,bool muted){expect(sequencer.setTrackControl("track-correctness",gain,muted),"live track control updates without rebuilding the clip plan");transport.seekPpq(0);transport.beginBlock();juce::AudioBuffer<float> result(2,1024);sequencer.renderAudio(result,1024,transport);return result;};auto unity=renderControl(1.0f,false);auto minusSix=renderControl(.501187f,false);auto plusSix=renderControl(1.995262f,false);auto muted=renderControl(1.0f,true);const float unityPeak=unity.getMagnitude(0,1024);expect(std::abs(minusSix.getMagnitude(0,1024)/unityPeak-.501187f)<1.0e-6f,"-6 dB track fader applies 0.501187 after the 2A clip sum");expect(std::abs(plusSix.getMagnitude(0,1024)/unityPeak-1.995262f)<1.0e-6f,"+6 dB track fader applies 1.995262 after the 2A clip sum");expect(muted.getMagnitude(0,1024)==0,"track mute outputs exact zero without stopping transport");auto minusTwelve=renderControl(.251189f,false);auto restored=renderControl(1.0f,false);expect(std::abs(minusTwelve.getMagnitude(0,1024)/unityPeak-.251189f)<1.0e-6f&&std::abs(restored.getMagnitude(0,1024)-unityPeak)<1.0e-6f,"dynamic 0 dB -> -12 dB -> 0 dB reacts on consecutive live blocks");expect(sequencer.setTrackControl("track-correctness",1.0f,false,-1.0f),"a track takes a pan with its fader");auto hardLeft=renderControl(1.0f,false);expect(std::abs(hardLeft.getMagnitude(0,0,1024)-unity.getMagnitude(0,0,1024))<1.0e-6f&&hardLeft.getMagnitude(1,0,1024)==0,"a track panned hard left keeps its left side whole and silences its right");auto keptPan=renderControl(.5f,false);expect(keptPan.getMagnitude(1,0,1024)==0,"a fader move that says nothing of the pan leaves it where it was");expect(sequencer.setTrackControl("track-correctness",1.0f,false,0.0f),"the pan comes back to the centre");auto centred=renderControl(1.0f,false);expect(std::abs(centred.getMagnitude(1,0,1024)-unity.getMagnitude(1,0,1024))<1.0e-6f,"centred, the track is the signal it was before pans existed");const auto trace=sequencer.trackSignalTrace(&transport);expect(trace.size()==1&&trace[0].activeClips==2&&std::abs(trace[0].peakAfterSum-2.0f*trace[0].peakBeforeSum)<.0001f&&trace[0].gainApplied==1.0f&&std::abs(trace[0].peakAfterGain-trace[0].peakAfterSum)<.0001f&&trace[0].destinationBuffer=="mixer-001:audio-in","instrumentation reports clips -> SUM -> gain -> destination without resetting a clip buffer");sourceFile.deleteFile();
 }
 
 void testSequencerAudioRecordingAndMasterExport()
@@ -4397,6 +4431,7 @@ int main(int argc, char** argv)
     testMorpherStepperMath();
     std::cerr << "[core] mixer-morpher\n";
     testMixerAndMorpherNumerics();
+    testBalancePanLawAndMixerStripPan();
     std::cerr << "[core] linear-sum-master\n";
     testLinearFloatSummationAndMasterMetering();
     std::cerr << "[core] arpeggiator\n";

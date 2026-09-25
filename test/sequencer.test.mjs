@@ -27,10 +27,11 @@ function rig(initial = {}) {
   network.addNode({ id: 'audio-output', name: 'Audio Output', type: 'audio-output', inputs: [{ id: 'audio-in', type: 'audio' }], outputs: [] });
   const engine = {
     syncSequencer: (project) => commands.push({ type: 'syncSequencer', project }),
-    setSequencerTrackControl: (trackId, gain, muted) => commands.push({ type: 'trackControl', trackId, gain, muted }),
+    setSequencerTrackControl: (trackId, gain, muted, pan) => commands.push({ type: 'trackControl', trackId, gain, muted, ...(pan ? { pan } : {}) }),
     setTransport: (state) => commands.push({ type: 'setTransport', ...state }),
     sequencerMidiInput: (...args) => commands.push({ type: 'midiInput', args }),
     sequencerRecord: (enabled) => commands.push({ type: 'record', enabled }),
+    setMetronome: (enabled) => commands.push({ type: 'metronome', enabled }),
     sequencerExport: (options) => commands.push({ type: 'export', ...options }),
     sequencerCancelExport: () => { commands.push({ type: 'cancelExport' }); return { ok: true }; },
     sequencerPanic: () => commands.push({ type: 'panic' }),
@@ -373,6 +374,72 @@ test('enabled metronome enters one native pre-count without starting a second tr
   assert.equal(controller.preCounting, false);
   assert.equal(controller.recording, true);
   assert.equal(controller.playing, true);
+});
+
+/**
+ * The author switched the metronome on to record and off to listen back, every
+ * take (2026-09-26). In 'rec' the engine's click is on for the take and its
+ * count-in, off before and after; 'play-rec' is the metronome it always was.
+ */
+test('the metronome in Rec clicks for the take and its count-in only', () => {
+  const { controller, hub, commands, data } = rig({ metronomeEnabled: true, metronomeMode: 'rec' });
+  assert.equal(controller.metronomeMode, 'rec');
+  const track = controller.model.addTrack('midi');
+  hub.midi.selectedInputId = 'selected-midi';
+  controller.setTrack(track.id, { armed: true, inputId: 'selected-midi' });
+  hub.network.connect('minilab-3', 'midi-out', 'sequencer', 'midi-in');
+  commands.length = 0;
+  controller.setMetronome(true);
+  assert.deepEqual(commands.filter((c) => c.type === 'metronome').at(-1), { type: 'metronome', enabled: false },
+    'switched on, but silent while nothing records');
+
+  commands.length = 0;
+  assert.equal(controller.startRecording(), true);
+  assert.equal(controller.preCounting, true, 'the count-in still happens');
+  const order = commands.filter((c) => c.type === 'metronome' || c.type === 'record').map((c) => c.type + ':' + c.enabled);
+  assert.deepEqual(order, ['metronome:true', 'record:true'], 'the click is on before the engine starts the take');
+
+  commands.length = 0;
+  controller.stopTransport();
+  assert.deepEqual(commands.filter((c) => c.type === 'metronome'), [{ type: 'metronome', enabled: false }]);
+
+  // A take the engine ends by itself turns it off too.
+  controller.setMetronomeMode('play-rec');
+  assert.equal(data.metronomeMode, 'play-rec', 'remembered');
+  assert.deepEqual(commands.filter((c) => c.type === 'metronome').at(-1), { type: 'metronome', enabled: true });
+  controller.setMetronomeMode('rec');
+  controller.recording = true;
+  commands.length = 0;
+  hub.events.emit('engine:transport', { bpm: 120, playing: false, recording: false, ppqPosition: 0 });
+  assert.deepEqual(commands.filter((c) => c.type === 'metronome'), [{ type: 'metronome', enabled: false }]);
+  assert.equal(controller.setMetronomeMode('anything'), 'play-rec', 'an unknown mode is the old behaviour');
+});
+
+test('a new MIDI track listens to the input the last MIDI track listens to', () => {
+  const { controller } = rig();
+  const first = controller.addTrack('midi');
+  assert.equal(first.inputId, '', 'the first one has nothing to follow');
+  controller.model.updateTrack(first.id, { inputId: 'input-0', inputPort: { id: 'input-0', name: 'Minilab3 MIDI' } });
+  const second = controller.addTrack('midi');
+  assert.equal(second.inputId, 'input-0');
+  assert.deepEqual(second.inputPort, first.inputPort, 'with the fingerprint that finds the device again');
+  controller.model.updateTrack(second.id, { inputId: 'input-1', inputPort: { id: 'input-1', name: 'Other' } });
+  assert.equal(controller.addTrack('midi').inputId, 'input-1', 'the last choice wins');
+  assert.equal(controller.addTrack('audio').inputId, '', 'an audio track is not given a keyboard');
+});
+
+test('a track pan is kept, bounded, and sent with the fader without a resync', () => {
+  const { controller, commands } = rig();
+  const track = controller.addTrack('midi');
+  assert.equal(track.pan, 0, 'a new track is centred');
+  commands.length = 0;
+  controller.setTrack(track.id, { pan: -0.4 });
+  assert.deepEqual(commands.filter((c) => c.type === 'trackControl'),
+    [{ type: 'trackControl', trackId: track.id, gain: 1, muted: false, pan: -0.4 }]);
+  assert.equal(commands.some((c) => c.type === 'syncSequencer'), false, 'a pan is a live control, like the fader');
+  controller.setTrack(track.id, { pan: 9 });
+  assert.equal(controller.model.state.tracks[0].pan, 1, 'bounded to hard right');
+  assert.equal(controller.model.snapshot().tracks[0].pan, 1, 'and saved with the project');
 });
 
 test('audio source selection creates and cleans the authoritative AUDIO IN cable', async () => {

@@ -42,6 +42,7 @@ import { NetworkLayout } from './networkLayout.js';
 import { VstChain, getVstRole, duplicateVstContent, groupPluginsByFamily } from './vstChain.js';
 import { bindPluginMenu, closePluginMenu } from '../ui/pluginMenu.js';
 import { escapeHtml } from './html.js';
+import { formatPan } from './pan.js';
 import { normalizeControlBinding, normalizeControlBindings } from './controlBindings.js';
 import { defaultArpeggiatorContent, normalizeArpeggiatorContent } from './arpeggiatorState.js';
 import { createSequence, readSequence } from './oneRingSequence.js';
@@ -88,6 +89,7 @@ function renderNativeAudioEditor(instance, type, hub) {
   const channels = content.inputs.map((input, index) => `<div class="row mt-10" data-audio-input="${input.id}">
     <strong>${index + 1}</strong><span class="muted">${escapeHtml(sourceFor(input.id))}</span>
     <span class="spacer"></span><label>Level <input data-native-control="level" type="range" min="0" max="2" step="0.01" value="${input.level}"></label>
+    ${type.id === 'mixer' ? `<label title="Double-click: centre">Pan <input class="mixer-pan" data-native-control="pan" type="range" min="-100" max="100" step="1" value="${Math.round((input.pan || 0) * 100)}"><output class="mixer-pan-value" data-pan-value>${formatPan(input.pan)}</output></label>` : ''}
     <label><input data-native-control="mute" type="checkbox" ${input.muted ? 'checked' : ''}> Mute</label></div>`).join('');
   const steps = type.id === 'morpher' ? `<div class="row mt-16"><label>Steps <select data-native-control="stepCount">${[4,8,16,32].map((n)=>`<option ${content.stepCount===n?'selected':''}>${n}</option>`).join('')}</select></label></div>
     <div class="morph-steps">${content.steps.slice(0,content.stepCount).map((v,i)=>`<label data-morph-step="${i}"> ${i+1}<input data-native-step="${i}" type="range" min="0" max="1" step="0.01" value="${v}"></label>`).join('')}</div>` : '';
@@ -370,7 +372,10 @@ export function normalizeContentFor(typeId, content) {
 
 function normalizeNativeAudioContent(typeId, value) {
   const base = defaultContentFor(typeId); const source = value && typeof value === 'object' ? value : {};
-  const inputs = Array.isArray(source.inputs) ? source.inputs.filter((p)=>p&&/^audio-in-[1-9][0-9]*$/.test(p.id)).map((p)=>({ id:p.id, level:Number.isFinite(p.level)?Math.max(0,Math.min(2,p.level)):1, muted:p.muted===true })) : base.inputs;
+  const inputs = Array.isArray(source.inputs) ? source.inputs.filter((p)=>p&&/^audio-in-[1-9][0-9]*$/.test(p.id)).map((p)=>({ id:p.id, level:Number.isFinite(p.level)?Math.max(0,Math.min(2,p.level)):1, muted:p.muted===true,
+    // A Mixer strip's pan, kept only where there is one: a strip that was never
+    // turned is centred, and a Morpher has no pan to keep.
+    ...(typeId==='mixer'&&Number.isFinite(p.pan)&&p.pan!==0?{pan:Math.max(-1,Math.min(1,p.pan))}:{}) })) : base.inputs;
   const maxSeq = inputs.reduce((m,p)=>Math.max(m,Number(p.id.slice(9))||0),0);
   if (!inputs.length) inputs.push({id:'audio-in-1',level:1,muted:false});
   if (typeId === 'mixer') return { inputs, masterLevel:Number.isFinite(source.masterLevel)?Math.max(0,Math.min(2,source.masterLevel)):1, nextInputSeq:Math.max(maxSeq,source.nextInputSeq||0) };
@@ -769,7 +774,18 @@ export class NodeInstanceManager {
     const source = this.instances.get(sourceId);
     if (!source) return null;
     if (getNodeType(source.type)?.copyable === false) return null;
-    return this._add(source.type, cloneContentFor(source.type, source.content));
+    return this._copied(this._add(source.type, cloneContentFor(source.type, source.content)));
+  }
+
+  /**
+   * Announce a node born as a copy. A copied VST node lists its plugins with
+   * their state, and `_add` creates nothing in the engine: its page came up
+   * empty and it made no sound until the project was reopened (2026-09-26).
+   * `chainSync` answers by creating them, as it does for a restored node.
+   */
+  _copied(instance) {
+    if (instance) this.hub.events.emit('nodes:copied', { nodeId: instance.id });
+    return instance;
   }
 
   /**
@@ -781,7 +797,7 @@ export class NodeInstanceManager {
     if (!snapshot || typeof snapshot !== 'object') return null;
     const type = getNodeType(snapshot.type);
     if (!type || type.copyable === false) return null;
-    return this._add(snapshot.type, cloneContentFor(snapshot.type, snapshot.content));
+    return this._copied(this._add(snapshot.type, cloneContentFor(snapshot.type, snapshot.content)));
   }
 
   /**
@@ -1266,6 +1282,10 @@ export class NodeInstanceManager {
           const row=e.target.closest('[data-audio-input]'); const item=row&&instance.content.inputs.find((p)=>p.id===row.dataset.audioInput);
           if (item && e.target.dataset.nativeControl==='level') item.level=Number(e.target.value);
           if (item && e.target.dataset.nativeControl==='mute') item.muted=e.target.checked;
+          if (item && e.target.dataset.nativeControl==='pan') {
+            item.pan=Number(e.target.value)/100;
+            const shown=row.querySelector('[data-pan-value]'); if (shown) shown.textContent=formatPan(item.pan);
+          }
           if (e.target.dataset.nativeControl==='masterLevel') instance.content.masterLevel=Number(e.target.value);
           if (e.target.dataset.nativeControl==='stepCount') instance.content.stepCount=Number(e.target.value);
           if (e.target.dataset.nativeStep) instance.content.steps[Number(e.target.dataset.nativeStep)]=Number(e.target.value);
@@ -1358,6 +1378,12 @@ export class NodeInstanceManager {
         disposers.listen(container, 'click', onClick);
         disposers.listen(container, 'input', onInput);
         disposers.listen(container, 'change', onInput);
+        // A double-click centres a Mixer strip's pan, as it does a track's.
+        disposers.listen(container, 'dblclick', (e) => {
+          if (e.target?.dataset?.nativeControl !== 'pan') return;
+          e.target.value = '0';
+          onInput({ target: e.target, type: 'change' });
+        });
         disposers.listen(container, 'pointerdown', onPointerDown);
         disposers.listen(container, 'pointermove', onPointerMove);
         disposers.listen(container, 'pointerup', onPointerUp);

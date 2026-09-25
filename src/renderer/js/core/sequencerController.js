@@ -65,6 +65,13 @@ function baseName(filePath) {
   return String(filePath || '').split(/[\\/]/).pop()?.replace(/\.[^.]+$/, '') || 'Audio Clip';
 }
 
+/** The metronome's modes; anything else is the one it always had. */
+export const METRONOME_MODES = Object.freeze(['play-rec', 'rec']);
+
+export function normalizeMetronomeMode(value) {
+  return METRONOME_MODES.includes(value) ? value : 'play-rec';
+}
+
 export class SequencerController {
   constructor(hub) {
     this.hub = hub;
@@ -84,6 +91,7 @@ export class SequencerController {
     this.playheadPpq = 0;
     this.tempo = 120;
     this.metronomeEnabled = false;
+    this.metronomeMode = 'play-rec';
     this.playScope = 'all';
     this.metronomeVolume = 0.35;
     this._unsubs = [];
@@ -116,6 +124,7 @@ export class SequencerController {
     this.model = new SequencerModel(seeded ? initialSequencerState() : stored);
     this.tempo = normalizeTempo(this.hub.settings.get('transportBpm'));
     this.metronomeEnabled = this.hub.settings.get('metronomeEnabled') === true;
+    this.metronomeMode = normalizeMetronomeMode(this.hub.settings.get('metronomeMode'));
     this.playScope = PLAY_SCOPES.includes(this.hub.settings.get('playScope')) ? this.hub.settings.get('playScope') : 'all';
     const storedMetronomeVolume = Number(this.hub.settings.get('metronomeVolume'));
     this.metronomeVolume = Number.isFinite(storedMetronomeVolume)
@@ -158,6 +167,7 @@ export class SequencerController {
           const accepted = this._acceptEngineRecording(logicalRecording);
           if (this.recording !== accepted) {
             this.recording = accepted;
+            if (this.metronomeMode === 'rec') this._publishMetronome();
             this.hub.events.emit('sequencer:recording', this.recording);
           }
         }
@@ -270,7 +280,7 @@ export class SequencerController {
 
   _syncTransportControls() {
     this.hub.engine.setTransport({ bpm: this.tempo });
-    this.hub.engine.setMetronome?.(this.metronomeEnabled, this.metronomeVolume);
+    this._publishMetronome();
     this.hub.engine.setPlayScope?.(this.playScope);
   }
 
@@ -290,8 +300,37 @@ export class SequencerController {
       this.hub.settings.set('metronomeEnabled', next);
       this.hub.events.emit('sequencer:metronome', next);
     }
-    this.hub.engine.setMetronome?.(next, this.metronomeVolume);
+    this._publishMetronome();
     return next;
+  }
+
+  /**
+   * When the metronome clicks: 'play-rec', whenever the transport runs, or
+   * 'rec', during a take and its count-in only.
+   *
+   * Asked by the author on 2026-09-26: he switched it on to record and off to
+   * listen back, every take. The engine keeps one switch; in 'rec' the
+   * renderer turns it on for the take and off after it, so the count-in and
+   * the clicks stay the engine's, sample-accurate, as they were.
+   */
+  setMetronomeMode(mode) {
+    const next = normalizeMetronomeMode(mode);
+    if (next !== this.metronomeMode) {
+      this.metronomeMode = next;
+      this.hub.settings.set('metronomeMode', next);
+      this.hub.events.emit('sequencer:metronome-mode', next);
+    }
+    this._publishMetronome();
+    return next;
+  }
+
+  /** Is the engine's click on right now? */
+  metronomeHeard() {
+    return this.metronomeEnabled && (this.metronomeMode === 'play-rec' || this.recording);
+  }
+
+  _publishMetronome() {
+    this.hub.engine.setMetronome?.(this.metronomeHeard(), this.metronomeVolume);
   }
 
   /**
@@ -1172,7 +1211,7 @@ export class SequencerController {
 
   setTrack(trackId, changes) {
     const keys = Object.keys(changes || {});
-    if (keys.length > 0 && keys.every((key) => key === 'volume' || key === 'muted')) {
+    if (keys.length > 0 && keys.every((key) => key === 'volume' || key === 'muted' || key === 'pan')) {
       return this.setTrackControl(trackId, changes);
     }
     const previous = this.model.state.tracks.find((item) => item.id === trackId);
@@ -1225,7 +1264,7 @@ export class SequencerController {
     if (!track) return null;
     const snapshot = this.model.snapshot();
     this.hub.settings.set(STATE_KEY, snapshot);
-    this.hub.engine.setSequencerTrackControl?.(track.id, track.volume, track.muted);
+    this.hub.engine.setSequencerTrackControl?.(track.id, track.volume, track.muted, track.pan);
     if (render) this.hub.events.emit('sequencer:changed', snapshot);
     return track;
   }
@@ -1243,7 +1282,16 @@ export class SequencerController {
    * arrangement before it.
    */
   addTrack(type = 'midi') {
+    // A new MIDI track listens to the keyboard the last one listens to. The
+    // author chose his MiniLab again on every track (2026-09-26); with two
+    // controllers on the desk, the field is still there to pick the other.
+    const previous = type === 'midi'
+      ? [...this.model.state.tracks].reverse().find((item) => item.type === 'midi' && item.inputId)
+      : null;
     const track = this.model.addTrack(type);
+    if (track && previous) {
+      this.model.updateTrack(track.id, { inputId: previous.inputId, inputPort: previous.inputPort ?? null });
+    }
     if (track) this.changed();
     return track;
   }
@@ -1341,6 +1389,9 @@ export class SequencerController {
     this.playing = true;
     this._recordConfirmPending = true;
     this._recordConfirmFrames = 0;
+    // Before the record command: the engine decides on the count-in when the
+    // take starts, from the switch it holds at that moment.
+    if (this.metronomeMode === 'rec') this._publishMetronome();
     this.hub.engine.sequencerRecord(true);
     this._captureHeldNotes();
     this.hub.events.emit('sequencer:recording', true);
@@ -1360,6 +1411,7 @@ export class SequencerController {
     this._recordConfirmPending = false;
     this._recordConfirmFrames = 0;
     const command = this.hub.engine.sequencerRecord(false);
+    if (this.metronomeMode === 'rec') this._publishMetronome();
     this.hub.events.emit('sequencer:recording', false);
     // UI callers keep the historical synchronous boolean contract. Project
     // replacement can opt into the command Promise so the native stop has at

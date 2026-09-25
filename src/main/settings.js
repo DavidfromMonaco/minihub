@@ -26,6 +26,7 @@ const DEFAULTS = {
   audioOutputConfig: null, // { deviceName, sampleRate, bufferSize }
   vstCatalog: [], // last successful VST3 scan, reused before the next scan
   metronomeEnabled: false,
+  metronomeMode: 'play-rec',
   metronomeVolume: 0.35,
   // What the transport plays: 'all', 'sequencer' (its clips, no Audio Player)
   // or 'players' (the Audio Players, no clip). A listening choice, like the

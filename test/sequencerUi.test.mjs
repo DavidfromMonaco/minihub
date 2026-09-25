@@ -1247,3 +1247,41 @@ test('a restarted engine is told what Play plays', async () => {
   hub.sequencer._syncTransportControls();
   assert.equal(api.sent.filter((message) => message.type === 'setPlayScope').at(-1)?.scope, 'sequencer');
 });
+
+/**
+ * The author could not choose where a take would start (2026-09-26): only a
+ * ruler mark moved the playhead, and only to its first beat. A press lands
+ * where the pointer is, on the Snap grid, and Alt takes it off the grid.
+ */
+test('a press on the timeline names the position under the pointer, on the Snap grid', async () => {
+  const { timelinePpqAt } = await import('../src/renderer/js/modules/sequencer/sequencerModule.js');
+  // 20 px a quarter, the timeline's zero at x = 300: x = 465 is 8.25 quarters,
+  // and the nearest line of the grid wins.
+  assert.equal(timelinePpqAt(465, 300, 20, '1/4'), 8);
+  assert.equal(timelinePpqAt(465, 300, 20, '1/16'), 8.25);
+  assert.equal(timelinePpqAt(465, 300, 20, '1 bar'), 8);
+  assert.equal(timelinePpqAt(475, 300, 20, '1/4'), 9);
+  assert.equal(timelinePpqAt(475, 300, 20, '1/4', true), 8.75, 'Alt: off the grid');
+  assert.equal(timelinePpqAt(250, 300, 20, '1/4'), 0, 'never before the start');
+});
+
+test('the playhead has a grip over the rulers, and a mark clicked by the mouse leaves the seek to the row', async () => {
+  const { hub } = await runtime();
+  hub.nodes.create('sequencer');
+  hub.modules.register(createSequencerModule(hub));
+  const view = captureContainer();
+  hub.modules.activate('sequencer', view.container);
+  assert.match(view.markup(), /class="seq-playhead"[^>]*><span class="seq-playhead-grip" data-playhead-grip/);
+  // The shim hands back the clock row's marks once the row has been redrawn
+  // on its own, which a tempo change does.
+  hub.sequencer.setTempo(90);
+  const mark = view.timeRuler().marks().at(-1);
+  assert.ok(mark && Number(mark.dataset.seek) > 0, 'the clock row has marks past the start');
+  {
+    hub.sequencer.seek(0);
+    fire(mark, 'click', { detail: 1 });
+    assert.equal(hub.sequencer.playheadPpq, 0, 'a mouse click is the row press, not the mark');
+    fire(mark, 'click', { detail: 0 });
+    assert.equal(hub.sequencer.playheadPpq, Number(mark.dataset.seek), 'the keyboard still seeks to the mark');
+  }
+});

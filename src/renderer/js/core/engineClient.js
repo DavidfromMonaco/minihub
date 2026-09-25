@@ -669,10 +669,11 @@ export class EngineClient {
    *  network and rebuilds every PDC delay line. */
   setAudioNodeValues(nodes) { return this._renderCommand({ type: 'setAudioNodeValues', nodes }); }
   syncSequencer(project) { return this._renderCommand({ type: 'syncSequencer', project }); }
-  setSequencerTrackControl(trackId, gain, muted) {
+  setSequencerTrackControl(trackId, gain, muted, pan = 0) {
     return this.command({
       type: 'setSequencerTrackControl', trackId,
-      gain: Math.max(0, Math.min(2, Number(gain) || 0)), muted: muted === true
+      gain: Math.max(0, Math.min(2, Number(gain) || 0)), muted: muted === true,
+      pan: Math.max(-1, Math.min(1, Number(pan) || 0))
     });
   }
   sequencerMidiInput(sourceId, data, offsetMs = 0) { return this._liveInputCommand({ type: 'sequencerMidiInput', sourceId, data, offsetMs }); }

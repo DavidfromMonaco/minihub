@@ -7,6 +7,22 @@ finished, delete its entry**, in the same commit. What was done lives in git and
 
 ## Started, not finished
 
+**Fewer trips between the Patch Bay and the Sequencer** — asked 2026-09-26 by
+the author after his session "Forward backward", all of it on his word ("fais
+tout ce qu'on a dit du début à la fin").
+- Done: a duplicated or pasted VST node loads its plugins, with their state.
+- To do: the playhead grabbed and dragged, the ruler seeking where it is
+  clicked (on the Snap grid), a click in an empty lane placing it.
+- To do: the metronome's Rec / Play + Rec.
+- To do: a new MIDI track takes the last MIDI input chosen.
+- To do: a pan per track (engine) and per Mixer strip.
+- To do: the Original / Hybrid 1 interfaces, Sequencer above, Patch Bay or
+  the page opened below, buttons in the header and the View menu.
+- To do: "+ MIDI Track" with its instrument, and the plugin opened from the
+  track.
+- To do: the MiniLab's Loop / Stop / Play / Rec pads drive the transport --
+  checked with the author's keyboard.
+
 **The project's name, the clock ruler, track mute, the players, the context
 menus** —
 asked 2026-09-25 by the author, the day he reported every entry awaiting his
