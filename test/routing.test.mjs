@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import { MINILAB_SURFACE } from '../src/renderer/js/ui/miniLabControlSurface.js';
 import { makeHub } from './helpers.mjs';
 import { makeEl, installDom, fire, fireKey, findClass } from './domShim.mjs';
@@ -565,6 +566,10 @@ test('Tab turns the canvas round, and no card carries a Rear View button any mor
 
   fireKey('Tab');
   assert.equal(mod.isRearView(), true, 'Tab shows the rear');
+  assert.equal(svg._classSet.has('rear-view'), true);
+  // The back of a card has no readout: the stylesheet is what hides it.
+  const css = fs.readFileSync(new URL('../src/renderer/styles/base.css', import.meta.url), 'utf8');
+  assert.match(css, /\.routing-svg\.rear-view \.node-readout\s*\{\s*display:\s*none;/);
   fireKey('Tab');
   assert.equal(mod.isRearView(), false, 'and Tab again the front');
 

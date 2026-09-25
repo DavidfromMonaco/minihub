@@ -1009,7 +1009,10 @@ body:has(.ctx-menu) .app-header { -webkit-app-region: no-drag; }
    none. */
 .btn[hidden] { display: none; }
 
-/* Rear view deliberately exposes cable runs over module faceplates. */
+/* Rear view deliberately exposes cable runs over module faceplates -- and
+   shows the back of the cards: no readout, only the name, the family's corner
+   and OPEN, so the two sides cannot be mistaken (asked 2026-09-25). */
+.routing-svg.rear-view .node-readout { display: none; }
 .cables.rear .cable {
   opacity: 1;
   stroke-width: 2.4;
@@ -1153,7 +1156,9 @@ body:has(.ctx-menu) .app-header { -webkit-app-region: no-drag; }
 
 /* The family's corner: a short, heavy bracket in the family's colour, laid
    ON the card's outline -- centred on it, so it straddles the edge, half over
-   the card and half past it (asked 2026-09-25). Butt ends. */
+   the card and half past it -- and rounded inside and out (asked 2026-09-25).
+   Butt ends. The width is CORNER_STROKE in routingModule.js, which draws the
+   arc from it. */
 .node-corner {
   fill: none;
   stroke: var(--family-system);

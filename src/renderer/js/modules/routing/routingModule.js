@@ -75,9 +75,13 @@ const PAN_THRESHOLD = 4;
 // The corner is a short bracket drawn along the outline itself, so its
 // stroke (base.css) straddles the edge: half over the card, half past it --
 // a clip fitted on the card rather than a line printed inside it (asked
-// 2026-09-25). Its arc is the card's own.
+// 2026-09-25). Its arc is wider than the card's by half the stroke, so the
+// bracket is rounded inside as well as out: the inner curve is the card's
+// own radius, the outer one follows it at the stroke's width.
 const NODE_RADIUS = 4;
-const CORNER_LEG = 13;
+const CORNER_LEG = 14;
+const CORNER_STROKE = 6; // base.css .node-corner stroke-width
+const CORNER_ARC = NODE_RADIUS + CORNER_STROKE / 2;
 const READOUT = Object.freeze({ x: 10, y: 34, h: 42, line: 15 });
 // One press of the zoom buttons: a quarter of an octave of scale, the wheel's
 // step at a notch and a half.
@@ -283,7 +287,7 @@ export function createRoutingModule(hub) {
       // bar across the top). Outside the clip, so the stroke is whole.
       g.appendChild(svgEl('path', {
         class: 'node-corner',
-        d: `M 0 ${CORNER_LEG} V ${NODE_RADIUS} A ${NODE_RADIUS} ${NODE_RADIUS} 0 0 1 ${NODE_RADIUS} 0 H ${CORNER_LEG}`
+        d: `M 0 ${CORNER_LEG} V ${CORNER_ARC} A ${CORNER_ARC} ${CORNER_ARC} 0 0 1 ${CORNER_ARC} 0 H ${CORNER_LEG}`
       }));
 
       if (node.surface) {
