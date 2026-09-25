@@ -2968,8 +2968,8 @@ window has no native title bar (`titleBarStyle: 'hidden'` with a
 three caption buttons, and File / Edit / View pop the application menu's own
 submenus (`menu:popup`). A status bar holds the controller and the audio
 engine. On the Patch Bay a card wears its family (`nodeFamily`) as a corner,
-a bracket four times the outline's weight that stands a little outside the
-card's edge (asked on the running build, same day), a readout says what it
+a short, heavy bracket laid on the card's outline, straddling its edge
+(asked on the running build, same day), a readout says what it
 holds, cables take their type's colour, and Tab turns the canvas round.
 
 The faceplate itself (`omni-pearl.css`) keeps its own lighter plate: it is a

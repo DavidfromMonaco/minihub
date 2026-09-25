@@ -879,7 +879,8 @@ corners: the Add field (it opens the canvas menu, under it), the cable legend,
 the Tab hint, and Align / zoom / Fit. **Tab** turns the canvas round to the rear
 view, where each controller card used to carry a switch. A card is flat: its
 family (`nodeFamily` in `core/nodeTypes.js` -- the OmniBox category, `media` or
-`system`) is the one colour it wears, as its top-left corner; under the title a
+`system`) is the one colour it wears, as a short heavy bracket straddling
+its top-left corner; under the title a
 black readout says what the node holds (`core/nodeSummary.js`); a jack is
 filled once a cable is on it, and a cable takes its type's colour, a control
 cable dashed. No drop shadow on a card: a filter per card is what a drag

@@ -72,13 +72,12 @@ const PAN_THRESHOLD = 4;
 // the outline for CORNER_LEG units each way, and the readout under the title.
 // IDENTITY_H (core/nodeGeometry.js) is what these have to fit in.
 //
-// The corner is a bracket CORNER_WIDTH thick whose middle runs CORNER_OUT
-// outside the outline: it overlaps the edge and stands a little proud of it,
-// a clip fitted on the card rather than a line printed on it (asked
-// 2026-09-25). Its arc follows the card's, enlarged by the same offset.
+// The corner is a short bracket drawn along the outline itself, so its
+// stroke (base.css) straddles the edge: half over the card, half past it --
+// a clip fitted on the card rather than a line printed inside it (asked
+// 2026-09-25). Its arc is the card's own.
 const NODE_RADIUS = 4;
-const CORNER_LEG = 20;
-const CORNER_OUT = 1.5;
+const CORNER_LEG = 13;
 const READOUT = Object.freeze({ x: 10, y: 34, h: 42, line: 15 });
 // One press of the zoom buttons: a quarter of an octave of scale, the wheel's
 // step at a notch and a half.
@@ -284,8 +283,7 @@ export function createRoutingModule(hub) {
       // bar across the top). Outside the clip, so the stroke is whole.
       g.appendChild(svgEl('path', {
         class: 'node-corner',
-        d: `M ${-CORNER_OUT} ${CORNER_LEG} V ${NODE_RADIUS} `
-          + `A ${NODE_RADIUS + CORNER_OUT} ${NODE_RADIUS + CORNER_OUT} 0 0 1 ${NODE_RADIUS} ${-CORNER_OUT} H ${CORNER_LEG}`
+        d: `M 0 ${CORNER_LEG} V ${NODE_RADIUS} A ${NODE_RADIUS} ${NODE_RADIUS} 0 0 1 ${NODE_RADIUS} 0 H ${CORNER_LEG}`
       }));
 
       if (node.surface) {

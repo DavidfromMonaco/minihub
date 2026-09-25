@@ -549,6 +549,12 @@ body:has(.ctx-menu) .app-header { -webkit-app-region: no-drag; }
   border-color: #ffa254;
 }
 
+/* Buttons, lists and fields do not inherit the page's typeface: Chromium gives
+   them the system's, and every one a rule did not name kept Segoe UI after
+   Geist came in (D-055). Zero specificity, so a control that names its own
+   face -- the monospace readouts -- keeps it. */
+:where(button, input, select, textarea, optgroup) { font-family: inherit; }
+
 /* ---------- Fields no rule dresses ----------
    Chromium paints them plain white, which glared against this dark shell: the
    sequencer's Snap, Format, From and To, the Morpher's step count. They were
@@ -1145,13 +1151,13 @@ body:has(.ctx-menu) .app-header { -webkit-app-region: no-drag; }
 .node-dock { fill: #131417; }
 .node-dock-divider { fill: var(--border); }
 
-/* The family's corner: a bracket four times the outline's weight, in the
-   family's colour, standing out past the card's edge (CORNER_OUT in
-   routingModule.js). Butt ends: the legs stop square on the edge. */
+/* The family's corner: a short, heavy bracket in the family's colour, laid
+   ON the card's outline -- centred on it, so it straddles the edge, half over
+   the card and half past it (asked 2026-09-25). Butt ends. */
 .node-corner {
   fill: none;
   stroke: var(--family-system);
-  stroke-width: 4;
+  stroke-width: 6;
   stroke-linecap: butt;
   pointer-events: none;
 }
