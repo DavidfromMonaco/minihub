@@ -96,6 +96,26 @@ export class AudioPlayerNodes {
     return this._statuses.get(nodeId) ?? null;
   }
 
+  /**
+   * How long the longest file that can be heard lasts, in seconds, or 0.
+   *
+   * An export plays every player from its beginning, and a project whose sound
+   * comes from players alone has no arrangement to measure: without this, its
+   * export stopped after one bar. A player counts once its file is read and
+   * something is cabled to it; a muted one plays silence. A looping one counts
+   * its file once -- a loop has no end to find.
+   */
+  longestHeardSeconds() {
+    let longest = 0;
+    for (const node of this.list()) {
+      if (node.content?.muted === true) continue;
+      if (!this.hub.network?.connectionsFrom?.(node.id)?.length) continue;
+      const file = this._files.get(node.id);
+      if (file?.state === 'ready') longest = Math.max(longest, file.durationSeconds);
+    }
+    return longest;
+  }
+
   /** Whether a player plays: the transport's Stop has something to stop. */
   anyPlaying() {
     for (const [nodeId, status] of this._statuses) {

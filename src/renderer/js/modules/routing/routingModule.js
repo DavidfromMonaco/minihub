@@ -1852,7 +1852,7 @@ export function createRoutingModule(hub) {
       hub.events.on('engine:nodeMeters', paintStrips),
       hub.events.on('oneRing:status', paintRing),
       ...['nativeAudio:stateChanged', 'nativeMidi:stateChanged', 'oneRing:contentChanged',
-        'audioPlayer:contentChanged', 'sequencer:changed'].map((name) => hub.events.on(name, scheduleRefresh)),
+        'audioPlayer:contentChanged', 'sequencer:changed', 'vst:chainChanged'].map((name) => hub.events.on(name, scheduleRefresh)),
       // An undo rewrote `networkLayout` under us. The cache below only fills in
       // positions it is MISSING, so without this the nodes stay where they were
       // and the canvas quietly disagrees with the project.

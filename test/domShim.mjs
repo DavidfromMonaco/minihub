@@ -71,6 +71,11 @@ export function makeEl(tag) {
     child.parentNode = null;
   };
   el.remove = () => { if (el.parentNode) el.parentNode.removeChild(el); };
+  el.replaceChildren = (...nodes) => {
+    for (const child of el.children) child.parentNode = null;
+    el.children.length = 0;
+    nodes.forEach((node) => el.appendChild(node));
+  };
 
   el.addEventListener = (t, fn) => { (el._listeners[t] = el._listeners[t] || new Set()).add(fn); };
   el.removeEventListener = (t, fn) => { el._listeners[t]?.delete(fn); };

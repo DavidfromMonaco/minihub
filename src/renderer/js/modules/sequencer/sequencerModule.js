@@ -619,8 +619,6 @@ export function createSequencerModule(hub) {
   let suppressLaneClick = false;
   let tempoBindingCleanup = null;
   let metronomePulseTimer = null;
-  let exportOptions = { format: 'wav', bits: 24, bitrateKbps: 320, qualityIndex: -1, tailSeconds: 2 };
-  let exportStatus = null;
 
   /**
    * The one sentence the transport shows, and the tone it wears.
@@ -895,24 +893,6 @@ export function createSequencerModule(hub) {
     const recordBlockReason = controller.recordBlockReason();
     const status = transportStatus();
     const focusedTrack = state.tracks.find((track) => track.id === state.focusedTrackId) || null;
-    const exportFormat = ['wav', 'mp3', 'ogg'].includes(exportOptions.format) ? exportOptions.format : 'wav';
-    const capabilities = controller.exportCapabilities || {};
-    const oggQualities = Array.isArray(capabilities.oggQualityOptions) ? capabilities.oggQualityOptions : [];
-    const selectedOggQuality = exportOptions.qualityIndex >= 0
-      ? Math.min(exportOptions.qualityIndex, Math.max(0, oggQualities.length - 1))
-      : Math.max(0, oggQualities.length - 1);
-    const exportPercent = Number.isFinite(Number(exportStatus?.progress))
-      ? `${Math.round(Number(exportStatus.progress) * 100)}%` : '';
-    const exportSpeed = Number.isFinite(Number(exportStatus?.realtimeSpeed))
-      && Number(exportStatus.realtimeSpeed) > 0
-      ? `${Number(exportStatus.realtimeSpeed).toFixed(2)}× realtime` : '';
-    const exportStage = String(exportStatus?.stage || '').replaceAll('-', ' ');
-    const exportStateText = exportStatus?.state === 'complete' ? `Saved ${exportStatus.filePath}`
-      : exportStatus?.state === 'error' ? exportStatus.message
-        : exportStatus?.state === 'cancelled' ? 'Export cancelled'
-          : exportStatus?.state === 'preparing' ? `Preparing export…${exportStage ? ` ${exportStage}` : ''}`
-            : exportStatus?.state === 'finalizing' ? 'Finalizing and closing file…'
-              : controller.exporting ? `Rendering offline…${exportPercent ? ` ${exportPercent}` : ''}${exportSpeed ? ` · ${exportSpeed}` : ''}` : '';
     scrollRenderQueued = false;
     // The menu points at DOM that is about to be replaced, and at a clip that
     // may no longer exist.
@@ -927,21 +907,8 @@ export function createSequencerModule(hub) {
             <button class="seq-metronome-switch ${controller.metronomeEnabled ? 'active' : ''}" type="button" role="switch" aria-checked="${controller.metronomeEnabled}" data-action="toggle-metronome" aria-label="Activer ou désactiver le métronome"><span aria-hidden="true"></span></button>
             <span class="seq-metronome-light" data-metronome-light aria-label="Voyant du métronome" role="status"></span>
           </div>
-          <button class="btn primary" data-action="export" ${controller.exporting ? 'disabled' : ''} title="Export ${exportFormat.toUpperCase()}"><span>Export<span class="seq-export-format"> ${exportFormat.toUpperCase()}</span></span></button>
         </div>
         <div class="seq-record-status ${status.tone}" role="status">${escapeHtml(status.text)}</div>
-        <div class="row mt-12 seq-tools">
-          <div class="seq-export-panel" aria-label="Sequencer export options">
-            <label>Format <select data-control="export-format"><option value="wav" ${exportFormat === 'wav' ? 'selected' : ''}>WAV</option><option value="mp3" ${exportFormat === 'mp3' ? 'selected' : ''} ${capabilities.mp3Available === false ? 'disabled' : ''}>MP3</option><option value="ogg" ${exportFormat === 'ogg' ? 'selected' : ''}>OGG Vorbis</option></select></label>
-            ${exportFormat === 'wav' ? `<label>Bit depth <select data-control="wav-bits">${[16,24,32].map((bits) => `<option value="${bits}" ${Number(exportOptions.bits) === bits ? 'selected' : ''}>${bits}-bit</option>`).join('')}</select></label>` : ''}
-            ${exportFormat === 'mp3' ? `<label>Bitrate <select data-control="mp3-bitrate">${[128,192,256,320].map((rate) => `<option value="${rate}" ${Number(exportOptions.bitrateKbps) === rate ? 'selected' : ''}>${rate} kbps</option>`).join('')}</select></label>` : ''}
-            ${exportFormat === 'ogg' ? `<label>Quality <select data-control="ogg-quality">${oggQualities.length ? oggQualities.map((quality,index) => `<option value="${index}" ${selectedOggQuality === index ? 'selected' : ''}>${escapeHtml(quality)}</option>`).join('') : '<option value="-1">High (engine default)</option>'}</select></label>` : ''}
-            <label>Tail <input data-control="tail" type="number" min="0" max="30" step="0.5" value="${exportOptions.tailSeconds}"> s</label>
-            <button class="btn" data-action="export-loop" ${state.loop.enabled && !controller.exporting ? '' : 'disabled'}>Export Loop</button>
-            <button class="btn" data-action="cancel-export" ${controller.exporting ? '' : 'disabled'}>Cancel</button>
-            <span class="seq-export-state" data-export-state>${escapeHtml(exportStateText || '')}</span>
-          </div>
-        </div>
         <div class="row mt-12 seq-tools"><label>Snap <select data-control="snap">${Object.keys(SNAP_STEPS).map((value) => `<option ${value === state.snap ? 'selected' : ''}>${value}</option>`).join('')}</select></label>
           <label class="seq-zoom-control">Zoom <input data-control="zoom" type="range" min="0" max="100" value="${zoomToSlider(zoom)}" aria-label="Timeline zoom"><button class="btn seq-zoom-btn" data-action="zoom-fit" title="Frame the whole arrangement (Ctrl+wheel zooms under the cursor)">Fit</button><button class="btn seq-zoom-btn" data-action="zoom-focus" title="Frame the selected clips, or the loop range">Focus</button></label>
           <label><input data-control="loop-enabled" type="checkbox" ${state.loop.enabled ? 'checked' : ''}> Loop</label>
@@ -993,24 +960,6 @@ export function createSequencerModule(hub) {
     container.querySelector('[data-action="toggle-metronome"]')?.addEventListener('click', () => {
       renderMetronomeState(controller.setMetronome(!controller.metronomeEnabled));
     });
-    const requestExport = (range) => {
-      exportOptions = {
-        ...exportOptions,
-        bits: Number(container.querySelector('[data-control="wav-bits"]')?.value ?? exportOptions.bits),
-        bitrateKbps: Number(container.querySelector('[data-control="mp3-bitrate"]')?.value ?? exportOptions.bitrateKbps),
-        qualityIndex: Number(container.querySelector('[data-control="ogg-quality"]')?.value ?? exportOptions.qualityIndex),
-        tailSeconds: Number(container.querySelector('[data-control="tail"]')?.value ?? exportOptions.tailSeconds)
-      };
-      controller.exportMaster(range, exportOptions);
-    };
-    container.querySelector('[data-action="export"]')?.addEventListener('click', () => requestExport('full'));
-    container.querySelector('[data-action="export-loop"]')?.addEventListener('click', () => requestExport('loop'));
-    container.querySelector('[data-action="cancel-export"]')?.addEventListener('click', () => controller.cancelExport());
-    container.querySelector('[data-control="export-format"]')?.addEventListener('change', (event) => { exportOptions.format = event.target.value; render(); });
-    container.querySelector('[data-control="wav-bits"]')?.addEventListener('change', (event) => { exportOptions.bits = Number(event.target.value); });
-    container.querySelector('[data-control="mp3-bitrate"]')?.addEventListener('change', (event) => { exportOptions.bitrateKbps = Number(event.target.value); });
-    container.querySelector('[data-control="ogg-quality"]')?.addEventListener('change', (event) => { exportOptions.qualityIndex = Number(event.target.value); });
-    container.querySelector('[data-control="tail"]')?.addEventListener('change', (event) => { exportOptions.tailSeconds = Number(event.target.value); });
     container.querySelector('[data-action="duplicate-clip"]')?.addEventListener('click', () => controller.duplicateSelectedClips());
     container.querySelector('[data-control="snap"]')?.addEventListener('change', (event) => { controller.model.state.snap = event.target.value; controller.changed(); });
     // On `change`, not `input`: a render rebuilds the whole page, which would
@@ -1598,9 +1547,7 @@ export function createSequencerModule(hub) {
       hub.events.on('midi:ports', render),
       hub.events.on('midi:preference', render),
       hub.events.on('network:change', render),
-      hub.events.on('sequencer:playhead', movePlayhead),
-      hub.events.on('sequencer:export', (status) => { exportStatus = status; render(); }),
-      hub.events.on('sequencer:export-capabilities', render)
+      hub.events.on('sequencer:playhead', movePlayhead)
     );
     document.addEventListener('keydown', keyDown); render();
   }

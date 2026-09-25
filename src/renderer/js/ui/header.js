@@ -1,6 +1,7 @@
 import { bindTempoInput } from '../core/tempoControl.js';
 import { controllerName } from '../core/controllerNode.js';
 import { barBeat } from '../core/musicalTime.js';
+import { installExportPanel } from './exportPanel.js';
 
 /**
  * Header device status. Reflects the controller's connection state.
@@ -179,6 +180,8 @@ export function buildHeader(hub, statusEl) {
   scopeEl?.addEventListener('change', () => renderScope(hub.sequencer?.setPlayScope(scopeEl.value) ?? 'all'));
   hub.events.on('sequencer:playScope', renderScope);
   renderScope(hub.sequencer?.playScope ?? 'all');
+  // Export, after what Play plays: it prints exactly that (D-056).
+  installExportPanel(hub, document.getElementById('transport-export'));
   bindTempoInput(bpmEl, (tempo) => hub.sequencer.setTempo(tempo));
   hub.events.on('sequencer:tempo', (tempo) => {
     if (bpmEl && bpmEl.value !== String(tempo)) bpmEl.value = String(tempo);

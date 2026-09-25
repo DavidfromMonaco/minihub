@@ -196,11 +196,10 @@ test('Sequencer renders actionable Record/Stop guidance and explicit per-track r
     'a 64px track head carries no select: Input and Destination live in the inspector');
   assert.match(view.markup(), /seq-route-dots/,
     'the route stays reportable on the track itself, as two dots');
-  assert.match(view.markup(), /data-control="export-format"[\s\S]*WAV[\s\S]*MP3[\s\S]*OGG Vorbis/);
-  assert.match(view.markup(), /data-control="wav-bits"[\s\S]*24-bit/);
-  assert.doesNotMatch(view.markup(), /data-control="mp3-bitrate"|data-control="ogg-quality"/,
-    'only options relevant to the selected WAV format are rendered');
-  assert.match(view.markup(), /data-action="cancel-export" disabled/);
+  // Export moved to the header (D-056): it renders the Audio Output, which a
+  // project reaches without the Sequencer. Its panel is test/globalExport.
+  assert.doesNotMatch(view.markup(), /data-action="export|data-control="export-format"|seq-export/,
+    'no export of its own: the header carries it');
 });
 
 test('Sequencer metronome switch and light use only native sample-clocked ticks', async () => {

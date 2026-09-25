@@ -449,11 +449,22 @@ export class NodeInstanceManager {
     return true;
   }
 
-  /** Access the internal plugin chain of a VST instance (or null). */
+  /**
+   * Access the internal plugin chain of a VST instance (or null).
+   *
+   * Every edit of the chain is announced (`vst:chainChanged`): the Patch Bay's
+   * card prints the chain, and nothing else told it the chain had moved. A
+   * plugin taken from the canvas menu is added after its node is drawn, and
+   * an agent adds and removes them with the Patch Bay on screen; the card went
+   * on saying "empty", or the old count, until the VST page was visited.
+   */
   getChain(instanceId) {
     const inst = this.instances.get(instanceId);
     if (!inst || inst.type !== 'vst') return null;
-    return new VstChain(inst.content, () => this._persist());
+    return new VstChain(inst.content, () => {
+      this._persist();
+      this.hub.events.emit('vst:chainChanged', { nodeId: instanceId });
+    });
   }
 
   /**

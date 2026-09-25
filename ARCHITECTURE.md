@@ -854,6 +854,13 @@ black readout; the controller and the audio engine moved to the status bar
 ([ui/statusBar.js](src/renderer/js/ui/statusBar.js), fed by `engine:state` and
 `engine:deviceState`).
 
+The transport ends on **Export** ([ui/exportPanel.js](src/renderer/js/ui/exportPanel.js),
+D-056): a panel drawn by the page, not a module, since an export renders the
+Audio Output whatever page is on screen and whether a Sequencer is in the patch
+or not. Its length is `SequencerController.exportSpan`. **Space** plays and
+stops on every page ([ui/transportKeys.js](src/renderer/js/ui/transportKeys.js)),
+a caret or an open list excepted.
+
 L'en-tête **affiche** le projet, il ne le pilote pas : les actions de projet
 sont dans le menu de l'application ([appMenu.js](src/main/appMenu.js)), avec
 les raccourcis habituels. Le processus principal n'envoie qu'un nom de commande

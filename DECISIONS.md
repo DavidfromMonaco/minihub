@@ -3038,3 +3038,51 @@ turns the canvas round" in `test/routing.test.mjs`, the family corner in
 `test/patchBayCopyPaste.test.mjs`, the Add field in
 `test/nodeCreationPaths.test.mjs`, `test/appMenus.test.mjs`, `test/tooltip.test.mjs`,
 the menu description in `test/menuCommands.test.mjs`.
+
+## D-056 — Export belongs to the header, and lasts as long as what Play plays
+
+**Status**: in force · 2026-09-25 · **implemented**, checked by the JS tests
+and in the application, not yet tried by the author
+
+**Context** — The author processed a WAV through a chain of five effects,
+Audio Player into a VST into the Audio Output, with no Sequencer in the patch,
+and wanted the result as a file. The engine already rendered exactly that: an
+export clones every chain, plays every player from its beginning (D-051), and
+writes what reaches the Audio Output. Two things stood in the way. The button
+lived in the Sequencer's toolbar, so it read as an export of the arrangement;
+and its length was the arrangement's last clip, so an empty arrangement gave
+one bar -- four seconds where three minutes and more were expected.
+
+**Decision** — Export is a button of the header, last in the transport, beside
+what Play plays. It opens a panel: the range (the whole, or the loop when it is
+on, each with its length and where that length comes from), the format and its
+quality, the tail, Export and Cancel, and the export's progress; the button
+carries the progress too, so the panel can be closed. The choices are the
+controller's, remembered from one opening to the next.
+
+The whole lasts until the later of two ends, each counted only when Play plays
+it (D-053): the arrangement's last clip, and the longest file an Audio Player
+plays -- cabled to something, not muted, read. A looping player counts its
+file once. One bar when there is neither, as before. The tail follows.
+
+The Sequencer's page loses its export row; its loop controls stay, and set the
+loop the panel offers.
+
+Two alternatives were refused:
+
+- **An Export on the Audio Output card.** Proposed first. The author asked for
+  the header: the export follows the transport's Plays, and a page that is not
+  the Patch Bay would have no export at all.
+- **A length typed by hand.** A choice the program can make is not the user's
+  to make; the panel says the length it will use instead.
+
+**Consequences**
+
+- A player that loops forever exports one pass of its file. Longer needs a loop
+  range, or a clip.
+- An export that fails with the panel closed opens it, so the message is seen.
+
+**Proof in the code** — `SequencerController.exportSpan`,
+`AudioPlayerNodes.longestHeardSeconds`, `ui/exportPanel.js`,
+`#transport-export` in `index.html`. Tests: `test/globalExport.test.mjs`, the
+Sequencer page's markup in `test/sequencerUi.test.mjs`.

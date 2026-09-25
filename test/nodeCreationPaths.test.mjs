@@ -167,3 +167,30 @@ test('every node type can be created from the Add field with correct naming', ()
     ['VST 1', 'Video 1', 'Image 1']
   );
 });
+
+/**
+ * Reported 2026-09-25: the plugin count on a VST card lagged, and only a visit
+ * to the VST's page brought it up to date. A chain edited while the Patch Bay
+ * is on screen -- a plugin taken from this menu, which lands after its node is
+ * drawn, or one an agent adds -- announced nothing the card listened to.
+ */
+test('a plugin added with the Patch Bay on screen is printed on its card', async () => {
+  const hub = setupHub();
+  const { container, svg, addBtn } = makeContainer();
+  createRoutingModule(hub).mount(container);
+  assert.ok(addFromField(addBtn, 'VST'));
+  const [instance] = hub.nodes.list();
+  const texts = () => {
+    const found = [];
+    const walk = (node) => { if (node.textContent) found.push(node.textContent); node.children.forEach(walk); };
+    walk(nodeEl(svg, instance.id));
+    return found;
+  };
+  assert.ok(texts().includes('EMPTY'), 'drawn empty first');
+
+  hub.nodes.getChain(instance.id).append({ pluginId: 'nova', name: 'TDR Nova', role: 'audio-effect' });
+  hub.nodes.getChain(instance.id).append({ pluginId: 'pro-q', name: 'Pro-Q 3', role: 'audio-effect' });
+  await new Promise((resolve) => setTimeout(resolve, 150));
+  assert.ok(texts().includes('2 PLUGINS'), `the header counts them: ${texts().join(' | ')}`);
+  assert.ok(texts().some((text) => text.includes('TDR Nova')), 'and the readout names the first');
+});

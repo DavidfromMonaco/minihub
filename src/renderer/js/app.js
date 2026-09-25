@@ -21,6 +21,7 @@ import { bindMenuCommands } from './core/menuCommands.js';
 import { setupEditHistory } from './core/editHistory.js';
 import { applyHistorySnapshot } from './core/editHistoryApply.js';
 import { installHistoryKeys } from './ui/historyKeys.js';
+import { installTransportKeys } from './ui/transportKeys.js';
 import { installAgentBridge } from './core/agentBridge.js';
 import { installBindingsBarHost } from './core/bindingsBarHost.js';
 import { registerOneRingPanel } from './modules/oneRing/oneRingPanel.js';
@@ -83,6 +84,7 @@ async function main() {
   setupEditHistory(hub, { apply: applyHistorySnapshot });
   hub.history.start();
   installHistoryKeys(hub);
+  installTransportKeys(hub);
   // After the history, so an agent's undo steps the same line the keyboard
   // steps. Returns null when the channel is off, which is the normal case.
   installAgentBridge(hub);

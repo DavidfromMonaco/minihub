@@ -77,6 +77,10 @@ export class SequencerController {
       wavBitDepths: [16, 24, 32], mp3BitratesKbps: [128, 192, 256, 320],
       oggQualityOptions: [], mp3Available: false
     };
+    // The export panel's choices, kept here rather than in the panel: the
+    // panel is built and dropped with each opening, and a format chosen once
+    // is the format of the next export.
+    this.exportOptions = { range: 'full', format: 'wav', bits: 24, bitrateKbps: 320, qualityIndex: -1, tailSeconds: 2 };
     this.playheadPpq = 0;
     this.tempo = 120;
     this.metronomeEnabled = false;
@@ -1450,6 +1454,28 @@ export class SequencerController {
     return clip;
   }
 
+  /**
+   * What an export covers, in quarters: the loop, or the whole of what Play
+   * plays (D-056).
+   *
+   * The whole used to be the arrangement's last clip. An export renders the
+   * Audio Output, which the Audio Players reach without the Sequencer, so a
+   * file processed in the Patch Bay alone came out one bar long. It is now the
+   * later of the arrangement's end and the longest player's file, each counted
+   * only when Play plays it; one bar when neither holds anything.
+   */
+  exportSpan(range = 'full') {
+    const loop = this.model.state.loop;
+    if (range === 'loop') return { startPpq: loop.startPpq, endPpq: loop.endPpq, source: 'loop' };
+    const arrangementEnd = this.playScope === 'players' ? 0 : this.model.arrangementEndPpq();
+    const playerSeconds = this.playScope === 'sequencer' ? 0 : (this.hub.audioPlayers?.longestHeardSeconds?.() || 0);
+    const playersEnd = playerSeconds * this.tempo / 60;
+    if (arrangementEnd <= 0 && playersEnd <= 0) return { startPpq: 0, endPpq: 4, source: 'empty' };
+    return playersEnd > arrangementEnd
+      ? { startPpq: 0, endPpq: playersEnd, source: 'players' }
+      : { startPpq: 0, endPpq: arrangementEnd, source: 'arrangement' };
+  }
+
   async exportMaster(range = 'full', options = {}) {
     if (this.exporting) return false;
     const format = ['wav', 'mp3', 'ogg'].includes(String(options.format).toLowerCase())
@@ -1460,10 +1486,7 @@ export class SequencerController {
     const filePath = options.filePath
       || await this.hub.api.audioPickSave(`${this.hub.project.currentProjectName} Mix`, format);
     if (!filePath) return false;
-    const loop = this.model.state.loop;
-    const startPpq = range === 'loop' ? loop.startPpq : 0;
-    const arrangementEnd = this.model.arrangementEndPpq();
-    const endPpq = range === 'loop' ? loop.endPpq : (arrangementEnd > 0 ? arrangementEnd : 4);
+    const { startPpq, endPpq } = this.exportSpan(range);
     this.exporting = true;
     this._exportWatchdogFrames = -1;
     this._exportWatchdogExpired = false;
