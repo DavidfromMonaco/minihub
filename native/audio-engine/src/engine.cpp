@@ -353,6 +353,7 @@ void Engine::timerCallback()
     setSignalTelemetry(outputObservation, outputSignal);
     setProp(master, "audioOutputObservation", outputObservation);
     ipc_.send(master);
+    sendNodeMeters();
     if (++timingDiagnosticTicks_ >= 10) {
         timingDiagnosticTicks_=0;
         for(auto& chain:chains_) for(auto* plugin:chain.second->copyPlugins()) {
@@ -645,6 +646,33 @@ void Engine::sendStatus()
 void Engine::sendError(const juce::String& code, const juce::String& message)
 {
     ipc_.send(makeError(code, message));
+}
+
+/** The Mixer and Morpher cards' meters (D-055), with the master meter, at
+ *  10 Hz: per node the peak each input brought and the node's output, linear,
+ *  since the last send. Sent only while some node has meters. */
+void Engine::sendNodeMeters()
+{
+    auto* plan = activeAudioPlan_.load(std::memory_order_acquire);
+    if (plan == nullptr) return;
+    juce::Array<juce::var> nodes;
+    for (const auto& node : plan->nodes())
+    {
+        if (!node.meters) continue;
+        juce::var entry = makeObject();
+        setProp(entry, "nodeId", juce::String(node.id));
+        juce::Array<juce::var> inputs;
+        for (size_t i = 0; i < node.sources.size() && i < NodeValues::kMaxInputs; ++i)
+            inputs.add(NodeMeters::take(node.meters->inputPeaks[i]));
+        setProp(entry, "inputs", inputs);
+        setProp(entry, "output", NodeMeters::take(node.meters->outputPeak));
+        nodes.add(entry);
+    }
+    if (nodes.isEmpty()) return;
+    juce::var message = makeObject();
+    setProp(message, "type", "nodeMeters");
+    setProp(message, "nodes", nodes);
+    ipc_.send(message);
 }
 
 void Engine::sendDeviceState()

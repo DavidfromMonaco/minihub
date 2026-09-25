@@ -10,6 +10,20 @@
 
 namespace mlh {
 
+namespace {
+/** The largest magnitude on either channel of a block, for NodeMeters.
+ *  JUCE's findMinAndMax: no allocation. A non-finite sample reads as silence
+ *  here rather than as a peak -- AudioSignalMeter is what counts those. */
+float blockPeak(const juce::AudioBuffer<float>& buffer, int count) noexcept
+{
+    float peak = 0.0f;
+    const int n = std::min(count, buffer.getNumSamples());
+    for (int channel = 0; channel < std::min(2, buffer.getNumChannels()); ++channel)
+        peak = std::max(peak, buffer.getMagnitude(channel, 0, n));
+    return std::isfinite(peak) ? peak : 0.0f;
+}
+} // namespace
+
 void AudioExecutionPlan::SourceDelay::prepare(int delaySamples, int maxBlockSize)
 {
     samples = std::max(0, delaySamples);
@@ -82,7 +96,7 @@ std::unique_ptr<AudioExecutionPlan> AudioExecutionPlan::compile(
         if(n.kind==AudioNodeKind::vst)n.chain=chainLookup(n.id);
         if(n.kind==AudioNodeKind::player)n.player=playerLookup(n.id);
         if(n.kind==AudioNodeKind::sequencer)n.sequencer=sequencer;
-        if(n.kind==AudioNodeKind::mixer||n.kind==AudioNodeKind::morpher)n.signalMeter=std::make_unique<AudioSignalMeter>();
+        if(n.kind==AudioNodeKind::mixer||n.kind==AudioNodeKind::morpher){n.signalMeter=std::make_unique<AudioSignalMeter>();n.meters=std::make_unique<NodeMeters>();}
         int maximumSourceLatency=0;
         if(s.inputs.size()>NodeValues::kMaxInputs){error="too many audio inputs at node: "+n.id;return{};}
         for(const auto& in:s.inputs){const int source=compiled.at(index.at(in.sourceNodeId));const size_t inputIndex=n.sources.size();n.sources.push_back(source);n.setLevel(inputIndex,in.level);n.setMuted(inputIndex,in.muted);maximumSourceLatency=std::max(maximumSourceLatency,plan->nodes_[(size_t)source].latencySamples);}
@@ -145,8 +159,8 @@ void AudioExecutionPlan::process(float* const* hw,int hwChannels,int count,Trans
             // merely because it happens to be compiled in the same plan.
             if(sequencer_)for(size_t source=0;source<n.sources.size();++source)sequencer_->captureSource(nodes_[(size_t)n.sources[source]].id,sourceBuffer(source),count,transport);
         }
-        else if(n.kind==AudioNodeKind::mixer){const float master=n.masterLevel();for(size_t i=0;i<n.sources.size();++i)if(!n.muted(i))for(int ch=0;ch<2;++ch)n.output.addFrom(ch,0,sourceBuffer(i),ch,0,count,n.level(i)*master);if(n.signalMeter){n.signalMeter->observe(n.output,count,AudioSignalBoundary::input);n.signalMeter->observe(n.output,count,AudioSignalBoundary::output);}}
-        else if(n.kind==AudioNodeKind::morpher){const size_t total=n.sources.size();if(total==1){for(int ch=0;ch<2;++ch)n.output.copyFrom(ch,0,sourceBuffer(0),ch,0,count);}else if(total>1){const double start=transport.ppqPosition(),delta=transport.processingPlaying()?transport.quarterNotesPerSample():0.0;for(int sample=0;sample<count;++sample){float p=morpherPosition(n,start+delta*sample);float scaled=p*(float)(total-1);size_t left=(size_t)std::floor(scaled),right=std::min(left+1,total-1);float f=scaled-(float)left;auto gains=equalPowerGains(f);for(int ch=0;ch<2;++ch)n.output.setSample(ch,sample,sourceBuffer(left).getSample(ch,sample)*gains.first+(right==left?0.0f:sourceBuffer(right).getSample(ch,sample)*gains.second));}}if(n.signalMeter){n.signalMeter->observe(n.output,count,AudioSignalBoundary::input);n.signalMeter->observe(n.output,count,AudioSignalBoundary::output);}}
+        else if(n.kind==AudioNodeKind::mixer){const float master=n.masterLevel();for(size_t i=0;i<n.sources.size();++i)if(!n.muted(i))for(int ch=0;ch<2;++ch)n.output.addFrom(ch,0,sourceBuffer(i),ch,0,count,n.level(i)*master);if(n.signalMeter){n.signalMeter->observe(n.output,count,AudioSignalBoundary::input);n.signalMeter->observe(n.output,count,AudioSignalBoundary::output);}if(n.meters){for(size_t i=0;i<n.sources.size()&&i<NodeValues::kMaxInputs;++i){const float gain=n.muted(i)?0.0f:n.level(i)*master;if(gain>0.0f)NodeMeters::raise(n.meters->inputPeaks[i],gain*blockPeak(sourceBuffer(i),count));}NodeMeters::raise(n.meters->outputPeak,blockPeak(n.output,count));}}
+        else if(n.kind==AudioNodeKind::morpher){const size_t total=n.sources.size();if(total==1){for(int ch=0;ch<2;++ch)n.output.copyFrom(ch,0,sourceBuffer(0),ch,0,count);}else if(total>1){const double start=transport.ppqPosition(),delta=transport.processingPlaying()?transport.quarterNotesPerSample():0.0;for(int sample=0;sample<count;++sample){float p=morpherPosition(n,start+delta*sample);float scaled=p*(float)(total-1);size_t left=(size_t)std::floor(scaled),right=std::min(left+1,total-1);float f=scaled-(float)left;auto gains=equalPowerGains(f);for(int ch=0;ch<2;++ch)n.output.setSample(ch,sample,sourceBuffer(left).getSample(ch,sample)*gains.first+(right==left?0.0f:sourceBuffer(right).getSample(ch,sample)*gains.second));}}if(n.signalMeter){n.signalMeter->observe(n.output,count,AudioSignalBoundary::input);n.signalMeter->observe(n.output,count,AudioSignalBoundary::output);}if(n.meters){for(size_t i=0;i<total&&i<NodeValues::kMaxInputs;++i)NodeMeters::raise(n.meters->inputPeaks[i],blockPeak(sourceBuffer(i),count));NodeMeters::raise(n.meters->outputPeak,blockPeak(n.output,count));}}
         else {
             // Preserve the exact pre-Master Audio Output signal in the node's
             // preallocated buffer. This is both the authoritative final mix

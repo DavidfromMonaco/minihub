@@ -665,3 +665,108 @@ test('a cable dragged from a faceplate socket starts at that socket', () => {
     'a dock-branch answer would sit at the card edge; this one is on the panel');
   mod.unmount();
 });
+
+// ---- the cards' live readouts (D-055) ------------------------------------------
+
+/** Every descendant carrying a class, depth first. */
+function allWithClass(root, cls) {
+  const found = [];
+  const stack = [...root.children];
+  while (stack.length) {
+    const n = stack.shift();
+    if (n._classSet?.has(cls)) found.push(n);
+    stack.push(...(n.children || []));
+  }
+  return found;
+}
+
+test('a Mixer card draws a strip per input that the engine\'s meters fill, and the output its L and R', () => {
+  const hub = makeHub();
+  const modules = new ModuleSystem(hub);
+  hub.modules = modules;
+  hub.nodes = new NodeInstanceManager({ events: hub.events, settings: hub.settings, network: hub.network, modules });
+  hub.engine = { deviceState: { running: true, device: 'Speakers', sampleRate: 48000, bufferSize: 256 }, masterMeter: null };
+  const mixer = hub.nodes.create('mixer');
+  hub.network.addNode({ id: 'audio-output', name: 'Audio Output', inputs: [{ id: 'audio-in', type: 'audio' }], outputs: [] });
+
+  const { container, svg } = makeContainer();
+  const mod = createRoutingModule(hub);
+  mod.mount(container);
+  const nodesLayer = findClass(svg, 'nodes');
+  const card = nodesLayer.children.find((c) => c.dataset.nodeId === mixer.id);
+  const fills = allWithClass(card, 'strip-fill');
+  assert.equal(fills.length, mixer.content.inputs.length, 'one strip per input');
+  assert.equal(allWithClass(card, 'strip-value')[0].textContent, '0.0', 'the master at unity');
+
+  hub.events.emit('engine:nodeMeters', { type: 'nodeMeters', nodes: [{ nodeId: mixer.id, inputs: [0.6], output: 0.6 }] });
+  const height = Number(fills[0].getAttribute('height'));
+  assert.ok(height > 0 && height < 24, `the strip rises with its input, -4.4 dB short of the top (${height})`);
+  assert.ok(fills[0]._classSet.has('warn'), 'within 6 dB of the top warms it');
+
+  const output = nodesLayer.children.find((c) => c.dataset.nodeId === 'audio-output');
+  const bars = allWithClass(output, 'strip-fill');
+  assert.equal(bars.length, 2, 'L and R');
+  hub.events.emit('engine:masterMeter', { peakLeft: 1, peakRight: 0 });
+  assert.ok(Number(bars[0].getAttribute('width')) > 100, 'L at full scale');
+  assert.equal(Number(bars[1].getAttribute('width')), 0, 'R silent');
+  assert.ok(bars[0]._classSet.has('hot'));
+
+  mod.unmount();
+  hub.events.emit('engine:masterMeter', { peakLeft: 0, peakRight: 0 });
+  assert.ok(Number(bars[0].getAttribute('width')) > 100, 'unmounted: nothing listens any more');
+});
+
+test('a One Ring card follows its runtime: scene and PLAYING, in place', () => {
+  const hub = makeHub();
+  const modules = new ModuleSystem(hub);
+  hub.modules = modules;
+  hub.nodes = new NodeInstanceManager({ events: hub.events, settings: hub.settings, network: hub.network, modules });
+  const ring = hub.nodes.create('one-ring');
+  const { container, svg } = makeContainer();
+  const mod = createRoutingModule(hub);
+  mod.mount(container);
+  const card = findClass(svg, 'nodes').children.find((c) => c.dataset.nodeId === ring.id);
+  const state = allWithClass(card, 'ring-state')[0];
+  assert.equal(state.textContent, 'STOPPED');
+  hub.events.emit('oneRing:status', { nodeId: ring.id, status: { playing: true, scene: 1 } });
+  assert.equal(state.textContent, 'PLAYING');
+  assert.ok(state._classSet.has('playing'));
+  const secondScene = ring.content.scenes[1].id;
+  assert.ok(allWithClass(card, 'node-readout-text').some((text) => text.children.some((span) => span.textContent.trim() === secondScene)),
+    'the scene it reports');
+  mod.unmount();
+});
+
+test('a card meter rises at once and falls back smoothly, frame by frame', () => {
+  const frames = [];
+  const previous = { raf: globalThis.requestAnimationFrame, caf: globalThis.cancelAnimationFrame };
+  globalThis.requestAnimationFrame = (fn) => { frames.push(fn); return frames.length; };
+  globalThis.cancelAnimationFrame = () => {};
+  try {
+    const hub = makeHub();
+    hub.engine = { deviceState: { running: true, device: 'Speakers', sampleRate: 48000, bufferSize: 256 }, masterMeter: null };
+    hub.network.addNode({ id: 'audio-output', name: 'Audio Output', inputs: [{ id: 'audio-in', type: 'audio' }], outputs: [] });
+    const { container, svg } = makeContainer();
+    const mod = createRoutingModule(hub);
+    mod.mount(container);
+    const output = findClass(svg, 'nodes').children.find((c) => c.dataset.nodeId === 'audio-output');
+    const [left] = allWithClass(output, 'strip-fill');
+    const width = () => Number(left.getAttribute('width'));
+
+    hub.events.emit('engine:masterMeter', { peakLeft: 1, peakRight: 0 });
+    const full = width();
+    assert.ok(full > 100, 'a peak shows at once');
+    hub.events.emit('engine:masterMeter', { peakLeft: 0, peakRight: 0 });
+    assert.equal(width(), full, 'silence does not drop it in one jump');
+    frames.shift()(0);
+    frames.shift()(100);
+    assert.ok(width() < full && width() > 0, `it falls, a little per frame (${width()})`);
+    for (let t = 200; frames.length && t < 10000; t += 100) frames.shift()(t);
+    assert.equal(width(), 0, 'and comes to rest, the frames stopping with it');
+    assert.equal(frames.length, 0);
+    mod.unmount();
+  } finally {
+    globalThis.requestAnimationFrame = previous.raf;
+    globalThis.cancelAnimationFrame = previous.caf;
+  }
+});

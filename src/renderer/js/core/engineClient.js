@@ -266,6 +266,11 @@ export class EngineClient {
         this.masterMeter = msg;
         this.events.emit('engine:masterMeter', msg);
         break;
+      // Each Mixer's and Morpher's input and output peaks, for its Patch Bay
+      // card (D-055). 10 Hz, like masterMeter; nothing keeps it but the card.
+      case 'nodeMeters':
+        this.events.emit('engine:nodeMeters', msg);
+        break;
       case 'plugins': {
         this.diag(`startup:vst-catalog-event rendererMs=${Math.round(performance.now())}`);
         const incoming = oneEntryPerPlugin(msg.plugins || []);

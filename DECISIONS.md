@@ -3014,7 +3014,23 @@ draw, shows it in the shell's panel, and puts it back on the way out. What
 stays Windows' own: the file dialogs, the save confirmations (D-014, not
 reopened), a plugin's own window.
 
+**Amended again the same day: the cards the mockup promised.** Asked by the
+author, controller cards excepted: a card's header says what a VST holds or
+the node's family; a VST's readout numbers its chain; an Arpeggiator's shows
+its mode lit, its rate and its steps; a One Ring's its scene and PLAYING or
+STOPPED, live; the Sequencer's its tracks; the output's its device and two
+meters fed by `masterMeter`; a Mixer's or Morpher's a strip per input -- the
+fader as a mark on a Mixer -- and the master's gain or the step count. The
+strips needed the engine: it measured a Mixer as a whole, once a second, for
+the path diagnostics. `NodeMeters` (audio_network.h) keeps each input's peak
+and the output's, apart from that telemetry so neither drains the other, and
+the engine sends them with `masterMeter` as `nodeMeters`, 10 Hz. A meter rises
+with its reading and falls at 30 dB/s, animated: drawn as they arrive, the
+readings jumped ten times a second and read as lag. Rows of jacks are 24 units
+apart, not 30, controller cards untouched.
+
 **Proof in the code** — `src/main/appMenu.js` (`describeAppMenu`, `invokeAppMenu`), `ui/appMenus.js`, `ui/tooltip.js`,
+`NodeMeters` and `Engine::sendNodeMeters` in `native/audio-engine/src`,
 `src/main/main.js` (the window), `src/renderer/styles/base.css`,
 `core/nodeSummary.js`, `core/nodeTypes.js` (`nodeFamily`),
 `modules/routing/routingModule.js`. Tests: `test/nodeSummary.test.mjs`, "Tab

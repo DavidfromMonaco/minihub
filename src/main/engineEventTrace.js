@@ -18,6 +18,8 @@
 
 const PERIODIC_EVENTS = new Set([
   'masterMeter',
+  // The Mixer and Morpher cards' meters (D-055): sent with masterMeter, 10 Hz.
+  'nodeMeters',
   'hostTiming',
   'audioPathTelemetry',
   'transport',

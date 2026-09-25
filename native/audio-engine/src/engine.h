@@ -167,6 +167,7 @@ private:
     void sendError(const juce::String& code, const juce::String& message);
     void sendChainChanged(const juce::String& chainId);
     void sendDeviceState();
+    void sendNodeMeters();
     void sendMidiOutputState();
     void panicAllMidi();
     void releaseAllMidi();

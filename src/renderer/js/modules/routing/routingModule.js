@@ -30,7 +30,7 @@ import { NetworkViewport } from '../../core/networkViewport.js';
 import { GRID_SIZE, dragPosition } from '../../core/grid.js';
 import { closeContextMenu, openContextMenu } from '../../ui/contextMenu.js';
 import { getNodeType, listNodeTypes, listOmniBoxCategories, nodeFamily } from '../../core/nodeTypes.js';
-import { audioOutputLines, nodeSummaryLines } from '../../core/nodeSummary.js';
+import { audioOutputLines, gainDb, meterReading, nodeSummaryLines, oneRingSceneId } from '../../core/nodeSummary.js';
 import { AUDIO_OUTPUT_NODE_ID } from '../../core/systemNodes.js';
 import {
   NODE_WIDTH,
@@ -83,6 +83,14 @@ const CORNER_LEG = 14;
 const CORNER_STROKE = 6; // base.css .node-corner stroke-width
 const CORNER_ARC = NODE_RADIUS + CORNER_STROKE / 2;
 const READOUT = Object.freeze({ x: 10, y: 34, h: 42, line: 15 });
+// A Mixer's or Morpher's strips inside the readout: one per input, this far
+// apart, as many as fit beside the master's value; the rest are counted.
+const STRIP = Object.freeze({ pitch: 12, width: 5, top: 5, height: 24, labelY: 38, right: 58 });
+// The OPEN chip's width, which the header's tag stands clear of.
+const OPEN_W = 42;
+// How fast a card's meter falls back, in fractions of its 60 dB scale per
+// second -- 30 dB/s, a peak meter's release. It rises at once.
+const METER_FALL = 0.5;
 // One press of the zoom buttons: a quarter of an octave of scale, the wheel's
 // step at a notch and a half.
 const ZOOM_STEP = Math.pow(2, 0.25);
@@ -138,6 +146,16 @@ export function createRoutingModule(hub) {
   let suppressTimer = null;
   let drag = null; // node drag, cable drag, or pan state
   let rearView = false; // front hides cable runs beneath panels; rear exposes them
+  // What the meters and the One Ring's state write into between renders, at
+  // up to 10 Hz: the elements themselves, so a reading never redraws a card.
+  let live = { output: null, strips: new Map(), rings: new Map() };
+  let refreshTimer = null;
+  // The cards' meters, animated between the engine's readings (10 Hz):
+  // element -> { target, shown, apply }. A reading drawn as it arrives jumped
+  // ten times a second and read as lag; this rises with the reading and falls
+  // smoothly towards the next one, one frame at a time, and stops when still.
+  let meters = new Map();
+  let meterFrame = 0;
 
   // Internal Patch Bay clipboard (temporary app state, never persisted).
   let clipboard = null; // { type, content } serializable snapshot
@@ -200,6 +218,8 @@ export function createRoutingModule(hub) {
     cableHits.clear();
     cablesLayer.innerHTML = '';
     nodesLayer.innerHTML = '';
+    live = { output: null, strips: new Map(), rings: new Map() };
+    meters = new Map();
     if (clipDefs) clipDefs.innerHTML = '';
 
     const geo = new Map();
@@ -272,14 +292,17 @@ export function createRoutingModule(hub) {
       // Direct route to the node's own page. Double-click still works, but a
       // visible control is the discoverable one - and it does not depend on
       // the synthesized click that pointer capture retargets during a drag.
-      if (type && hub.modules?.get(node.id)) clipped.appendChild(buildOpenControl(node, width));
+      const hasOpen = Boolean(type && hub.modules?.get(node.id));
+      if (hasOpen) clipped.appendChild(buildOpenControl(node, width));
+      const tag = headerTag(node, type, width, hasOpen);
+      if (tag) clipped.appendChild(tag);
 
-      // The readout: what this node holds, on the One Ring's black screen. The
-      // output has no content; its readout is the device the engine plays on.
-      if (type) clipped.appendChild(buildReadout(readoutLines(node, type), width));
-      else if (node.id === AUDIO_OUTPUT_NODE_ID) {
-        clipped.appendChild(buildReadout(audioOutputLines(hub.engine?.deviceState), width));
-      }
+      // The readout: what this node holds, on the One Ring's black screen. A
+      // Mixer or Morpher draws a strip per input; the output, its device and
+      // its two meters.
+      if (node.type === 'mixer' || node.type === 'morpher') clipped.appendChild(buildStripsReadout(node, width));
+      else if (type) clipped.appendChild(buildReadout(readoutLines(node, type), width, node));
+      else if (node.id === AUDIO_OUTPUT_NODE_ID) clipped.appendChild(buildOutputReadout(width));
 
       g.appendChild(clipped);
       // The family, as the card's top-left corner drawn heavier than its
@@ -362,26 +385,245 @@ export function createRoutingModule(hub) {
    * to say shows its family, dimmed, so every card keeps the same anatomy.
    */
   function readoutLines(node, type) {
-    const lines = nodeSummaryLines(node.type, hub.nodes?.get(node.id)?.content);
+    const lines = nodeSummaryLines(node.type, hub.nodes?.get(node.id)?.content, {
+      ringStatus: hub.oneRing?.statusOf?.(node.id) || null,
+      trackCount: hub.sequencer?.model?.state?.tracks?.length
+    });
     return lines.length ? lines : [{ text: (type.omniBoxCategory || type.label).toUpperCase(), tone: 'dim', tag: '' }];
   }
 
-  function buildReadout(shown, width) {
+  function readoutFrame(width) {
     const g = svgEl('g', { class: 'node-readout', transform: `translate(${READOUT.x} ${READOUT.y})` });
     g.appendChild(svgEl('rect', { class: 'node-readout-screen', width: width - READOUT.x * 2, height: READOUT.h, rx: 2 }));
+    return g;
+  }
+
+  /**
+   * The header's small print, right of the title: what a VST holds, or the
+   * family. Only when it fits beside the title and the OPEN chip -- a title is
+   * never cut for it. A controller card has none; its drawing says enough.
+   */
+  function headerTag(node, type, width, hasOpen) {
+    let text = '';
+    if (node.type === 'vst') {
+      const count = hub.nodes?.get(node.id)?.content?.plugins?.length || 0;
+      text = count ? `${count} plugin${count === 1 ? '' : 's'}` : 'empty';
+    } else if (type) text = type.omniBoxCategory || 'media';
+    else if (node.id === AUDIO_OUTPUT_NODE_ID) text = 'system';
+    if (!text) return null;
+    const right = width - 10 - (hasOpen ? OPEN_W + 8 : 0);
+    const titleWidth = 12 + String(node.name || '').length * 7.4;
+    const tagWidth = text.length * 6.6;
+    if (titleWidth + 10 + tagWidth > right) return null;
+    const el = svgEl('text', { class: 'node-tag', x: right, y: 22, 'text-anchor': 'end' });
+    el.textContent = text.toUpperCase();
+    return el;
+  }
+
+  function buildReadout(shown, width, node) {
+    const g = readoutFrame(width);
     const top = shown.length === 1 ? READOUT.h / 2 + 4 : READOUT.h / 2 - 4;
     shown.forEach((entry, i) => {
       const y = top + i * READOUT.line;
-      const text = svgEl('text', { class: `node-readout-text tone-${entry.tone}`, x: 9, y });
-      text.textContent = entry.text;
+      let x = 9;
+      if (entry.num) {
+        const num = svgEl('text', { class: 'node-readout-text tone-dim', x, y });
+        num.textContent = entry.num;
+        g.appendChild(num);
+        x += 13;
+      }
+      const text = svgEl('text', { class: `node-readout-text tone-${entry.tone}`, x, y });
+      let lastPart = text;
+      if (entry.segments) {
+        entry.segments.forEach((part, index) => {
+          const span = svgEl('tspan', { class: `tone-${part.tone}` });
+          span.textContent = index ? `  ${part.text}` : part.text;
+          text.appendChild(span);
+          lastPart = span;
+        });
+      } else text.textContent = entry.text;
       g.appendChild(text);
       if (entry.tag) {
         const tag = svgEl('text', { class: 'node-readout-tag', x: width - READOUT.x * 2 - 8, y, 'text-anchor': 'end' });
         tag.textContent = entry.tag;
         g.appendChild(tag);
+        if (node?.type === 'one-ring') {
+          tag.classList.add('ring-state');
+          tag.classList.toggle('playing', entry.tag === 'PLAYING');
+          // The scene is the line's last part: "SCENE", then its id.
+          live.rings.set(node.id, { scene: lastPart, state: tag });
+        }
       }
     });
     return g;
+  }
+
+  /**
+   * A Mixer's or Morpher's readout: a strip per input -- its fader as a mark,
+   * what it brings as a meter the engine feeds at 10 Hz (`engine:nodeMeters`)
+   * -- and, on the right, the master's gain (Mixer) or the step count (Morpher).
+   */
+  function buildStripsReadout(node, width) {
+    const g = readoutFrame(width);
+    const content = hub.nodes?.get(node.id)?.content || {};
+    const inputs = Array.isArray(content.inputs) ? content.inputs : [];
+    const inner = width - READOUT.x * 2;
+    const room = Math.max(1, Math.floor((inner - STRIP.right - 9) / STRIP.pitch));
+    const shown = inputs.length > room ? room - 1 : inputs.length;
+    const fills = [];
+    for (let i = 0; i < shown; i += 1) {
+      const input = inputs[i] || {};
+      const x = 9 + i * STRIP.pitch;
+      g.appendChild(svgEl('rect', { class: 'strip-track', x, y: STRIP.top, width: STRIP.width, height: STRIP.height, rx: 1 }));
+      const fill = svgEl('rect', { class: 'strip-fill', x, y: STRIP.top + STRIP.height, width: STRIP.width, height: 0 });
+      g.appendChild(fill);
+      fills.push(fill);
+      if (node.type === 'mixer') {
+        const level = Math.max(0, Math.min(2, Number(input.level) || 0));
+        const markY = STRIP.top + STRIP.height * (1 - level / 2);
+        g.appendChild(svgEl('rect', { class: 'strip-mark', x: x - 1, y: markY - 0.75, width: STRIP.width + 2, height: 1.5 }));
+      }
+      const label = svgEl('text', { class: `strip-label${input.muted ? ' muted' : ''}`, x: x + STRIP.width / 2, y: STRIP.labelY, 'text-anchor': 'middle' });
+      label.textContent = input.muted ? 'M' : String(i + 1);
+      g.appendChild(label);
+    }
+    if (inputs.length > shown) {
+      const more = svgEl('text', { class: 'strip-label', x: 9 + shown * STRIP.pitch, y: STRIP.labelY });
+      more.textContent = `+${inputs.length - shown}`;
+      g.appendChild(more);
+    }
+    const value = svgEl('text', { class: 'strip-value', x: inner - 8, y: 20, 'text-anchor': 'end' });
+    const caption = svgEl('text', { class: 'strip-caption', x: inner - 8, y: 33, 'text-anchor': 'end' });
+    if (node.type === 'mixer') {
+      value.textContent = gainDb(content.masterLevel ?? 1);
+      caption.textContent = 'DB MASTER';
+    } else {
+      value.textContent = String(Number.isSafeInteger(content.stepCount) ? content.stepCount : 0);
+      caption.textContent = 'STEPS';
+    }
+    g.appendChild(value);
+    g.appendChild(caption);
+    live.strips.set(node.id, fills);
+    return g;
+  }
+
+  /** The output's readout: the device, and the master's two meters. */
+  function buildOutputReadout(width) {
+    const g = readoutFrame(width);
+    const inner = width - READOUT.x * 2;
+    const [device] = audioOutputLines(hub.engine?.deviceState);
+    const name = svgEl('text', { class: `node-readout-text small tone-${device.tone}`, x: 9, y: 13 });
+    name.textContent = device.text;
+    g.appendChild(name);
+    const bars = {};
+    [['L', 22], ['R', 32]].forEach(([side, y]) => {
+      const label = svgEl('text', { class: 'strip-label', x: 9, y: y + 4 });
+      label.textContent = side;
+      g.appendChild(label);
+      g.appendChild(svgEl('rect', { class: 'strip-track', x: 20, y, width: inner - 28, height: 4, rx: 1 }));
+      const fill = svgEl('rect', { class: 'strip-fill', x: 20, y, width: 0, height: 4 });
+      g.appendChild(fill);
+      bars[side] = fill;
+    });
+    live.output = { ...bars, span: inner - 28 };
+    const meter = hub.engine?.masterMeter;
+    if (meter) paintOutput(meter);
+    return g;
+  }
+
+  function paintLevel(fill, reading) {
+    fill.classList.toggle('warn', reading.level === 'warn');
+    fill.classList.toggle('hot', reading.level === 'hot');
+  }
+
+  /**
+   * A node's content moved elsewhere -- a knob on a Mixer's fader, a One Ring's
+   * scene from its page -- and its card must say so. Coalesced to one redraw a
+   * tenth of a second, and never under a drag, which holds the elements the
+   * redraw would replace.
+   */
+  function scheduleRefresh() {
+    if (!container || refreshTimer) return;
+    refreshTimer = setTimeout(() => {
+      refreshTimer = null;
+      if (!container) return;
+      if (drag) scheduleRefresh();
+      else render();
+    }, 100);
+  }
+
+  /**
+   * A reading for one meter: shown at once if it is higher, otherwise the
+   * meter falls towards it at METER_FALL, animated. Without frames (a hidden
+   * window, the tests) it is simply drawn.
+   */
+  function setMeter(fill, reading, apply) {
+    paintLevel(fill, reading);
+    let meter = meters.get(fill);
+    if (!meter) {
+      meter = { target: 0, shown: 0, apply };
+      meters.set(fill, meter);
+    }
+    meter.target = reading.fraction;
+    if (reading.fraction >= meter.shown || typeof globalThis.requestAnimationFrame !== 'function') {
+      meter.shown = reading.fraction;
+      apply(meter.shown);
+      return;
+    }
+    animateMeters();
+  }
+
+  function animateMeters() {
+    if (meterFrame || !container) return;
+    let last = globalThis.performance?.now?.() ?? Date.now();
+    const step = (now) => {
+      const seconds = Math.min(0.1, Math.max(0, (now - last) / 1000));
+      last = now;
+      let moving = false;
+      for (const meter of meters.values()) {
+        if (meter.shown <= meter.target) continue;
+        meter.shown = Math.max(meter.target, meter.shown - METER_FALL * seconds);
+        meter.apply(meter.shown);
+        moving = true;
+      }
+      meterFrame = moving && container ? globalThis.requestAnimationFrame(step) : 0;
+    };
+    meterFrame = globalThis.requestAnimationFrame(step);
+  }
+
+  /** `engine:masterMeter`, 10 Hz: the output card's L and R. */
+  function paintOutput(meter) {
+    if (!live.output) return;
+    const { L, R, span } = live.output;
+    [[L, meter?.peakLeft], [R, meter?.peakRight]].forEach(([fill, peak]) => {
+      setMeter(fill, meterReading(peak), (fraction) => fill.setAttribute('width', (span * fraction).toFixed(1)));
+    });
+  }
+
+  /** `engine:nodeMeters`, 10 Hz: each strip of each Mixer and Morpher card. */
+  function paintStrips(message) {
+    for (const entry of Array.isArray(message?.nodes) ? message.nodes : []) {
+      const fills = live.strips.get(entry?.nodeId);
+      if (!fills) continue;
+      fills.forEach((fill, i) => {
+        setMeter(fill, meterReading(entry.inputs?.[i]), (fraction) => {
+          const height = STRIP.height * fraction;
+          fill.setAttribute('height', height.toFixed(1));
+          fill.setAttribute('y', (STRIP.top + STRIP.height - height).toFixed(1));
+        });
+      });
+    }
+  }
+
+  /** `oneRing:status`: the card's scene and PLAYING / STOPPED, in place. */
+  function paintRing({ nodeId, status } = {}) {
+    const ring = live.rings.get(nodeId);
+    if (!ring) return;
+    const id = oneRingSceneId(hub.nodes?.get(nodeId)?.content, status);
+    const state = status?.playing ? 'PLAYING' : 'STOPPED';
+    if (id && ring.scene.textContent !== `  ${id}`) ring.scene.textContent = `  ${id}`;
+    if (ring.state.textContent !== state) ring.state.textContent = state;
+    ring.state.classList.toggle('playing', status?.playing === true);
   }
 
   /** A jack with a cable on it is drawn filled; a free one is hollow. */
@@ -1605,6 +1847,12 @@ export function createRoutingModule(hub) {
       hub.events.on('commands:sourcesChanged', () => render()),
       // The output's readout names the device; a new one redraws it.
       hub.events.on('engine:deviceState', () => render()),
+      // Readings, written into the cards without redrawing them (D-055).
+      hub.events.on('engine:masterMeter', paintOutput),
+      hub.events.on('engine:nodeMeters', paintStrips),
+      hub.events.on('oneRing:status', paintRing),
+      ...['nativeAudio:stateChanged', 'nativeMidi:stateChanged', 'oneRing:contentChanged',
+        'audioPlayer:contentChanged', 'sequencer:changed'].map((name) => hub.events.on(name, scheduleRefresh)),
       // An undo rewrote `networkLayout` under us. The cache below only fills in
       // positions it is MISSING, so without this the nodes stay where they were
       // and the canvas quietly disagrees with the project.
@@ -1932,6 +2180,12 @@ export function createRoutingModule(hub) {
     drag = null;
     alignUndo = null;
     rearView = false;
+    live = { output: null, strips: new Map(), rings: new Map() };
+    meters = new Map();
+    if (meterFrame) globalThis.cancelAnimationFrame?.(meterFrame);
+    meterFrame = 0;
+    clearTimeout(refreshTimer);
+    refreshTimer = null;
   }
 
   return {

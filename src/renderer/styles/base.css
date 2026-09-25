@@ -1188,6 +1188,26 @@ body:has(.ctx-menu) .app-header { -webkit-app-region: no-drag; }
 .node-readout-text.tone-accent { fill: var(--accent); }
 .node-readout-tag { font: 500 9px var(--mono); letter-spacing: .08em; fill: var(--text-faint); }
 .node-type-vst .node-readout-tag { fill: var(--family-plugin); }
+.node-readout-text.small { font-size: 9.5px; }
+.node-readout-text tspan.tone-value { fill: var(--lcd-text); }
+.node-readout-text tspan.tone-dim { fill: var(--text-faint); font-size: 9px; letter-spacing: .1em; }
+.node-readout-text tspan.tone-accent { fill: var(--accent); }
+/* A One Ring's state, as its own screen prints it: STOPPED dim, PLAYING lit. */
+.node-readout-tag.ring-state.playing { fill: var(--accent); }
+/* The header's small print: a VST's plugin count, or the family. */
+.node-tag { font: 500 8.5px var(--font); letter-spacing: .12em; fill: var(--text-faint); pointer-events: none; }
+/* Meters on the cards (Mixer, Morpher, Audio Output): a dark track, a green
+   fill that warms at -6 dB and burns from -1 dB, and a Mixer input's fader as
+   a light mark across its strip. */
+.strip-track { fill: #1a1b1e; }
+.strip-fill { fill: var(--ok); }
+.strip-fill.warn { fill: var(--warn); }
+.strip-fill.hot { fill: var(--danger); }
+.strip-mark { fill: #d6d3cc; }
+.strip-label { font: 8.5px var(--mono); fill: var(--text-faint); }
+.strip-label.muted { fill: var(--warn); }
+.strip-value { font: 500 12px var(--mono); fill: var(--lcd-text); }
+.strip-caption { font: 600 7.5px var(--font); letter-spacing: .12em; fill: var(--text-faint); }
 
 /* --- level of detail: what a node is worth drawing when it is small -------
    Set on the SVG by `applyDetailLevel`. Far out, every legend on the card is
@@ -1198,6 +1218,10 @@ body:has(.ctx-menu) .app-header { -webkit-app-region: no-drag; }
    reads as its own keyboard. `zoom-mute` is past even the name. */
 .routing-svg.zoom-far .node-readout-text,
 .routing-svg.zoom-far .node-readout-tag,
+.routing-svg.zoom-far .node-tag,
+.routing-svg.zoom-far .strip-label,
+.routing-svg.zoom-far .strip-value,
+.routing-svg.zoom-far .strip-caption,
 .routing-svg.zoom-far .node-open-control,
 .routing-svg.zoom-far .port-label,
 .routing-svg.zoom-far .ml-svg-label,

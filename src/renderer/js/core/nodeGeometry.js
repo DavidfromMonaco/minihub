@@ -12,9 +12,12 @@
  */
 export const NODE_WIDTH = 200;
 export const IDENTITY_H = 88; // upper identity/content area height
-const DOCK_MIN_H = 46; // I/O dock minimum height
-const PORT_ROW = 30; // vertical spacing between ports
-const PAD_BOTTOM = 12; // padding below the last port row
+// Rows of 24 since D-055 (they were 30): the mockup the author preferred packs
+// the jacks as a device's rear panel does. A controller card keeps its own
+// geometry below (SURFACE_*), untouched.
+const DOCK_MIN_H = 40; // I/O dock minimum height
+const PORT_ROW = 24; // vertical spacing between ports
+const PAD_BOTTOM = 10; // padding below the last port row
 
 /**
  * A node that carries a `surface` draws its control ports where the device puts

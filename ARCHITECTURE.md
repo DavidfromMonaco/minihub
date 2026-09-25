@@ -888,7 +888,11 @@ its top-left corner; under the title a
 black readout says what the node holds (`core/nodeSummary.js`); a jack is
 filled once a cable is on it, and a cable takes its type's colour, a control
 cable dashed. No drop shadow on a card: a filter per card is what a drag
-repaints every frame.
+repaints every frame. What moves on a card -- the output's L and R
+(`engine:masterMeter`), a Mixer's or Morpher's strips (`engine:nodeMeters`,
+from the engine's `NodeMeters`, 10 Hz), a One Ring's scene and state
+(`oneRing:status`) -- is written into its elements in place, never by a
+redraw; the meters rise at once and fall at 30 dB/s, animated.
 
 La géométrie est centralisée dans
 [nodeGeometry.js](src/renderer/js/core/nodeGeometry.js) : largeur 200,

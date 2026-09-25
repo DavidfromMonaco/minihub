@@ -69,6 +69,31 @@ struct NodeValues final {
     std::array<std::atomic<bool>, kMaxInputs> mutes {};
 };
 
+/** What a Mixer or Morpher card shows on the Patch Bay (D-055): the peak each
+ *  input brought -- after its fader on a Mixer -- and the node's own output,
+ *  since the control thread last took them, at 10 Hz.
+ *
+ *  Kept apart from AudioSignalMeter, whose snapshot the 1 Hz path telemetry
+ *  drains: two readers of one "peak since last read" would each see half the
+ *  peaks. Its own allocation, made at compile() like NodeValues. The audio
+ *  thread only raises a value (a compare-exchange, no lock, no allocation);
+ *  the control thread takes it and leaves zero. */
+struct NodeMeters final {
+    std::array<std::atomic<float>, NodeValues::kMaxInputs> inputPeaks {};
+    std::atomic<float> outputPeak {0.0f};
+
+    static void raise(std::atomic<float>& slot, float peak) noexcept
+    {
+        float held = slot.load(std::memory_order_relaxed);
+        while (peak > held
+               && !slot.compare_exchange_weak(held, peak, std::memory_order_relaxed)) {}
+    }
+    static float take(std::atomic<float>& slot) noexcept
+    {
+        return slot.exchange(0.0f, std::memory_order_relaxed);
+    }
+};
+
 class AudioExecutionPlan {
 public:
     struct SourceDelay {
@@ -148,6 +173,7 @@ public:
         juce::AudioBuffer<float> output;
         juce::AudioBuffer<float> sequencerInput;
         std::unique_ptr<AudioSignalMeter> signalMeter;
+        std::unique_ptr<NodeMeters> meters; // Mixer and Morpher only
         double diagnosticCyclesPerSample = 0.0;
         float diagnosticAmplitude = 0.0f;
         int64_t diagnosticStartSample = 0;

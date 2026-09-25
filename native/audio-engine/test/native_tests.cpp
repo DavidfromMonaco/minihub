@@ -520,6 +520,22 @@ void testAudioStageMeasurements()
     expect(std::abs(mixMeter.inputPeak-1.6f)<.0001f
                &&std::abs(mixMeter.outputPeak-1.6f)<.0001f,
            "passive Mixer telemetry observes overload without changing it");
+    // The card's meters (D-055): each input's peak after its fader, and the
+    // output, kept apart from the path telemetry above, which drained its own.
+    expect(mixer&&mixer->meters,"a Mixer is compiled with the card's meters");
+    if(!mixer||!mixer->meters)return;
+    expect(std::abs(mlh::NodeMeters::take(mixer->meters->inputPeaks[0])-1.6f)<.0001f,
+           "an input's card peak is its block peak after its fader (0.8 x 2.0)");
+    expect(std::abs(mlh::NodeMeters::take(mixer->meters->outputPeak)-1.6f)<.0001f,
+           "the card's output peak is the summed block, unclamped");
+    expect(mlh::NodeMeters::take(mixer->meters->inputPeaks[0])==0.0f
+               &&mlh::NodeMeters::take(mixer->meters->outputPeak)==0.0f,
+           "taking a card peak leaves zero for the next interval");
+    if(auto* live=plan->findNode("mixer-stage"))live->setMuted(0,true);
+    transport.beginBlock();
+    plan->process(hardwareOutput,2,64,transport,midi,&hardwareInput);
+    expect(mlh::NodeMeters::take(mixer->meters->inputPeaks[0])==0.0f,
+           "a muted input brings nothing to its card meter");
 }
 
 void testMorpherStepperMath()
