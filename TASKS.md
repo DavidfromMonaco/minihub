@@ -7,15 +7,6 @@ finished, delete its entry**, in the same commit. What was done lives in git and
 
 ## Started, not finished
 
-**The Patch Bay cards the mockup promised** — asked 2026-09-25, controller
-cards excepted. Built and green: header tags, numbered VST chains, the
-Arpeggiator's, One Ring's and Sequencer's readouts, the output's meters, a
-strip per Mixer / Morpher input fed by the engine's new per-input meters
-(native build 0 warnings, the four native suites passing), the meters' rise
-and release, dist synced (1374/1374). Left: seeing a Mixer's strips move with
-real signal in the application -- not done while the author was playing, to
-keep a MiniHub window off his screen.
-
 **The project's name, the clock ruler, track mute, the players, the context
 menus** —
 asked 2026-09-25 by the author, the day he reported every entry awaiting his
