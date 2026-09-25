@@ -12,9 +12,9 @@ cards excepted. Built and green: header tags, numbered VST chains, the
 Arpeggiator's, One Ring's and Sequencer's readouts, the output's meters, a
 strip per Mixer / Morpher input fed by the engine's new per-input meters
 (native build 0 warnings, the four native suites passing), the meters' rise
-and release. Left: `sync:dist` -- the author is using the MiniHub the check
-launched, and dist cannot be replaced under it -- then seeing a Mixer's strips
-move with real signal.
+and release, dist synced (1374/1374). Left: seeing a Mixer's strips move with
+real signal in the application -- not done while the author was playing, to
+keep a MiniHub window off his screen.
 
 **The project's name, the clock ruler, track mute, the players, the context
 menus** —
