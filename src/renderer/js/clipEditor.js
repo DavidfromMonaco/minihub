@@ -4,6 +4,7 @@ import { historyIntent, isTextEditingTarget } from './ui/historyKeys.js';
 import { notesInBox, selectNoteIds } from './core/clipEditorSelection.js';
 import { MIN_NOTE_PPQ, SNAP_STEPS, clampNoteGroupDelta } from './core/sequencerModel.js';
 import { formatSeconds, secondsMarks, secondsStride } from './ui/secondsRuler.js';
+import { installTooltips } from './ui/tooltip.js';
 
 /** Mirrors AUDITION_MAX_MS in clipEditorWindows.js, which refuses anything
  *  longer on the way in. Asking for what will be refused is a silent click. */
@@ -1073,4 +1074,6 @@ function cleanup() {
 
 globalThis.addEventListener('beforeunload', cleanup);
 
+// Its tooltips in the shell's typeface, as in the main window (D-055).
+installTooltips();
 load();

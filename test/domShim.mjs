@@ -162,6 +162,7 @@ export function fire(el, type, init = {}) {
     ctrlKey: init.ctrlKey ?? false,
     metaKey: init.metaKey ?? false,
     shiftKey: init.shiftKey ?? false,
+    altKey: init.altKey ?? false,
     key: init.key,
     deltaY: init.deltaY ?? 0,
     defaultPrevented: false,

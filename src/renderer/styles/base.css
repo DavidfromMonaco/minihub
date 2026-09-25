@@ -1990,6 +1990,18 @@ body:has(.ctx-menu) .app-header { -webkit-app-region: no-drag; }
 .ctx-menu .ctx-item:focus-visible:not(:disabled) { background:var(--bg-hover); outline:0; }
 .ctx-menu .ctx-item.danger:hover:not(:disabled) { background:rgba(196,71,71,.28); color:#ffd4cf; }
 .ctx-hint { color:var(--text-faint); font:10px var(--mono); }
+/* File, Edit and View (ui/appMenus.js): the shell's menu under the header's
+   buttons, a little wider so the keystrokes line up at the right. */
+.app-menu-popup { min-width: 240px; }
+.app-menu.open { background: var(--bg-active); color: var(--text); }
+/* Tooltips (ui/tooltip.js), in place of the ones Windows drew in Segoe UI. */
+.tooltip {
+  position: fixed; z-index: 1000; max-width: 320px; padding: 5px 8px;
+  border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
+  background: #1d1e22; box-shadow: 0 6px 18px rgba(0, 0, 0, .5);
+  color: var(--text); font: 11.5px/1.4 var(--font); white-space: pre-line;
+  pointer-events: none;
+}
 /* The Patch Bay's menus (routingModule.js): family headings, a search field
    that narrows the node list, and a height that scrolls rather than leaving
    the window. */

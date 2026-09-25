@@ -50,7 +50,7 @@ const { ClipEditorWindows } = require('./clipEditorWindows');
 const { BindingsBarWindows } = require('./bindingsBarWindows');
 const { installProjectCloseGuard } = require('./projectCloseGuard');
 const { quitOnRequest } = require('./quitRequest');
-const { installAppMenu, popupAppMenu, POPUP_CHANNEL } = require('./appMenu');
+const { installAppMenu, describeAppMenu, invokeAppMenu, DESCRIBE_CHANNEL, INVOKE_CHANNEL } = require('./appMenu');
 const { AgentChannel } = require('./agentChannel');
 const { PluginBrowser, withWebViewDebugging } = require('./pluginBrowser');
 
@@ -411,12 +411,12 @@ app.on('before-quit', async (event) => {
 });
 
 // --- Settings IPC -----------------------------------------------------------
-ipcMain.on(POPUP_CHANNEL, (event, request) => {
+// The header's File, Edit and View (D-055): the page draws them from this
+// description and sends back the entry chosen, which the native item performs.
+ipcMain.handle(DESCRIBE_CHANNEL, () => describeAppMenu());
+ipcMain.on(INVOKE_CHANNEL, (event, request) => {
   if (!mainWindow || event.sender !== mainWindow.webContents) return;
-  popupAppMenu({
-    menu: appMenu, window: mainWindow, which: request?.menu, x: request?.x, y: request?.y,
-    zoomFactor: mainWindow.webContents.getZoomFactor()
-  });
+  invokeAppMenu({ menu: appMenu, window: mainWindow, which: request?.menu, index: request?.index });
 });
 ipcMain.handle('settings:load', () => loadSettings());
 ipcMain.handle('settings:save', (_event, settings) => saveSettings(settings));

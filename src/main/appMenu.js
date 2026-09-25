@@ -61,42 +61,94 @@ const CHANNEL = 'menu:command';
 
 /**
  * The window has no native title bar since 2026-09-25 (D-055): the header is
- * drawn by the page and carries File, Edit and View as buttons. A button opens
- * the SAME menu, popped up under it -- never a copy drawn in HTML, which would
- * be a second list of items to keep in step with this one, and would lose the
- * roles (Exit, Zoom, Full Screen) that only Electron can perform.
+ * drawn by the page and carries File, Edit and View as buttons, and the page
+ * draws their menus too, in its own typeface -- a menu Windows drew was the
+ * last Segoe UI on screen. It draws them FROM this file: `describeAppMenu`
+ * reads the same lists the native menu is built from, and a choice comes back
+ * as an index that `invokeAppMenu` clicks on the native item. One list of
+ * entries, and the roles (Exit, Zoom, Full Screen) still performed by
+ * Electron. The native menu stays installed, hidden: it is what answers the
+ * accelerators.
  */
-const POPUP_CHANNEL = 'menu:popup';
-const POPUP_MENUS = Object.freeze(['file', 'edit', 'view']);
+const DESCRIBE_CHANNEL = 'menu:describe';
+const INVOKE_CHANNEL = 'menu:invoke';
+const MENU_NAMES = Object.freeze(['file', 'edit', 'view']);
+
+/**
+ * The View menu's entries. Electron gives a role its label and its keystroke;
+ * they are written here as well so the drawn menu shows what the native one
+ * would, and `hint` is that keystroke as Windows spells it.
+ */
+const VIEW_ITEMS = Object.freeze([
+  { role: 'resetZoom', label: 'Actual Size', hint: 'Ctrl+0' },
+  { role: 'zoomIn', label: 'Zoom In', hint: 'Ctrl++' },
+  { role: 'zoomOut', label: 'Zoom Out', hint: 'Ctrl+-' },
+  { separator: true },
+  { role: 'togglefullscreen', label: 'Toggle Full Screen', hint: 'F11' },
+  { separator: true },
+  { role: 'toggleDevTools', label: 'Toggle Developer Tools', hint: 'Ctrl+Shift+I' }
+]);
 
 function appMenuTemplate(send) {
-  const projectItems = PROJECT_ITEMS.map((item) => (item.separator
+  const commandItems = (items) => items.map((item) => (item.separator
     ? { type: 'separator' }
     : { label: item.label, accelerator: item.accelerator, click: () => send(item.command) }));
   return [
     {
       label: '&File',
-      submenu: [...projectItems, { type: 'separator' }, { role: 'quit', label: 'E&xit' }]
+      submenu: [...commandItems(PROJECT_ITEMS), { type: 'separator' }, { role: 'quit', label: 'E&xit' }]
     },
     {
       label: '&Edit',
-      submenu: EDIT_ITEMS.map((item) => ({
-        label: item.label, accelerator: item.accelerator, click: () => send(item.command)
-      }))
+      submenu: commandItems(EDIT_ITEMS)
     },
     {
       label: '&View',
-      submenu: [
-        { role: 'resetZoom' },
-        { role: 'zoomIn' },
-        { role: 'zoomOut' },
-        { type: 'separator' },
-        { role: 'togglefullscreen' },
-        { type: 'separator' },
-        { role: 'toggleDevTools' }
-      ]
+      submenu: VIEW_ITEMS.map((item) => (item.separator
+        ? { type: 'separator' }
+        : { role: item.role, label: item.label }))
     }
   ];
+}
+
+/** "CmdOrCtrl+Shift+S" as a Windows menu writes it: "Ctrl+Shift+S". */
+function acceleratorHint(accelerator) {
+  return String(accelerator || '').replace(/CmdOrCtrl|CommandOrControl/g, 'Ctrl');
+}
+
+/**
+ * The three menus as the page draws them: names, then entries with their
+ * label (without the `&` of an access key) and keystroke, in the native
+ * menu's order, so an entry's index is the native item's.
+ */
+function describeAppMenu() {
+  return appMenuTemplate(() => {}).map((top, i) => ({
+    id: MENU_NAMES[i],
+    label: top.label.replace('&', ''),
+    items: top.submenu.map((item, index) => {
+      if (item.type === 'separator') return { separator: true };
+      const view = VIEW_ITEMS.find((entry) => entry.role && entry.role === item.role);
+      return {
+        index,
+        label: String(item.label || '').replace('&', ''),
+        hint: view ? view.hint : acceleratorHint(item.accelerator)
+      };
+    })
+  }));
+}
+
+/**
+ * Perform one entry the page chose: the native item's own click, which runs a
+ * role or sends a command exactly as the menu bar did. Anything but a known
+ * menu and an index that names a real entry is ignored.
+ */
+function invokeAppMenu({ menu, window, which, index }) {
+  if (!menu || !window || window.isDestroyed?.()) return false;
+  if (!MENU_NAMES.includes(which) || !Number.isSafeInteger(index) || index < 0) return false;
+  const item = menu.items?.[MENU_NAMES.indexOf(which)]?.submenu?.items?.[index];
+  if (!item || item.type === 'separator' || item.enabled === false || typeof item.click !== 'function') return false;
+  item.click(undefined, window, window.webContents);
+  return true;
 }
 
 /**
@@ -116,22 +168,7 @@ function installAppMenu({ Menu, window }) {
   return menu;
 }
 
-/**
- * Pop one of the menu's three submenus at a point of the window.
- *
- * `x` and `y` come from the page in CSS pixels; the window's zoom (View > Zoom
- * In) makes those larger than the DIPs a popup is placed in, hence the factor.
- * Anything but a known menu name and two finite numbers is ignored: the page
- * asks, it does not describe a menu.
- */
-function popupAppMenu({ menu, window, which, x, y, zoomFactor = 1 }) {
-  if (!menu || !window || window.isDestroyed?.()) return false;
-  if (!POPUP_MENUS.includes(which) || !Number.isFinite(x) || !Number.isFinite(y)) return false;
-  const item = menu.items?.[POPUP_MENUS.indexOf(which)];
-  if (!item?.submenu) return false;
-  const factor = Number.isFinite(zoomFactor) && zoomFactor > 0 ? zoomFactor : 1;
-  item.submenu.popup({ window, x: Math.round(x * factor), y: Math.round(y * factor) });
-  return true;
-}
-
-module.exports = { CHANNEL, POPUP_CHANNEL, POPUP_MENUS, MENU_COMMANDS, appMenuTemplate, installAppMenu, popupAppMenu };
+module.exports = {
+  CHANNEL, DESCRIBE_CHANNEL, INVOKE_CHANNEL, MENU_NAMES, MENU_COMMANDS,
+  appMenuTemplate, describeAppMenu, installAppMenu, invokeAppMenu
+};

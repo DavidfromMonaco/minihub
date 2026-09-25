@@ -74,7 +74,7 @@ function materialRoll(list, label) {
     lines.push(`<line class="${tick % TICKS_PER_BAR === 0 ? 'bar' : 'beat'}" x1="${tick}" y1="0" x2="${tick}" y2="${rows}"></line>`);
   }
   const minimum = length / 400;
-  const notes = list.notes.map((note) => `<rect class="note" x="${note.start}" y="${high - note.pitch + 0.12}" width="${Math.max(minimum, note.duration)}" height="0.76"><title>${escapeHtml(`${noteName(note.pitch)} · velocity ${note.velocity} · channel ${note.channel}`)}</title></rect>`);
+  const notes = list.notes.map((note) => `<rect class="note" x="${note.start}" y="${high - note.pitch + 0.12}" width="${Math.max(minimum, note.duration)}" height="0.76" data-tip="${escapeHtml(`${noteName(note.pitch)} · velocity ${note.velocity} · channel ${note.channel}`)}"></rect>`);
   return `<div class="op-ring-rollframe">
       <span class="op-ring-rollpitch"><span>${escapeHtml(noteName(high))}</span><span>${escapeHtml(noteName(low))}</span></span>
       <svg class="op-ring-roll" viewBox="0 0 ${length} ${rows}" preserveAspectRatio="none" role="img" aria-label="${escapeHtml(`${label}: ${list.notes.length} notes`)}">${shaded.join('')}${lines.join('')}${notes.join('')}</svg>

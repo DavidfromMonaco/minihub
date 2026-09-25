@@ -343,9 +343,8 @@ export function createRoutingModule(hub) {
       role: 'button', tabindex: '0', 'aria-label': `Open ${node.name}`
     });
     group.dataset.nodeAction = 'open';
-    const tooltip = svgEl('title');
-    tooltip.textContent = `Open ${node.name}`;
-    group.appendChild(tooltip);
+    // Drawn by ui/tooltip.js; an SVG <title> is a tooltip Windows draws.
+    group.setAttribute('data-tip', `Open ${node.name}`);
     group.appendChild(svgEl('rect', { width, height: 18, rx: 2 }));
     const label = svgEl('text', { x: width / 2, y: 12.5, 'text-anchor': 'middle' });
     label.textContent = 'OPEN';

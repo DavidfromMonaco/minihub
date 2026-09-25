@@ -76,24 +76,37 @@ test('unsubscribing stops the menu, and no API is not a crash', () => {
 
 // ---- the header's File / Edit / View (D-055) ---------------------------------
 
-test('the header pops the menu\'s own submenu under the button, and nothing else', () => {
-  const popped = [];
-  const submenu = (name) => ({ popup: (options) => popped.push({ name, ...options }) });
-  const menu = { items: mainMenu.POPUP_MENUS.map((name) => ({ submenu: submenu(name) })) };
-  const window = { isDestroyed: () => false };
-
-  assert.deepEqual(mainMenu.POPUP_MENUS, ['file', 'edit', 'view'], 'in the order the template builds them');
-  assert.equal(mainMenu.popupAppMenu({ menu, window, which: 'edit', x: 100.4, y: 36, zoomFactor: 1.25 }), true);
-  assert.deepEqual(popped, [{ name: 'edit', window, x: 126, y: 45 }], 'CSS pixels scaled by the zoom, then rounded');
-
-  for (const which of ['help', '__proto__', '', undefined]) {
-    assert.equal(mainMenu.popupAppMenu({ menu, window, which, x: 0, y: 0 }), false, `refuses ${String(which)}`);
-  }
-  assert.equal(mainMenu.popupAppMenu({ menu, window, which: 'file', x: Number.NaN, y: 0 }), false, 'refuses a point that is not one');
-  assert.equal(popped.length, 1);
+test('the drawn menus are described from the native template, entry for entry', () => {
+  const described = mainMenu.describeAppMenu();
+  const template = mainMenu.appMenuTemplate(() => {});
+  assert.deepEqual(described.map((menu) => menu.id), mainMenu.MENU_NAMES);
+  assert.deepEqual(described.map((menu) => menu.label), ['File', 'Edit', 'View'], 'without the access-key ampersand');
+  described.forEach((menu, m) => {
+    assert.equal(menu.items.length, template[m].submenu.length, `${menu.id}: one entry per native item`);
+    menu.items.forEach((item, i) => {
+      if (template[m].submenu[i].type === 'separator') assert.deepEqual(item, { separator: true });
+      else assert.equal(item.index, i, 'an entry names its native item by position');
+    });
+  });
+  const file = described[0].items;
+  assert.deepEqual(file.find((item) => item.label === 'Save As…'), { index: 6, label: 'Save As…', hint: 'Ctrl+Shift+S' });
+  assert.equal(file.at(-1).label, 'Exit');
+  assert.equal(described[2].items.find((item) => item.label === 'Zoom In').hint, 'Ctrl++', 'a role shows its keystroke too');
 });
 
-test('the three popup names are the template\'s three menus', () => {
-  const labels = mainMenu.appMenuTemplate(() => {}).map((item) => item.label.replace('&', '').toLowerCase());
-  assert.deepEqual(labels, mainMenu.POPUP_MENUS);
+test('a chosen entry is performed by the native item, and nothing else is', () => {
+  const clicked = [];
+  const item = (name, extra = {}) => ({ type: 'normal', click: (...args) => clicked.push([name, ...args]), ...extra });
+  const window = { isDestroyed: () => false, webContents: { id: 1 } };
+  const menu = { items: [
+    { submenu: { items: [item('new'), { type: 'separator' }, item('open')] } },
+    { submenu: { items: [item('undo', { enabled: false })] } },
+    { submenu: { items: [item('zoom')] } }
+  ] };
+  assert.equal(mainMenu.invokeAppMenu({ menu, window, which: 'file', index: 2 }), true);
+  assert.deepEqual(clicked, [['open', undefined, window, window.webContents]], 'with the window, as the menu bar would');
+  for (const [which, index] of [['file', 1], ['edit', 0], ['help', 0], ['file', 9], ['file', -1], ['file', 1.5], ['__proto__', 0]]) {
+    assert.equal(mainMenu.invokeAppMenu({ menu, window, which, index }), false, `refuses ${which} ${index}`);
+  }
+  assert.equal(clicked.length, 1);
 });

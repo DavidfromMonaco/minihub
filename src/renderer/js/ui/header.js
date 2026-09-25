@@ -7,17 +7,6 @@ import { barBeat } from '../core/musicalTime.js';
  */
 export function buildHeader(hub, statusEl) {
   /**
-   * File, Edit and View. The window has no native menu bar any more (D-055);
-   * each button asks main to open that menu under it, so there is one menu,
-   * with its roles and its accelerators, whichever way it is reached.
-   */
-  document.querySelectorAll?.('[data-app-menu]')?.forEach((button) => {
-    button.addEventListener('click', () => {
-      const box = button.getBoundingClientRect();
-      window.hubAPI?.popupAppMenu?.(button.dataset.appMenu, box.left, box.bottom);
-    });
-  });
-  /**
    * The open project's name, where the product's name used to be.
    *
    * It was a second, grey label at the far right while the left said

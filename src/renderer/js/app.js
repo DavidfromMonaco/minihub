@@ -2,6 +2,8 @@ import { createHub } from './core/hub.js';
 import { buildSidebar } from './ui/sidebar.js';
 import { buildHeader } from './ui/header.js';
 import { buildStatusBar } from './ui/statusBar.js';
+import { installAppMenus } from './ui/appMenus.js';
+import { installTooltips } from './ui/tooltip.js';
 import { buildSettingsModal } from './ui/settingsModal.js';
 import { createHomeModule } from './modules/home/homeModule.js';
 import { createMiniLabModule } from './modules/minilab/minilabModule.js';
@@ -94,6 +96,10 @@ async function main() {
 
   buildSidebar(hub, sidebarEl, contentEl);
   buildHeader(hub, statusEl);
+  // File, Edit and View, and every tooltip, drawn in the shell's typeface
+  // rather than by Windows (D-055).
+  installAppMenus();
+  installTooltips();
   buildSettingsModal(hub, modalRoot, settingsButton);
   // File > New / Open / Save. The shell shows the project name only.
   bindMenuCommands(hub);

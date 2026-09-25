@@ -12,6 +12,7 @@
  */
 import { applyMiniLabSurfaceLayout } from './ui/surfaceLayout.js';
 import { controlBindingActionOf } from './core/controlBindingActions.js';
+import { installTooltips } from './ui/tooltip.js';
 
 const root = document.getElementById('bindings-bar-root');
 const api = window.bindingsBarAPI;
@@ -171,4 +172,5 @@ root.addEventListener('click', (event) => {
 globalThis.addEventListener?.('resize', fitFaceplates);
 fitFaceplates();
 
+installTooltips();
 api.ready();

@@ -843,9 +843,13 @@ Since D-055 the header **is** the window's title bar: the window is created
 with `titleBarStyle: 'hidden'` and a `titleBarOverlay`, so Windows draws only
 its three caption buttons, over `.caption-space`, and the rest of the header is
 a drag region (`-webkit-app-region`), switched off while a dialog or a menu is
-open over it. File, Edit and View are buttons that ask main (`menu:popup`) to
-pop the application menu's own submenu under them -- one menu, with its roles
-and accelerators, whichever way it is reached. The transport's values sit in a
+open over it. File, Edit and View are buttons whose menus the page draws
+([ui/appMenus.js](src/renderer/js/ui/appMenus.js)) from main's description of
+the application menu (`menu:describe`), sending back the entry chosen
+(`menu:invoke`), which the native item performs -- one list of entries, its
+roles and accelerators intact. Tooltips are drawn by the page too
+([ui/tooltip.js](src/renderer/js/ui/tooltip.js)): a `title` is taken off its
+element while hovered and given back after. The transport's values sit in a
 black readout; the controller and the audio engine moved to the status bar
 ([ui/statusBar.js](src/renderer/js/ui/statusBar.js), fed by `engine:state` and
 `engine:deviceState`).

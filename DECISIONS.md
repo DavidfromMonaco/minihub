@@ -2965,8 +2965,8 @@ neutral ground (`#0e0f11`), 4 px corners, hairlines rather than shadows, Geist
 and Geist Mono bundled (`styles/fonts`, OFL), values in a black readout. The
 window has no native title bar (`titleBarStyle: 'hidden'` with a
 `titleBarOverlay`): the header is the top of the window, Windows keeps its
-three caption buttons, and File / Edit / View pop the application menu's own
-submenus (`menu:popup`). A status bar holds the controller and the audio
+three caption buttons, and File / Edit / View open the application menu,
+drawn by the page (see the amendment below). A status bar holds the controller and the audio
 engine. On the Patch Bay a card wears its family (`nodeFamily`) as a corner,
 a short, heavy bracket laid on the card's outline, straddling its edge
 (asked on the running build, same day), a readout says what it
@@ -2982,9 +2982,10 @@ Refused:
 - **Put `.omni-pearl` on the whole shell.** Two vocabularies in one screen, two
   kinds of slider, and nothing left to tell an instrument surface from the
   rest. D-012 exists to prevent exactly that.
-- **Menus drawn in HTML.** A second list of items to keep in step with
-  `appMenu.js`, without the roles (Exit, Zoom, Full Screen) only Electron
-  performs.
+- **Menus drawn in HTML as a second list.** A copy of the entries to keep in
+  step with `appMenu.js`, without the roles (Exit, Zoom, Full Screen) only
+  Electron performs. (Menus drawn in HTML *from* that list came later the
+  same day -- below.)
 - **A drop shadow per card**, as in the mockup. A filter on every card is what
   a drag repaints each frame; the outline does the job.
 
@@ -2999,10 +3000,25 @@ Refused:
 - Below 1000 px the menu words hide, as the readout's labels do below 1100:
   the menus stay reachable by their shortcuts, and the transport keeps its room.
 
-**Proof in the code** — `src/main/appMenu.js` (`popupAppMenu`),
+**Amended the same day: the typeface everywhere.** The author asked for Geist
+wherever the page could reach. Three things were still drawn by Windows in
+Segoe UI. Buttons, lists and fields do not inherit a page's typeface; one
+zero-specificity rule makes them. The menus under File, Edit and View were
+Windows' popups: the page now draws them with its own menu, from
+`describeAppMenu` -- the same lists the native menu is built from -- and sends
+back the index chosen, which `invokeAppMenu` clicks on the native item, role
+or command alike. The native menu stays installed, hidden, for the
+accelerators. And every `title` tooltip: `ui/tooltip.js` takes the text off
+the attribute while the pointer is on its element, so Windows has nothing to
+draw, shows it in the shell's panel, and puts it back on the way out. What
+stays Windows' own: the file dialogs, the save confirmations (D-014, not
+reopened), a plugin's own window.
+
+**Proof in the code** — `src/main/appMenu.js` (`describeAppMenu`, `invokeAppMenu`), `ui/appMenus.js`, `ui/tooltip.js`,
 `src/main/main.js` (the window), `src/renderer/styles/base.css`,
 `core/nodeSummary.js`, `core/nodeTypes.js` (`nodeFamily`),
 `modules/routing/routingModule.js`. Tests: `test/nodeSummary.test.mjs`, "Tab
 turns the canvas round" in `test/routing.test.mjs`, the family corner in
 `test/patchBayCopyPaste.test.mjs`, the Add field in
-`test/nodeCreationPaths.test.mjs`.
+`test/nodeCreationPaths.test.mjs`, `test/appMenus.test.mjs`, `test/tooltip.test.mjs`,
+the menu description in `test/menuCommands.test.mjs`.
