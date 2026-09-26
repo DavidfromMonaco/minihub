@@ -22,6 +22,7 @@ import { setupEditHistory } from './core/editHistory.js';
 import { applyHistorySnapshot } from './core/editHistoryApply.js';
 import { installHistoryKeys } from './ui/historyKeys.js';
 import { installTransportKeys } from './ui/transportKeys.js';
+import { installInterfaceLayout } from './ui/interfaceLayout.js';
 import { installAgentBridge } from './core/agentBridge.js';
 import { installBindingsBarHost } from './core/bindingsBarHost.js';
 import { registerOneRingPanel } from './modules/oneRing/oneRingPanel.js';
@@ -135,6 +136,9 @@ async function main() {
   // launch still starts on Home and does not restore the recent project.
   hub.modules.activate(hub.project.initialModule || 'home', contentEl);
   mark('home-first-render');
+  // After the first page: Hybrid 1 docks the Sequencer above it, and moves
+  // the page area to the Patch Bay if the Sequencer was the page.
+  installInterfaceLayout(hub);
 
   // MIDI layer.
   await hub.midi.init();

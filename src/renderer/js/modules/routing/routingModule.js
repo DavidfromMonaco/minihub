@@ -26,6 +26,7 @@
  * with `transform`, ports are jack glyphs, cables are cubic bezier paths.
  */
 import { NetworkLayout, separateOverlaps, alignPositions, framedNodes, NODE_GAP } from '../../core/networkLayout.js';
+import { paneHasKeys } from '../../ui/interfaceLayout.js';
 import { NetworkViewport } from '../../core/networkViewport.js';
 import { GRID_SIZE, dragPosition } from '../../core/grid.js';
 import { closeContextMenu, openContextMenu } from '../../ui/contextMenu.js';
@@ -1577,6 +1578,9 @@ export function createRoutingModule(hub) {
   }
 
   function onKeyDown(e) {
+    // In the Hybrid 1 layout the Sequencer above answers the same keys; the
+    // half pressed last is the one that hears them.
+    if (!paneHasKeys(container)) return;
     // An open menu takes Escape for itself (ui/contextMenu.js), so this one
     // only ever clears the selection.
     if (e.key === 'Escape') {
@@ -1840,6 +1844,11 @@ export function createRoutingModule(hub) {
       fitToNodes();
     }
     window.addEventListener('resize', applyViewBox);
+    // The page area also changes size without the window: the bar between the
+    // two halves of the Hybrid 1 layout.
+    const resizeObserver = typeof globalThis.ResizeObserver === 'function'
+      ? new globalThis.ResizeObserver(() => applyViewBox()) : null;
+    resizeObserver?.observe(container);
 
     subs.push(
       hub.events.on('network:change', onNetworkChange),
@@ -1863,7 +1872,8 @@ export function createRoutingModule(hub) {
         updateAlignControls();
         render();
       }),
-      () => window.removeEventListener('resize', applyViewBox)
+      () => window.removeEventListener('resize', applyViewBox),
+      () => resizeObserver?.disconnect()
     );
   }
 

@@ -43,6 +43,14 @@
       </div>
     </div>
     <div class="header-actions">
+      <div class="layout-switch" role="group" aria-label="Interface">
+        <button class="layout-key" type="button" data-layout="original" aria-pressed="true" title="Original: one page at a time">
+          <svg viewBox="0 0 20 16" aria-hidden="true"><rect x="1.5" y="1.5" width="17" height="13" rx="2"/></svg><span>Original</span>
+        </button>
+        <button class="layout-key" type="button" data-layout="hybrid-1" aria-pressed="false" title="Hybrid 1: the Sequencer above, the Patch Bay or the page you open below">
+          <svg viewBox="0 0 20 16" aria-hidden="true"><rect x="1.5" y="1.5" width="17" height="13" rx="2"/><path d="M1.5 8h17"/></svg><span>Hybrid 1</span>
+        </button>
+      </div>
       <div class="history-controls" aria-label="Edit history">
         <button id="history-undo" class="icon-button" type="button" title="Undo (Ctrl+Z)" aria-label="Undo" disabled>
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -69,7 +77,11 @@
 
   <div class="app-body">
     <nav id="sidebar" class="sidebar" aria-label="Modules"></nav>
-    <main id="content" class="content"></main>
+    <div id="workspace" class="workspace">
+      <section id="content-top" class="content pane-top" aria-label="Sequencer" hidden></section>
+      <div id="pane-splitter" class="pane-splitter" role="separator" aria-orientation="horizontal" aria-valuemin="20" aria-valuemax="80" aria-label="Height of the Sequencer" tabindex="0" title="Drag to share the height (double-click: half and half)" hidden></div>
+      <main id="content" class="content"></main>
+    </div>
   </div>
 
   <footer class="status-bar" aria-label="Status">

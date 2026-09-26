@@ -20,7 +20,9 @@ const ACTIONS = new Map([
   // the menu reaches the shell, the keydown reaches a Clip Editor window the
   // menu does not own. Both end here.
   ['edit:undo', (hub) => hub.history?.undo()],
-  ['edit:redo', (hub) => hub.history?.redo()]
+  ['edit:redo', (hub) => hub.history?.redo()],
+  ['view:layout-original', (hub) => hub.layout?.set('original')],
+  ['view:layout-hybrid-1', (hub) => hub.layout?.set('hybrid-1')]
 ]);
 
 /** The commands answered here, in the order the menu lists them. */

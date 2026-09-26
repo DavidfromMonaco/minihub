@@ -10,14 +10,19 @@ finished, delete its entry**, in the same commit. What was done lives in git and
 **Fewer trips between the Patch Bay and the Sequencer** — asked 2026-09-26 by
 the author after his session "Forward backward", all of it on his word ("fais
 tout ce qu'on a dit du début à la fin").
-- Done: a duplicated or pasted VST node loads its plugins, with their state.
-- To do: the playhead grabbed and dragged, the ruler seeking where it is
-  clicked (on the Snap grid), a click in an empty lane placing it.
-- To do: the metronome's Rec / Play + Rec.
-- To do: a new MIDI track takes the last MIDI input chosen.
-- To do: a pan per track (engine) and per Mixer strip.
-- To do: the Original / Hybrid 1 interfaces, Sequencer above, Patch Bay or
-  the page opened below, buttons in the header and the View menu.
+- Done, seen in the application on a copy of his project: a duplicated VST
+  node loads its plugin (Analog Lab V ready in vst-004, no reopening); the
+  ruler places the playhead where it is clicked (5.1), its grip drags it
+  (7.3), a click in an empty lane places it (2.4); a track's pan (L100, a
+  double-click back to C); the metronome's Rec / Play + Rec.
+- Done, checked by the tests: a new MIDI track takes the last MIDI input
+  chosen; a pan on every Mixer strip; the pan law in the engine (native
+  tests).
+- Done, seen in the application: the Original / Hybrid 1 interfaces -- the
+  Sequencer above, the Patch Bay or the page opened below, the bar between
+  them, the keys to the half pressed last; two keys in the header, the View
+  menu. The author's settings were put back to Original and Play + Rec after
+  the check.
 - To do: "+ MIDI Track" with its instrument, and the plugin opened from the
   track.
 - To do: the MiniLab's Loop / Stop / Play / Rec pads drive the transport --

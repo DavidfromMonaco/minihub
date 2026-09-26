@@ -7,6 +7,7 @@ import { closeContextMenu, openContextMenu } from '../../ui/contextMenu.js';
 import { sequencerCommands } from '../../core/sequencerCommands.js';
 import { STRIDES } from '../../ui/secondsRuler.js';
 import { formatPan } from '../../core/pan.js';
+import { paneHasKeys } from '../../ui/interfaceLayout.js';
 
 /**
  * The two numbers that decide how much arrangement fits on a screen.
@@ -1585,7 +1586,7 @@ export function createSequencerModule(hub) {
   }
 
   function keyDown(event) {
-    if (!container) return;
+    if (!container || !paneHasKeys(container)) return;
     if (event.target?.closest?.('input,select,textarea,[contenteditable="true"]')) return;
     if (event.key === 'Escape' && (drag || marquee)) {
       event.preventDefault();

@@ -360,6 +360,27 @@ body:has(.export-panel) .app-header { -webkit-app-region: no-drag; }
   gap: 2px;
 }
 
+/* The interface's two layouts (ui/interfaceLayout.js): a pair of keys with
+   their picture and their name, the chosen one lit like Play -- visible from
+   across the desk, which is what the author asked of them. */
+.layout-switch {
+  display: inline-flex; margin-right: 10px; padding: 2px; gap: 2px;
+  border: 1px solid var(--border); border-radius: var(--radius-sm); background: #111214;
+}
+.layout-key {
+  height: 24px; display: inline-flex; align-items: center; gap: 6px; padding: 0 9px;
+  border: 0; border-radius: 4px; background: transparent; color: var(--text-dim);
+  font: 600 11px var(--font); white-space: nowrap; cursor: pointer;
+}
+.layout-key svg { width: 17px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.5; }
+.layout-key:hover { background: var(--bg-hover); color: var(--text); }
+.layout-key[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent-line); }
+.layout-key:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* Below this width the header has no room for the names: the transport would
+   slide over View and Export. The pictures stay, lit the same way, and the
+   name is in the tooltip. */
+@media (max-width: 1440px) { .layout-key span { display: none; } .layout-key { padding: 0 7px; } }
+
 /* ---------- Status bar ----------
    The controller and the audio engine, at the foot of the window, where a
    desktop application says what it is connected to (D-055). */
@@ -495,6 +516,37 @@ body:has(.export-panel) .app-header { -webkit-app-region: no-drag; }
 .nav-item.active .nav-icon {
   color: var(--accent);
 }
+
+/* ---------- Workspace: one page, or the Sequencer above one ----------
+   Hybrid 1 docks the Sequencer in the upper half; the page area stays below,
+   where every page still mounts. The upper half's height is set from the
+   script (the CSSOM, which the CSP allows), from the bar between them. */
+.workspace { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.workspace[hidden], .workspace > [hidden] { display: none !important; }
+.workspace > .pane-top { flex: 0 0 50%; }
+.pane-splitter {
+  flex: 0 0 7px; position: relative; cursor: row-resize; background: #101113;
+  border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);
+}
+.pane-splitter::after {
+  content: ""; position: absolute; left: 50%; top: 50%; width: 36px; height: 2px; margin: -1px 0 0 -18px;
+  border-radius: 1px; background: #3a3c42;
+}
+.pane-splitter:hover, .pane-splitter.dragging, .pane-splitter:focus-visible { background: var(--accent-soft); outline: 0; }
+.pane-splitter:hover::after, .pane-splitter.dragging::after, .pane-splitter:focus-visible::after { background: var(--accent); }
+/* The half that hears the keyboard: an outline, on the box, so it does not
+   scroll away with a long page. */
+.workspace.layout-hybrid > [data-pane].pane-active { outline: 1px solid var(--accent-line); outline-offset: -1px; }
+/* The Sequencer's toolbar in the upper half: its controls on as few lines as
+   the width allows, and no page title -- the half is the Sequencer. */
+.pane-top .seq-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; padding: 8px 12px; }
+.pane-top .seq-toolbar > .row, .pane-top .seq-toolbar > .seq-inspector { margin-top: 0; }
+.pane-top .seq-toolbar .page-title, .pane-top .seq-toolbar .seq-track-count { display: none; }
+.pane-top .seq-toolbar > .seq-head-row > .spacer { display: none; }
+/* The header has the tempo; the track dots have the route sentences. */
+.pane-top .seq-tempo-control, .pane-top .seq-route-summary { display: none; }
+.pane-top .seq-inspector { padding: 0; border: 0; background: transparent; }
+.pane-top .seq-record-status { order: 9; flex-basis: 100%; margin-top: 0; padding: 3px 8px; font-size: 10.5px; }
 
 /* ---------- Content ---------- */
 .content {
@@ -2236,4 +2288,4 @@ body ::-webkit-scrollbar-corner { background:transparent; }
 .seq-empty { position:absolute; left:var(--seq-head,260px); right:0; padding:44px 20px; color:var(--text-faint); text-align:center; }
 .seq-editor { min-height:120px; overflow:hidden; }
 .seq-audio-detail { position:relative; height:90px; margin-top:14px; border:1px solid var(--border); border-radius:5px; background:#15201e; overflow:hidden; }
-@media (max-width:1000px) { .seq-tools label:nth-last-of-type(n+5){display:none}.seq-track-head{grid-template-columns:24px 24px minmax(0,1fr) 24px 20px}.seq-track-level{grid-template-columns:minmax(0,1fr)}.seq-track-level output{display:none} }
+@media (max-width:1000px) { .seq-tools label:nth-last-of-type(n+5){display:none}.seq-track-head{grid-template-columns:24px 24px minmax(0,1fr) 24px 20px}.seq-track-level{grid-template-columns:minmax(0,1fr) 44px}.seq-track-level output{display:none} }

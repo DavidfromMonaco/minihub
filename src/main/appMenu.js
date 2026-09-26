@@ -49,12 +49,21 @@ const EDIT_ITEMS = Object.freeze([
 ]);
 
 /**
+ * The interface's layouts, at the top of View: the same choice as the two
+ * keys in the header (ui/interfaceLayout.js), for whoever looks in a menu.
+ */
+const LAYOUT_ITEMS = Object.freeze([
+  { command: 'view:layout-original', label: 'Interface: &Original' },
+  { command: 'view:layout-hybrid-1', label: 'Interface: &Hybrid 1' }
+]);
+
+/**
  * The commands this menu can send, in menu order. The renderer keeps the other
  * half of the pair (`core/menuCommands.js`); a test compares the two lists,
  * because a command nobody answers is a menu entry that does nothing at all.
  */
 const MENU_COMMANDS = Object.freeze(
-  [...PROJECT_ITEMS, ...EDIT_ITEMS].filter((item) => item.command).map((item) => item.command)
+  [...PROJECT_ITEMS, ...EDIT_ITEMS, ...LAYOUT_ITEMS].filter((item) => item.command).map((item) => item.command)
 );
 
 const CHANNEL = 'menu:command';
@@ -104,9 +113,9 @@ function appMenuTemplate(send) {
     },
     {
       label: '&View',
-      submenu: VIEW_ITEMS.map((item) => (item.separator
+      submenu: [...commandItems(LAYOUT_ITEMS), { type: 'separator' }, ...VIEW_ITEMS.map((item) => (item.separator
         ? { type: 'separator' }
-        : { role: item.role, label: item.label }))
+        : { role: item.role, label: item.label }))]
     }
   ];
 }

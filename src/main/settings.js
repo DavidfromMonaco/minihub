@@ -28,6 +28,11 @@ const DEFAULTS = {
   metronomeEnabled: false,
   metronomeMode: 'play-rec',
   metronomeVolume: 0.35,
+  // The interface's layout, 'original' or 'hybrid-1', and the share of the
+  // height the Sequencer takes in the second (ui/interfaceLayout.js). The
+  // user's screen, not a project's.
+  interfaceLayout: 'original',
+  hybridSplit: 0.5,
   // What the transport plays: 'all', 'sequencer' (its clips, no Audio Player)
   // or 'players' (the Audio Players, no clip). A listening choice, like the
   // metronome, so it belongs to the application and not to a project.

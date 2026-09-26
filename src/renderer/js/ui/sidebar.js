@@ -77,7 +77,8 @@ export function buildSidebar(hub, sidebarEl, contentEl) {
 
   const syncActive = () => {
     for (const [moduleId, el] of items) {
-      el.classList.toggle('active', moduleId === hub.modules.activeId);
+      // The docked Sequencer is on screen too, in the Hybrid 1 layout.
+      el.classList.toggle('active', moduleId === hub.modules.activeId || moduleId === hub.modules.dockedId);
     }
   };
 
@@ -113,7 +114,7 @@ export function buildSidebar(hub, sidebarEl, contentEl) {
         const dot = module.navEntry.accent ? '<span class="nav-accent"></span>' : '';
         item.setAttribute(
           'class',
-          'nav-item' + (module.id === hub.modules.activeId ? ' active' : '') + fixed + accent
+          'nav-item' + (module.id === hub.modules.activeId || module.id === hub.modules.dockedId ? ' active' : '') + fixed + accent
         );
         item.setAttribute('data-module-id', module.id);
         item.innerHTML = `
@@ -211,5 +212,7 @@ export function buildSidebar(hub, sidebarEl, contentEl) {
   hub.events.on('module:unregistered', render);
   hub.events.on('nodes:reordered', render);
   hub.events.on('module:activated', syncActive);
+  hub.events.on('module:docked', syncActive);
+  hub.events.on('module:undocked', syncActive);
   render();
 }

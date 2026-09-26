@@ -22,6 +22,50 @@ export class ModuleSystem {
     this.modules = new Map();
     this.activeId = null;
     this.container = null;
+    // A module mounted beside the page area rather than in it: the Sequencer
+    // above the page in the Hybrid 1 layout (ui/interfaceLayout.js).
+    this.docked = null;
+  }
+
+  get dockedId() {
+    return this.docked?.id ?? null;
+  }
+
+  /**
+   * Mount a module in a second container, beside the page area, until
+   * `undock`. The page area keeps working as it always has; opening the docked
+   * module there becomes a request to look at the dock instead, since one
+   * module instance cannot be mounted twice.
+   */
+  dock(id, container) {
+    const module = this.modules.get(id);
+    if (!module || !container) return false;
+    if (this.docked?.id === id && this.docked.container === container) return true;
+    this.undock();
+    if (this.activeId === id) return false;
+    this.docked = { id, container };
+    container.innerHTML = '';
+    try {
+      module.mount?.(container);
+    } catch (err) {
+      console.error(`[modules] dock failed for "${id}":`, err);
+    }
+    this.hub.events.emit('module:docked', id);
+    return true;
+  }
+
+  undock() {
+    const docked = this.docked;
+    if (!docked) return false;
+    this.docked = null;
+    try {
+      this.modules.get(docked.id)?.unmount?.();
+    } catch (err) {
+      console.error(`[modules] unmount failed for "${docked.id}":`, err);
+    }
+    docked.container.innerHTML = '';
+    this.hub.events.emit('module:undocked', docked.id);
+    return true;
   }
 
   register(module) {
@@ -44,6 +88,14 @@ export class ModuleSystem {
   activate(id, container) {
     const module = this.modules.get(id);
     if (!module) return false;
+    // Already on screen, in the dock: nothing to mount, only to look at.
+    if (this.docked?.id === id) {
+      this.hub.events.emit('module:dock-shown', id);
+      return false;
+    }
+    // A page opening another from its own container (the Sequencer's "Open
+    // Patch Bay") must not land in the dock: the page area is the other one.
+    if (container && this.docked && container === this.docked.container) container = this.container;
     if (container) this.container = container;
     if (this.activeId === id) return false;
 
@@ -85,6 +137,7 @@ export class ModuleSystem {
    * when it already was -- to a caller, "it is on screen" is the whole question.
    */
   show(id) {
+    if (this.docked?.id === id) return true;
     if (!this.modules.has(id) || (!this.container && this.activeId !== id)) return false;
     if (this.activeId === id) return true;
     return this.activate(id, this.container);
@@ -118,6 +171,7 @@ export class ModuleSystem {
         console.error(`[modules] unmount failed for "${id}":`, err);
       }
     }
+    if (this.docked?.id === id) this.docked = null;
     this.modules.delete(id);
     if (module.routingNode && this.hub.network) {
       this.hub.network.removeNode(module.routingNode.id);
