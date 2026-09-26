@@ -13,6 +13,7 @@
  */
 
 import { CONTROLLER_NODE_IDS, isControllerNodeId } from './systemNodes.js';
+import { transportKeyOf } from './controllerTransport.js';
 
 /**
  * The node a raw MIDI message leaves by.
@@ -38,7 +39,10 @@ function panicMessages(channel) {
 export function setupMidiRouting(hub) {
   const offMessage = hub.events.on('midi:message', (msg) => {
     // CONTROL is additive: never remove a physical event from its native MIDI
-    // path merely because MiniHub can also expose it as CONTROL.
+    // path merely because MiniHub can also expose it as CONTROL. The one
+    // exception is a transport key the profile declares: it is the
+    // application's Play or Rec, not music (core/controllerTransport.js).
+    if (transportKeyOf(msg)) return;
     hub.network.emitData(nodeForMessage(msg), 'midi-out', msg);
   });
 

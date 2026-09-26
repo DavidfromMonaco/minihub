@@ -284,12 +284,17 @@ body:has(.export-panel) .app-header { -webkit-app-region: no-drag; }
 .export-status { min-height: 15px; color: #7fdaa5; font: 11px var(--mono); overflow-wrap: anywhere; }
 .export-status:empty { display: none; }
 .export-status.error { color: #ffb3aa; }
-@media (max-width: 1100px) { .transport-readout .readout-label { display: none; } }
+/* The header fits a window that is not maximised: below this width the
+   transport overlapped View and Export once the layout keys were added. */
+@media (max-width: 1360px) { .transport-readout .readout-label { display: none; } }
 @media (max-width: 1000px) { .app-menus { display: none; } }
 
 
 .mixer-pan { width:90px; vertical-align:middle; }
-.mixer-pan-value { display:inline-block; width:30px; margin-left:4px; color:var(--text-faint); font:10px var(--mono); }
+/* The values beside a Mixer strip's sliders, readable at a glance. */
+.mixer-value { display:inline-block; margin-left:6px; color:var(--text); font:11px var(--mono); text-align:right; vertical-align:middle; }
+.mixer-level-value { width:58px; }
+.mixer-pan-value { width:34px; }
 .morph-steps { display:grid; grid-template-columns:repeat(8,minmax(44px,1fr)); gap:6px; margin-top:12px; }
 .morph-steps label { padding:5px; border:1px solid var(--border); border-radius:5px; text-align:center; }
 .morph-steps label.active { border-color:var(--accent-morpher); background:rgba(244,114,182,.12); }
@@ -2222,7 +2227,7 @@ body ::-webkit-scrollbar-corner { background:transparent; }
    row, rather than a third that would make every track taller. */
 .seq-track-level { grid-column:1 / 6; grid-row:2; display:grid; grid-template-columns:minmax(0,1fr) 42px 48px 24px; align-items:center; gap:4px; }
 .seq-track-level input[type="range"] { width:100%; height:14px; margin:0; }
-.seq-track-level output { color:var(--text-faint); font:9px var(--mono); text-align:right; }
+.seq-track-level output { color:var(--text-dim); font:9px var(--mono); text-align:right; }
 /* The plugin this track plays, one click away (core/instrumentTrack.js). */
 .seq-track-head .seq-track-plugin { display:grid; place-items:center; color:var(--vst-role-instrument, var(--accent)); }
 .seq-track-head .seq-track-plugin:disabled { opacity:.3; cursor:default; }
@@ -2291,4 +2296,4 @@ body ::-webkit-scrollbar-corner { background:transparent; }
 .seq-empty { position:absolute; left:var(--seq-head,260px); right:0; padding:44px 20px; color:var(--text-faint); text-align:center; }
 .seq-editor { min-height:120px; overflow:hidden; }
 .seq-audio-detail { position:relative; height:90px; margin-top:14px; border:1px solid var(--border); border-radius:5px; background:#15201e; overflow:hidden; }
-@media (max-width:1000px) { .seq-tools label:nth-last-of-type(n+5){display:none}.seq-track-head{grid-template-columns:24px 24px minmax(0,1fr) 20px 24px 20px}.seq-track-level{grid-template-columns:minmax(0,1fr) 44px}.seq-track-level output{display:none} }
+@media (max-width:1000px) { .seq-tools label:nth-last-of-type(n+5){display:none}.seq-track-head{grid-template-columns:24px 24px minmax(0,1fr) 20px 24px 20px}.seq-track-level{grid-template-columns:minmax(0,1fr) 36px 34px 22px}.seq-track-level output{font-size:8.5px} }

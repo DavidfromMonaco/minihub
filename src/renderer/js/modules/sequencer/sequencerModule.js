@@ -6,7 +6,7 @@ import { isCanonicalMidiIngress } from '../../core/sequencerController.js';
 import { closeContextMenu, openContextMenu } from '../../ui/contextMenu.js';
 import { sequencerCommands } from '../../core/sequencerCommands.js';
 import { STRIDES } from '../../ui/secondsRuler.js';
-import { formatPan } from '../../core/pan.js';
+import { dbToGain, formatGainDb, formatPan, gainToDb } from '../../core/stripValues.js';
 import { paneHasKeys } from '../../ui/interfaceLayout.js';
 import { createInstrumentTrack, instrumentPlugins, openPluginWhenReady, trackPlugin } from '../../core/instrumentTrack.js';
 import { icon } from '../../ui/icons.js';
@@ -207,14 +207,6 @@ export function clipsInSpan(tracks, { startPpq = 0, endPpq = 0, fromTrack = 0, t
   });
   return ids;
 }
-
-const gainToDb = (gain) => gain > 0
-  ? Math.max(-60, Math.min(6, 20 * Math.log10(gain))) : -60;
-const dbToGain = (db) => db <= -60 ? 0 : 10 ** (db / 20);
-const formatGainDb = (gain) => {
-  const db = gainToDb(gain);
-  return db <= -60 ? '−∞ dB' : `${db >= 0 ? '+' : ''}${db.toFixed(1)} dB`;
-};
 
 // The renderer CSP deliberately rejects inline style attributes. Keep dynamic
 // layout values as inert data attributes, then apply them through the CSSOM.

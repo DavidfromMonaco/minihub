@@ -42,7 +42,7 @@ import { NetworkLayout } from './networkLayout.js';
 import { VstChain, getVstRole, duplicateVstContent, groupPluginsByFamily } from './vstChain.js';
 import { bindPluginMenu, closePluginMenu } from '../ui/pluginMenu.js';
 import { escapeHtml } from './html.js';
-import { formatPan } from './pan.js';
+import { formatGainDb, formatPan } from './stripValues.js';
 import { normalizeControlBinding, normalizeControlBindings } from './controlBindings.js';
 import { defaultArpeggiatorContent, normalizeArpeggiatorContent } from './arpeggiatorState.js';
 import { createSequence, readSequence } from './oneRingSequence.js';
@@ -88,13 +88,13 @@ function renderNativeAudioEditor(instance, type, hub) {
   const sourceFor = (id) => connections.find((c) => c.to.portId === id)?.from.nodeId || 'Unconnected';
   const channels = content.inputs.map((input, index) => `<div class="row mt-10" data-audio-input="${input.id}">
     <strong>${index + 1}</strong><span class="muted">${escapeHtml(sourceFor(input.id))}</span>
-    <span class="spacer"></span><label>Level <input data-native-control="level" type="range" min="0" max="2" step="0.01" value="${input.level}"></label>
-    ${type.id === 'mixer' ? `<label title="Double-click: centre">Pan <input class="mixer-pan" data-native-control="pan" type="range" min="-100" max="100" step="1" value="${Math.round((input.pan || 0) * 100)}"><output class="mixer-pan-value" data-pan-value>${formatPan(input.pan)}</output></label>` : ''}
+    <span class="spacer"></span><label>Level <input data-native-control="level" type="range" min="0" max="2" step="0.01" value="${input.level}"><output class="mixer-value mixer-level-value" data-level-value>${type.id === 'mixer' ? formatGainDb(input.level) : ''}</output></label>
+    ${type.id === 'mixer' ? `<label title="Double-click: centre">Pan <input class="mixer-pan" data-native-control="pan" type="range" min="-100" max="100" step="1" value="${Math.round((input.pan || 0) * 100)}"><output class="mixer-value mixer-pan-value" data-pan-value>${formatPan(input.pan)}</output></label>` : ''}
     <label><input data-native-control="mute" type="checkbox" ${input.muted ? 'checked' : ''}> Mute</label></div>`).join('');
   const steps = type.id === 'morpher' ? `<div class="row mt-16"><label>Steps <select data-native-control="stepCount">${[4,8,16,32].map((n)=>`<option ${content.stepCount===n?'selected':''}>${n}</option>`).join('')}</select></label></div>
     <div class="morph-steps">${content.steps.slice(0,content.stepCount).map((v,i)=>`<label data-morph-step="${i}"> ${i+1}<input data-native-step="${i}" type="range" min="0" max="1" step="0.01" value="${v}"></label>`).join('')}</div>` : '';
   return `<div class="panel"><div class="row"><h1 class="page-title">${escapeHtml(instance.name)}</h1><span class="spacer"></span><span class="pill accent-${type.id} family-${nodeFamily(type.id)}">${type.label}</span></div>
-    <div class="panel mt-16"><h2 class="panel-title">Ordered Audio Inputs</h2>${channels}${steps}${type.id==='mixer'?`<div class="row mt-16"><label>Master <input data-native-control="masterLevel" type="range" min="0" max="2" step="0.01" value="${content.masterLevel}"></label></div>`:''}</div>
+    <div class="panel mt-16"><h2 class="panel-title">Ordered Audio Inputs</h2>${channels}${steps}${type.id==='mixer'?`<div class="row mt-16"><label>Master <input data-native-control="masterLevel" type="range" min="0" max="2" step="0.01" value="${content.masterLevel}"><output class="mixer-value mixer-level-value" data-master-value>${formatGainDb(content.masterLevel)}</output></label></div>`:''}</div>
     <div class="row mt-16"><span class="spacer"></span><button id="node-delete" class="btn danger">Delete Node</button></div></div>`;
 }
 
@@ -1280,13 +1280,20 @@ export class NodeInstanceManager {
           }
           if (type.id !== 'mixer' && type.id !== 'morpher') return;
           const row=e.target.closest('[data-audio-input]'); const item=row&&instance.content.inputs.find((p)=>p.id===row.dataset.audioInput);
-          if (item && e.target.dataset.nativeControl==='level') item.level=Number(e.target.value);
+          if (item && e.target.dataset.nativeControl==='level') {
+            item.level=Number(e.target.value);
+            // The value beside the slider, as the author asked: a Mixer read by ear alone is a Mixer set twice.
+            const shown=row.querySelector('[data-level-value]'); if (shown && type.id==='mixer') shown.textContent=formatGainDb(item.level);
+          }
           if (item && e.target.dataset.nativeControl==='mute') item.muted=e.target.checked;
           if (item && e.target.dataset.nativeControl==='pan') {
             item.pan=Number(e.target.value)/100;
             const shown=row.querySelector('[data-pan-value]'); if (shown) shown.textContent=formatPan(item.pan);
           }
-          if (e.target.dataset.nativeControl==='masterLevel') instance.content.masterLevel=Number(e.target.value);
+          if (e.target.dataset.nativeControl==='masterLevel') {
+            instance.content.masterLevel=Number(e.target.value);
+            const shown=container.querySelector('[data-master-value]'); if (shown) shown.textContent=formatGainDb(instance.content.masterLevel);
+          }
           if (e.target.dataset.nativeControl==='stepCount') instance.content.stepCount=Number(e.target.value);
           if (e.target.dataset.nativeStep) instance.content.steps[Number(e.target.dataset.nativeStep)]=Number(e.target.value);
           scheduleNativeValues(e.type === 'change');

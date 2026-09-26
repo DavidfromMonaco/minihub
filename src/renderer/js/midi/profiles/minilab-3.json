@@ -759,7 +759,8 @@
             "number": 105
           },
           "mode": "pressure",
-          "confidence": "inferred"
+          "confidence": "inferred",
+          "transport": "loop"
         }
       ]
     },
@@ -800,7 +801,8 @@
             "number": 106
           },
           "mode": "pressure",
-          "confidence": "inferred"
+          "confidence": "inferred",
+          "transport": "stop"
         }
       ]
     },
@@ -841,7 +843,8 @@
             "number": 107
           },
           "mode": "pressure",
-          "confidence": "inferred"
+          "confidence": "inferred",
+          "transport": "play"
         }
       ]
     },
@@ -882,7 +885,8 @@
             "number": 108
           },
           "mode": "pressure",
-          "confidence": "inferred"
+          "confidence": "inferred",
+          "transport": "record"
         }
       ]
     },
@@ -923,7 +927,8 @@
             "number": 109
           },
           "mode": "pressure",
-          "confidence": "inferred"
+          "confidence": "inferred",
+          "transport": "tap"
         }
       ]
     },

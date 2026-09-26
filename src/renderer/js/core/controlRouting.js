@@ -1,5 +1,6 @@
 import { decodeMiniLabControl, profileOfNode } from '../midi/minilabControls.js';
 import { LOADED_PROFILE } from '../midi/loadedProfile.js';
+import { transportKeyOf } from './controllerTransport.js';
 
 
 /**
@@ -22,6 +23,9 @@ import { LOADED_PROFILE } from '../midi/loadedProfile.js';
  */
 export function setupControlRouting(hub) {
   return hub.events.on('midi:message', (msg) => {
+    // A transport key is not a control value: learned onto a plugin, Shift +
+    // Rec would also have moved that parameter.
+    if (transportKeyOf(msg)) return;
     const control = decodeMiniLabControl(msg, profileOfNode(msg?.profileId) ?? LOADED_PROFILE);
     if (!control) return;
     hub.network.emitData(control.sourceNodeId, control.sourcePortId, control);

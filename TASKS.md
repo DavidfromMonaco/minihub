@@ -27,8 +27,13 @@ tout ce qu'on a dit du début à la fin").
   Infinite Space Piano 2 taken from the list made VST 4, loaded it, cabled the
   Sequencer to it and it to Mixer 1 beside the other synths, and opened its
   window; a track's plugin key opened Analog Lab V. D-057.
-- To do: the MiniLab's Loop / Stop / Play / Rec pads drive the transport --
-  checked with the author's keyboard.
+- Built, checked by the tests, not yet tried on the author's keyboard: Shift +
+  Loop / Stop / Play / Rec / Tap drive the transport, Tap as a tap tempo
+  (D-058). CC 105 and 106 seen by the author; 107-109 inferred.
+- Built: the values beside the sliders -- dB and pan on every Mixer strip and
+  its master, and on the tracks at any window width. Not yet seen.
+- Built, not yet seen: the header's readout labels give way below 1360 px so
+  View and Export are not covered in a window that is not maximised.
 
 **The project's name, the clock ruler, track mute, the players, the context
 menus** —

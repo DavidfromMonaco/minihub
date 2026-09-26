@@ -3136,3 +3136,43 @@ a strip -- and the Mixer is also a sub-mix inside a patch.
 `test/pan.test.mjs`, the new cases in `test/sequencer.test.mjs`,
 `test/sequencerUi.test.mjs`, `test/pluginEditor.test.mjs`, and
 `testBalancePanLawAndMixerStripPan` in the native core tests.
+
+## D-058 — A controller's transport keys are the application's shortcuts
+
+**Status**: in force · 2026-09-26 · **implemented**, checked by the JS tests,
+not yet tried by the author on his keyboard
+
+**Context** — The MiniLab 3 prints Loop, Stop, Play, Rec and Tap over pads 4
+to 8 and sends them with Shift held: CC 105 and CC 106, seen by the author in
+the MiniLab page's monitor on 2026-09-26; 107, 108 and 109 by the same run of
+numbers, which the profile had inferred. He wanted to take a take without the
+mouse.
+
+**Decision** — Asked of the author, who chose it: a binding of the profile
+may say `"transport": "play"` (or `stop`, `record`, `loop`, `tap`), and
+MiniHub answers it as the Space bar and the header's buttons: Play starts and
+stops, Stop stops, Rec starts a take and ends it with the transport running,
+Loop turns the loop on and off, Tap sets the tempo from the average of the
+last taps. No cable: the transport is not the signal path. And such a message
+leaves the MIDI path -- not sent to the synths, not written into a take, not
+published as CONTROL -- the one exception to "CONTROL is additive".
+
+Refused: **a cable from the keyboard to the Sequencer's CTRL IN**, a pad bound
+to each command -- what D-042 kept the command inputs for, but a setup redone
+in every project for five keys the keyboard already names.
+
+This revisits D-042's refusal of "a fixed MIDI CC map": nothing is fixed in
+the program. The numbers are the profile's, as data; a keyboard without
+transport keys declares none and nothing changes.
+
+**Consequences**
+
+- Play, Rec and Tap are still `inferred` in the profile: the author's keyboard
+  confirms them by being used.
+- A pad pressed with Shift no longer reaches a plugin; the pad alone (a note)
+  is untouched.
+
+**Proof in the code** — `core/controllerTransport.js`, `transport` in
+`BINDING_KEYS` (`midi/controllerProfile.js`), the five bindings in
+`profiles/minilab-3.json`, the early returns in `core/midiRouting.js` and
+`core/controlRouting.js`. Tests: `test/controllerTransport.test.mjs`.

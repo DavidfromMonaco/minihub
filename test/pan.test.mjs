@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { formatPan } from '../src/renderer/js/core/pan.js';
+import { formatGainDb, formatPan } from '../src/renderer/js/core/stripValues.js';
 import { audioNodeValues } from '../src/renderer/js/core/engineSync.js';
 import { normalizeContentFor } from '../src/renderer/js/core/nodeInstances.js';
 
@@ -28,4 +28,11 @@ test('the live values carry a strip pan to the engine, and nothing for an input 
     { portId: 'audio-in-1', level: 1, muted: false, pan: -1 },
     { portId: 'audio-in-2', level: 0.5, muted: true }
   ]);
+});
+
+test('a gain reads in dB, from silence to +6', () => {
+  assert.equal(formatGainDb(1), '+0.0 dB');
+  assert.equal(formatGainDb(2), '+6.0 dB');
+  assert.equal(formatGainDb(0.5), '-6.0 dB');
+  assert.equal(formatGainDb(0), '−∞ dB');
 });

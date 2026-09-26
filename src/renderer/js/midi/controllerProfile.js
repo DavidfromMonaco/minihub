@@ -123,7 +123,14 @@ const LAYER_KEYS = Object.freeze(['id', 'label']);
 const CONTROL_KEYS = Object.freeze(['id', 'label', 'printed', 'family', 'layout', 'bindings', 'silent']);
 const LAYOUT_KEYS = Object.freeze(['x', 'y']);
 const SURFACE_KEYS = Object.freeze(['width', 'height']);
-const BINDING_KEYS = Object.freeze(['layer', 'when', 'mode', 'encoding', 'range', 'confidence']);
+const BINDING_KEYS = Object.freeze(['layer', 'when', 'mode', 'encoding', 'range', 'confidence', 'transport']);
+/**
+ * A binding that is one of the device's transport keys, printed on it: MiniHub
+ * answers it as its own Play, Stop, Record, Loop or Tap, and takes it off the
+ * MIDI path (core/controllerTransport.js, D-058). Optional, and absent on
+ * every binding that is music or a control.
+ */
+const TRANSPORT_KEYS = Object.freeze(['play', 'stop', 'record', 'loop', 'tap']);
 const WHEN_KEYS = Object.freeze(['kind', 'channel', 'number', 'lsbNumber']);
 const COMPLETENESS_KEYS = Object.freeze(['declared', 'observed', 'inferred', 'untested', 'silent']);
 
@@ -380,6 +387,7 @@ function validateBinding(binding, path, layerIds, errors) {
   if (!isPlainObject(binding)) { fail(errors, path, 'must be an object'); return null; }
   checkKeys(binding, path, BINDING_KEYS, errors);
   enumField(binding, path, 'confidence', errors, CONFIDENCE_LEVELS);
+  enumField(binding, path, 'transport', errors, TRANSPORT_KEYS, { optional: true });
 
   const layer = stringField(binding, path, 'layer', errors);
   if (layer !== null && layer !== ALL_LAYERS && !layerIds.has(layer)) {

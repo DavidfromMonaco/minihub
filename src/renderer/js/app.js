@@ -23,6 +23,7 @@ import { applyHistorySnapshot } from './core/editHistoryApply.js';
 import { installHistoryKeys } from './ui/historyKeys.js';
 import { installTransportKeys } from './ui/transportKeys.js';
 import { installInterfaceLayout } from './ui/interfaceLayout.js';
+import { installControllerTransport } from './core/controllerTransport.js';
 import { installAgentBridge } from './core/agentBridge.js';
 import { installBindingsBarHost } from './core/bindingsBarHost.js';
 import { registerOneRingPanel } from './modules/oneRing/oneRingPanel.js';
@@ -124,6 +125,8 @@ async function main() {
   // MiniLab page happens to be mounted.
   setupMidiRouting(hub);
   setupControlRouting(hub);
+  // The keyboard's own Play, Stop, Rec, Loop and Tap (D-058).
+  installControllerTransport(hub);
   // The bars docked under plugin editors are drawn from this renderer, where
   // the bindings are. After the control manager exists, before any editor can
   // open from a chain replay.
