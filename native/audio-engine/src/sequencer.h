@@ -280,8 +280,18 @@ private:
     /** Message thread: free every retained plan that is neither published nor
      *  claimed by a realtime reader. */
     void reclaimPlans(const Plan* published);
-    static int eventOffset(double target, double blockStart, double qps, int count,
-                           const Transport&) noexcept;
+    /** One block of samples as music: a single run, or, when the loop wraps
+     *  inside it, the run up to the loop end then the run from its start. */
+    struct BlockSpan {
+        double start = 0, qps = 0;
+        int count = 0;
+        bool wraps = false;
+        int wrapSample = 0; // the first sample past the loop end; `count` when the wrap is the next block's start
+        double loopStart = 0, resumePpq = 0; // resumePpq: where `wrapSample` plays
+        /** The sample a musical position sounds at in this block, or -1. */
+        int sampleOf(double target) const noexcept;
+    };
+    static BlockSpan blockSpan(double start, double qps, int count, const Transport&) noexcept;
     double recordedPpq(MidiTake&, Transport&) const noexcept;
     void closeMidiNotes(MidiTake&, double endPpq);
 

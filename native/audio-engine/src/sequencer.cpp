@@ -458,13 +458,33 @@ bool SequencerEngine::retainsPlanForTesting(uint64_t generation) const noexcept
     return std::any_of(plans_.begin(),plans_.end(),[generation](const auto& owned){return owned->generation==generation;});
 }
 
-int SequencerEngine::eventOffset(double target,double start,double qps,int count,const Transport& transport) noexcept
+SequencerEngine::BlockSpan SequencerEngine::blockSpan(double start,double qps,int count,const Transport& transport) noexcept
 {
-    if(qps<=0||count<=0)return-1;
-    if(!transport.loopEnabled()){const double delta=target-start;if(delta<-1.0e-9)return-1;const int offset=(int)std::llround(delta/qps);return offset>=0&&offset<count?offset:-1;}
-    const double a=transport.loopStart(),b=transport.loopEnd(),length=b-a;
-    if(target<a||target>=b||length<=0)return-1;
-    double delta=target-start;if(delta<0)delta+=length;const int offset=(int)std::llround(delta/qps);return offset>=0&&offset<count?offset:-1;
+    BlockSpan span;span.start=start;span.qps=qps;span.count=count;
+    if(qps<=0||count<=0||!transport.loopEnabled())return span;
+    const double a=transport.loopStart(),b=transport.loopEnd();
+    // The same test as `Transport::loopedPpq`, which folds the playhead at the
+    // end of this block: the notes placed here and the clock plugins read must
+    // wrap at the same sample, or they drift apart one loop at a time.
+    if(b-a<=0||start>=b-1.0e-12||start+count*qps<b-1.0e-12)return span;
+    span.wraps=true;span.wrapSample=juce::jlimit(0,count,(int)std::ceil((b-1.0e-12-start)/qps));
+    span.loopStart=a;span.resumePpq=a+std::fmod(std::max(0.0,start+span.wrapSample*qps-b),b-a);
+    return span;
+}
+
+int SequencerEngine::BlockSpan::sampleOf(double target) const noexcept
+{
+    // A sample plays what falls after the previous sample and up to itself.
+    // Rounding to the nearest sample lost whatever fell in the last half sample
+    // of a block: this block rounded it to `count`, out of range, and the next
+    // one saw it as before its start. A lost note-on was a note gone; a lost
+    // note-off a note held over the next ones. Grid notes rarely land there
+    // until a loop shifts them against the blocks, pass after pass.
+    const auto inRun=[this,target](double origin,int first,int last){const double x=(target-origin)/qps;if(!(x>-1.0))return -1;const int sample=first+(int)std::ceil(x-1.0e-4);return sample>=first&&sample<last?sample:-1;};
+    if(qps<=0||count<=0)return -1;
+    if(!wraps)return inRun(start,0,count);
+    const int before=inRun(start,0,wrapSample);if(before>=0)return before;
+    return target>=loopStart-1.0e-9?inRun(resumePpq,wrapSample,count):-1;
 }
 
 void SequencerEngine::processMidi(int count,Transport& transport,MidiExecutionPlan* midiPlan,MidiOutputSink* hardware,double callbackStartMs,MidiProcessorInput* processors) noexcept
@@ -493,7 +513,33 @@ void SequencerEngine::processMidi(int count,Transport& transport,MidiExecutionPl
         if(playing)track.chasePending=false;
         int activeClips=0;
         if(playing&&!muted){for(const auto& clip:track.clips){bool active=false;for(int sample=0;sample<count&&!active;++sample){const double q=transport.ppqAtSample(sample);active=q>=clip.startPpq&&q<clip.startPpq+clip.lengthPpq;}if(active)++activeClips;}
-            for(const auto& event:track.midi){int on=sourceEnded?-1:eventOffset(event.startPpq,start,qps,count,transport),off=eventOffset(event.endPpq,start,qps,count,transport);if(exportContext&&event.startPpq>=exportSourceEndPpq())on=-1;if(on>=0)buffer.addEvent(juce::MidiMessage::noteOn((int)event.channel,(int)event.pitch,(juce::uint8)event.velocity),on);else if(chaseTrack&&!sourceEnded&&!transport.loopEnabled()&&event.startPpq<start&&event.endPpq>start)buffer.addEvent(juce::MidiMessage::noteOn((int)event.channel,(int)event.pitch,(juce::uint8)event.velocity),0);if(off>=0)buffer.addEvent(juce::MidiMessage::noteOff((int)event.channel,(int)event.pitch),off);else if(transport.loopEnabled()&&event.startPpq<transport.loopEnd()&&event.endPpq>=transport.loopEnd()){const int boundary=(int)std::llround((transport.loopEnd()-start)/qps);if(boundary>=0&&boundary<=count)buffer.addEvent(juce::MidiMessage::noteOff((int)event.channel,(int)event.pitch),std::min(count-1,boundary));}}
+            const auto span=blockSpan(start,qps,count,transport);const int split=span.wraps?span.wrapSample:count;
+            const auto onAt=[&](const MidiEvent& event){if(sourceEnded||(exportContext&&event.startPpq>=exportSourceEndPpq()))return -1;return span.sampleOf(event.startPpq);};
+            const auto noteOn=[&](const MidiEvent& event,int sample){buffer.addEvent(juce::MidiMessage::noteOn((int)event.channel,(int)event.pitch,(juce::uint8)event.velocity),sample);};
+            const auto noteOff=[&](const MidiEvent& event,int sample){buffer.addEvent(juce::MidiMessage::noteOff((int)event.channel,(int)event.pitch),sample);};
+            // A run of samples lays its note-offs before its note-ons. At one
+            // sample the buffer keeps the order events went in, and a note-on
+            // placed first was cut by the note-off of the same pitch ending
+            // there -- at every loop wrap, and between two clips when the later
+            // clip came first in the list.
+            const auto offs=[&](int first,int last){for(const auto& event:track.midi){const int off=span.sampleOf(event.endPpq);if(off>=first&&off<last&&onAt(event)!=off)noteOff(event,off);}};
+            const auto ons=[&](int first,int last){for(const auto& event:track.midi){const int on=onAt(event);if(on<first||on>=last)continue;noteOn(event,on);if(span.sampleOf(event.endPpq)==on)noteOff(event,on);}};
+            offs(0,split);
+            const auto chased=[&](const MidiEvent& event){return chaseTrack&&!sourceEnded&&onAt(event)<0&&event.startPpq<start&&event.endPpq>start&&span.sampleOf(event.endPpq)!=0;};
+            for(const auto& event:track.midi)if(chased(event))noteOn(event,0);
+            ons(0,split);
+            if(span.wraps){
+                // The loop wraps inside this block. Whatever still sounds is let
+                // go at the wrap -- a note begun before the loop, one crossing
+                // its end -- and the notes that span the loop start sound again
+                // from it, the chase a seek does. Before, a note begun ahead of
+                // the loop start never sounded inside the loop at all.
+                const int at=std::min(span.wrapSample,count-1);auto held=track.activeNotes;
+                for(const auto& event:track.midi){const auto key=(size_t)((event.channel-1)*128+event.pitch);const int on=onAt(event),off=span.sampleOf(event.endPpq);const bool began=(on>=0&&on<split)||chased(event),ended=off>=0&&off<split;if(began&&!ended&&held[key]<std::numeric_limits<uint16_t>::max())++held[key];else if(ended&&!began&&held[key]>0)--held[key];}
+                for(size_t key=0;key<held.size();++key)for(int left=held[key];left>0;--left)buffer.addEvent(juce::MidiMessage::noteOff((int)(key/128)+1,(int)(key%128)),at);
+                for(const auto& event:track.midi)if(event.startPpq<span.loopStart&&event.endPpq>span.resumePpq)noteOn(event,at);
+                offs(split,count);ons(split,count);
+            }
         }
         if(track.runtime)track.runtime->activeClips.store(activeClips,std::memory_order_release);
         if(sourceStopsThisBlock)for(int channel=1;channel<=16;++channel){buffer.addEvent(juce::MidiMessage::allNotesOff(channel),sourceStopOffset);buffer.addEvent(juce::MidiMessage::allSoundOff(channel),sourceStopOffset);}

@@ -10,6 +10,7 @@ import { dbToGain, formatGainDb, formatPan, gainToDb } from '../../core/stripVal
 import { paneHasKeys } from '../../ui/interfaceLayout.js';
 import { createInstrumentTrack, instrumentPlugins, openPluginWhenReady, trackPlugin } from '../../core/instrumentTrack.js';
 import { icon } from '../../ui/icons.js';
+import { loopBars, loopRangeFromBars } from '../../core/musicalTime.js';
 
 /**
  * The two numbers that decide how much arrangement fits on a screen.
@@ -964,8 +965,8 @@ export function createSequencerModule(hub) {
         <div class="row mt-12 seq-tools"><label>Snap <select data-control="snap">${Object.keys(SNAP_STEPS).map((value) => `<option ${value === state.snap ? 'selected' : ''}>${value}</option>`).join('')}</select></label>
           <label class="seq-zoom-control">Zoom <input data-control="zoom" type="range" min="0" max="100" value="${zoomToSlider(zoom)}" aria-label="Timeline zoom"><button class="btn seq-zoom-btn" data-action="zoom-fit" title="Frame the whole arrangement (Ctrl+wheel zooms under the cursor)">Fit</button><button class="btn seq-zoom-btn" data-action="zoom-focus" title="Frame the selected clips, or the loop range">Focus</button></label>
           <label><input data-control="loop-enabled" type="checkbox" ${state.loop.enabled ? 'checked' : ''}> Loop</label>
-          <label>From <input data-control="loop-start" type="number" min="0" step="0.125" value="${state.loop.startPpq}"></label>
-          <label>To <input data-control="loop-end" type="number" min="0.125" step="0.125" value="${state.loop.endPpq}"></label>
+          <label title="First bar of the loop">From <input data-control="loop-start" type="number" min="1" step="any" value="${loopBars(state.loop).from}"></label>
+          <label title="Last bar of the loop, included">To <input data-control="loop-end" type="number" min="1" step="any" value="${loopBars(state.loop).to}"></label>
         </div>
         ${inspectorMarkup(hub, focusedTrack, sequencerNode.id)}
       </section>
@@ -1036,7 +1037,8 @@ export function createSequencerModule(hub) {
       );
     }, { passive: false });
     for (const key of ['loop-enabled', 'loop-start', 'loop-end']) container.querySelector(`[data-control="${key}"]`)?.addEventListener('change', () => {
-      controller.model.setLoop({ enabled: container.querySelector('[data-control="loop-enabled"]').checked, startPpq: Number(container.querySelector('[data-control="loop-start"]').value), endPpq: Number(container.querySelector('[data-control="loop-end"]').value) }); controller.changed();
+      const range = loopRangeFromBars(container.querySelector('[data-control="loop-start"]').value, container.querySelector('[data-control="loop-end"]').value, controller.model.state.loop);
+      controller.model.setLoop({ enabled: container.querySelector('[data-control="loop-enabled"]').checked, ...range }); controller.changed();
     });
     container.querySelector('[data-timeline-scroll]')?.addEventListener('scroll', (event) => {
       scrollTopPx = event.currentTarget.scrollTop || 0;

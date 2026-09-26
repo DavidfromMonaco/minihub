@@ -66,3 +66,37 @@ export function barStep(quarters, bars) {
   const from = count < 0 && q > start ? start + QUARTERS_PER_BAR : start;
   return Math.max(0, from + count * QUARTERS_PER_BAR);
 }
+
+/**
+ * A loop range as its From and To fields show it: the first bar and the last
+ * bar it holds, both counted from one, as the ruler above the tracks counts
+ * them. "From 1 To 16" is sixteen bars, quarters 0 to 64.
+ *
+ * The fields used to show the quarters themselves, under a ruler numbered in
+ * bars, so "To 16" looped four bars. The export panel already said "bars 1 to
+ * 16" of the same range: this is its reading, and the fields now agree with it.
+ *
+ * A range set in quarters that does not fall on bar lines (the agent channel's
+ * `loop` can set one) shows its fraction rather than being rounded out of
+ * sight: three decimals of a bar, finer than a sixteenth.
+ */
+export function loopBars(loop) {
+  const round = (value) => Math.round(value * 1000) / 1000;
+  const startPpq = Math.max(0, Number(loop?.startPpq) || 0);
+  const endPpq = Math.max(startPpq, Number(loop?.endPpq) || 0);
+  return { from: round(startPpq / QUARTERS_PER_BAR + 1), to: round(endPpq / QUARTERS_PER_BAR) };
+}
+
+/**
+ * The quarters a From and To typed in bars stand for. A To before the From
+ * makes the loop the From bar alone; a field that is not a number keeps what
+ * the loop had (`fallback`), so clearing a field does not move the loop.
+ */
+export function loopRangeFromBars(from, to, fallback = {}) {
+  const read = (value) => (value === '' || value === null || value === undefined ? NaN : Number(value));
+  const kept = loopBars(fallback);
+  const fromBar = Math.max(1, Number.isFinite(read(from)) ? read(from) : kept.from);
+  const toBar = Number.isFinite(read(to)) ? read(to) : kept.to;
+  const startPpq = (fromBar - 1) * QUARTERS_PER_BAR;
+  return { startPpq, endPpq: Math.max(toBar * QUARTERS_PER_BAR, startPpq + QUARTERS_PER_BAR) };
+}

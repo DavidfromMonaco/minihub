@@ -95,8 +95,13 @@ public:
  void beginBlock() noexcept { blockBpm_.store(bpm()); blockPlaying_.store(playing()); blockSerial_.fetch_add(1, std::memory_order_relaxed); }
  // Which block this is: what one node leaves for another is only good for the block it was left in.
  uint64_t blockSerial() const noexcept { return blockSerial_.load(std::memory_order_relaxed); }
- double ppqAtSample(int offset) const noexcept { double q=ppqPosition()+std::max(0,offset)*quarterNotesPerSample();if(loopEnabled()){const auto a=loopStart(),b=loopEnd(),length=b-a;if(length>0&&q>=b-1.0e-12){q=a+std::fmod(std::max(0.0,q-a),length);if(q>=b-1.0e-12)q=a;}}return q; }
- void advance(int n) noexcept { if(!processingPlaying()||n<=0)return; samples_.fetch_add(n);double q=ppq_.load()+double(n)*blockBpm_.load()/(60.0*sampleRate_.load());if(loopEnabled()){const auto a=loopStart(),b=loopEnd(),length=b-a;if(length>0&&q>=b-1.0e-12){q=a+std::fmod(std::max(0.0,q-a),length);if(q>=b-1.0e-12)q=a;}}ppq_.store(q); }
+ double ppqAtSample(int offset) const noexcept { const double from=ppqPosition();return loopedPpq(from,from+std::max(0,offset)*quarterNotesPerSample()); }
+ void advance(int n) noexcept { if(!processingPlaying()||n<=0)return; samples_.fetch_add(n);const double from=ppq_.load();ppq_.store(loopedPpq(from,from+double(n)*blockBpm_.load()/(60.0*sampleRate_.load()))); }
+ /** Where playing on from `from` to `to` lands. The loop folds only a playhead
+  *  that CROSSES its end: one already past it plays on, as in other DAWs. Folding
+  *  from anywhere past the end threw a playhead at bar 20 to some point inside a
+  *  bar 1-4 loop the moment Loop was ticked, with every note it held left on. */
+ double loopedPpq(double from,double to) const noexcept { if(!loopEnabled())return to;const auto a=loopStart(),b=loopEnd(),length=b-a;if(length<=0||from>=b-1.0e-12||to<b-1.0e-12)return to;double q=a+std::fmod(std::max(0.0,to-a),length);if(q>=b-1.0e-12)q=a;return q; }
  juce::Optional<PositionInfo> getPosition() const override { PositionInfo i; TimeSignature signature; signature.numerator=4; signature.denominator=4;LoopPoints points;points.ppqStart=loopStart();points.ppqEnd=loopEnd(); const auto samples=samplePosition(); const auto ppq=ppqPosition(); i.setBpm(blockBpm_.load()); i.setTimeSignature(signature); i.setIsPlaying(processingPlaying()); i.setIsRecording(recording()); i.setIsLooping(loopEnabled());i.setLoopPoints(points);i.setTimeInSamples(samples); i.setTimeInSeconds(double(samples)/sampleRate_.load()); i.setPpqPosition(ppq); i.setPpqPositionOfLastBarStart(std::floor(ppq/4.0)*4.0); return i; }
 private:
  std::atomic<double> bpm_{kDefaultBpm},sampleRate_{48000.0},ppq_{0.0},blockBpm_{kDefaultBpm};

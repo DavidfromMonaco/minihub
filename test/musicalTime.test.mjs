@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { QUARTERS_PER_BAR, barBeat, barStart, barStep } from '../src/renderer/js/core/musicalTime.js';
+import { QUARTERS_PER_BAR, barBeat, barStart, barStep, loopBars, loopRangeFromBars } from '../src/renderer/js/core/musicalTime.js';
 
 test('a position is written bar.beat, counted from one', () => {
   assert.equal(barBeat(0), '1.1', 'the beginning is bar one beat one, not zero');
@@ -46,4 +46,23 @@ test('stepping back from mid-bar lands on the bar you are in', () => {
   assert.equal(barStep(10.5, 0), 10.5);
   assert.equal(barStep(10, Number.NaN), 10);
   assert.equal(barStep(Number.NaN, 1), 0);
+});
+
+test('the loop fields count bars as the ruler does: From 1 To 16 is sixteen bars', () => {
+  // The author's report of 2026-09-26: "To 16" looped four bars, because the
+  // fields showed quarters under a ruler numbered in bars.
+  assert.deepEqual(loopRangeFromBars('1', '16'), { startPpq: 0, endPpq: 64 });
+  assert.deepEqual(loopBars({ startPpq: 0, endPpq: 64 }), { from: 1, to: 16 });
+  assert.deepEqual(loopRangeFromBars('5', '8'), { startPpq: 16, endPpq: 32 });
+  // What a project saved before holds reads back as the bars it always played.
+  assert.deepEqual(loopBars({ startPpq: 0, endPpq: 16 }), { from: 1, to: 4 });
+  // A range off the bar lines, which the agent channel can set, shows its fraction.
+  assert.deepEqual(loopBars({ startPpq: 1, endPpq: 6 }), { from: 1.25, to: 1.5 });
+});
+
+test('a loop typed backwards or half typed stays a loop', () => {
+  assert.deepEqual(loopRangeFromBars('9', '3'), { startPpq: 32, endPpq: 36 }, 'a To before the From is the From bar alone');
+  assert.deepEqual(loopRangeFromBars('4', '4'), { startPpq: 12, endPpq: 16 }, 'From 4 To 4 is bar four');
+  assert.deepEqual(loopRangeFromBars('', '8', { startPpq: 16, endPpq: 64 }), { startPpq: 16, endPpq: 32 }, 'a cleared field keeps what the loop had');
+  assert.deepEqual(loopRangeFromBars('0', '2'), { startPpq: 0, endPpq: 8 }, 'there is no bar before bar one');
 });

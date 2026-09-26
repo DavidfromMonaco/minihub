@@ -946,6 +946,39 @@ void testSequencerMidiStressLoopSeekAndStop()
     if(trimmedClips&&trimmedClips->size()){mlh::setProp(trimmedClips->getReference(0),"sourceOffsetPpq",0.0);mlh::setProp(trimmedClips->getReference(0),"lengthPpq",4.0);}tracks.clear();tracks.add(loopTrack);expect(sequencer.sync(makeSequencerProject(tracks),[&](const std::string&id){return id=="vst-stress"?&destination:nullptr;},48000,24001,info,error),"MIDI arrangement restores after trim test");transport.setBpm(60);transport.seekPpq(0);sequencer.panic();transport.beginBlock();sequencer.processMidi(24001,transport);midi.clear();destination.pullMidi(midi,24001);bool bpmExact=false;for(const auto& event:midi)bpmExact|=event.getMessage().isNoteOn()&&event.samplePosition==24000;expect(bpmExact,"BPM changes immediately alter native sample scheduling without moving musical PPQ");
 }
 
+/** The loop as the author met it on 2026-09-26: notes held over the next ones,
+ *  and notes gone from the middle. 120 BPM at 48 kHz: 24000 samples a quarter. */
+void testSequencerLoopKeepsEveryNote()
+{
+    mlh::SequencerEngine sequencer;sequencer.prepare(48000,24001);mlh::Chain destination("vst-loop");destination.setMidiEnabled(true);
+    juce::Array<juce::var> info;std::string error;mlh::Transport transport;transport.setSampleRate(48000);transport.setBpm(120);
+    const auto load=[&](const juce::Array<juce::var>& notes,const char* what){juce::var track=midiTrack("track-loop-notes","vst-loop");replaceMidiNotes(track,notes);juce::Array<juce::var> tracks;tracks.add(track);expect(sequencer.sync(makeSequencerProject(tracks),[&](const std::string&id){return id=="vst-loop"?&destination:nullptr;},48000,24001,info,error),what);};
+    const auto play=[&](int count){transport.beginBlock();sequencer.processMidi(count,transport);juce::MidiBuffer midi;destination.pullMidi(midi,count);transport.advance(count);return midi;};
+    // What a pitch last receives at a sample: 1 a note-on, -1 a note-off.
+    const auto lastAt=[](const juce::MidiBuffer& midi,int pitch,int sample){int last=0;for(const auto& event:midi){const auto message=event.getMessage();if(event.samplePosition==sample&&message.getNoteNumber()==pitch&&(message.isNoteOn()||message.isNoteOff()))last=message.isNoteOn()?1:-1;}return last;};
+    const auto countOf=[](const juce::MidiBuffer& midi,int pitch,bool on){int n=0;for(const auto& event:midi){const auto message=event.getMessage();if(message.getNoteNumber()==pitch&&(on?message.isNoteOn():message.isNoteOff()))++n;}return n;};
+
+    {juce::Array<juce::var> notes;notes.add(midiNote(0,1,60));notes.add(midiNote(3,1,60));load(notes,"a loop that ends on the pitch it starts with compiles");
+     transport.setLoop(true,0,4);transport.seekPpq(3);transport.setPlaying(true);sequencer.panic();play(23760);const auto wrap=play(512);
+     expect(lastAt(wrap,60,240)==1,"at the wrap the note ending on the loop end is let go before the loop's first note of the same pitch starts");}
+
+    {juce::Array<juce::var> notes;notes.add(midiNote(0,4,62));load(notes,"a note spanning the loop start compiles");
+     transport.setLoop(true,1,3);transport.seekPpq(2.99);sequencer.panic();const auto wrap=play(512);
+     expect(countOf(wrap,62,true)==2&&lastAt(wrap,62,240)==1,"a note begun before the loop start is let go at the wrap and sounds again from the loop start");}
+
+    {juce::Array<juce::var> notes;notes.add(midiNote(.5,.5,64));load(notes,"a note ahead of the loop compiles");
+     transport.setLoop(true,2,4);transport.seekPpq(0);sequencer.panic();const auto ahead=play(24001);
+     expect(countOf(ahead,64,true)==1&&countOf(ahead,64,false)==1,"what lies ahead of the loop plays on the way to it");}
+
+    {const double late=255.7/24000.0;juce::Array<juce::var> notes;notes.add(midiNote(late,.25,65));load(notes,"a note in a block's last half sample compiles");
+     transport.setLoop(false,0,4);transport.seekPpq(0);sequencer.panic();const auto first=play(256);const auto second=play(256);
+     expect(countOf(first,65,true)+countOf(second,65,true)==1,"a note in the last half sample of a block is played once, not dropped by both blocks");}
+
+    transport.setLoop(true,0,4);transport.seekPpq(10);transport.beginBlock();transport.advance(12000);
+    expect(std::abs(transport.ppqPosition()-10.5)<.000001,"a playhead already past the loop end plays on instead of jumping into the loop");
+    transport.setPlaying(false);sequencer.panic();
+}
+
 class CapturingMidiOutput final : public mlh::MidiOutputSink {
 public:
     void sendBlock(const juce::MidiBuffer& buffer,double start,double rate) noexcept override
@@ -4446,6 +4479,8 @@ int main(int argc, char** argv)
     testSequencerPlanReadersKeepTheirPlans();
     std::cerr << "[core] sequencer-midi-stress\n";
     testSequencerMidiStressLoopSeekAndStop();
+    std::cerr << "[core] sequencer-loop-notes\n";
+    testSequencerLoopKeepsEveryNote();
     std::cerr << "[core] physical-midi-arp\n";
     testSequencerPhysicalMidiOutputAndArpeggiatorRoute();
     std::cerr << "[core] midi-thru-series\n";
