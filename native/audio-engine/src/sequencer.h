@@ -272,11 +272,18 @@ private:
     struct RecordedMidiEvent {
         double startPpq = 0, durationPpq = 0;
         int pitch = 60, velocity = 100, channel = 1;
+        int pass = 0; // the time round the loop it was played in (D-063)
     };
     struct ActiveNote { double startPpq = 0; int velocity = 100; };
+    /** One armed MIDI track's take. Round a loop it folds onto the loop, as
+     *  every workstation's does (D-063): each time round lands on the same
+     *  bars, numbered by `pass`, and the renderer decides whether the passes
+     *  add up (overdub) or the last one played wins (replace). */
     struct MidiTake {
         std::string trackId, sourceId;
-        double startPpq = 0, lastPpq = 0, loopOffset = 0;
+        double startPpq = 0, lastPpq = 0;
+        int pass = 0;
+        double loopStart = 0, loopEnd = 0; // the loop the take last wrapped round
         std::map<int, std::vector<ActiveNote>> active;
         std::vector<RecordedMidiEvent> events;
     };
@@ -299,7 +306,7 @@ private:
         int sampleOf(double target) const noexcept;
     };
     static BlockSpan blockSpan(double start, double qps, int count, const Transport&) noexcept;
-    double recordedPpq(MidiTake&, Transport&) const noexcept;
+    double recordedPpq(MidiTake&, Transport&) noexcept;
     void closeMidiNotes(MidiTake&, double endPpq);
 
     juce::AudioFormatManager formats_;

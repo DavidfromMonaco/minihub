@@ -7,6 +7,19 @@ finished, delete its entry**, in the same commit. What was done lives in git and
 
 ## Started, not finished
 
+**Recording over a track that already holds clips — in the author's test** —
+asked 2026-09-27 (D-063).
+- Done: *Record: Overdub | Replace* beside Loop. Overdub writes a MIDI take
+  into the clip it was played over, stretching it to the bar for a note past
+  its edge; round a loop every pass adds up. Replace clears what the take
+  went over and keeps the last pass played; an audio take cuts out the sound
+  it covers. The engine folds a loop take onto the loop.
+- Not tried in the application: built while the author was away from the
+  screen.
+- Next, agreed in principle: controllers (CC, pitch bend, aftertouch) kept
+  in a take and played back; then a knob's moves on a plugin parameter
+  recorded as automation; then layered audio takes shown apart.
+
 **Fades on audio clips, as in Reaper — in the author's test** — asked
 2026-09-26 (D-062).
 - Done: the fade cursor at a clip's top corners and at each fade's handle, a

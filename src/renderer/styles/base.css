@@ -2113,11 +2113,12 @@ body:has(.export-panel) .app-header { -webkit-app-region: no-drag; }
 .seq-metronome-light.pulse-precount { background:var(--accent); border-color:#ffb271; box-shadow:0 0 10px rgba(255,139,44,.9); }
 .seq-metronome-light.pulse-accent { background:#44dc83; border-color:#9af0bc; box-shadow:0 0 10px rgba(68,220,131,.9); }
 /* Two small keys, the chosen one lit like the switch beside them. */
-.seq-metronome-mode { display:inline-flex; margin-left:2px; border:1px solid #3a3c42; border-radius:6px; overflow:hidden; }
-.seq-metronome-mode button { height:20px; padding:0 7px; border:0; background:#1f2024; color:var(--text-dim); font-size:10.5px; cursor:pointer; }
-.seq-metronome-mode button + button { border-left:1px solid #3a3c42; }
-.seq-metronome-mode button[aria-pressed="true"] { background:rgba(255, 139, 44, .42); color:#fff; }
-.seq-metronome-mode button:focus-visible { outline:2px solid var(--accent); outline-offset:-2px; }
+.seq-metronome-mode, .seq-record-mode { display:inline-flex; margin-left:2px; border:1px solid #3a3c42; border-radius:6px; overflow:hidden; }
+.seq-metronome-mode button, .seq-record-mode button { height:20px; padding:0 7px; border:0; background:#1f2024; color:var(--text-dim); font-size:10.5px; cursor:pointer; }
+.seq-metronome-mode button + button, .seq-record-mode button + button { border-left:1px solid #3a3c42; }
+.seq-metronome-mode button[aria-pressed="true"], .seq-record-mode button[aria-pressed="true"] { background:rgba(255, 139, 44, .42); color:#fff; }
+.seq-metronome-mode button:focus-visible, .seq-record-mode button:focus-visible { outline:2px solid var(--accent); outline-offset:-2px; }
+.seq-record-mode-control { display:inline-flex; align-items:center; gap:6px; color:var(--text-dim); }
 .seq-metronome-light.pulse-beat { background:#176637; border-color:#2b8a50; box-shadow:0 0 6px rgba(23,102,55,.75); }
 /* ui/contextMenu.js. It borrows the menu vocabulary that already exists above
    for the Patch Bay -- .ctx-item and .ctx-separator -- and adds only what is

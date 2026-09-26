@@ -3450,3 +3450,60 @@ the fade loop in `SequencerEngine::renderAudioForOutput` and `readClipFade` in
 `modules/sequencer/sequencerModule.js`; `checked` and `icon` in
 `ui/contextMenu.js`. Tests: `test/fades.test.mjs`, `test/sequencerUi.test.mjs`
 ("an audio clip draws its fades"), `testClipFades` in the native core tests.
+
+## D-063 — A take adds to what the track holds, or replaces it
+
+**Status**: in force · 2026-09-27 · **implemented**, checked by the JS and
+native tests; not yet tried in the application
+
+**Context** — The author asked to take "an audio or MIDI track that already
+holds clips" and record over it in overdub, "to add notes, audio or
+controls". Until then a take always became a new clip laid on top of the
+others: both sounded, but a MIDI take was a second clip stacked over the
+first, where neither could be edited as one, and a take round a loop was
+laid out pass after pass *after* the loop, where the loop the player heard
+never played it back.
+
+**Decision** — A **Record mode**, beside Loop in the Sequencer's toolbar:
+*Overdub* or *Replace*, what Reaper, Ableton and Logic all offer under those
+names. It is the application's, like the metronome's mode (`recordMode` in
+the settings), and a take keeps the mode it began in.
+
+- **Overdub**, the default because it is what was asked for and it never
+  takes a note away: a MIDI note lands **in the clip it was played over**.
+  One played past a clip's edge stretches that clip to the bar line, never
+  over the next clip; one played just before a clip stretches it back to the
+  bar, its notes staying where they sound. A take over no clip makes one, on
+  the grid at or before where it began. An audio take is laid over what is
+  there, and both sound, as they did.
+- **Replace**: the notes a MIDI take went over are cleared from the clips
+  under it before its own go in; an audio take cuts the sound it covers out
+  of the other clips, exactly where it starts and ends, not on the grid.
+- **Round a loop, a take folds onto the loop**: the engine gives every note
+  the `pass` it was played in, and a note held over the loop's end ends
+  there. Overdub keeps every pass, the drum machine's way of building a
+  pattern; Replace keeps the last pass anything was played in -- not simply
+  the last pass, or a Stop half-way round a silent pass would erase the good
+  one.
+
+Not in this step: controllers (CC, pitch bend) and a knob's moves on a
+plugin's parameter, which the take does not keep yet; and a way to see
+layered audio takes apart (Reaper's lanes).
+
+**Consequences**
+
+- The engine decides nothing about the mode: it folds and numbers passes,
+  and the renderer merges, at `_acceptMidiRecording`, still the one place
+  where a take becomes authored state (D-032). One undo step takes a whole
+  take back, merge and clearing included.
+- The linear layout of a loop take is gone. It had no user: a clip longer
+  than the loop, over bars the loop never reaches.
+
+**Proof in the code** — `recordMidiTake` and `clearAudioRange` in
+`core/sequencerModel.js`; `RECORD_MODES`, `setRecordMode`,
+`_acceptMidiRecording` and `_acceptAudioRecording` in
+`core/sequencerController.js`; `RECORD_MODE_KEYS` in
+`modules/sequencer/sequencerModule.js`; `recordedPpq` and the `pass` of
+`RecordedMidiEvent` in `native/audio-engine/src/sequencer.cpp`. Tests:
+`test/recordOverdub.test.mjs`, `testSequencerLoopTakeFoldsOntoTheLoop` in the
+native core tests.

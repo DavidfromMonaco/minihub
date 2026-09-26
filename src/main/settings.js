@@ -28,6 +28,9 @@ const DEFAULTS = {
   metronomeEnabled: false,
   metronomeMode: 'play-rec',
   metronomeVolume: 0.35,
+  // What a take does to the clips already on its track: 'overdub' or
+  // 'replace' (D-063). A way of working, like the metronome's mode.
+  recordMode: 'overdub',
   // The interface's layout, 'original' or 'hybrid-1', and the share of the
   // height the Sequencer takes in the second (ui/interfaceLayout.js). The
   // user's screen, not a project's.

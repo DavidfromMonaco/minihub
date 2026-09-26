@@ -690,25 +690,37 @@ void SequencerEngine::beginRecording(Transport& transport,bool startTransport)
     transport.setRecording(true);if(startTransport&&!transport.playing())transport.setPlaying(true);
 }
 
-double SequencerEngine::recordedPpq(MidiTake& take,Transport& transport) const noexcept
+double SequencerEngine::recordedPpq(MidiTake& take,Transport& transport) noexcept
 {
-    const double current=transport.ppqPosition();if(transport.loopEnabled()&&current+1.0e-6<take.lastPpq)take.loopOffset+=transport.loopEnd()-transport.loopStart();take.lastPpq=current;return current+take.loopOffset;
+    const double current=transport.ppqPosition();
+    if(transport.loopEnabled()&&current+1.0e-6<take.lastPpq){
+        // Round the loop: a note still held ends at the loop's end, where the
+        // transport left it, and the next time round is a new pass.
+        take.loopStart=transport.loopStart();take.loopEnd=transport.loopEnd();
+        closeMidiNotes(take,std::max(take.loopStart,take.loopEnd));
+        ++take.pass;
+    }
+    take.lastPpq=current;return current;
 }
 
 void SequencerEngine::recordMidiInput(const std::string& source,const juce::MidiMessage& message,double offsetMs,Transport& transport)
 {
-    if(!recording())return;for(auto& take:midiTakes_){if(take.sourceId.empty()||take.sourceId!=source)continue;double q=recordedPpq(take,transport)+offsetMs*transport.bpm()/60000.0;q=std::max(take.startPpq,q);const int channel=message.getChannel(),pitch=message.getNoteNumber(),key=channel*128+pitch;if(message.isNoteOn()){take.active[key].push_back({q,message.getVelocity()});}else if(message.isNoteOff()){auto found=take.active.find(key);if(found==take.active.end()||found->second.empty())continue;const auto active=found->second.back();found->second.pop_back();take.events.push_back({active.startPpq,std::max(.001,q-active.startPpq),pitch,active.velocity,channel});}}
+    if(!recording())return;for(auto& take:midiTakes_){if(take.sourceId.empty()||take.sourceId!=source)continue;double q=recordedPpq(take,transport)+offsetMs*transport.bpm()/60000.0;q=std::max(take.pass?take.loopStart:take.startPpq,q);const int channel=message.getChannel(),pitch=message.getNoteNumber(),key=channel*128+pitch;if(message.isNoteOn()){take.active[key].push_back({q,message.getVelocity()});}else if(message.isNoteOff()){auto found=take.active.find(key);if(found==take.active.end()||found->second.empty())continue;const auto active=found->second.back();found->second.pop_back();take.events.push_back({active.startPpq,std::max(.001,q-active.startPpq),pitch,active.velocity,channel,take.pass});}}
 }
 
 void SequencerEngine::closeMidiNotes(MidiTake& take,double end)
 {
-    for(auto& keyed:take.active){const int channel=keyed.first/128,pitch=keyed.first%128;for(const auto& active:keyed.second)take.events.push_back({active.startPpq,std::max(.001,end-active.startPpq),pitch,active.velocity,channel});}take.active.clear();
+    for(auto& keyed:take.active){const int channel=keyed.first/128,pitch=keyed.first%128;for(const auto& active:keyed.second)take.events.push_back({active.startPpq,std::max(.001,end-active.startPpq),pitch,active.velocity,channel,take.pass});}take.active.clear();
 }
 
 juce::Array<juce::var> SequencerEngine::finishRecording(Transport& transport)
 {
     juce::Array<juce::var> result;if(!recording_.exchange(false))return result;transport.setRecording(false);
-    for(auto& take:midiTakes_){const double end=recordedPpq(take,transport);closeMidiNotes(take,end);if(take.events.empty())continue;juce::var message=makeObject();setProp(message,"type","sequencerMidiRecorded");setProp(message,"trackId",juce::String(take.trackId));setProp(message,"startPpq",take.startPpq);setProp(message,"endPpq",std::max(take.startPpq+.001,end));juce::Array<juce::var> events;for(const auto&e:take.events){juce::var item=makeObject();setProp(item,"startPpq",e.startPpq);setProp(item,"durationPpq",e.durationPpq);setProp(item,"pitch",e.pitch);setProp(item,"velocity",e.velocity);setProp(item,"channel",e.channel);events.add(item);}setProp(message,"events",events);result.add(message);}
+    for(auto& take:midiTakes_){const double end=recordedPpq(take,transport);closeMidiNotes(take,end);if(take.events.empty())continue;
+        // The bars the take went over: round a loop, the whole loop.
+        const double from=take.pass?std::min(take.startPpq,take.loopStart):take.startPpq;
+        const double to=take.pass?std::max(end,take.loopEnd):end;
+        juce::var message=makeObject();setProp(message,"type","sequencerMidiRecorded");setProp(message,"trackId",juce::String(take.trackId));setProp(message,"startPpq",from);setProp(message,"endPpq",std::max(from+.001,to));setProp(message,"passes",take.pass+1);juce::Array<juce::var> events;for(const auto&e:take.events){juce::var item=makeObject();setProp(item,"startPpq",e.startPpq);setProp(item,"durationPpq",e.durationPpq);setProp(item,"pitch",e.pitch);setProp(item,"velocity",e.velocity);setProp(item,"channel",e.channel);setProp(item,"pass",e.pass);events.add(item);}setProp(message,"events",events);result.add(message);}
     for(auto& take:audioTakes_){take.writer->stop();if(!take.writer->hasTake())continue;juce::var message=makeObject();setProp(message,"type","sequencerAudioRecorded");setProp(message,"trackId",juce::String(take.trackId));setProp(message,"filePath",take.writer->takeFile().getFullPathName());setProp(message,"startPpq",take.startPpq);setProp(message,"durationSeconds",take.writer->duration());setProp(message,"bpm",take.bpm);setProp(message,"overrun",take.writer->overrun());result.add(message);}
     midiTakes_.clear();audioTakes_.clear();panic();return result;
 }

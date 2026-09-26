@@ -68,6 +68,17 @@ function baseName(filePath) {
 /** The metronome's modes; anything else is the one it always had. */
 export const METRONOME_MODES = Object.freeze(['play-rec', 'rec']);
 
+/**
+ * What a take does to the clips already on its track (D-063): `overdub` adds
+ * to them, `replace` clears what it went over. Overdub first, because it is
+ * what the author asked for and the one that never takes a note away.
+ */
+export const RECORD_MODES = Object.freeze(['overdub', 'replace']);
+
+export function normalizeRecordMode(value) {
+  return RECORD_MODES.includes(value) ? value : 'overdub';
+}
+
 export function normalizeMetronomeMode(value) {
   return METRONOME_MODES.includes(value) ? value : 'play-rec';
 }
@@ -92,6 +103,10 @@ export class SequencerController {
     this.tempo = 120;
     this.metronomeEnabled = false;
     this.metronomeMode = 'play-rec';
+    this.recordMode = 'overdub';
+    // The mode the take in progress was started in: switching it while a take
+    // runs is for the next one.
+    this._takeRecordMode = 'overdub';
     this.playScope = 'all';
     this.metronomeVolume = 0.35;
     this._unsubs = [];
@@ -128,6 +143,7 @@ export class SequencerController {
     this.tempo = normalizeTempo(this.hub.settings.get('transportBpm'));
     this.metronomeEnabled = this.hub.settings.get('metronomeEnabled') === true;
     this.metronomeMode = normalizeMetronomeMode(this.hub.settings.get('metronomeMode'));
+    this.recordMode = normalizeRecordMode(this.hub.settings.get('recordMode'));
     this.playScope = PLAY_SCOPES.includes(this.hub.settings.get('playScope')) ? this.hub.settings.get('playScope') : 'all';
     const storedMetronomeVolume = Number(this.hub.settings.get('metronomeVolume'));
     this.metronomeVolume = Number.isFinite(storedMetronomeVolume)
@@ -412,6 +428,16 @@ export class SequencerController {
       this.hub.events.emit('sequencer:metronome-mode', next);
     }
     this._publishMetronome();
+    return next;
+  }
+
+  setRecordMode(mode) {
+    const next = normalizeRecordMode(mode);
+    if (next !== this.recordMode) {
+      this.recordMode = next;
+      this.hub.settings.set('recordMode', next);
+      this.hub.events.emit('sequencer:record-mode', next);
+    }
     return next;
   }
 
@@ -1483,6 +1509,7 @@ export class SequencerController {
       return false;
     }
     this.preCounting = this.metronomeEnabled && !this.playing;
+    this._takeRecordMode = this.recordMode;
     this.recording = true;
     this.playing = true;
     this._recordConfirmPending = true;
@@ -1680,14 +1707,8 @@ export class SequencerController {
     if (!track || !Array.isArray(message.events) || !message.events.length) return;
     const startPpq = Math.max(0, Number(message.startPpq) || 0);
     const endPpq = Math.max(startPpq + 0.125, Number(message.endPpq) || startPpq + 4);
-    this.model.addMidiClip(track.id, startPpq, endPpq - startPpq,
-      message.events.map((event) => ({
-        pitch: event.pitch,
-        startPpq: Math.max(0, Number(event.startPpq) - startPpq),
-        durationPpq: event.durationPpq,
-        velocity: event.velocity,
-        channel: event.channel
-      })));
+    // Into the clips already there (D-063), in the mode the take began in.
+    this.model.recordMidiTake(track.id, { startPpq, endPpq, events: message.events }, { mode: this._takeRecordMode });
     this.changed();
   }
 
@@ -1706,12 +1727,17 @@ export class SequencerController {
     const filePath = committed?.ok ? committed.filePath : message.filePath;
     const bpm = Math.max(20, Number(message.bpm) || 120);
     const durationSeconds = Number(message.durationSeconds);
-    this.model.addAudioClip(track.id, {
+    const take = this.model.addAudioClip(track.id, {
       name: `${track.name} Take`, filePath,
       startPpq: Math.max(0, Number(message.startPpq) || 0),
       durationSeconds, trimStartSeconds: 0, trimEndSeconds: durationSeconds,
       lengthPpq: Math.max(0.125, durationSeconds * bpm / 60), gain: 1
     });
+    // Overdub lays the take over what is there, and both sound; Replace cuts
+    // out what it covers (D-063).
+    if (take && this._takeRecordMode === 'replace') {
+      this.model.clearAudioRange(track.id, take.startPpq, take.startPpq + take.lengthPpq, { bpm: this.tempo, keep: take.id });
+    }
     this.changed();
   }
 

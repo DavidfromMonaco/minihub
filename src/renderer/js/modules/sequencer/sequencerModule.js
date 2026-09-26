@@ -44,6 +44,12 @@ const METRONOME_KEYS = Object.freeze([
   ['rec', 'Rec', 'Clicks during a take and its count-in only'],
   ['play-rec', 'Play + Rec', 'Clicks whenever the transport runs']
 ]);
+
+/** What a take does to the clips already on its track (D-063). */
+const RECORD_MODE_KEYS = Object.freeze([
+  ['overdub', 'Overdub', 'A take adds to what the track holds: notes into the clip they are played over, sound laid over sound. Round a loop, every pass adds up'],
+  ['replace', 'Replace', 'A take replaces what it goes over. Round a loop, the last pass played is kept']
+]);
 /**
  * The clock ruler, above the bars.
  *
@@ -1098,6 +1104,7 @@ export function createSequencerModule(hub) {
           <label><input data-control="loop-enabled" type="checkbox" ${state.loop.enabled ? 'checked' : ''}> Loop</label>
           <label title="First bar of the loop">From <input data-control="loop-start" type="number" min="1" step="any" value="${loopBars(state.loop, projectRegions).from}"></label>
           <label title="Last bar of the loop, included">To <input data-control="loop-end" type="number" min="1" step="any" value="${loopBars(state.loop, projectRegions).to}"></label>
+          <span class="seq-record-mode-control"><span>Record</span><span class="seq-record-mode" role="group" aria-label="What a take does to the clips already on its track">${RECORD_MODE_KEYS.map(([mode, label, hint]) => `<button type="button" data-record-mode="${mode}" aria-pressed="${controller.recordMode === mode}" title="${hint}">${label}</button>`).join('')}</span></span>
         </div>
         ${inspectorMarkup(hub, focusedTrack, sequencerNode.id)}
       </section>
@@ -1145,6 +1152,9 @@ export function createSequencerModule(hub) {
     container.querySelector('[data-action="toggle-metronome"]')?.addEventListener('click', () => {
       renderMetronomeState(controller.setMetronome(!controller.metronomeEnabled));
     });
+    container.querySelectorAll('[data-record-mode]').forEach((button) => button.addEventListener('click', () => {
+      controller.setRecordMode(button.dataset.recordMode);
+    }));
     container.querySelectorAll('[data-metronome-mode]').forEach((button) => button.addEventListener('click', () => {
       controller.setMetronomeMode(button.dataset.metronomeMode);
     }));
@@ -1321,6 +1331,11 @@ export function createSequencerModule(hub) {
     const toggle = container?.querySelector('[data-action="toggle-metronome"]');
     toggle?.classList.toggle('active', enabled === true);
     toggle?.setAttribute('aria-checked', enabled === true ? 'true' : 'false');
+  }
+
+  function renderRecordMode(mode) {
+    container?.querySelectorAll('[data-record-mode]')
+      .forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.recordMode === mode)));
   }
 
   function renderMetronomeMode(mode) {
@@ -2058,6 +2073,7 @@ export function createSequencerModule(hub) {
       hub.events.on('sequencer:tempo', renderTempoValue),
       hub.events.on('sequencer:metronome', renderMetronomeState),
       hub.events.on('sequencer:metronome-mode', renderMetronomeMode),
+      hub.events.on('sequencer:record-mode', renderRecordMode),
       hub.events.on('sequencer:metronome-tick', pulseMetronome),
       hub.events.on('engine:deviceState', render),
       hub.events.on('midi:ports', render),

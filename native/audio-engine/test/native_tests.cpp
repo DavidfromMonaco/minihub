@@ -907,6 +907,44 @@ void testSequencerMidiSchedulingAndRecording()
     sequencer.panic();destination.pullMidi(midi,512); // panic is delivered by Chain on its next process block in the full engine
 }
 
+void testSequencerLoopTakeFoldsOntoTheLoop()
+{
+    // Round a loop, a take lands on the loop's bars every time round, each
+    // pass numbered (D-063). It used to lay the passes end to end after the
+    // loop, where nothing plays them back in the loop the player heard.
+    mlh::SequencerEngine sequencer;sequencer.prepare(48000,512);mlh::Chain destination("vst-001");destination.setMidiEnabled(true);
+    juce::Array<juce::var> tracks;tracks.add(midiTrack("track-midi","vst-001",true));juce::Array<juce::var> info;std::string error;
+    expect(sequencer.sync(makeSequencerProject(tracks),[&](const std::string&id){return id=="vst-001"?&destination:nullptr;},48000,512,info,error),"loop take arrangement compiles");
+    mlh::Transport transport;transport.setSampleRate(48000);transport.setLoop(true,4,8);transport.seekPpq(5);
+    sequencer.beginRecording(transport);
+    sequencer.recordMidiInput("in-1",juce::MidiMessage::noteOn(1,60,(juce::uint8)100),0,transport);
+    transport.seekPpq(5.5);sequencer.recordMidiInput("in-1",juce::MidiMessage::noteOff(1,60),0,transport);
+    transport.seekPpq(7.5);sequencer.recordMidiInput("in-1",juce::MidiMessage::noteOn(1,62,(juce::uint8)90),0,transport);
+    transport.seekPpq(4.25); // round the loop, the note still held
+    sequencer.recordMidiInput("in-1",juce::MidiMessage::noteOn(1,64,(juce::uint8)80),0,transport);
+    sequencer.recordMidiInput("in-1",juce::MidiMessage::noteOff(1,62),0,transport);
+    transport.seekPpq(4.75);sequencer.recordMidiInput("in-1",juce::MidiMessage::noteOff(1,64),0,transport);
+    transport.seekPpq(6);
+    const auto recorded=sequencer.finishRecording(transport);
+    expect(recorded.size()==1,"a take round a loop is one take");
+    if(!recorded.size())return;
+    expect((double)recorded[0]["startPpq"]==4&&(double)recorded[0]["endPpq"]==8,"and it covers the loop it went round");
+    expect((int)recorded[0]["passes"]==2,"twice");
+    const auto* events=recorded[0]["events"].getArray();
+    expect(events&&events->size()==3,"three notes");
+    if(!events||events->size()!=3)return;
+    bool first=false,held=false,second=false;
+    for(const auto& e:*events){
+        const int pitch=(int)e["pitch"],pass=(int)e["pass"];const double start=(double)e["startPpq"],length=(double)e["durationPpq"];
+        first|=pitch==60&&pass==0&&start==5&&length==.5;
+        held|=pitch==62&&pass==0&&start==7.5&&length==.5;
+        second|=pitch==64&&pass==1&&start==4.25&&length==.5;
+    }
+    expect(first,"the first pass keeps its note where it was played");
+    expect(held,"a note held over the loop's end ends there");
+    expect(second,"the second pass lands on the loop's bars, not after them");
+}
+
 void testSequencerPreCountKeepsTheDownbeat()
 {
     // Record with the metronome on opens a count-in. The takes are opened as it
@@ -4556,6 +4594,7 @@ int main(int argc, char** argv)
     testSequencerMidiSchedulingAndRecording();
     std::cerr << "[core] sequencer-precount\n";
     testSequencerPreCountKeepsTheDownbeat();
+    testSequencerLoopTakeFoldsOntoTheLoop();
     std::cerr << "[core] sequencer-plan-readers\n";
     testSequencerPlanReadersKeepTheirPlans();
     std::cerr << "[core] sequencer-midi-stress\n";

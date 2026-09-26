@@ -820,6 +820,14 @@ motivated it.
 keep the whole source and take a different window onto it
 ([DECISIONS.md](DECISIONS.md) D-034).
 
+**A take into a track that holds clips** ([DECISIONS.md](DECISIONS.md) D-063).
+`recordMidiTake` writes a MIDI take into the clips it was played over --
+Overdub adds, Replace clears the range first -- and stretches a clip to take
+a note played past its edge; `clearAudioRange` cuts an audio take's range out
+of the other clips in Replace. The engine folds a take round a loop onto the
+loop and numbers each note's `pass`; which passes survive is the renderer's
+choice, made from the mode the take began in.
+
 Une piste est `midi` ou `audio` ; un clip audio porte `trimStartSeconds`,
 `trimEndSeconds`, `gain`, `peaks` et un état de disponibilité du média.
 

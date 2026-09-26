@@ -472,6 +472,156 @@ export class SequencerModel {
     return clip;
   }
 
+  /**
+   * A MIDI take laid into a track that may already hold clips (D-063).
+   *
+   * `events` sit where they were played, in the arrangement's quarters, each
+   * with the `pass` round the loop it came from. `overdub` adds every pass to
+   * what is there; `replace` clears what the take went over and keeps the
+   * last pass anything was played in -- Reaper's MIDI overdub and MIDI
+   * replace, the Record mode Ableton and Logic also offer. A note lands in the
+   * clip it was played over; one played past a clip's edge stretches that
+   * clip to the bar line, never over the next clip; a take over no clip makes
+   * one, as every take used to. Returns the clips written into.
+   */
+  recordMidiTake(trackId, { startPpq = 0, endPpq = 0, events = [] } = {}, { mode = 'overdub' } = {}) {
+    const track = this._track(trackId);
+    if (!track || track.type !== 'midi') return [];
+    const from = Math.max(0, finite(startPpq));
+    const to = Math.max(from + MIN_NOTE_PPQ, finite(endPpq));
+    const replace = mode === 'replace';
+    let played = (Array.isArray(events) ? events : []).map((event) => ({
+      pitch: Math.round(clampFinite(event?.pitch, 0, 127)),
+      startPpq: Math.max(from, finite(event?.startPpq)),
+      durationPpq: Math.max(MIN_NOTE_PPQ, finite(event?.durationPpq, MIN_NOTE_PPQ)),
+      velocity: Math.round(clampFinite(event?.velocity, 1, 127)),
+      channel: Math.round(clampFinite(event?.channel, 1, 16)),
+      pass: Math.max(0, Math.trunc(finite(event?.pass)))
+    }));
+    if (replace && played.length) {
+      const last = played.reduce((most, event) => Math.max(most, event.pass), 0);
+      played = played.filter((event) => event.pass === last);
+    }
+    played.sort((a, b) => a.startPpq - b.startPpq || a.pitch - b.pitch);
+    const end = (clip) => clip.startPpq + clip.lengthPpq;
+    const touched = track.clips.filter((clip) => clip.startPpq < to && end(clip) > from)
+      .sort((a, b) => a.startPpq - b.startPpq);
+    if (replace) {
+      for (const clip of touched) {
+        clip.notes = clip.notes.filter((note) => {
+          const shown = note.startPpq >= clip.sourceOffsetPpq && note.startPpq < clip.sourceOffsetPpq + clip.lengthPpq;
+          const at = clip.startPpq + note.startPpq - clip.sourceOffsetPpq;
+          return !shown || at < from || at >= to;
+        });
+      }
+    }
+    if (!played.length) return touched;
+    if (!touched.length) {
+      // On the grid at or before the take's start, so every note stays where
+      // it was played.
+      let start = this._snapPpq(from, track);
+      if (start > from + 1e-9) start = Math.max(0, start - this._snapStep(track, from));
+      const last = played.reduce((most, event) => Math.max(most, event.startPpq + event.durationPpq), to);
+      const clip = this.addMidiClip(track.id, start, last - start,
+        played.map((event) => ({ ...event, startPpq: event.startPpq - start })), { snap: false });
+      return clip ? [clip] : [];
+    }
+    const regions = this.trackRegions(track);
+    const others = (clip) => track.clips.filter((item) => item !== clip);
+    const stretchEnd = (clip, wanted) => {
+      if (wanted <= end(clip) + 1e-9) return;
+      const next = others(clip).filter((item) => item.startPpq >= end(clip) - 1e-9)
+        .reduce((nearest, item) => Math.min(nearest, item.startPpq), Infinity);
+      const bar = meterBarAt(regions, wanted - 1e-9);
+      const target = Math.min(next, bar.startPpq + bar.lengthPpq);
+      if (target <= end(clip)) return;
+      clip.lengthPpq = target - clip.startPpq;
+      clip.sourceLengthPpq = Math.max(clip.sourceLengthPpq, clip.sourceOffsetPpq + clip.lengthPpq);
+    };
+    const stretchStart = (clip, wanted) => {
+      const previous = others(clip).filter((item) => end(item) <= clip.startPpq + 1e-9)
+        .reduce((latest, item) => Math.max(latest, end(item)), 0);
+      const start = Math.min(clip.startPpq, Math.max(previous, meterBarAt(regions, wanted).startPpq));
+      const delta = clip.startPpq - start;
+      if (delta <= 0) return;
+      clip.startPpq = start;
+      clip.lengthPpq += delta;
+      clip.sourceOffsetPpq -= delta;
+      if (clip.sourceOffsetPpq < 0) {
+        const shift = -clip.sourceOffsetPpq;
+        for (const note of clip.notes) note.startPpq += shift;
+        clip.sourceLengthPpq += shift;
+        clip.sourceOffsetPpq = 0;
+      }
+    };
+    const written = new Set();
+    for (const event of played) {
+      // The clip on top where the note was played: the latest to start.
+      let host = null;
+      for (const clip of track.clips) {
+        if (clip.startPpq <= event.startPpq && end(clip) > event.startPpq && (!host || clip.startPpq >= host.startPpq)) host = clip;
+      }
+      if (!host) {
+        const before = touched.filter((clip) => clip.startPpq <= event.startPpq);
+        host = before.length ? before[before.length - 1] : touched[0];
+        if (before.length) stretchEnd(host, event.startPpq + MIN_NOTE_PPQ);
+        else stretchStart(host, event.startPpq);
+      }
+      stretchEnd(host, event.startPpq + event.durationPpq);
+      if (host.notes.length >= SEQUENCER_LIMITS.notesPerClip) continue;
+      const at = Math.max(host.startPpq, Math.min(event.startPpq, end(host) - MIN_NOTE_PPQ));
+      host.notes.push({
+        id: uid('note'),
+        pitch: event.pitch,
+        startPpq: host.sourceOffsetPpq + at - host.startPpq,
+        durationPpq: Math.max(MIN_NOTE_PPQ, Math.min(event.durationPpq, end(host) - at)),
+        velocity: event.velocity,
+        channel: event.channel
+      });
+      written.add(host);
+    }
+    for (const clip of written) clip.notes.sort((a, b) => a.startPpq - b.startPpq || a.pitch - b.pitch);
+    return [...written];
+  }
+
+  /**
+   * An audio take in Replace mode (D-063): the sound the other clips of its
+   * track play between `from` and `to` is cut out, exactly there and not on
+   * the grid, as a split would cut. What is left either side keeps the fade
+   * on its outer edge. `keep` is the take itself.
+   */
+  clearAudioRange(trackId, fromPpq, toPpq, { bpm = 120, keep = null } = {}) {
+    const track = this._track(trackId);
+    if (!track || track.type !== 'audio') return 0;
+    const from = Math.max(0, finite(fromPpq));
+    const to = Math.max(from, finite(toPpq));
+    const secondsPer = 60 / clampFinite(bpm, 20, 300);
+    let changed = 0;
+    for (const clip of [...track.clips]) {
+      const start = clip.startPpq;
+      const stop = start + clip.lengthPpq;
+      if (clip.id === keep || stop <= from || start >= to) continue;
+      changed += 1;
+      if (stop > to && track.clips.length < SEQUENCER_LIMITS.clipsPerTrack) {
+        const trimStartSeconds = clip.trimStartSeconds + (to - start) * secondsPer;
+        if (stop - to >= MIN_CLIP_PPQ && trimStartSeconds < clip.trimEndSeconds - 0.001) {
+          track.clips.push(normalizeClip({
+            ...structuredClone(clip), id: uid('clip'), startPpq: to, lengthPpq: stop - to,
+            trimStartSeconds, fadeIn: { ...clip.fadeIn, seconds: 0 }
+          }, 'audio'));
+        }
+      }
+      if (start < from && from - start >= MIN_CLIP_PPQ) {
+        clip.lengthPpq = from - start;
+        clip.trimEndSeconds = Math.min(clip.trimEndSeconds, clip.trimStartSeconds + clip.lengthPpq * secondsPer);
+        Object.assign(clip, fitFades(clip.fadeIn, { ...clip.fadeOut, seconds: 0 }, clip.trimEndSeconds - clip.trimStartSeconds));
+      } else {
+        this.removeClip(clip.id);
+      }
+    }
+    return changed;
+  }
+
   addAudioClip(trackId, clipData = {}) {
     const track = this._track(trackId);
     if (!track || track.type !== 'audio' || track.clips.length >= SEQUENCER_LIMITS.clipsPerTrack) return null;
