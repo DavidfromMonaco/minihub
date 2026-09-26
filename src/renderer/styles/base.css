@@ -539,9 +539,6 @@ body:has(.export-panel) .app-header { -webkit-app-region: no-drag; }
 }
 .pane-splitter:hover, .pane-splitter.dragging, .pane-splitter:focus-visible { background: var(--accent-soft); outline: 0; }
 .pane-splitter:hover::after, .pane-splitter.dragging::after, .pane-splitter:focus-visible::after { background: var(--accent); }
-/* The half that hears the keyboard: an outline, on the box, so it does not
-   scroll away with a long page. */
-.workspace.layout-hybrid > [data-pane].pane-active { outline: 1px solid var(--accent-line); outline-offset: -1px; }
 /* The Sequencer's toolbar in the upper half: its controls on as few lines as
    the width allows, and no page title -- the half is the Sequencer. */
 .pane-top .seq-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; padding: 8px 12px; }

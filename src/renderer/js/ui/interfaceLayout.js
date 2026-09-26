@@ -20,7 +20,8 @@
  * ------------
  * Both pages answer Ctrl+C, Ctrl+V, Ctrl+D and Delete, and both would, at
  * once. The keys go to the half pressed last -- `paneHasKeys` is what each
- * page asks first -- and that half wears a thin outline. Space, Ctrl+Z and the
+ * page asks first. Nothing marks that half: the author had the outline it wore
+ * taken off (2026-09-26), the click that chose it being fresh. Space, Ctrl+Z and the
  * menus stay global: they are the application's, not a page's.
  */
 
