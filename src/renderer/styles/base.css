@@ -2207,7 +2207,7 @@ body ::-webkit-scrollbar-corner { background:transparent; }
 .seq-track.focused .seq-track-head { background:#1c1d21; }
 /* Two rows, performance controls only. Input, Destination and the route
    sentences live in .seq-inspector -- they are what made this five rows tall. */
-.seq-track-head { position:sticky; left:0; z-index:7; height:100%; box-sizing:border-box; display:grid; grid-template-columns:26px 26px minmax(0,1fr) 26px 22px; grid-template-rows:26px minmax(0,1fr); gap:3px 4px; padding:5px 8px 5px 32px; background:#17181b; border-right:1px solid #2e3035; }
+.seq-track-head { position:sticky; left:0; z-index:7; height:100%; box-sizing:border-box; display:grid; grid-template-columns:26px 26px minmax(0,1fr) 22px 26px 22px; grid-template-rows:26px minmax(0,1fr); gap:3px 4px; padding:5px 8px 5px 32px; background:#17181b; border-right:1px solid #2e3035; }
 .seq-track-head button { padding:0; border:1px solid var(--border); border-radius:4px; color:var(--text-dim); background:#121315; font:600 10px var(--font); cursor:pointer; }
 /* The track's select button, on its left edge: the rest of a 64 px head is
    controls, and a click meant to select the track kept landing on one of them.
@@ -2220,11 +2220,14 @@ body ::-webkit-scrollbar-corner { background:transparent; }
 .seq-track.focused .seq-track-head .seq-track-select::after { border-color:#121315; background:#121315; }
 /* Fader, its dB, then the pan and where it points: one row, the performance
    row, rather than a third that would make every track taller. */
-.seq-track-level { grid-column:1 / 5; grid-row:2; display:grid; grid-template-columns:minmax(0,1fr) 42px 48px 24px; align-items:center; gap:4px; }
+.seq-track-level { grid-column:1 / 6; grid-row:2; display:grid; grid-template-columns:minmax(0,1fr) 42px 48px 24px; align-items:center; gap:4px; }
 .seq-track-level input[type="range"] { width:100%; height:14px; margin:0; }
 .seq-track-level output { color:var(--text-faint); font:9px var(--mono); text-align:right; }
+/* The plugin this track plays, one click away (core/instrumentTrack.js). */
+.seq-track-head .seq-track-plugin { display:grid; place-items:center; color:var(--vst-role-instrument, var(--accent)); }
+.seq-track-head .seq-track-plugin:disabled { opacity:.3; cursor:default; }
 .seq-track-level .seq-track-pan { accent-color:var(--accent-sequencer); }
-.seq-route-dots { grid-column:5; grid-row:2; display:flex; align-items:center; justify-content:flex-end; gap:3px; }
+.seq-route-dots { grid-column:6; grid-row:2; display:flex; align-items:center; justify-content:flex-end; gap:3px; }
 .seq-route-dots i { width:9px; height:9px; display:grid; place-items:center; border-radius:50%; font:normal 7px var(--mono); font-style:normal; line-height:1; }
 .seq-route-dots i.seq-route-ok { color:#0d1f14; background:#4ade82; }
 .seq-route-dots i.seq-route-warning { color:#2a1f04; background:#f5c451; }
@@ -2288,4 +2291,4 @@ body ::-webkit-scrollbar-corner { background:transparent; }
 .seq-empty { position:absolute; left:var(--seq-head,260px); right:0; padding:44px 20px; color:var(--text-faint); text-align:center; }
 .seq-editor { min-height:120px; overflow:hidden; }
 .seq-audio-detail { position:relative; height:90px; margin-top:14px; border:1px solid var(--border); border-radius:5px; background:#15201e; overflow:hidden; }
-@media (max-width:1000px) { .seq-tools label:nth-last-of-type(n+5){display:none}.seq-track-head{grid-template-columns:24px 24px minmax(0,1fr) 24px 20px}.seq-track-level{grid-template-columns:minmax(0,1fr) 44px}.seq-track-level output{display:none} }
+@media (max-width:1000px) { .seq-tools label:nth-last-of-type(n+5){display:none}.seq-track-head{grid-template-columns:24px 24px minmax(0,1fr) 20px 24px 20px}.seq-track-level{grid-template-columns:minmax(0,1fr) 44px}.seq-track-level output{display:none} }

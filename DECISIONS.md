@@ -3086,3 +3086,53 @@ Two alternatives were refused:
 `AudioPlayerNodes.longestHeardSeconds`, `ui/exportPanel.js`,
 `#transport-export` in `index.html`. Tests: `test/globalExport.test.mjs`, the
 Sequencer page's markup in `test/sequencerUi.test.mjs`.
+
+## D-057 — Fewer trips between the Patch Bay and the Sequencer
+
+**Status**: in force · 2026-09-26 · **implemented**, checked by the tests and
+in the application on a copy of the author's project, not yet tried by him
+
+**Context** — The author's session "Forward backward" (2026-09-25): three
+synths, a Mixer, a take per track. He could not choose where a take would
+start, set the metronome on and off around every take, chose his MiniLab
+again on every track, had no pan, found a duplicated VST node empty, and
+went back and forth between the Patch Bay and the Sequencer all evening.
+
+**Decision**
+
+- The playhead is placed where a ruler is pressed, on the Snap grid (Alt: off
+  it), dragged by its head, and placed by a click in an empty lane -- never
+  during a take, which a seek ends.
+- The metronome clicks in **Rec** (the take and its count-in) or **Play + Rec**.
+  The engine keeps its one switch; in Rec the renderer turns it on for the take.
+- A new MIDI track listens to the input the last MIDI track listens to.
+- A pan on every track and every Mixer strip, one **balance** law: centre
+  exactly unity, the near side never raised, the far side to silence. The
+  sources are stereo instruments and takes; a mono +3 dB law would change the
+  level of every existing project the day a pan is touched, and could clip.
+- A copied VST node (Duplicate, paste) loads its plugins with their state.
+- Two interfaces, **Original** and **Hybrid 1** (the Sequencer above, the page
+  area below), two keys in the header and the View menu; a setting of the
+  application.
+- "+ MIDI Track" makes the track **with its instrument** when one is chosen,
+  and each track opens the plugin it plays.
+
+Refused, on the author's question: **merging the Audio Output and the Mixer**
+to get a pan per track. A Mixer strip is a cable, not a track -- every audio
+track leaves the Sequencer by one AUDIO OUT, and two tracks on one synth share
+a strip -- and the Mixer is also a sub-mix inside a patch.
+
+**Consequences**
+
+- Two MIDI tracks on one instrument: the first one's fader and pan act, as the
+  fader already did.
+- The Sequencer's menus close when the page redraws under them, which a
+  project just loaded does for a moment.
+
+**Proof in the code** — `pan_law.h`, `SequencerEngine::setTrackControl`,
+`ui/interfaceLayout.js`, `ModuleSystem.dock`, `core/instrumentTrack.js`,
+`SequencerController.setMetronomeMode`, `timelinePpqAt`. Tests:
+`test/interfaceLayout.test.mjs`, `test/instrumentTrack.test.mjs`,
+`test/pan.test.mjs`, the new cases in `test/sequencer.test.mjs`,
+`test/sequencerUi.test.mjs`, `test/pluginEditor.test.mjs`, and
+`testBalancePanLawAndMixerStripPan` in the native core tests.

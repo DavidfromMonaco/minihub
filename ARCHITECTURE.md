@@ -817,6 +817,19 @@ L'export possède son propre `Transport` : les éditions live restent donc
 immédiates pendant un bounce. Seul un redémarrage du périphérique audio est
 différé, parce qu'il retirerait le callback qui pilote les deux contextes.
 
+**Pan.** A track and a Mixer strip each carry a pan, one balance law for both
+([pan_law.h](native/audio-engine/src/pan_law.h), D-057): centred it is exactly
+unity, turned to a side it lowers the other side only. An audio track pans its
+clip sum after its fader; a MIDI track pans the instrument it plays, where its
+fader already acts (`midiTrackGainForOutput`). Like the fader, a pan is a live
+control (`setSequencerTrackControl`), never a resync.
+
+**A track with its instrument** ([instrumentTrack.js](src/renderer/js/core/instrumentTrack.js)):
+"+ MIDI Track" offers the installed instruments; taking one makes a VST node
+with the plugin, cables the Sequencer to it and its sound where the previous
+instrument's goes, and opens the plugin's window when it is ready. The same
+doors a hand uses, so the network stays the only routing (invariant 2).
+
 ---
 
 ## 10. Architecture de l'interface
@@ -867,6 +880,15 @@ les raccourcis habituels. Le processus principal n'envoie qu'un nom de commande
 sur `menu:command` ; c'est [menuCommands.js](src/renderer/js/core/menuCommands.js)
 qui le résout contre `hub.project`, seul détenteur de l'état — modifié, en cours
 d'enregistrement, jamais sauvegardé.
+
+**Two layouts** ([interfaceLayout.js](src/renderer/js/ui/interfaceLayout.js),
+D-057). Original: one page at a time, in `#content`. Hybrid 1: the Sequencer
+*docked* in `#content-top` (`ModuleSystem.dock`), `#content` below it as the
+page area, a bar between them. Opening the docked module only points at it;
+a page opened from the dock's container lands in `#content`. The Sequencer and
+the Patch Bay answer the same keys, so each asks `paneHasKeys` first: the half
+pressed last has them. The layout and the bar's share are application
+settings, not project keys.
 
 `#content` est **partagé** par tous les modules. C'est la raison pour laquelle
 `unmount()` doit retirer ses écouteurs : un gestionnaire laissé sur `#content`

@@ -8,6 +8,8 @@ import { sequencerCommands } from '../../core/sequencerCommands.js';
 import { STRIDES } from '../../ui/secondsRuler.js';
 import { formatPan } from '../../core/pan.js';
 import { paneHasKeys } from '../../ui/interfaceLayout.js';
+import { createInstrumentTrack, instrumentPlugins, openPluginWhenReady, trackPlugin } from '../../core/instrumentTrack.js';
+import { icon } from '../../ui/icons.js';
 
 /**
  * The two numbers that decide how much arrangement fits on a screen.
@@ -857,6 +859,37 @@ export function createSequencerModule(hub) {
     return track;
   }
 
+  /**
+   * "+ MIDI Track" offers the track alone, or with its instrument: the
+   * installed instruments follow, narrowed by typing, and taking one makes the
+   * node, loads the plugin, plugs the cables and opens the plugin's window
+   * (core/instrumentTrack.js). Asked by the author on 2026-09-26.
+   */
+  function openAddMidiMenu(button) {
+    const box = button?.getBoundingClientRect?.() || { left: 0, bottom: 0 };
+    const instruments = instrumentPlugins(hub);
+    const items = [{ label: 'Empty MIDI Track', keywords: 'blank none', action: () => addTrack('midi') }];
+    if (instruments.length) {
+      items.push({ heading: 'With an instrument' });
+      for (const plugin of instruments) {
+        items.push({
+          label: plugin.name,
+          hint: plugin.manufacturer || '',
+          keywords: [plugin.manufacturer, plugin.category].filter(Boolean).join(' '),
+          action: () => addInstrumentTrack(plugin.pluginId)
+        });
+      }
+    }
+    openContextMenu({ x: box.left, y: box.bottom + 4, items, search: { placeholder: 'An instrument, or Enter for an empty track…' } });
+  }
+
+  function addInstrumentTrack(pluginId) {
+    const made = createInstrumentTrack(hub, pluginId);
+    if (made?.track) revealTrack(made.track.id);
+    if (made?.pluginInstanceId) openPluginWhenReady(hub, made.nodeId, made.pluginInstanceId);
+    return made;
+  }
+
   /** Scroll a track row fully into view, without moving when it already is. */
   function revealTrack(trackId) {
     const scroller = container?.querySelector('[data-timeline-scroll]');
@@ -955,6 +988,7 @@ export function createSequencerModule(hub) {
                 <button class="seq-arm ${track.armed ? 'active' : ''}" data-track-action="arm" title="Arm">R</button>
                 <button class="seq-monitor ${track.monitored ? 'active' : ''}" data-track-action="monitor" title="Input monitor">I</button>
                 <input class="seq-track-name" data-track-control="name" value="${escapeHtml(track.name)}">
+                <button class="seq-track-plugin" data-track-action="plugin" ${trackPlugin(hub, track) ? 'title="Open the plugin this track plays"' : 'disabled title="This track plays no plugin"'} aria-label="Open ${escapeHtml(track.name)}'s plugin">${icon('instrument', 13)}</button>
                 <button class="seq-mute ${track.muted ? 'active' : ''}" data-track-action="mute" title="Mute">M</button>
                 <button class="seq-track-delete" data-track-action="delete" title="Delete track">×</button>
                 <div class="seq-track-level"><input data-track-control="volume" type="range" min="-60" max="6" step="0.1" value="${gainToDb(track.volume)}" aria-label="${escapeHtml(track.name)} level in dB"><output data-track-level-value>${formatGainDb(track.volume)}</output><input class="seq-track-pan" data-track-control="pan" type="range" min="-100" max="100" step="1" value="${Math.round((track.pan || 0) * 100)}" title="Pan (double-click: centre)" aria-label="${escapeHtml(track.name)} pan"><output data-track-pan-value>${formatPan(track.pan)}</output></div>
@@ -980,7 +1014,7 @@ export function createSequencerModule(hub) {
   }
 
   function bind() {
-    container.querySelector('[data-action="add-midi"]')?.addEventListener('click', () => { addTrack('midi'); });
+    container.querySelector('[data-action="add-midi"]')?.addEventListener('click', (event) => openAddMidiMenu(event.currentTarget));
     container.querySelector('[data-action="add-audio"]')?.addEventListener('click', () => { addTrack('audio'); });
     const tempoInput = container.querySelector('[data-control="tempo"]');
     tempoBindingCleanup = bindTempoInput(tempoInput, (tempo) => controller.setTempo(tempo));
@@ -1196,6 +1230,10 @@ export function createSequencerModule(hub) {
       event.stopPropagation(); controller.setTrackMonitored(trackId, !track.monitored);
     });
     element.querySelector('[data-track-action="mute"]')?.addEventListener('click', () => controller.setTrack(trackId, { muted: !track.muted }));
+    element.querySelector('[data-track-action="plugin"]')?.addEventListener('click', () => {
+      const target = trackPlugin(hub, track);
+      if (target) openPluginWhenReady(hub, target.nodeId, target.pluginInstanceId);
+    });
     element.querySelector('[data-track-action="delete"]')?.addEventListener('click', () => controller.removeTrack(trackId));
     element.querySelector('[data-track-control="name"]')?.addEventListener('change', (event) => controller.setTrack(trackId, { name: event.target.value }));
     const volume = element.querySelector('[data-track-control="volume"]');
@@ -1553,6 +1591,7 @@ export function createSequencerModule(hub) {
       items: [
         { label: track.name },
         { separator: true },
+        ...(trackPlugin(hub, track) ? [{ label: 'Open Plugin Window', action: () => { const target = trackPlugin(hub, track); if (target) openPluginWhenReady(hub, target.nodeId, target.pluginInstanceId); } }, { separator: true }] : []),
         track.type === 'midi'
           ? { label: 'New MIDI clip here', hint: 'Double-click', action: () => { controller.addMidiClip(track.id, ppq, 4); } }
           : { label: 'Import audio here…', hint: 'Double-click', action: () => { controller.importAudio(track.id, ppq); } },

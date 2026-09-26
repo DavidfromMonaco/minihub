@@ -7,7 +7,7 @@ import { createMiniLabModule } from '../src/renderer/js/modules/minilab/minilabM
 import { createSequencerModule } from '../src/renderer/js/modules/sequencer/sequencerModule.js';
 import { defaultSequencerState } from '../src/renderer/js/core/sequencerModel.js';
 import { buildHeader } from '../src/renderer/js/ui/header.js';
-import { findClass, fire, installDom, makeEl } from './domShim.mjs';
+import { findClass, fire, installDom, makeEl, pickEntry } from './domShim.mjs';
 
 installDom();
 const { createRoutingModule } = await import('../src/renderer/js/modules/routing/routingModule.js');
@@ -790,7 +790,10 @@ test('the arrangement stays where you scrolled it, and a new track comes to you'
   // fold, and the view has to go to it.
   view.scroller().scrollTop = 0;
   fire(view.scroller(), 'scroll');
+  // "+ MIDI Track" asks whether the track comes with an instrument (2026-09-26);
+  // the empty track is the first answer.
   view.action('add-midi')._listeners.click.forEach((fn) => fn({ preventDefault() {} }));
+  pickEntry('Empty MIDI Track');
   assert.equal(hub.sequencer.model.state.tracks.length, 21, 'the track was made');
   const top = 30 + 20 * 64; // RULER_HEIGHT + index * TRACK_HEIGHT
   assert.ok(view.scroller().scrollTop > 0, 'the view followed the new track');

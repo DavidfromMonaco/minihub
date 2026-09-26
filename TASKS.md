@@ -23,8 +23,10 @@ tout ce qu'on a dit du début à la fin").
   them, the keys to the half pressed last; two keys in the header, the View
   menu. The author's settings were put back to Original and Play + Rec after
   the check.
-- To do: "+ MIDI Track" with its instrument, and the plugin opened from the
-  track.
+- Done, seen in the application: "+ MIDI Track" with its instrument --
+  Infinite Space Piano 2 taken from the list made VST 4, loaded it, cabled the
+  Sequencer to it and it to Mixer 1 beside the other synths, and opened its
+  window; a track's plugin key opened Analog Lab V. D-057.
 - To do: the MiniLab's Loop / Stop / Play / Rec pads drive the transport --
   checked with the author's keyboard.
 
