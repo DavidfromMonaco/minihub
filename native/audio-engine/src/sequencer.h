@@ -172,6 +172,15 @@ private:
                 && velocity == other.velocity && channel == other.channel;
         }
     };
+    /** A controller move a MIDI clip plays (D-064): a CC, the pitch wheel,
+     *  channel pressure or a key's pressure, at its quarter. */
+    struct ControlEvent {
+        enum Kind : uint8_t { cc = 0, pitchBend = 1, pressure = 2, polyPressure = 3 };
+        double ppq = 0;
+        uint8_t kind = cc, number = 0, channel = 1;
+        uint16_t value = 0;
+        juce::MidiMessage message() const noexcept;
+    };
     struct AudioAsset {
         double sampleRate = 48000, durationSeconds = 0;
         juce::AudioBuffer<float> samples;
@@ -241,6 +250,11 @@ private:
         // came in, so its next playing block chases the position.
         bool chasePending = false;
         std::vector<MidiEvent> midi;
+        std::vector<ControlEvent> controls; // by quarter
+        // The channels this track moves the pedal, the pitch wheel and the
+        // pressure on: a stop or a seek lets them go, or the next note played
+        // by hand would ring on under a pedal nobody holds.
+        uint16_t sustainChannels = 0, bendChannels = 0, pressureChannels = 0;
         std::vector<AudioClip> audio;
         std::vector<ClipTrace> clips;
     };
@@ -274,6 +288,10 @@ private:
         int pitch = 60, velocity = 100, channel = 1;
         int pass = 0; // the time round the loop it was played in (D-063)
     };
+    struct RecordedControlEvent {
+        double startPpq = 0;
+        int kind = 0, number = 0, value = 0, channel = 1, pass = 0;
+    };
     struct ActiveNote { double startPpq = 0; int velocity = 100; };
     /** One armed MIDI track's take. Round a loop it folds onto the loop, as
      *  every workstation's does (D-063): each time round lands on the same
@@ -286,6 +304,7 @@ private:
         double loopStart = 0, loopEnd = 0; // the loop the take last wrapped round
         std::map<int, std::vector<ActiveNote>> active;
         std::vector<RecordedMidiEvent> events;
+        std::vector<RecordedControlEvent> controls; // D-064
     };
     struct AudioTake { std::string trackId; AudioTakeWriter* writer=nullptr; double startPpq=0, bpm=120; };
 

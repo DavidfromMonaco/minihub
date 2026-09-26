@@ -828,6 +828,11 @@ of the other clips in Replace. The engine folds a take round a loop onto the
 loop and numbers each note's `pass`; which passes survive is the renderer's
 choice, made from the mode the take began in.
 
+A MIDI clip also keeps `controls` -- CC, pitch wheel, channel and key
+pressure -- in its source quarters beside its notes ([DECISIONS.md](DECISIONS.md)
+D-064). The engine plays them at their sample before the notes, chases them on
+Play, a seek and a loop's return, and lets the pedal and the wheel go on a stop.
+
 Une piste est `midi` ou `audio` ; un clip audio porte `trimStartSeconds`,
 `trimEndSeconds`, `gain`, `peaks` et un état de disponibilité du média.
 

@@ -1704,11 +1704,14 @@ export class SequencerController {
   _acceptMidiRecording(message) {
     if (this._deferForProjectTransition('midi', message)) return;
     const track = this.model.state.tracks.find((item) => item.id === message?.trackId && item.type === 'midi');
-    if (!track || !Array.isArray(message.events) || !message.events.length) return;
+    const events = Array.isArray(message?.events) ? message.events : [];
+    const controls = Array.isArray(message?.controls) ? message.controls : [];
+    if (!track || (!events.length && !controls.length)) return;
     const startPpq = Math.max(0, Number(message.startPpq) || 0);
     const endPpq = Math.max(startPpq + 0.125, Number(message.endPpq) || startPpq + 4);
-    // Into the clips already there (D-063), in the mode the take began in.
-    this.model.recordMidiTake(track.id, { startPpq, endPpq, events: message.events }, { mode: this._takeRecordMode });
+    // Into the clips already there (D-063), in the mode the take began in,
+    // with the wheels, knobs and pedal moved during it (D-064).
+    this.model.recordMidiTake(track.id, { startPpq, endPpq, events, controls }, { mode: this._takeRecordMode });
     this.changed();
   }
 

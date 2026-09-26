@@ -293,6 +293,27 @@ bool SequencerEngine::sync(const juce::var& project,
                 const auto* notes=clipValue["notes"].getArray();if(!notes)continue;
                 if(notes->size()>65536)return failClosed("Too many MIDI notes in a clip");
                 for(const auto& note:*notes){const double noteStart=boundedPpq(note["startPpq"]),noteEnd=noteStart+std::max(0.001,boundedPpq(note["durationPpq"],.25));if(noteEnd<=sourceOffset||noteStart>=sourceEnd)continue;MidiEvent event;event.startPpq=clipStart+std::max(noteStart,sourceOffset)-sourceOffset;event.endPpq=clipStart+std::min(noteEnd,sourceEnd)-sourceOffset;event.pitch=(uint8_t)juce::jlimit(0,127,(int)note["pitch"]);event.velocity=(uint8_t)juce::jlimit(1,127,(int)note["velocity"]);event.channel=(uint8_t)juce::jlimit(1,16,(int)note["channel"]);track.midi.push_back(event);}
+                // Its controller moves (D-064), those inside the window it plays.
+                if(const auto* controls=clipValue["controls"].getArray()){
+                    if(controls->size()>65536)return failClosed("Too many controller moves in a clip");
+                    for(const auto& control:*controls){
+                        const double at=boundedPpq(control["startPpq"]);if(at<sourceOffset||at>=sourceEnd)continue;
+                        const auto kind=control["kind"].toString();
+                        ControlEvent event;event.ppq=clipStart+at-sourceOffset;
+                        event.kind=kind=="pitchbend"?ControlEvent::pitchBend:kind=="pressure"?ControlEvent::pressure:kind=="polypressure"?ControlEvent::polyPressure:ControlEvent::cc;
+                        event.number=(uint8_t)juce::jlimit(0,127,(int)control["number"]);
+                        event.value=(uint16_t)juce::jlimit(0,event.kind==ControlEvent::pitchBend?16383:127,(int)control["value"]);
+                        event.channel=(uint8_t)juce::jlimit(1,16,(int)control["channel"]);
+                        // Channel-mode messages are not music: an All Notes Off
+                        // is the panic, and a take that caught one keeps none.
+                        if(event.kind==ControlEvent::cc&&event.number>=120)continue;
+                        const uint16_t bit=(uint16_t)(1u<<(event.channel-1));
+                        if(event.kind==ControlEvent::cc&&event.number==64)track.sustainChannels|=bit;
+                        if(event.kind==ControlEvent::pitchBend)track.bendChannels|=bit;
+                        if(event.kind==ControlEvent::pressure)track.pressureChannels|=bit;
+                        track.controls.push_back(event);
+                    }
+                }
             } else {
                 const auto clipId=clipValue["id"].toString();const juce::File file(clipValue["filePath"].toString());
                 if(!validId(clipId))return failClosed("Invalid Sequencer audio clip id");
@@ -315,7 +336,8 @@ bool SequencerEngine::sync(const juce::var& project,
             }
         }
         std::sort(track.midi.begin(),track.midi.end(),[](const auto&a,const auto&b){return a.startPpq<b.startPpq||(a.startPpq==b.startPpq&&a.pitch<b.pitch);});
-        if (track.type=="midi") track.midiScratch.ensureSize(std::max<size_t>(8192, track.midi.size()*24+256));
+        std::stable_sort(track.controls.begin(),track.controls.end(),[](const auto&a,const auto&b){return a.ppq<b.ppq;});
+        if (track.type=="midi") track.midiScratch.ensureSize(std::max<size_t>(8192, track.midi.size()*24+track.controls.size()*12+256));
         next->tracks.push_back(std::move(track));
     }
     // Every track still plays where it played: no destination needs silencing.
@@ -523,7 +545,13 @@ void SequencerEngine::processMidi(int count,Transport& transport,MidiExecutionPl
     for(auto& track:plan->tracks){if(track.type!="midi"||track.outputId.empty())continue;auto& buffer=track.midiScratch;buffer.clear();
         const auto destinationEpoch=track.destination?track.destination->midiEpoch():0;
         for(auto& hop:track.thru)hop.blockEpoch=hop.chain?hop.chain->midiEpoch():0;
-        if(cleanup||released){for(int channel=1;channel<=16;++channel){for(int pitch=0;pitch<128;++pitch){auto& held=track.activeNotes[(size_t)((channel-1)*128+pitch)];while(held>0){buffer.addEvent(juce::MidiMessage::noteOff(channel,pitch),0);--held;}}if(cleanup){buffer.addEvent(juce::MidiMessage::allNotesOff(channel),0);buffer.addEvent(juce::MidiMessage::allSoundOff(channel),0);}}}
+        if(cleanup||released){for(int channel=1;channel<=16;++channel){for(int pitch=0;pitch<128;++pitch){auto& held=track.activeNotes[(size_t)((channel-1)*128+pitch)];while(held>0){buffer.addEvent(juce::MidiMessage::noteOff(channel,pitch),0);--held;}}if(cleanup){buffer.addEvent(juce::MidiMessage::allNotesOff(channel),0);buffer.addEvent(juce::MidiMessage::allSoundOff(channel),0);}}
+            // What the clips pressed, released with the notes (D-064); a
+            // chase in this same block sets them again where it lands.
+            for(int channel=1;channel<=16;++channel){const uint16_t bit=(uint16_t)(1u<<(channel-1));
+                if(track.sustainChannels&bit)buffer.addEvent(juce::MidiMessage::controllerEvent(channel,64,0),0);
+                if(track.bendChannels&bit)buffer.addEvent(juce::MidiMessage::pitchWheel(channel,8192),0);
+                if(track.pressureChannels&bit)buffer.addEvent(juce::MidiMessage::channelPressureChange(channel,0),0);}}
         const bool muted=(track.runtime&&track.runtime->muted.load(std::memory_order_acquire))||clipsSilenced_.load(std::memory_order_acquire);
         const bool chaseTrack=playing&&(chase||track.chasePending);
         if(playing)track.chasePending=false;
@@ -538,10 +566,22 @@ void SequencerEngine::processMidi(int count,Transport& transport,MidiExecutionPl
             // placed first was cut by the note-off of the same pitch ending
             // there -- at every loop wrap, and between two clips when the later
             // clip came first in the list.
+            // Controller moves go before the notes of their sample: a wheel or
+            // a pedal set where the note begins is heard by that note (D-064).
+            const auto moves=[&](int first,int last){for(const auto& event:track.controls){if(sourceEnded||(exportContext&&event.ppq>=exportSourceEndPpq()))continue;const int at=span.sampleOf(event.ppq);if(at>=first&&at<last)buffer.addEvent(event.message(),at);}};
+            // Every controller as it stands before `before`: the last move of
+            // each, found walking back, a key's pressure excepted -- it
+            // belongs to a note that is not sounding.
+            const auto chaseControls=[&](double before,int sample){std::array<uint64_t,33> seen{};
+                for(auto it=track.controls.rbegin();it!=track.controls.rend();++it){if(it->ppq>=before||it->kind==ControlEvent::polyPressure)continue;
+                    const int slot=(it->channel-1)*130+(it->kind==ControlEvent::cc?it->number:127+it->kind);const uint64_t bit=uint64_t(1)<<(slot%64);
+                    if(seen[(size_t)slot/64]&bit)continue;seen[(size_t)slot/64]|=bit;buffer.addEvent(it->message(),sample);}};
             const auto offs=[&](int first,int last){for(const auto& event:track.midi){const int off=span.sampleOf(event.endPpq);if(off>=first&&off<last&&onAt(event)!=off)noteOff(event,off);}};
             const auto ons=[&](int first,int last){for(const auto& event:track.midi){const int on=onAt(event);if(on<first||on>=last)continue;noteOn(event,on);if(span.sampleOf(event.endPpq)==on)noteOff(event,on);}};
             offs(0,split);
             const auto chased=[&](const MidiEvent& event){return chaseTrack&&!sourceEnded&&onAt(event)<0&&event.startPpq<start&&event.endPpq>start&&span.sampleOf(event.endPpq)!=0;};
+            if(chaseTrack&&!sourceEnded)chaseControls(start,0);
+            moves(0,split);
             for(const auto& event:track.midi)if(chased(event))noteOn(event,0);
             ons(0,split);
             if(span.wraps){
@@ -553,8 +593,9 @@ void SequencerEngine::processMidi(int count,Transport& transport,MidiExecutionPl
                 const int at=std::min(span.wrapSample,count-1);auto held=track.activeNotes;
                 for(const auto& event:track.midi){const auto key=(size_t)((event.channel-1)*128+event.pitch);const int on=onAt(event),off=span.sampleOf(event.endPpq);const bool began=(on>=0&&on<split)||chased(event),ended=off>=0&&off<split;if(began&&!ended&&held[key]<std::numeric_limits<uint16_t>::max())++held[key];else if(ended&&!began&&held[key]>0)--held[key];}
                 for(size_t key=0;key<held.size();++key)for(int left=held[key];left>0;--left)buffer.addEvent(juce::MidiMessage::noteOff((int)(key/128)+1,(int)(key%128)),at);
+                chaseControls(span.loopStart,at);
                 for(const auto& event:track.midi)if(event.startPpq<span.loopStart&&event.endPpq>span.resumePpq)noteOn(event,at);
-                offs(split,count);ons(split,count);
+                offs(split,count);moves(split,count);ons(split,count);
             }
         }
         if(track.runtime)track.runtime->activeClips.store(activeClips,std::memory_order_release);
@@ -690,6 +731,16 @@ void SequencerEngine::beginRecording(Transport& transport,bool startTransport)
     transport.setRecording(true);if(startTransport&&!transport.playing())transport.setPlaying(true);
 }
 
+juce::MidiMessage SequencerEngine::ControlEvent::message() const noexcept
+{
+    switch(kind){
+        case pitchBend:return juce::MidiMessage::pitchWheel(channel,value);
+        case pressure:return juce::MidiMessage::channelPressureChange(channel,value);
+        case polyPressure:return juce::MidiMessage::aftertouchChange(channel,number,value);
+        default:return juce::MidiMessage::controllerEvent(channel,number,value);
+    }
+}
+
 double SequencerEngine::recordedPpq(MidiTake& take,Transport& transport) noexcept
 {
     const double current=transport.ppqPosition();
@@ -705,7 +756,13 @@ double SequencerEngine::recordedPpq(MidiTake& take,Transport& transport) noexcep
 
 void SequencerEngine::recordMidiInput(const std::string& source,const juce::MidiMessage& message,double offsetMs,Transport& transport)
 {
-    if(!recording())return;for(auto& take:midiTakes_){if(take.sourceId.empty()||take.sourceId!=source)continue;double q=recordedPpq(take,transport)+offsetMs*transport.bpm()/60000.0;q=std::max(take.pass?take.loopStart:take.startPpq,q);const int channel=message.getChannel(),pitch=message.getNoteNumber(),key=channel*128+pitch;if(message.isNoteOn()){take.active[key].push_back({q,message.getVelocity()});}else if(message.isNoteOff()){auto found=take.active.find(key);if(found==take.active.end()||found->second.empty())continue;const auto active=found->second.back();found->second.pop_back();take.events.push_back({active.startPpq,std::max(.001,q-active.startPpq),pitch,active.velocity,channel,take.pass});}}
+    if(!recording())return;for(auto& take:midiTakes_){if(take.sourceId.empty()||take.sourceId!=source)continue;double q=recordedPpq(take,transport)+offsetMs*transport.bpm()/60000.0;q=std::max(take.pass?take.loopStart:take.startPpq,q);const int channel=message.getChannel(),pitch=message.getNoteNumber(),key=channel*128+pitch;if(message.isNoteOn()){take.active[key].push_back({q,message.getVelocity()});}else if(message.isNoteOff()){auto found=take.active.find(key);if(found==take.active.end()||found->second.empty())continue;const auto active=found->second.back();found->second.pop_back();take.events.push_back({active.startPpq,std::max(.001,q-active.startPpq),pitch,active.velocity,channel,take.pass});}
+        // The wheels, knobs, faders and pedal moved during the take (D-064).
+        // Channel-mode messages are the panic's, not the player's.
+        else if(message.isController()&&message.getControllerNumber()<120)take.controls.push_back({q,0,message.getControllerNumber(),message.getControllerValue(),channel,take.pass});
+        else if(message.isPitchWheel())take.controls.push_back({q,1,0,message.getPitchWheelValue(),channel,take.pass});
+        else if(message.isChannelPressure())take.controls.push_back({q,2,0,message.getChannelPressureValue(),channel,take.pass});
+        else if(message.isAftertouch())take.controls.push_back({q,3,message.getNoteNumber(),message.getAfterTouchValue(),channel,take.pass});}
 }
 
 void SequencerEngine::closeMidiNotes(MidiTake& take,double end)
@@ -716,11 +773,13 @@ void SequencerEngine::closeMidiNotes(MidiTake& take,double end)
 juce::Array<juce::var> SequencerEngine::finishRecording(Transport& transport)
 {
     juce::Array<juce::var> result;if(!recording_.exchange(false))return result;transport.setRecording(false);
-    for(auto& take:midiTakes_){const double end=recordedPpq(take,transport);closeMidiNotes(take,end);if(take.events.empty())continue;
+    for(auto& take:midiTakes_){const double end=recordedPpq(take,transport);closeMidiNotes(take,end);if(take.events.empty()&&take.controls.empty())continue;
         // The bars the take went over: round a loop, the whole loop.
         const double from=take.pass?std::min(take.startPpq,take.loopStart):take.startPpq;
         const double to=take.pass?std::max(end,take.loopEnd):end;
-        juce::var message=makeObject();setProp(message,"type","sequencerMidiRecorded");setProp(message,"trackId",juce::String(take.trackId));setProp(message,"startPpq",from);setProp(message,"endPpq",std::max(from+.001,to));setProp(message,"passes",take.pass+1);juce::Array<juce::var> events;for(const auto&e:take.events){juce::var item=makeObject();setProp(item,"startPpq",e.startPpq);setProp(item,"durationPpq",e.durationPpq);setProp(item,"pitch",e.pitch);setProp(item,"velocity",e.velocity);setProp(item,"channel",e.channel);setProp(item,"pass",e.pass);events.add(item);}setProp(message,"events",events);result.add(message);}
+        juce::var message=makeObject();setProp(message,"type","sequencerMidiRecorded");setProp(message,"trackId",juce::String(take.trackId));setProp(message,"startPpq",from);setProp(message,"endPpq",std::max(from+.001,to));setProp(message,"passes",take.pass+1);juce::Array<juce::var> events;for(const auto&e:take.events){juce::var item=makeObject();setProp(item,"startPpq",e.startPpq);setProp(item,"durationPpq",e.durationPpq);setProp(item,"pitch",e.pitch);setProp(item,"velocity",e.velocity);setProp(item,"channel",e.channel);setProp(item,"pass",e.pass);events.add(item);}setProp(message,"events",events);
+        static const char* const controlKinds[]{"cc","pitchbend","pressure","polypressure"};
+        juce::Array<juce::var> controls;for(const auto& c:take.controls){juce::var item=makeObject();setProp(item,"startPpq",c.startPpq);setProp(item,"kind",controlKinds[juce::jlimit(0,3,c.kind)]);setProp(item,"number",c.number);setProp(item,"value",c.value);setProp(item,"channel",c.channel);setProp(item,"pass",c.pass);controls.add(item);}setProp(message,"controls",controls);result.add(message);}
     for(auto& take:audioTakes_){take.writer->stop();if(!take.writer->hasTake())continue;juce::var message=makeObject();setProp(message,"type","sequencerAudioRecorded");setProp(message,"trackId",juce::String(take.trackId));setProp(message,"filePath",take.writer->takeFile().getFullPathName());setProp(message,"startPpq",take.startPpq);setProp(message,"durationSeconds",take.writer->duration());setProp(message,"bpm",take.bpm);setProp(message,"overrun",take.writer->overrun());result.add(message);}
     midiTakes_.clear();audioTakes_.clear();panic();return result;
 }
@@ -757,13 +816,13 @@ bool SequencerEngine::prepareExportPlan(
     auto* source=activePlan_.load(std::memory_order_acquire);
     if(!source){error="Sequencer arrangement is unavailable";return false;}
     auto next=std::make_unique<Plan>();next->generation=source->generation;next->tracks.reserve(source->tracks.size());
-    for(const auto& original:source->tracks){Track track;track.id=original.id;track.type=original.type;track.inputId=original.inputId;track.outputId=original.outputId;track.armed=original.armed;track.monitored=original.monitored;track.midiOutputKind=original.midiOutputKind;track.midi=original.midi;track.audio=original.audio;track.clips=original.clips;track.runtime=std::make_shared<TrackRuntime>();if(original.runtime){track.runtime->gain.store(original.runtime->gain.load(std::memory_order_acquire),std::memory_order_relaxed);track.runtime->muted.store(original.runtime->muted.load(std::memory_order_acquire),std::memory_order_relaxed);track.runtime->pan.store(original.runtime->pan.load(std::memory_order_acquire),std::memory_order_relaxed);}if(track.type=="audio"){track.audioSumScratch.setSize(2,std::max(blockSize_,4096),false,true,false);track.audioSumScratch.clear();track.inputScratch.setSize(2,std::max(blockSize_,4096),false,true,false);track.inputScratch.clear();}
+    for(const auto& original:source->tracks){Track track;track.id=original.id;track.type=original.type;track.inputId=original.inputId;track.outputId=original.outputId;track.armed=original.armed;track.monitored=original.monitored;track.midiOutputKind=original.midiOutputKind;track.midi=original.midi;track.controls=original.controls;track.sustainChannels=original.sustainChannels;track.bendChannels=original.bendChannels;track.pressureChannels=original.pressureChannels;track.audio=original.audio;track.clips=original.clips;track.runtime=std::make_shared<TrackRuntime>();if(original.runtime){track.runtime->gain.store(original.runtime->gain.load(std::memory_order_acquire),std::memory_order_relaxed);track.runtime->muted.store(original.runtime->muted.load(std::memory_order_acquire),std::memory_order_relaxed);track.runtime->pan.store(original.runtime->pan.load(std::memory_order_acquire),std::memory_order_relaxed);}if(track.type=="audio"){track.audioSumScratch.setSize(2,std::max(blockSize_,4096),false,true,false);track.audioSumScratch.clear();track.inputScratch.setSize(2,std::max(blockSize_,4096),false,true,false);track.inputScratch.clear();}
         if(track.type=="midi"&&track.midiOutputKind==Track::MidiOutputKind::chain&&!track.outputId.empty()){track.destination=chainLookup(track.outputId);if(!track.destination){error="Export destination is unavailable: "+track.outputId;return false;}}
         // The series is bounced too, against the export's own cloned chains: an
         // instrument heard while playing and missing from the file is exactly
         // the surprise an export must not hold.
         for(const auto& hop:original.thru){auto entry=hop;entry.blockEpoch=0;if(entry.kind==Track::MidiOutputKind::chain){entry.chain=chainLookup(entry.id);if(!entry.chain){error="Export destination is unavailable: "+entry.id;return false;}}track.thru.push_back(std::move(entry));}
-        if(track.type=="midi")track.midiScratch.ensureSize(std::max<size_t>(8192,track.midi.size()*24+256));next->tracks.push_back(std::move(track));}
+        if(track.type=="midi")track.midiScratch.ensureSize(std::max<size_t>(8192,track.midi.size()*24+track.controls.size()*12+256));next->tracks.push_back(std::move(track));}
     preparedExportPlan_=std::move(next);needsExportChase_.store(true);return true;
 }
 

@@ -907,6 +907,67 @@ void testSequencerMidiSchedulingAndRecording()
     sequencer.panic();destination.pullMidi(midi,512); // panic is delivered by Chain on its next process block in the full engine
 }
 
+juce::var clipControl(double start,const char* kind,int number,int value,int channel=1)
+{
+    juce::var control=mlh::makeObject();mlh::setProp(control,"startPpq",start);mlh::setProp(control,"kind",kind);mlh::setProp(control,"number",number);mlh::setProp(control,"value",value);mlh::setProp(control,"channel",channel);return control;
+}
+
+void testSequencerClipControls()
+{
+    // A MIDI clip plays the wheels, knobs and pedal kept in it (D-064), each
+    // at its sample, before the notes that start with it; a seek sets every
+    // controller where it stands; a stop lets the pedal and the wheel go; and
+    // a take keeps what was moved while it ran.
+    mlh::SequencerEngine sequencer;sequencer.prepare(48000,24000);mlh::Chain destination("vst-001");destination.setMidiEnabled(true);
+    juce::Array<juce::var> tracks;tracks.add(midiTrack("track-midi","vst-001",true));
+    juce::Array<juce::var> controls;controls.add(clipControl(0,"cc",64,127,3));controls.add(clipControl(0,"pitchbend",0,12000,3));controls.add(clipControl(.5,"cc",1,40,3));controls.add(clipControl(2,"cc",1,90,3));controls.add(clipControl(.75,"cc",123,0,3));
+    mlh::setProp(tracks.getReference(0)["clips"].getArray()->getReference(0),"controls",controls);
+    juce::Array<juce::var> info;std::string error;
+    expect(sequencer.sync(makeSequencerProject(tracks),[&](const std::string&id){return id=="vst-001"?&destination:nullptr;},48000,24000,info,error),"a clip with controller moves compiles");
+    mlh::Transport transport;transport.setSampleRate(48000);transport.setPlaying(true);transport.beginBlock();sequencer.processMidi(24000,transport);
+    juce::MidiBuffer midi;destination.pullMidi(midi,24000);
+    int order=0,pedalAt=-1,bendAt=-1,noteAt=-1,modAt=-1,modValue=-1;bool panicKept=false;
+    for(const auto& item:midi){const auto m=item.getMessage();++order;
+        if(m.isController()&&m.getControllerNumber()==64&&m.getControllerValue()==127)pedalAt=order;
+        if(m.isPitchWheel()&&m.getPitchWheelValue()==12000&&m.getChannel()==3)bendAt=order;
+        if(m.isNoteOn())noteAt=order;
+        if(m.isController()&&m.getControllerNumber()==1){modAt=item.samplePosition;modValue=m.getControllerValue();}
+        if(m.isController()&&m.getControllerNumber()==123&&item.samplePosition>0)panicKept=true;}
+    expect(pedalAt>0&&bendAt>0&&noteAt>pedalAt&&noteAt>bendAt,"the pedal and the wheel set at a note's start reach the instrument before it");
+    expect(modAt==12000&&modValue==40,"a controller move sounds at its own sample: half a quarter at 120 BPM");
+    expect(!panicKept,"a channel-mode message in a clip is not played");
+
+    transport.seekPpq(2.25);sequencer.release();transport.beginBlock();sequencer.processMidi(512,transport);midi.clear();destination.pullMidi(midi,512);
+    int modChased=-1,pedalChased=-1,bendChased=-1;bool pedalLetGo=false;
+    for(const auto& item:midi){const auto m=item.getMessage();
+        if(m.isController()&&m.getControllerNumber()==1)modChased=m.getControllerValue();
+        if(m.isController()&&m.getControllerNumber()==64){if(m.getControllerValue()==0)pedalLetGo=true;else pedalChased=m.getControllerValue();}
+        if(m.isPitchWheel())bendChased=m.getPitchWheelValue();}
+    expect(modChased==90,"a seek sets a controller to the last value before it, not the first");
+    expect(pedalLetGo&&pedalChased==127&&bendChased==12000,"the pedal is let go with the notes, then set again where the seek lands");
+
+    sequencer.panic();transport.setPlaying(false);transport.beginBlock();sequencer.processMidi(512,transport);midi.clear();destination.pullMidi(midi,512);
+    bool pedalUp=false,wheelCentred=false;
+    for(const auto& item:midi){const auto m=item.getMessage();pedalUp|=m.isController()&&m.getControllerNumber()==64&&m.getControllerValue()==0;wheelCentred|=m.isPitchWheel()&&m.getPitchWheelValue()==8192;}
+    expect(pedalUp&&wheelCentred,"a stop lets the pedal up and the wheel back to its centre");
+
+    transport.seekPpq(4);transport.setPlaying(true);sequencer.beginRecording(transport);
+    sequencer.recordMidiInput("in-1",juce::MidiMessage::controllerEvent(2,11,77),0,transport);
+    transport.seekPpq(4.5);sequencer.recordMidiInput("in-1",juce::MidiMessage::pitchWheel(2,300),0,transport);
+    sequencer.recordMidiInput("in-1",juce::MidiMessage::allNotesOff(2),0,transport);
+    transport.seekPpq(5);
+    const auto recorded=sequencer.finishRecording(transport);
+    expect(recorded.size()==1,"a take of controller moves alone, with no note, is kept");
+    if(recorded.size()){
+        const auto* moves=recorded[0]["controls"].getArray();
+        expect(moves&&moves->size()==2,"the controller and the wheel, the panic left out");
+        if(moves&&moves->size()==2){
+            expect((*moves)[0]["kind"].toString()=="cc"&&(int)(*moves)[0]["number"]==11&&(int)(*moves)[0]["value"]==77&&(int)(*moves)[0]["channel"]==2&&(double)(*moves)[0]["startPpq"]==4,"a CC keeps its number, value, channel and quarter");
+            expect((*moves)[1]["kind"].toString()=="pitchbend"&&(int)(*moves)[1]["value"]==300&&(double)(*moves)[1]["startPpq"]==4.5,"the wheel keeps its fourteen bits");
+        }
+    }
+}
+
 void testSequencerLoopTakeFoldsOntoTheLoop()
 {
     // Round a loop, a take lands on the loop's bars every time round, each
@@ -4595,6 +4656,7 @@ int main(int argc, char** argv)
     std::cerr << "[core] sequencer-precount\n";
     testSequencerPreCountKeepsTheDownbeat();
     testSequencerLoopTakeFoldsOntoTheLoop();
+    testSequencerClipControls();
     std::cerr << "[core] sequencer-plan-readers\n";
     testSequencerPlanReadersKeepTheirPlans();
     std::cerr << "[core] sequencer-midi-stress\n";

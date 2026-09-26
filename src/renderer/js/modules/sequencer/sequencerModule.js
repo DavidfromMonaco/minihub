@@ -303,13 +303,41 @@ function clipContent(track, clip, zoom) {
   if (track.type !== 'midi') return `<span class="seq-waveform">${waveform(clip.peaks)}</span>`;
   const sourceOffset = Number(clip.sourceOffsetPpq) || 0;
   const sourceEnd = sourceOffset + clip.lengthPpq;
-  return `<span class="seq-midi-preview">${clip.notes
+  return `<span class="seq-midi-preview">${controlLinesMarkup(clip, zoom)}${clip.notes
     .filter((note) => note.startPpq + note.durationPpq > sourceOffset && note.startPpq < sourceEnd)
     .map((note) => {
       const visibleStart = Math.max(sourceOffset, note.startPpq);
       const visibleEnd = Math.min(sourceEnd, note.startPpq + note.durationPpq);
       return `<i data-seq-left="${(visibleStart - sourceOffset) * zoom}" data-seq-width="${Math.max(1, (visibleEnd - visibleStart) * zoom)}" data-seq-bottom-pct="${Math.max(2, (note.pitch - 24) / 104 * 70)}"></i>`;
     }).join('')}</span>`;
+}
+
+/**
+ * The controller moves a MIDI clip keeps (D-064), one stepped line per
+ * controller behind its notes: enough to see that a take kept the wheel or
+ * the pedal, and where it moved. A key's own pressure is left out, as it is
+ * of a chase -- it belongs to its note. Exported for the tests.
+ */
+export function controlLinesMarkup(clip, zoom) {
+  const offset = Number(clip.sourceOffsetPpq) || 0;
+  const end = offset + clip.lengthPpq;
+  const width = Math.max(1, clip.lengthPpq * zoom);
+  const lines = new Map();
+  for (const control of Array.isArray(clip.controls) ? clip.controls : []) {
+    if (control.kind === 'polypressure' || control.startPpq >= end) continue;
+    const key = `${control.channel}:${control.kind}:${control.number}`;
+    const y = (100 - control.value / (control.kind === 'pitchbend' ? 16383 : 127) * 100).toFixed(1);
+    const x = Math.max(0, Math.round((control.startPpq - offset) * zoom));
+    const points = lines.get(key) || [];
+    // One point a pixel, the last of it; before the window, the value it opens on.
+    if (points.length && points[points.length - 1][0] === x) points[points.length - 1][1] = y;
+    else points.push([x, y]);
+    lines.set(key, points);
+  }
+  if (!lines.size) return '';
+  const paths = [...lines.values()].map((points) =>
+    `<path d="M${points[0][0]} ${points[0][1]}${points.slice(1).map(([x, y]) => ` H${x} V${y}`).join('')} H${Math.round(width)}"/>`).join('');
+  return `<svg class="seq-control-lines" data-seq-width="${width}" viewBox="0 0 ${Math.round(width)} 100" preserveAspectRatio="none" aria-hidden="true">${paths}</svg>`;
 }
 
 /**

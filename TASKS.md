@@ -16,9 +16,13 @@ asked 2026-09-27 (D-063).
   it covers. The engine folds a loop take onto the loop.
 - Not tried in the application: built while the author was away from the
   screen.
-- Next, agreed in principle: controllers (CC, pitch bend, aftertouch) kept
-  in a take and played back; then a knob's moves on a plugin parameter
-  recorded as automation; then layered audio takes shown apart.
+- Done (D-064): a MIDI take keeps the wheels, knobs, faders and pedal --
+  CC, pitch bend, pressure -- merged by the same rules; the engine plays
+  them at their sample, chases them on Play, a seek and the loop, and lets
+  the pedal and the wheel go on a stop. The arrangement draws them as a
+  stepped line in the clip. No editor for them yet.
+- Next, agreed in principle: a knob's moves on a plugin parameter recorded
+  as automation; then layered audio takes shown apart.
 
 **Fades on audio clips, as in Reaper — in the author's test** — asked
 2026-09-26 (D-062).

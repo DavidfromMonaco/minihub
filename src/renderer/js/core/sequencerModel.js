@@ -40,7 +40,16 @@ export const MIN_NOTE_PPQ = 0.03125;
 const MIN_NOTE_TICKS = Math.round(MIN_NOTE_PPQ * TICKS_PER_QUARTER);
 const MIN_CLIP_PPQ = 0.125;
 
-export const SEQUENCER_LIMITS = Object.freeze({ tracks: 64, clipsPerTrack: 2048, notesPerClip: 65536 });
+export const SEQUENCER_LIMITS = Object.freeze({ tracks: 64, clipsPerTrack: 2048, notesPerClip: 65536, controlsPerClip: 65536 });
+
+/**
+ * What a MIDI clip keeps besides its notes (D-064): a controller (`cc`, with
+ * its `number`), the pitch wheel (`pitchbend`, 0 to 16383, 8192 at rest),
+ * channel pressure (`pressure`) and a key's own pressure (`polypressure`, the
+ * key in `number`) -- everything a keyboard's wheels, knobs, faders and pedal
+ * send while a take runs.
+ */
+export const CONTROL_KINDS = Object.freeze(['cc', 'pitchbend', 'pressure', 'polypressure']);
 
 /**
  * The zoom floor, in pixels per quarter.
@@ -158,6 +167,21 @@ function normalizeNote(note, sourceLength) {
   };
 }
 
+/**
+ * One controller move, at a point in the clip's source. No id, unlike a note:
+ * a knob turned for a bar sends hundreds, and nothing yet takes one alone.
+ */
+export function normalizeControl(control, sourceLength = Infinity) {
+  const kind = CONTROL_KINDS.includes(control?.kind) ? control.kind : 'cc';
+  return {
+    kind,
+    number: kind === 'cc' || kind === 'polypressure' ? Math.round(clampFinite(control?.number, 0, 127)) : 0,
+    startPpq: clampFinite(control?.startPpq, 0, Math.max(0, sourceLength)),
+    value: Math.round(clampFinite(control?.value, 0, kind === 'pitchbend' ? 16383 : 127)),
+    channel: Math.round(clampFinite(control?.channel, 1, 16))
+  };
+}
+
 function normalizeClip(clip, type) {
   const startPpq = Math.max(0, finite(clip?.startPpq));
   const lengthPpq = Math.max(MIN_CLIP_PPQ, finite(clip?.lengthPpq, 4));
@@ -173,6 +197,9 @@ function normalizeClip(clip, type) {
     base.sourceLengthPpq = Math.max(base.sourceOffsetPpq + lengthPpq, finite(clip?.sourceLengthPpq, lengthPpq));
     base.notes = Array.isArray(clip?.notes)
       ? clip.notes.slice(0, SEQUENCER_LIMITS.notesPerClip).map((note) => normalizeNote(note, base.sourceLengthPpq)).sort((a, b) => a.startPpq - b.startPpq || a.pitch - b.pitch)
+      : [];
+    base.controls = Array.isArray(clip?.controls)
+      ? clip.controls.slice(0, SEQUENCER_LIMITS.controlsPerClip).map((control) => normalizeControl(control, base.sourceLengthPpq)).sort((a, b) => a.startPpq - b.startPpq)
       : [];
   } else {
     base.filePath = typeof clip?.filePath === 'string' ? clip.filePath : '';
@@ -484,7 +511,7 @@ export class SequencerModel {
    * clip to the bar line, never over the next clip; a take over no clip makes
    * one, as every take used to. Returns the clips written into.
    */
-  recordMidiTake(trackId, { startPpq = 0, endPpq = 0, events = [] } = {}, { mode = 'overdub' } = {}) {
+  recordMidiTake(trackId, { startPpq = 0, endPpq = 0, events = [], controls = [] } = {}, { mode = 'overdub' } = {}) {
     const track = this._track(trackId);
     if (!track || track.type !== 'midi') return [];
     const from = Math.max(0, finite(startPpq));
@@ -498,11 +525,19 @@ export class SequencerModel {
       channel: Math.round(clampFinite(event?.channel, 1, 16)),
       pass: Math.max(0, Math.trunc(finite(event?.pass)))
     }));
-    if (replace && played.length) {
-      const last = played.reduce((most, event) => Math.max(most, event.pass), 0);
+    // A controller move is laid in as a note is, by where it was made (D-064).
+    let moved = (Array.isArray(controls) ? controls : []).map((control) => ({
+      ...normalizeControl(control),
+      startPpq: Math.max(from, finite(control?.startPpq)),
+      pass: Math.max(0, Math.trunc(finite(control?.pass)))
+    }));
+    if (replace && (played.length || moved.length)) {
+      const last = [...played, ...moved].reduce((most, event) => Math.max(most, event.pass), 0);
       played = played.filter((event) => event.pass === last);
+      moved = moved.filter((control) => control.pass === last);
     }
     played.sort((a, b) => a.startPpq - b.startPpq || a.pitch - b.pitch);
+    moved.sort((a, b) => a.startPpq - b.startPpq);
     const end = (clip) => clip.startPpq + clip.lengthPpq;
     const touched = track.clips.filter((clip) => clip.startPpq < to && end(clip) > from)
       .sort((a, b) => a.startPpq - b.startPpq);
@@ -513,9 +548,13 @@ export class SequencerModel {
           const at = clip.startPpq + note.startPpq - clip.sourceOffsetPpq;
           return !shown || at < from || at >= to;
         });
+        clip.controls = clip.controls.filter((control) => {
+          const at = clip.startPpq + control.startPpq - clip.sourceOffsetPpq;
+          return control.startPpq < clip.sourceOffsetPpq || control.startPpq >= clip.sourceOffsetPpq + clip.lengthPpq || at < from || at >= to;
+        });
       }
     }
-    if (!played.length) return touched;
+    if (!played.length && !moved.length) return touched;
     if (!touched.length) {
       // On the grid at or before the take's start, so every note stays where
       // it was played.
@@ -524,6 +563,7 @@ export class SequencerModel {
       const last = played.reduce((most, event) => Math.max(most, event.startPpq + event.durationPpq), to);
       const clip = this.addMidiClip(track.id, start, last - start,
         played.map((event) => ({ ...event, startPpq: event.startPpq - start })), { snap: false });
+      if (clip) clip.controls = moved.map(({ pass, ...control }) => ({ ...control, startPpq: control.startPpq - start }));
       return clip ? [clip] : [];
     }
     const regions = this.trackRegions(track);
@@ -550,23 +590,29 @@ export class SequencerModel {
       if (clip.sourceOffsetPpq < 0) {
         const shift = -clip.sourceOffsetPpq;
         for (const note of clip.notes) note.startPpq += shift;
+        for (const control of clip.controls) control.startPpq += shift;
         clip.sourceLengthPpq += shift;
         clip.sourceOffsetPpq = 0;
       }
     };
-    const written = new Set();
-    for (const event of played) {
-      // The clip on top where the note was played: the latest to start.
+    // The clip on top where something was played -- the latest to start --
+    // or the one stretched to take it.
+    const hostAt = (at) => {
       let host = null;
       for (const clip of track.clips) {
-        if (clip.startPpq <= event.startPpq && end(clip) > event.startPpq && (!host || clip.startPpq >= host.startPpq)) host = clip;
+        if (clip.startPpq <= at && end(clip) > at && (!host || clip.startPpq >= host.startPpq)) host = clip;
       }
       if (!host) {
-        const before = touched.filter((clip) => clip.startPpq <= event.startPpq);
+        const before = touched.filter((clip) => clip.startPpq <= at);
         host = before.length ? before[before.length - 1] : touched[0];
-        if (before.length) stretchEnd(host, event.startPpq + MIN_NOTE_PPQ);
-        else stretchStart(host, event.startPpq);
+        if (before.length) stretchEnd(host, at + MIN_NOTE_PPQ);
+        else stretchStart(host, at);
       }
+      return host;
+    };
+    const written = new Set();
+    for (const event of played) {
+      const host = hostAt(event.startPpq);
       stretchEnd(host, event.startPpq + event.durationPpq);
       if (host.notes.length >= SEQUENCER_LIMITS.notesPerClip) continue;
       const at = Math.max(host.startPpq, Math.min(event.startPpq, end(host) - MIN_NOTE_PPQ));
@@ -580,7 +626,17 @@ export class SequencerModel {
       });
       written.add(host);
     }
-    for (const clip of written) clip.notes.sort((a, b) => a.startPpq - b.startPpq || a.pitch - b.pitch);
+    for (const { pass, ...control } of moved) {
+      const host = hostAt(control.startPpq);
+      if (host.controls.length >= SEQUENCER_LIMITS.controlsPerClip) continue;
+      const at = Math.max(host.startPpq, Math.min(control.startPpq, end(host)));
+      host.controls.push({ ...control, startPpq: host.sourceOffsetPpq + at - host.startPpq });
+      written.add(host);
+    }
+    for (const clip of written) {
+      clip.notes.sort((a, b) => a.startPpq - b.startPpq || a.pitch - b.pitch);
+      clip.controls.sort((a, b) => a.startPpq - b.startPpq);
+    }
     return [...written];
   }
 

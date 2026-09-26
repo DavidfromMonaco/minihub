@@ -2324,6 +2324,9 @@ body ::-webkit-scrollbar-corner { background:transparent; }
 .seq-clip-resize.end { right:0; border-left:1px solid rgba(255,255,255,.2); }
 .seq-midi-preview,.seq-waveform { position:absolute; left:3px; right:4px; top:15px; bottom:3px; pointer-events:none; }
 .seq-midi-preview i { position:absolute; height:3px; min-width:2px; background:rgba(255,255,255,.75); border-radius:1px; }
+/* A clip's controller moves (D-064), behind its notes. */
+.seq-control-lines { position:absolute; left:0; top:0; height:100%; overflow:visible; }
+.seq-control-lines path { fill:none; stroke:rgba(255,178,113,.6); stroke-width:1.2; vector-effect:non-scaling-stroke; }
 .seq-waveform i,.seq-audio-detail i { position:absolute; top:50%; width:2px; background:rgba(220,255,245,.7); transform:translateY(-50%); }
 .seq-marquee { position:absolute; z-index:6; border:1px solid rgba(255, 139, 44, .9); border-radius:2px; background:rgba(255, 139, 44, .14); pointer-events:none; }
 .seq-loop-range { position:absolute; top:0; z-index:1; pointer-events:none; border-left:1px solid transparent; border-right:1px solid transparent; }

@@ -126,3 +126,57 @@ test('the Record mode is remembered, Overdub unless Replace was chosen, and a ta
   assert.deepEqual(track.clips[0].notes.map((note) => note.pitch), [64], 'replaced, as the take began');
   assert.equal(rig('replace').controller.recordMode, 'replace');
 });
+
+// D-064: what the wheels, knobs and pedal did during a take.
+
+test('a clip keeps controller moves, bounded, in the order they were made', () => {
+  const model = new SequencerModel({ tracks: [{ type: 'midi', clips: [{ lengthPpq: 4, controls: [
+    { kind: 'pitchbend', startPpq: 2, value: 20000, channel: 0 },
+    { kind: 'cc', number: 64, startPpq: 1, value: 127, channel: 2 },
+    { kind: 'wobble', number: 300, startPpq: 9, value: -4 }
+  ] }] }] });
+  assert.deepEqual(model.state.tracks[0].clips[0].controls, [
+    { kind: 'cc', number: 64, startPpq: 1, value: 127, channel: 2 },
+    { kind: 'pitchbend', number: 0, startPpq: 2, value: 16383, channel: 1 },
+    { kind: 'cc', number: 127, startPpq: 4, value: 0, channel: 1 }
+  ]);
+});
+
+test('an overdub lays a knob turned over a clip into it, with no note', () => {
+  const { model, track, clip } = withClip();
+  model.recordMidiTake(track.id, { startPpq: 4, endPpq: 8, events: [], controls: [
+    { kind: 'cc', number: 1, startPpq: 5, value: 10, channel: 1 },
+    { kind: 'cc', number: 1, startPpq: 6, value: 90, channel: 1 }
+  ] });
+  assert.equal(track.clips.length, 1);
+  assert.deepEqual(clip.controls.map((control) => [control.startPpq, control.value]), [[1, 10], [2, 90]], 'in the clip\'s own quarters');
+  assert.equal(clip.notes.length, 2, 'the notes untouched');
+});
+
+test('a replace clears the moves the take went over, with its notes', () => {
+  const { model, track, clip } = withClip();
+  clip.controls = [{ kind: 'cc', number: 64, startPpq: 0.5, value: 127, channel: 1 }, { kind: 'cc', number: 64, startPpq: 3, value: 0, channel: 1 }];
+  model.recordMidiTake(track.id, { startPpq: 6, endPpq: 8, events: [], controls: [{ kind: 'pitchbend', startPpq: 6.5, value: 9000 }] }, { mode: 'replace' });
+  assert.deepEqual(clip.controls.map((control) => [control.kind, control.startPpq]), [['cc', 0.5], ['pitchbend', 2.5]]);
+});
+
+test('a split keeps the moves on both halves, each seeing its own', () => {
+  const { model, clip } = withClip();
+  clip.controls = [{ kind: 'cc', number: 1, startPpq: 1, value: 20, channel: 1 }, { kind: 'cc', number: 1, startPpq: 3, value: 100, channel: 1 }];
+  const [, tail] = model.splitClip(clip.id, 6);
+  assert.equal(tail.controls.length, 2, 'the whole source, as the notes');
+  assert.equal(tail.sourceOffsetPpq, 2);
+});
+
+test('the arrangement draws a clip\'s controller as a stepped line', async () => {
+  const { controlLinesMarkup } = await import('../src/renderer/js/modules/sequencer/sequencerModule.js');
+  const clip = { sourceOffsetPpq: 1, lengthPpq: 4, controls: [
+    { kind: 'cc', number: 1, startPpq: 0, value: 0, channel: 1 },
+    { kind: 'cc', number: 1, startPpq: 2, value: 127, channel: 1 },
+    { kind: 'polypressure', number: 60, startPpq: 2, value: 50, channel: 1 }
+  ] };
+  const markup = controlLinesMarkup(clip, 10);
+  assert.match(markup, /<path d="M0 100\.0 H10 V0\.0 H40"\/>/, 'from the value it opens on, stepping where it moves, to the clip\'s end');
+  assert.equal((markup.match(/<path/g) || []).length, 1, 'a key\'s pressure is not drawn');
+  assert.equal(controlLinesMarkup({ sourceOffsetPpq: 0, lengthPpq: 4, controls: [] }, 10), '');
+});

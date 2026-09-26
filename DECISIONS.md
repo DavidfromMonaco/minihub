@@ -3507,3 +3507,57 @@ layered audio takes apart (Reaper's lanes).
 `RecordedMidiEvent` in `native/audio-engine/src/sequencer.cpp`. Tests:
 `test/recordOverdub.test.mjs`, `testSequencerLoopTakeFoldsOntoTheLoop` in the
 native core tests.
+
+## D-064 — A MIDI clip keeps the wheels, knobs and pedal played into it
+
+**Status**: in force · 2026-09-27 · **implemented**, checked by the JS and
+native tests; not yet tried in the application
+
+**Context** — The second part of the author's overdub request (D-063): to
+record over a MIDI track "to add controls". A take kept Note On and Note Off
+and dropped everything else the keyboard sent -- the mod wheel, the pitch
+wheel, the sustain pedal, a knob or a fader -- so a part played with the
+pedal came back dry, and a filter swept by hand came back still.
+
+**Decision** — A MIDI clip has `controls`: `{ kind, number, startPpq, value,
+channel }` in the clip's source quarters, as its notes are. `kind` is `cc`
+(with its `number`), `pitchbend` (14 bits, 8192 at rest), `pressure` (the
+channel's) or `polypressure` (a key's, its key in `number`).
+
+- **Recorded** by the take, beside the notes, with the same `pass` round a
+  loop; merged by the same rules (D-063): into the clip it was made over,
+  every pass in Overdub, the range cleared first in Replace. A take of
+  moves alone, with no note, is a take.
+- **Played** by the engine at its sample, before the notes that start with
+  it, so a pedal pressed or a wheel set where a note begins is heard by
+  that note. Export included.
+- **Chased**, as a workstation does: Play, a seek or a loop's return sets
+  every controller to its last value before that point. A key's pressure is
+  not chased: it belongs to a note that is not sounding.
+- **Let go**: a stop or a seek puts the pedal up, the wheel at its centre and
+  the pressure at nothing on the channels the track moved them on, or the
+  next note played by hand rings on under a pedal nobody holds.
+- **Channel-mode messages** (CC 120 to 127) are not kept: an All Notes Off
+  is the panic MiniHub sends, not music.
+- **Seen**: the arrangement draws each controller as a stepped line behind
+  the clip's notes, so a take that kept a knob shows it.
+
+Not in this step: editing the moves (a controller lane in the Clip Editor),
+and a knob bound to a plugin's parameter, whose moves never become MIDI
+(the next step). A bound knob still sends its CC through the Sequencer, and
+the take keeps it; the plugin hears it only if it listens to that CC.
+
+**Consequences**
+
+- Moves have no id, unlike notes: a knob turned for a bar sends hundreds,
+  and nothing yet takes one alone. The first editor of moves may need them.
+- The engine keeps them in a list per track beside the notes, sorted, and
+  the chase walks it backwards with a fixed bitset on the stack: nothing is
+  allocated on the audio thread (invariant 3).
+
+**Proof in the code** — `CONTROL_KINDS`, `normalizeControl` and the controls
+of `recordMidiTake` in `core/sequencerModel.js`; `controlLinesMarkup` in
+`modules/sequencer/sequencerModule.js`; `ControlEvent`, the `moves` and
+`chaseControls` of `processMidi`, and `recordMidiInput` in
+`native/audio-engine/src/sequencer.cpp`. Tests: `test/recordOverdub.test.mjs`,
+`testSequencerClipControls` in the native core tests.
