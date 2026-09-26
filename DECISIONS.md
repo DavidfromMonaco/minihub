@@ -3090,7 +3090,7 @@ Sequencer page's markup in `test/sequencerUi.test.mjs`.
 ## D-057 — Fewer trips between the Patch Bay and the Sequencer
 
 **Status**: in force · 2026-09-26 · **implemented**, checked by the tests and
-in the application on a copy of the author's project, not yet tried by him
+in the application on a copy of the author's project, and tried by him (2026-09-26)
 
 **Context** — The author's session "Forward backward" (2026-09-25): three
 synths, a Mixer, a take per track. He could not choose where a take would
@@ -3140,7 +3140,7 @@ a strip -- and the Mixer is also a sub-mix inside a patch.
 ## D-058 — A controller's transport keys are the application's shortcuts
 
 **Status**: in force · 2026-09-26 · **implemented**, checked by the JS tests,
-not yet tried by the author on his keyboard
+and tried by the author on his MiniLab 3 (2026-09-26)
 
 **Context** — The MiniLab 3 prints Loop, Stop, Play, Rec and Tap over pads 4
 to 8 and sends them with Shift held: CC 105 and CC 106, seen by the author in
