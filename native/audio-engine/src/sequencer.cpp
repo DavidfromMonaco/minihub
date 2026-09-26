@@ -335,6 +335,27 @@ bool SequencerEngine::sync(const juce::var& project,
                 track.audio.push_back(std::move(clip));
             }
         }
+        // Its automation (D-065): a lane whose plugin's node is not a chain
+        // this engine hosts, or that holds no point, plays nothing.
+        if(const auto* lanes=value["automation"].getArray()){
+            if(lanes->size()>64)return failClosed("Too many automation lanes on a Sequencer track");
+            for(const auto& laneValue:*lanes){
+                AutomationLane lane;lane.nodeId=laneValue["nodeId"].toString().toStdString();
+                const auto instance=laneValue["pluginInstanceId"].toString(),parameter=laneValue["parameterId"].toString();
+                if(instance.isEmpty()||instance.length()>64||parameter.isEmpty()||parameter.length()>10||!parameter.containsOnly("0123456789"))continue;
+                const auto parsed=parameter.getLargeIntValue();if(parsed<0||parsed>static_cast<juce::int64>(0xffffffffu))continue;
+                lane.parameterId=(uint32_t)parsed;lane.parameterKey=parameter.toStdString();lane.instanceId=instance.toStdString();
+                lane.instanceKey=automationInstanceKey(instance.toRawUTF8());
+                lane.chain=chainLookup(lane.nodeId);if(!lane.chain)continue;
+                const auto* points=laneValue["points"].getArray();if(!points)continue;
+                if(points->size()>65536)return failClosed("Too many automation points in a lane");
+                for(const auto& point:*points){const auto& v=point["value"];if(!(v.isInt()||v.isInt64()||v.isDouble()))continue;const double level=(double)v;if(!std::isfinite(level))continue;lane.points.push_back({boundedPpq(point["ppq"]),(float)juce::jlimit(0.0,1.0,level)});}
+                std::stable_sort(lane.points.begin(),lane.points.end(),[](const auto&a,const auto&b){return a.ppq<b.ppq;});
+                if(lane.points.empty())continue;
+                lane.runtime=std::make_shared<LaneRuntime>();
+                track.automation.push_back(std::move(lane));
+            }
+        }
         std::sort(track.midi.begin(),track.midi.end(),[](const auto&a,const auto&b){return a.startPpq<b.startPpq||(a.startPpq==b.startPpq&&a.pitch<b.pitch);});
         std::stable_sort(track.controls.begin(),track.controls.end(),[](const auto&a,const auto&b){return a.ppq<b.ppq;});
         if (track.type=="midi") track.midiScratch.ensureSize(std::max<size_t>(8192, track.midi.size()*24+track.controls.size()*12+256));
@@ -535,6 +556,14 @@ void SequencerEngine::processMidi(int count,Transport& transport,MidiExecutionPl
     if(!playing&&!cleanup&&!released){releasePlan(exportContext);return;}
     const double start=transport.ppqPosition(),qps=transport.quarterNotesPerSample();const bool chase=playing&&(exportContext?needsExportChase_:needsChase_).exchange(false);
     const bool sourceEnded=exportContext&&start>=exportSourceEndPpq();
+    // The automation (D-065): each lane's value where the block starts, to its
+    // plugin, when it moved or the playhead jumped -- whatever the track's mute,
+    // as in every workstation. A lane the hand has in a take is left to it.
+    if(playing&&!sourceEnded)for(auto& track:plan->tracks)for(auto& lane:track.automation){
+        if(!lane.chain||(lane.runtime&&lane.runtime->latched.load(std::memory_order_acquire)))continue;
+        const float value=lane.valueAt(start);if(!chase&&value==lane.lastSent)continue;
+        lane.lastSent=value;lane.chain->pushAutomation(lane.instanceKey,lane.parameterId,value);
+    }
     const bool sourceStopsThisBlock = playing&&exportContext
         && !exportSourceStopSent_.load(std::memory_order_acquire)
         && start + qps * count >= exportSourceEndPpq() - 1.0e-9;
@@ -726,9 +755,45 @@ void SequencerEngine::captureSource(const std::string& source,const juce::AudioB
 
 void SequencerEngine::beginRecording(Transport& transport,bool startTransport)
 {
-    if(recording_.exchange(true))return;midiTakes_.clear();audioTakes_.clear();auto* plan=activePlan_.load();if(!plan){recording_=false;return;}
+    if(recording_.exchange(true))return;midiTakes_.clear();audioTakes_.clear();automationTakes_.clear();recordStartPpq_=transport.ppqPosition();auto* plan=activePlan_.load();if(!plan){recording_=false;return;}
     for(auto& track:plan->tracks)if(track.armed){if(track.type=="midi"){MidiTake take;take.trackId=track.id;take.sourceId=track.inputId;take.startPpq=take.lastPpq=transport.ppqPosition();midiTakes_.push_back(std::move(take));}else if(track.takeWriter&&!track.inputId.empty()&&track.takeWriter->begin()){audioTakes_.push_back({track.id,track.takeWriter,transport.ppqPosition(),transport.bpm()});}}
     transport.setRecording(true);if(startTransport&&!transport.playing())transport.setPlaying(true);
+}
+
+float SequencerEngine::AutomationLane::valueAt(double ppq) const noexcept
+{
+    if(points.empty())return 0.0f;
+    const auto after=std::upper_bound(points.begin(),points.end(),ppq,[](double q,const AutomationPoint& point){return q<point.ppq;});
+    if(after==points.begin())return points.front().value;
+    if(after==points.end())return points.back().value;
+    const auto& a=*(after-1);const auto& b=*after;const double span=b.ppq-a.ppq;
+    return span<=1.0e-12?b.value:(float)(a.value+(b.value-a.value)*(ppq-a.ppq)/span);
+}
+
+void SequencerEngine::recordParameter(const std::string& nodeId,const std::string& instanceId,const std::string& pluginId,const std::string& parameterId,float value,Transport& transport)
+{
+    if(!recording()||!std::isfinite(value))return;auto* plan=activePlan_.load(std::memory_order_acquire);if(!plan)return;
+    for(auto& track:plan->tracks)for(auto& lane:track.automation)
+        if(lane.runtime&&lane.nodeId==nodeId&&lane.instanceId==instanceId&&lane.parameterKey==parameterId)lane.runtime->latched.store(true,std::memory_order_release);
+    const double current=transport.ppqPosition();
+    auto take=std::find_if(automationTakes_.begin(),automationTakes_.end(),[&](const AutomationTake& item){return item.nodeId==nodeId&&item.instanceId==instanceId&&item.parameterId==parameterId;});
+    if(take==automationTakes_.end()){
+        // Kept by the first armed track that plays this plugin, directly or
+        // through its destination's series (D-039). None, and it is not kept.
+        const Track* owner=nullptr;
+        for(const auto& track:plan->tracks){if(!track.armed)continue;
+            if(track.outputId==nodeId||std::any_of(track.thru.begin(),track.thru.end(),[&](const Track::Thru& hop){return hop.id==nodeId;})){owner=&track;break;}}
+        if(!owner)return;
+        AutomationTake created;created.trackId=owner->id;created.nodeId=nodeId;created.instanceId=instanceId;created.pluginId=pluginId;created.parameterId=parameterId;
+        created.startPpq=recordStartPpq_;created.lastPpq=current;
+        // Already round the loop before the first move: a pass of its own.
+        if(transport.loopEnabled()&&current+1.0e-6<recordStartPpq_){created.pass=1;created.loopStart=transport.loopStart();created.loopEnd=transport.loopEnd();}
+        automationTakes_.push_back(std::move(created));take=automationTakes_.end()-1;
+    }
+    if(transport.loopEnabled()&&current+1.0e-6<take->lastPpq){take->loopStart=transport.loopStart();take->loopEnd=transport.loopEnd();++take->pass;}
+    take->lastPpq=current;
+    if(take->points.size()>=65536)return;
+    take->points.push_back({std::max(take->pass?take->loopStart:take->startPpq,current),juce::jlimit(0.0f,1.0f,value),take->pass});
 }
 
 juce::MidiMessage SequencerEngine::ControlEvent::message() const noexcept
@@ -781,7 +846,22 @@ juce::Array<juce::var> SequencerEngine::finishRecording(Transport& transport)
         static const char* const controlKinds[]{"cc","pitchbend","pressure","polypressure"};
         juce::Array<juce::var> controls;for(const auto& c:take.controls){juce::var item=makeObject();setProp(item,"startPpq",c.startPpq);setProp(item,"kind",controlKinds[juce::jlimit(0,3,c.kind)]);setProp(item,"number",c.number);setProp(item,"value",c.value);setProp(item,"channel",c.channel);setProp(item,"pass",c.pass);controls.add(item);}setProp(message,"controls",controls);result.add(message);}
     for(auto& take:audioTakes_){take.writer->stop();if(!take.writer->hasTake())continue;juce::var message=makeObject();setProp(message,"type","sequencerAudioRecorded");setProp(message,"trackId",juce::String(take.trackId));setProp(message,"filePath",take.writer->takeFile().getFullPathName());setProp(message,"startPpq",take.startPpq);setProp(message,"durationSeconds",take.writer->duration());setProp(message,"bpm",take.bpm);setProp(message,"overrun",take.writer->overrun());result.add(message);}
-    midiTakes_.clear();audioTakes_.clear();panic();return result;
+    for(auto& take:automationTakes_){
+        const double end=transport.ppqPosition();
+        if(transport.loopEnabled()&&end+1.0e-6<take.lastPpq){take.loopStart=transport.loopStart();take.loopEnd=transport.loopEnd();++take.pass;}
+        if(take.points.empty())continue;
+        const double from=take.pass?std::min(take.startPpq,take.loopStart):take.startPpq;
+        const double to=take.pass?std::max(end,take.loopEnd):std::max(end,take.points.back().ppq);
+        juce::var message=makeObject();setProp(message,"type","sequencerAutomationRecorded");setProp(message,"trackId",juce::String(take.trackId));
+        setProp(message,"nodeId",juce::String(take.nodeId));setProp(message,"pluginInstanceId",juce::String(take.instanceId));setProp(message,"pluginId",juce::String(take.pluginId));setProp(message,"parameterId",juce::String(take.parameterId));
+        setProp(message,"startPpq",from);setProp(message,"endPpq",std::max(from+.001,to));setProp(message,"passes",take.pass+1);
+        setProp(message,"loopStartPpq",take.loopStart);setProp(message,"loopEndPpq",take.loopEnd);
+        juce::Array<juce::var> points;for(const auto& p:take.points){juce::var item=makeObject();setProp(item,"ppq",p.ppq);setProp(item,"value",p.value);setProp(item,"pass",p.pass);points.add(item);}setProp(message,"points",points);
+        result.add(message);
+    }
+    // The hand gives every parameter back to its automation.
+    if(auto* plan=activePlan_.load(std::memory_order_acquire))for(auto& track:plan->tracks)for(auto& lane:track.automation)if(lane.runtime)lane.runtime->latched.store(false,std::memory_order_release);
+    midiTakes_.clear();audioTakes_.clear();automationTakes_.clear();panic();return result;
 }
 
 void SequencerEngine::panic() noexcept
@@ -816,7 +896,7 @@ bool SequencerEngine::prepareExportPlan(
     auto* source=activePlan_.load(std::memory_order_acquire);
     if(!source){error="Sequencer arrangement is unavailable";return false;}
     auto next=std::make_unique<Plan>();next->generation=source->generation;next->tracks.reserve(source->tracks.size());
-    for(const auto& original:source->tracks){Track track;track.id=original.id;track.type=original.type;track.inputId=original.inputId;track.outputId=original.outputId;track.armed=original.armed;track.monitored=original.monitored;track.midiOutputKind=original.midiOutputKind;track.midi=original.midi;track.controls=original.controls;track.sustainChannels=original.sustainChannels;track.bendChannels=original.bendChannels;track.pressureChannels=original.pressureChannels;track.audio=original.audio;track.clips=original.clips;track.runtime=std::make_shared<TrackRuntime>();if(original.runtime){track.runtime->gain.store(original.runtime->gain.load(std::memory_order_acquire),std::memory_order_relaxed);track.runtime->muted.store(original.runtime->muted.load(std::memory_order_acquire),std::memory_order_relaxed);track.runtime->pan.store(original.runtime->pan.load(std::memory_order_acquire),std::memory_order_relaxed);}if(track.type=="audio"){track.audioSumScratch.setSize(2,std::max(blockSize_,4096),false,true,false);track.audioSumScratch.clear();track.inputScratch.setSize(2,std::max(blockSize_,4096),false,true,false);track.inputScratch.clear();}
+    for(const auto& original:source->tracks){Track track;track.id=original.id;track.type=original.type;track.inputId=original.inputId;track.outputId=original.outputId;track.armed=original.armed;track.monitored=original.monitored;track.midiOutputKind=original.midiOutputKind;track.midi=original.midi;track.controls=original.controls;for(const auto& lane:original.automation){auto copy=lane;copy.chain=chainLookup(lane.nodeId);copy.runtime=std::make_shared<LaneRuntime>();copy.lastSent=std::numeric_limits<float>::quiet_NaN();if(copy.chain)track.automation.push_back(std::move(copy));}track.sustainChannels=original.sustainChannels;track.bendChannels=original.bendChannels;track.pressureChannels=original.pressureChannels;track.audio=original.audio;track.clips=original.clips;track.runtime=std::make_shared<TrackRuntime>();if(original.runtime){track.runtime->gain.store(original.runtime->gain.load(std::memory_order_acquire),std::memory_order_relaxed);track.runtime->muted.store(original.runtime->muted.load(std::memory_order_acquire),std::memory_order_relaxed);track.runtime->pan.store(original.runtime->pan.load(std::memory_order_acquire),std::memory_order_relaxed);}if(track.type=="audio"){track.audioSumScratch.setSize(2,std::max(blockSize_,4096),false,true,false);track.audioSumScratch.clear();track.inputScratch.setSize(2,std::max(blockSize_,4096),false,true,false);track.inputScratch.clear();}
         if(track.type=="midi"&&track.midiOutputKind==Track::MidiOutputKind::chain&&!track.outputId.empty()){track.destination=chainLookup(track.outputId);if(!track.destination){error="Export destination is unavailable: "+track.outputId;return false;}}
         // The series is bounced too, against the export's own cloned chains: an
         // instrument heard while playing and missing from the file is exactly

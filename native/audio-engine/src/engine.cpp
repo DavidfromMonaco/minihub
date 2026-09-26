@@ -3309,9 +3309,17 @@ void Engine::cmdSetVstParameter(const juce::var& msg)
 
     juce::String error;
     if (!inst->setParameterNormalized(parameterId,
-                                      static_cast<float>(normalizedValue), error)
-        && inst->shouldReportParameterSetFailure(parameterId))
-        sendError("parameter-set-failed", error);
+                                      static_cast<float>(normalizedValue), error))
+    {
+        if (inst->shouldReportParameterSetFailure(parameterId))
+            sendError("parameter-set-failed", error);
+        return;
+    }
+    // Set by the hand during a take: the arrangement keeps it (D-065).
+    if (sequencer_.recording())
+        sequencer_.recordParameter(chainId.toStdString(), instanceId.toStdString(),
+                                   pluginId.toStdString(), parameterId.toStdString(),
+                                   static_cast<float>(normalizedValue), transport_);
 }
 
 void Engine::cmdSetVstParameterLearn(const juce::var& msg)

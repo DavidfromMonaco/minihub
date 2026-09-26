@@ -51,6 +51,70 @@ export const SEQUENCER_LIMITS = Object.freeze({ tracks: 64, clipsPerTrack: 2048,
  */
 export const CONTROL_KINDS = Object.freeze(['cc', 'pitchbend', 'pressure', 'polypressure']);
 
+/** A track's automation (D-065): lanes, and the points a lane may hold. */
+export const AUTOMATION_LIMITS = Object.freeze({ lanesPerTrack: 64, pointsPerLane: 65536 });
+
+/**
+ * A lane's value at `ppq`: the points drawn straight between, held before the
+ * first and after the last; two points on one quarter are a step, the later
+ * one taken from there on. The engine's `AutomationLane::valueAt` is the same
+ * arithmetic, across the process boundary.
+ */
+export function automationValueAt(points, ppq) {
+  if (!points?.length) return 0;
+  let after = 0;
+  while (after < points.length && points[after].ppq <= ppq) after += 1;
+  if (after === 0) return points[0].value;
+  if (after === points.length) return points[points.length - 1].value;
+  const a = points[after - 1];
+  const b = points[after];
+  const span = b.ppq - a.ppq;
+  return span <= 1e-12 ? b.value : a.value + (b.value - a.value) * (ppq - a.ppq) / span;
+}
+
+/**
+ * The value a lane reaches at `ppq` coming from one side: a step standing
+ * exactly there counts for the side it is on.
+ */
+function valueBeside(points, ppq, side) {
+  const lower = side === 'left' ? (point) => point.ppq < ppq : (point) => point.ppq <= ppq;
+  let a = null;
+  let b = null;
+  for (const point of points) {
+    if (lower(point)) a = point;
+    else if (!b) b = point;
+  }
+  if (!a) return b ? b.value : 0;
+  if (!b) return a.value;
+  return a.value + (b.value - a.value) * (ppq - a.ppq) / (b.ppq - a.ppq);
+}
+
+/**
+ * One plugin parameter a track moves (D-065), or null. It names the plugin
+ * the way a knob's binding does -- node, instance, plugin and stable VST3
+ * parameter id -- and keeps the words to show it by.
+ */
+export function normalizeAutomationLane(lane) {
+  const nodeId = typeof lane?.nodeId === 'string' && lane.nodeId.length <= 128 ? lane.nodeId : '';
+  const pluginInstanceId = typeof lane?.pluginInstanceId === 'string' && lane.pluginInstanceId.length <= 64 ? lane.pluginInstanceId : '';
+  const parameterId = typeof lane?.parameterId === 'string' && /^(0|[1-9][0-9]{0,9})$/.test(lane.parameterId) ? lane.parameterId : '';
+  if (!nodeId || !pluginInstanceId || !parameterId) return null;
+  const points = (Array.isArray(lane?.points) ? lane.points : []).slice(0, AUTOMATION_LIMITS.pointsPerLane)
+    .map((point) => ({ ppq: Math.max(0, finite(point?.ppq)), value: clampFinite(point?.value, 0, 1) }));
+  // Stable: two points on one quarter keep their order, which is the step.
+  points.sort((a, b) => a.ppq - b.ppq);
+  return {
+    id: typeof lane?.id === 'string' && lane.id ? lane.id : uid('lane'),
+    nodeId,
+    pluginInstanceId,
+    pluginId: typeof lane?.pluginId === 'string' ? lane.pluginId.slice(0, 2048) : '',
+    parameterId,
+    name: String(lane?.name || `Parameter ${parameterId}`).slice(0, 160),
+    pluginName: String(lane?.pluginName || '').slice(0, 160),
+    points
+  };
+}
+
 /**
  * The zoom floor, in pixels per quarter.
  *
@@ -238,7 +302,10 @@ function normalizeTrack(track, index) {
     // The track's own signature changes, by its own bar numbers (D-060).
     // Empty: the track counts the project's signature.
     meter: normalizeMeter(track?.meter),
-    clips: Array.isArray(track?.clips) ? track.clips.slice(0, SEQUENCER_LIMITS.clipsPerTrack).map((clip) => normalizeClip(clip, type)) : []
+    clips: Array.isArray(track?.clips) ? track.clips.slice(0, SEQUENCER_LIMITS.clipsPerTrack).map((clip) => normalizeClip(clip, type)) : [],
+    // The plugin parameters it moves along the song (D-065).
+    automation: (Array.isArray(track?.automation) ? track.automation : [])
+      .map(normalizeAutomationLane).filter(Boolean).slice(0, AUTOMATION_LIMITS.lanesPerTrack)
   };
 }
 
@@ -676,6 +743,66 @@ export class SequencerModel {
       }
     }
     return changed;
+  }
+
+  /**
+   * A plugin parameter moved by the hand during a take, laid into its track's
+   * lane (D-065). Each time round a loop is laid in turn, the later over the
+   * earlier. `overdub` is Reaper's Touch: the lane is the hand's from its
+   * first move to its last, and the curve that was there before and after is
+   * left as it was. `replace` is Latch: from the first move to the end of
+   * that time round -- the take's end, or the loop's -- holding the last value.
+   * Returns the lane, or null.
+   */
+  recordAutomationTake(trackId, take = {}, { mode = 'overdub', name = '', pluginName = '' } = {}) {
+    const track = this._track(trackId);
+    const probe = normalizeAutomationLane({ ...take, points: [] });
+    if (!track || !probe) return null;
+    const moves = (Array.isArray(take.points) ? take.points : []).map((point) => ({
+      ppq: Math.max(0, finite(point?.ppq)), value: clampFinite(point?.value, 0, 1), pass: Math.max(0, Math.trunc(finite(point?.pass)))
+    }));
+    if (!moves.length) return null;
+    let lane = track.automation.find((item) => item.nodeId === probe.nodeId
+      && item.pluginInstanceId === probe.pluginInstanceId && item.parameterId === probe.parameterId);
+    if (!lane) {
+      if (track.automation.length >= AUTOMATION_LIMITS.lanesPerTrack) return null;
+      lane = normalizeAutomationLane({ ...take, name, pluginName, points: [] });
+      track.automation.push(lane);
+    } else {
+      if (name) lane.name = String(name).slice(0, 160);
+      if (pluginName) lane.pluginName = String(pluginName).slice(0, 160);
+    }
+    const passes = [...new Set(moves.map((move) => move.pass))].sort((a, b) => a - b);
+    const lastPass = passes[passes.length - 1];
+    const takeEnd = Math.max(0, finite(take.endPpq));
+    const loopEnd = Math.max(0, finite(take.loopEndPpq, takeEnd));
+    for (const pass of passes) {
+      const drawn = moves.filter((move) => move.pass === pass).sort((a, b) => a.ppq - b.ppq)
+        .map(({ ppq, value }) => ({ ppq, value }));
+      const from = drawn[0].ppq;
+      let to = drawn[drawn.length - 1].ppq;
+      if (mode === 'replace') {
+        to = Math.max(to, pass === lastPass ? takeEnd : loopEnd);
+        if (to > drawn[drawn.length - 1].ppq) drawn.push({ ppq: to, value: drawn[drawn.length - 1].value });
+      }
+      const before = lane.points.filter((point) => point.ppq < from);
+      const after = lane.points.filter((point) => point.ppq > to);
+      const had = lane.points.length > 0;
+      // The old curve up to where the hand took it, and from where it let go.
+      const entry = had ? [{ ppq: from, value: valueBeside(lane.points, from, 'left') }] : [];
+      const exit = had && after.length ? [{ ppq: to, value: valueBeside(lane.points, to, 'right') }] : [];
+      lane.points = [...before, ...entry, ...drawn, ...exit, ...after].slice(0, AUTOMATION_LIMITS.pointsPerLane);
+    }
+    return lane;
+  }
+
+  /** Take a lane off its track: the parameter is the hand's again. */
+  removeAutomationLane(trackId, laneId) {
+    const track = this._track(trackId);
+    const index = track ? track.automation.findIndex((lane) => lane.id === laneId) : -1;
+    if (index < 0) return false;
+    track.automation.splice(index, 1);
+    return true;
   }
 
   addAudioClip(trackId, clipData = {}) {

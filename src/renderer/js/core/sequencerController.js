@@ -204,6 +204,7 @@ export class SequencerController {
       }),
       this.hub.events.on('engine:sequencerMidiRecorded', (message) => this._acceptMidiRecording(message)),
       this.hub.events.on('engine:sequencerAudioRecorded', (message) => this._acceptAudioRecording(message)),
+      this.hub.events.on('engine:sequencerAutomationRecorded', (message) => this._acceptAutomationRecording(message)),
       this.hub.events.on('engine:sequencerAudioInfo', (message) => this._acceptAudioInfo(message)),
       this.hub.events.on('engine:sequencerExport', (message) => {
         const active = ['preparing', 'started', 'progress', 'finalizing'].includes(message?.state);
@@ -532,7 +533,8 @@ export class SequencerController {
     for (const item of queued) {
       const task = item.type === 'midi' ? this._acceptMidiRecording(item.message)
         : item.type === 'audio' ? this._acceptAudioRecording(item.message)
-          : this._acceptAudioInfo(item.message);
+          : item.type === 'automation' ? this._acceptAutomationRecording(item.message)
+            : this._acceptAudioInfo(item.message);
       Promise.resolve(task).catch(() => {});
     }
   }
@@ -1713,6 +1715,34 @@ export class SequencerController {
     // with the wheels, knobs and pedal moved during it (D-064).
     this.model.recordMidiTake(track.id, { startPpq, endPpq, events, controls }, { mode: this._takeRecordMode });
     this.changed();
+  }
+
+  /**
+   * A plugin parameter a bound knob moved during the take, for the track the
+   * engine gave it to (D-065). Named from the knob's binding, which knows the
+   * parameter's words; the plugin's own name otherwise.
+   */
+  _acceptAutomationRecording(message) {
+    if (this._deferForProjectTransition('automation', message)) return;
+    const track = this.model.state.tracks.find((item) => item.id === message?.trackId);
+    if (!track || !Array.isArray(message.points) || !message.points.length) return;
+    const nodeId = String(message.nodeId || '');
+    const binding = (this.hub.nodes?.getControlBindings?.(nodeId) || []).find((item) =>
+      item.pluginInstanceId === message.pluginInstanceId && item.parameterId === message.parameterId);
+    const plugin = this.hub.nodes?.get?.(nodeId)?.content?.plugins?.find?.((item) => item.id === message.pluginInstanceId);
+    const lane = this.model.recordAutomationTake(track.id, message, {
+      mode: this._takeRecordMode,
+      name: binding?.parameterName || '',
+      pluginName: binding?.pluginName || plugin?.name || ''
+    });
+    if (lane) this.changed();
+  }
+
+  /** Take one parameter's automation off a track. */
+  removeAutomationLane(trackId, laneId) {
+    if (!this.model.removeAutomationLane(trackId, laneId)) return false;
+    this.changed();
+    return true;
   }
 
   async _acceptAudioRecording(message) {

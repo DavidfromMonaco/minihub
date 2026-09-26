@@ -141,6 +141,41 @@ void Chain::pushMidi(const juce::MidiBuffer& buffer, uint32_t expectedEpoch)
     }
 }
 
+void Chain::pushAutomation(uint64_t instanceKey, uint32_t parameterId, float value) noexcept
+{
+    int start1, size1, start2, size2;
+    automationFifo_.prepareToWrite(1, start1, size1, start2, size2);
+    if (size1 + size2 == 0)
+        return;
+    auto& event = automationEvents_[static_cast<size_t>(size1 > 0 ? start1 : start2)];
+    event.instanceKey = instanceKey;
+    event.parameterId = parameterId;
+    event.value = value;
+    automationFifo_.finishedWrite(1);
+}
+
+void Chain::applyAutomation() noexcept
+{
+    const int available = automationFifo_.getNumReady();
+    for (int i = 0; i < available; ++i)
+    {
+        int start1, size1, start2, size2;
+        automationFifo_.prepareToRead(1, start1, size1, start2, size2);
+        if (size1 + size2 == 0)
+            break;
+        const auto& event = automationEvents_[static_cast<size_t>(size1 > 0 ? start1 : start2)];
+        for (auto& owned : plugins_)
+        {
+            if (automationInstanceKey(owned->instanceId().toRawUTF8()) == event.instanceKey)
+            {
+                owned->automateParameter(event.parameterId, event.value);
+                break;
+            }
+        }
+        automationFifo_.finishedRead(1);
+    }
+}
+
 void Chain::discardQueuedMidi()
 {
     const int available = midiFifo_.getNumReady();
@@ -213,6 +248,7 @@ void Chain::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& mid
         return;
     }
 
+    applyAutomation();
     if (panicPending_.exchange(false, std::memory_order_relaxed))
     {
         // Explicit Note Offs come first. Dexed/Vital and other instruments do

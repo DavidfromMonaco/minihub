@@ -833,6 +833,13 @@ pressure -- in its source quarters beside its notes ([DECISIONS.md](DECISIONS.md
 D-064). The engine plays them at their sample before the notes, chases them on
 Play, a seek and a loop's return, and lets the pedal and the wheel go on a stop.
 
+A track also has `automation` ([DECISIONS.md](DECISIONS.md) D-065): lanes of
+points for plugin parameters, recorded by the engine from a bound knob's
+`setVstParameter` during a take. Played back, a lane's value goes from the
+sequencer to the plugin's chain through a lock-free FIFO (`Chain::pushAutomation`),
+and into the plugin's `inputParameterChanges` before its block -- the only path
+by which the audio thread writes a plugin parameter.
+
 Une piste est `midi` ou `audio` ; un clip audio porte `trimStartSeconds`,
 `trimEndSeconds`, `gain`, `peaks` et un état de disponibilité du média.
 

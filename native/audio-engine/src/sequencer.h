@@ -77,6 +77,13 @@ public:
     void recordMidiInput(const std::string& sourceId, const juce::MidiMessage&,
                          double offsetMs, Transport&);
     bool recording() const noexcept { return recording_.load(); }
+    /** A plugin parameter set by the hand -- a knob bound to it -- while a take
+     *  runs (D-065). The armed track that plays that plugin keeps the move as
+     *  automation, and the parameter stops following the automation it had
+     *  until the take ends: the hand has it. Message thread. */
+    void recordParameter(const std::string& nodeId, const std::string& instanceId,
+                         const std::string& pluginId, const std::string& parameterId,
+                         float value, Transport&);
     void panic() noexcept;
     // A seek: every note this sequencer sounds gets its Note Off and rings out,
     // and the new position is chased. Unlike panic(), no destination is
@@ -181,6 +188,20 @@ private:
         uint16_t value = 0;
         juce::MidiMessage message() const noexcept;
     };
+    /** One plugin parameter the arrangement moves (D-065): points in
+     *  quarters, the value between two of them drawn straight. */
+    struct AutomationPoint { double ppq = 0; float value = 0; };
+    struct LaneRuntime { std::atomic<bool> latched { false }; };
+    struct AutomationLane {
+        std::string nodeId, instanceId, parameterKey;
+        uint64_t instanceKey = 0; // automationInstanceKey of instanceId
+        uint32_t parameterId = 0;
+        Chain* chain = nullptr; // append-only, like a track's destination
+        std::vector<AutomationPoint> points;
+        std::shared_ptr<LaneRuntime> runtime;
+        float lastSent = std::numeric_limits<float>::quiet_NaN(); // audio-thread-owned
+        float valueAt(double ppq) const noexcept;
+    };
     struct AudioAsset {
         double sampleRate = 48000, durationSeconds = 0;
         juce::AudioBuffer<float> samples;
@@ -255,6 +276,7 @@ private:
         // pressure on: a stop or a seek lets them go, or the next note played
         // by hand would ring on under a pedal nobody holds.
         uint16_t sustainChannels = 0, bendChannels = 0, pressureChannels = 0;
+        std::vector<AutomationLane> automation; // D-065
         std::vector<AudioClip> audio;
         std::vector<ClipTrace> clips;
     };
@@ -307,6 +329,13 @@ private:
         std::vector<RecordedControlEvent> controls; // D-064
     };
     struct AudioTake { std::string trackId; AudioTakeWriter* writer=nullptr; double startPpq=0, bpm=120; };
+    struct AutomationTake {
+        struct Point { double ppq = 0; float value = 0; int pass = 0; };
+        std::string trackId, nodeId, instanceId, pluginId, parameterId;
+        double startPpq = 0, lastPpq = 0, loopStart = 0, loopEnd = 0;
+        int pass = 0;
+        std::vector<Point> points;
+    };
 
     Plan* acquirePlan(bool exportContext) noexcept;
     void releasePlan(bool exportContext) noexcept;
@@ -354,6 +383,8 @@ private:
                       clipsSilenced_{false};
     std::vector<MidiTake> midiTakes_;      // message thread only
     std::vector<AudioTake> audioTakes_;    // message thread only
+    std::vector<AutomationTake> automationTakes_; // message thread only
+    double recordStartPpq_ = 0;             // message thread only
 
     // Offline rendering owns a CPU-driven worker in Engine. The writer is
     // intentionally synchronous on that non-realtime worker: a ThreadedWriter

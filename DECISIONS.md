@@ -3561,3 +3561,70 @@ of `recordMidiTake` in `core/sequencerModel.js`; `controlLinesMarkup` in
 `chaseControls` of `processMidi`, and `recordMidiInput` in
 `native/audio-engine/src/sequencer.cpp`. Tests: `test/recordOverdub.test.mjs`,
 `testSequencerClipControls` in the native core tests.
+
+## D-065 — A knob bound to a plugin parameter is recorded as automation
+
+**Status**: in force · 2026-09-27 · **implemented**, checked by the JS and
+native tests -- the playback on a real VST3; not yet tried in the application
+
+**Context** — The author's own case, the third part of the overdub request
+(D-063): "if I want to manage the gain, I will assign a MiniLab control to
+the gain of the VST or VSTs and do a live take". A knob bound by Learn sets
+the parameter through the host (`setVstParameter`), never as MIDI, so no
+take could keep it; and he had pictured, earlier the same day, a line across
+the track drawing that gain along the song.
+
+**Decision** — A track has `automation`: lanes, each a plugin parameter --
+`nodeId`, `pluginInstanceId`, `pluginId`, the stable VST3 `parameterId`, the
+words to show it by -- and its `points` `{ ppq, value }`, the value between two
+points drawn straight, held before the first and after the last.
+
+- **Recorded by the engine**, where the hand's value arrives
+  (`cmdSetVstParameter`): during a take, each move is kept with the playhead's
+  quarter, folded round a loop and numbered by pass as notes are (D-063), and
+  given to the first armed track that plays that plugin -- its destination,
+  or the series behind it (D-039). A plugin no armed track plays keeps
+  nothing. The engine, not the renderer, because the moves must be placed
+  where the music was when they arrived, as MIDI input is.
+- **Merged by the Record mode**: Overdub is Reaper's *Touch* -- the lane is
+  the hand's from its first move to its last, the curve before and after
+  kept; Replace is *Latch* -- from the first move to the end of the take
+  (of each pass round a loop), holding the last value.
+- **The hand wins during a take**: a parameter turned while recording stops
+  following its lane until the take ends, as it does in every workstation.
+  Outside a take the lane wins, whenever it moves or the playhead jumps.
+- **Played by the engine**, whatever the track's mute, in export too: each
+  block the sequencer computes a lane's value where the block starts and,
+  when it changed or the playhead jumped, pushes it into the plugin's chain
+  through a lock-free FIFO; the chain hands it to the plugin before its next
+  block, and the plugin lays it into the block's `inputParameterChanges`
+  after anything the hand set, and back to its controller so its window
+  follows. One value a block: about 10 ms, far finer than a knob's steps.
+- **Seen**: each lane is a yellow line across its track, over the clips --
+  the line the author imagined. A track's right-click lists its lanes, to
+  take one off.
+
+Not in this step: drawing or editing points by hand (the handles the author
+imagined), moving automation with the clips, and a plugin's own window
+recorded when its knob is turned with the mouse -- only bound knobs are.
+
+**Consequences**
+
+- The audio thread writes plugin parameters for the first time. It never
+  touches the edit controller: values go through the chain's FIFO (sixteen
+  bytes an event, the instance named by an FNV-1a key of its id, so a chain
+  stays small enough for the stacks the tests build them on) and the
+  plugin's feedback queue, both lock-free (invariant 3).
+- The deterministic test effect has a Gain parameter now, at 0.75 unless
+  something moves it: the e2e suite needs a real parameter to automate.
+
+**Proof in the code** — `automationValueAt`, `normalizeAutomationLane`,
+`recordAutomationTake` and `removeAutomationLane` in `core/sequencerModel.js`;
+`_acceptAutomationRecording` in `core/sequencerController.js`;
+`automationMarkup` in `modules/sequencer/sequencerModule.js`;
+`recordParameter`, `AutomationLane::valueAt` and the automation loop of
+`processMidi` in `sequencer.cpp`; `Chain::pushAutomation` and
+`applyAutomation` in `chain.cpp`; `PluginInstance::automateParameter` and
+`drainAutomation` in `plugin_host.cpp`. Tests: `test/recordOverdub.test.mjs`,
+`testSequencerAutomationRecording` in the native core tests,
+`testRealVst3Automation` in the e2e suite.

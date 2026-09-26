@@ -12,6 +12,20 @@
 
 namespace mlh {
 
+/** A plugin instance's id as the automation FIFO carries it (D-065): FNV-1a
+ *  over its UTF-8, so an event stays sixteen bytes and a chain stays small
+ *  enough for the stacks the tests build them on. */
+inline uint64_t automationInstanceKey(const char* id) noexcept
+{
+    uint64_t hash = 1469598103934665603ull;
+    for (; id != nullptr && *id != 0; ++id)
+    {
+        hash ^= static_cast<unsigned char>(*id);
+        hash *= 1099511628211ull;
+    }
+    return hash;
+}
+
 /**
  * A serial chain of VST3 plugin instances for one VST node in the Hub network.
  *
@@ -75,6 +89,10 @@ public:
         return midiEpoch_.load(std::memory_order_acquire);
     }
     void pullMidi(juce::MidiBuffer& dest, int numSamples);
+    /** Host automation (D-065), from the thread that plays the arrangement:
+     *  a value for one plugin's parameter, handed to it before its next
+     *  block. Lock-free; dropped when full, as MIDI is. */
+    void pushAutomation(uint64_t instanceKey, uint32_t parameterId, float value) noexcept;
     /** Drop every queued event without emitting it (audio thread). */
     void discardQueuedMidi();
 
@@ -129,6 +147,16 @@ private:
     };
     juce::AbstractFifo midiFifo_{kFifoSize};
     std::array<MidiEvent, kFifoSize> midiEvents_{};
+    static constexpr int kAutomationFifoSize = 256;
+    struct AutomationEvent {
+        uint64_t instanceKey = 0;
+        uint32_t parameterId = 0;
+        float value = 0;
+    };
+    juce::AbstractFifo automationFifo_{kAutomationFifoSize};
+    std::array<AutomationEvent, kAutomationFifoSize> automationEvents_{};
+    /** Audio thread, lock held: every queued value to the plugin it names. */
+    void applyAutomation() noexcept;
     std::atomic<uint32_t> midiEpoch_{1};
     // Audio-thread-owned registry. Explicit Note Offs are emitted from this
     // state before CC123/CC120 so instruments that ignore either CC still stop.

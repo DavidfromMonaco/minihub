@@ -213,6 +213,11 @@ public:
     bool setParameterNormalized(const juce::String& parameterId,
                                 float normalizedValue,
                                 juce::String& error);
+    /** Host automation (D-065), on the thread that renders this instance,
+     *  right before its block: the value the arrangement gives the parameter
+     *  for that block. It lands after whatever the hand set, so it wins, and
+     *  the plugin's own controls follow it through the controller feedback. */
+    void automateParameter(uint32_t parameterId, float normalizedValue) noexcept;
     bool shouldReportParameterSetFailure(const juce::String& parameterId)
     {
         return failedParameterIds_.insert(parameterId).second;

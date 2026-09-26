@@ -313,6 +313,24 @@ function clipContent(track, clip, zoom) {
 }
 
 /**
+ * A track's automation (D-065): each lane a line across the whole lane, over
+ * its clips, high where the parameter is high -- the line the author asked
+ * for, the knob's gesture seen along the song. Before the first point and
+ * after the last, the value held. Exported for the tests.
+ */
+export function automationMarkup(track, zoom, width) {
+  const lanes = (Array.isArray(track.automation) ? track.automation : []).filter((lane) => lane.points?.length);
+  if (!lanes.length) return '';
+  const right = Math.max(1, Math.round(width));
+  const y = (value) => ((1 - value) * 100).toFixed(1);
+  const paths = lanes.map((lane) => {
+    const points = lane.points.map((point) => `${(point.ppq * zoom).toFixed(1)} ${y(point.value)}`);
+    return `<path d="M0 ${y(lane.points[0].value)} L${points.join(' L')} L${right} ${y(lane.points[lane.points.length - 1].value)}"/>`;
+  }).join('');
+  return `<svg class="seq-automation" data-seq-width="${right}" viewBox="0 0 ${right} 100" preserveAspectRatio="none" aria-hidden="true">${paths}</svg>`;
+}
+
+/**
  * The controller moves a MIDI clip keeps (D-064), one stepped line per
  * controller behind its notes: enough to see that a take kept the wheel or
  * the pedal, and where it moved. A key's own pressure is left out, as it is
@@ -1153,7 +1171,7 @@ export function createSequencerModule(hub) {
                 <div class="seq-track-level"><input data-track-control="volume" type="range" min="-60" max="6" step="0.1" value="${gainToDb(track.volume)}" aria-label="${escapeHtml(track.name)} level in dB"><output data-track-level-value>${formatGainDb(track.volume)}</output><input class="seq-track-pan" data-track-control="pan" type="range" min="-100" max="100" step="1" value="${Math.round((track.pan || 0) * 100)}" title="Pan (double-click: centre)" aria-label="${escapeHtml(track.name)} pan"><output data-track-pan-value>${formatPan(track.pan)}</output></div>
                 ${routeDots(routeStates(hub, track, sequencerNode.id))}
               </div>
-              <div class="seq-track-lane" data-seq-left="${TRACK_HEADER}" data-seq-width="${timelineWidth}">${laneMeterMarkup(track, controller.model.trackRegions(track), endPpq, zoom, visibleStart, visibleEnd)}${track.clips.filter((clip) => clip.startPpq + clip.lengthPpq >= visibleStart && clip.startPpq <= visibleEnd).map((clip) => clipMarkup(track, clip, zoom, selectedClipIds.has(clip.id), controller.tempo)).join('')}</div>
+              <div class="seq-track-lane" data-seq-left="${TRACK_HEADER}" data-seq-width="${timelineWidth}">${laneMeterMarkup(track, controller.model.trackRegions(track), endPpq, zoom, visibleStart, visibleEnd)}${track.clips.filter((clip) => clip.startPpq + clip.lengthPpq >= visibleStart && clip.startPpq <= visibleEnd).map((clip) => clipMarkup(track, clip, zoom, selectedClipIds.has(clip.id), controller.tempo)).join('')}${automationMarkup(track, zoom, timelineWidth)}</div>
             </div>`).join('') : `<div class="seq-empty" data-seq-top="${HEAD_HEIGHT}">Create a MIDI or audio track to begin.</div>`}
             <div class="seq-playhead" data-playhead data-seq-left="${TRACK_HEADER + controller.playheadPpq * zoom}" data-seq-height="${HEAD_HEIGHT + Math.max(1, state.tracks.length) * TRACK_HEIGHT}"><span class="seq-playhead-grip" data-playhead-grip title="Drag to move the playhead (Alt: off the grid)"></span></div>
           </div>
@@ -1474,7 +1492,14 @@ export function createSequencerModule(hub) {
           {
             label: `Time signature from bar ${trackBar.bar}…`, hint: formatSignature(trackBar.signature),
             action: () => openMeterMenu(event, track, trackBar.bar)
-          }
+          },
+          // The parameters it moves (D-065), each to be handed back to the hand.
+          ...(track.automation?.length ? [{ separator: true }, { heading: 'Automation' }] : []),
+          ...(track.automation || []).map((automation) => ({
+            label: `Remove ${automation.pluginName ? `${automation.pluginName} — ` : ''}${automation.name}`,
+            hint: `${automation.points.length} points`, danger: true,
+            action: () => controller.removeAutomationLane(track.id, automation.id)
+          }))
         ]
       });
     });

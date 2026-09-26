@@ -532,6 +532,7 @@ public:
         inputParameters_.clear();
         outputParameters_.clear();
         drainPendingParameters();
+        drainAutomation();
         fillProcessContext(playHead);
         convertMidi(midi, numSamples);
         if (!audioBridge_.beginBlock(audio, numSamples))
@@ -822,6 +823,21 @@ public:
 #if JUCE_WINDOWS
         if (editor_) editor_->foreground();
 #endif
+    }
+
+    /** Audio thread: one parameter's automated value for the next process. */
+    void automate(Steinberg::Vst::ParamID id, Steinberg::Vst::ParamValue value) noexcept
+    {
+        for (int i = 0; i < automationCount_; ++i)
+        {
+            if (automation_[static_cast<size_t>(i)].id == id)
+            {
+                automation_[static_cast<size_t>(i)].value = value;
+                return;
+            }
+        }
+        if (automationCount_ < static_cast<int>(automation_.size()))
+            automation_[static_cast<size_t>(automationCount_++)] = {id, value};
     }
 
     void drainControllerFeedback()
@@ -1681,6 +1697,17 @@ private:
         return true;
     }
 
+    void drainAutomation() noexcept
+    {
+        for (int i = 0; i < automationCount_; ++i)
+        {
+            const auto& item = automation_[static_cast<size_t>(i)];
+            inputParameters_.add(item.id, 0, item.value);
+            queueFeedback(item.id, item.value);
+        }
+        automationCount_ = 0;
+    }
+
     void drainPendingParameters() noexcept
     {
         auto read = parameterRead_.load(std::memory_order_relaxed);
@@ -1759,6 +1786,9 @@ private:
     std::atomic<uint32_t> parameterRead_ {0}, parameterWrite_ {0};
     std::array<ParameterTransfer, kTransferCapacity> feedback_ {};
     std::atomic<uint32_t> feedbackRead_ {0}, feedbackWrite_ {0};
+    // Written and drained by the thread that renders this plugin (D-065).
+    std::array<ParameterTransfer, 64> automation_ {};
+    int automationCount_ = 0;
 #if JUCE_WINDOWS
     std::unique_ptr<EditorWindow> editor_;
 #endif
@@ -2306,6 +2336,13 @@ bool PluginInstance::request(const juce::String& json, juce::String& reply, juce
         return false;
     }
     return plugin_->request(json, reply, error);
+}
+
+void PluginInstance::automateParameter(uint32_t parameterId, float normalizedValue) noexcept
+{
+    if (plugin_ && isReady_ && std::isfinite(normalizedValue))
+        plugin_->automate(static_cast<Steinberg::Vst::ParamID>(parameterId),
+                          std::clamp(static_cast<double>(normalizedValue), 0.0, 1.0));
 }
 
 bool PluginInstance::setParameterNormalized(const juce::String& parameterId,

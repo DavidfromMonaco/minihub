@@ -444,6 +444,9 @@ export class EngineClient {
       case 'sequencerAudioRecorded':
         this.events.emit('engine:sequencerAudioRecorded', msg);
         break;
+      case 'sequencerAutomationRecorded':
+        this.events.emit('engine:sequencerAutomationRecorded', msg);
+        break;
       case 'sequencerAudioInfo':
         this.events.emit('engine:sequencerAudioInfo', msg);
         break;

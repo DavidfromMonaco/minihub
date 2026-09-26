@@ -180,3 +180,81 @@ test('the arrangement draws a clip\'s controller as a stepped line', async () =>
   assert.equal((markup.match(/<path/g) || []).length, 1, 'a key\'s pressure is not drawn');
   assert.equal(controlLinesMarkup({ sourceOffsetPpq: 0, lengthPpq: 4, controls: [] }, 10), '');
 });
+
+// D-065: a knob bound to a plugin parameter, recorded as automation.
+
+const laneTake = (points, extra = {}) => ({
+  nodeId: 'vst-1', pluginInstanceId: 'plugin-3', pluginId: 'C:/Synth.vst3', parameterId: '42',
+  startPpq: 0, endPpq: 16, points, ...extra
+});
+
+test('a lane is a straight line between its points, held at both ends, a step where two share a quarter', async () => {
+  const { automationValueAt } = await import('../src/renderer/js/core/sequencerModel.js');
+  const points = [{ ppq: 2, value: 0.2 }, { ppq: 4, value: 0.6 }, { ppq: 4, value: 1 }];
+  assert.equal(automationValueAt(points, 0), 0.2);
+  assert.ok(Math.abs(automationValueAt(points, 3) - 0.4) < 1e-12);
+  assert.equal(automationValueAt(points, 4), 1, 'the later point of a step, from its quarter');
+  assert.equal(automationValueAt(points, 9), 1);
+});
+
+test('the first take of a knob makes its lane, named from its binding', () => {
+  const model = new SequencerModel();
+  const track = model.addTrack('midi');
+  const lane = model.recordAutomationTake(track.id, laneTake([{ ppq: 1, value: 0.3 }, { ppq: 2, value: 0.8 }]), { name: 'Cutoff', pluginName: 'Synth' });
+  assert.deepEqual(track.automation, [lane]);
+  assert.deepEqual([lane.name, lane.pluginName, lane.parameterId], ['Cutoff', 'Synth', '42']);
+  assert.deepEqual(lane.points, [{ ppq: 1, value: 0.3 }, { ppq: 2, value: 0.8 }]);
+});
+
+test('an overdub is the hand from its first move to its last, the curve kept either side', () => {
+  const model = new SequencerModel();
+  const track = model.addTrack('midi');
+  const lane = model.recordAutomationTake(track.id, laneTake([{ ppq: 0, value: 0 }, { ppq: 8, value: 0.8 }]));
+  model.recordAutomationTake(track.id, laneTake([{ ppq: 3, value: 1 }, { ppq: 4, value: 1 }]));
+  assert.deepEqual(lane.points.map(({ ppq, value }) => ({ ppq, value: Math.round(value * 1e9) / 1e9 })), [
+    { ppq: 0, value: 0 }, { ppq: 3, value: 0.3 }, { ppq: 3, value: 1 }, { ppq: 4, value: 1 }, { ppq: 4, value: 0.4 }, { ppq: 8, value: 0.8 }
+  ]);
+});
+
+test('a replace latches: the last value held to the end of the take', () => {
+  const model = new SequencerModel();
+  const track = model.addTrack('midi');
+  const lane = model.recordAutomationTake(track.id, laneTake([{ ppq: 0, value: 0 }, { ppq: 16, value: 0 }]));
+  model.recordAutomationTake(track.id, laneTake([{ ppq: 2, value: 0.5 }, { ppq: 3, value: 0.7 }], { endPpq: 12 }), { mode: 'replace' });
+  assert.deepEqual(lane.points, [
+    { ppq: 0, value: 0 }, { ppq: 2, value: 0 }, { ppq: 2, value: 0.5 }, { ppq: 3, value: 0.7 }, { ppq: 12, value: 0.7 }, { ppq: 12, value: 0 }, { ppq: 16, value: 0 }
+  ]);
+});
+
+test('round a loop, each pass is laid over the one before it', () => {
+  const model = new SequencerModel();
+  const track = model.addTrack('midi');
+  const lane = model.recordAutomationTake(track.id, laneTake([
+    { ppq: 4, value: 0.1, pass: 0 }, { ppq: 6, value: 0.2, pass: 0 },
+    { ppq: 5, value: 0.9, pass: 1 }
+  ], { startPpq: 4, endPpq: 8, loopEndPpq: 8 }));
+  assert.equal(lane.points.find((point) => point.ppq === 5 && point.value === 0.9) !== undefined, true, 'the second pass is in');
+  assert.ok(lane.points.some((point) => point.ppq === 6 && point.value === 0.2), 'and the first pass kept where the second did not touch it');
+});
+
+test('a lane is taken off its track, and a lane to no parameter is refused', () => {
+  const model = new SequencerModel();
+  const track = model.addTrack('audio');
+  const lane = model.recordAutomationTake(track.id, laneTake([{ ppq: 1, value: 0.5 }]));
+  assert.equal(model.recordAutomationTake(track.id, laneTake([{ ppq: 1, value: 0.5 }], { parameterId: 'gain' })), null);
+  assert.equal(model.removeAutomationLane(track.id, lane.id), true);
+  assert.deepEqual(track.automation, []);
+});
+
+test('a take recorded on a knob reaches the arrangement, and the arrangement draws it', async () => {
+  const { controller } = rig('overdub');
+  controller.hub.nodes = {
+    getControlBindings: () => [{ pluginInstanceId: 'plugin-3', parameterId: '42', parameterName: 'Gain', pluginName: 'Synth' }],
+    get: () => null
+  };
+  const track = controller.model.addTrack('midi');
+  controller._acceptAutomationRecording({ trackId: track.id, ...laneTake([{ ppq: 0, value: 1 }, { ppq: 4, value: 0 }]) });
+  assert.equal(track.automation[0].name, 'Gain');
+  const { automationMarkup } = await import('../src/renderer/js/modules/sequencer/sequencerModule.js');
+  assert.match(automationMarkup(track, 10, 100), /<path d="M0 0\.0 L0\.0 0\.0 L40\.0 100\.0 L100 100\.0"\/>/);
+});

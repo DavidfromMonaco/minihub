@@ -1,14 +1,20 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 
 /** A tiny, state-free stereo effect used only by the packaged offline-bounce
- * gauntlet. Its fixed gain makes cloning and processing deterministic while
- * still exercising a real VST3 effect after each hosted instrument. */
+ * gauntlet. Its gain -- 0.75 unless something moves it -- makes cloning and
+ * processing deterministic while still exercising a real VST3 effect after
+ * each hosted instrument. The gain is a parameter so the host's automation
+ * (D-065) has something real to move. */
 class DeterministicTestEffect final : public juce::AudioProcessor {
 public:
     DeterministicTestEffect()
         : AudioProcessor(BusesProperties()
             .withInput("Input", juce::AudioChannelSet::stereo(), true)
-            .withOutput("Output", juce::AudioChannelSet::stereo(), true)) {}
+            .withOutput("Output", juce::AudioChannelSet::stereo(), true))
+    {
+        addParameter(gain_ = new juce::AudioParameterFloat(juce::ParameterID { "gain", 1 }, "Gain",
+                                                           juce::NormalisableRange<float>(0.0f, 1.0f), 0.75f));
+    }
 
     const juce::String getName() const override { return JucePlugin_Name; }
     bool acceptsMidi() const override { return false; }
@@ -33,7 +39,7 @@ public:
 
     void processBlock(juce::AudioBuffer<float>& audio, juce::MidiBuffer&) override
     {
-        audio.applyGain(0.75f);
+        audio.applyGain(gain_->get());
     }
 
     void getStateInformation(juce::MemoryBlock& state) override
@@ -43,6 +49,9 @@ public:
     }
 
     void setStateInformation(const void*, int) override {}
+
+private:
+    juce::AudioParameterFloat* gain_ = nullptr;
 };
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()

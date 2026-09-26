@@ -968,6 +968,46 @@ void testSequencerClipControls()
     }
 }
 
+juce::var automationLane(const char* nodeId,const char* instanceId,const juce::String& parameterId,std::initializer_list<std::pair<double,double>> points)
+{
+    juce::var lane=mlh::makeObject();mlh::setProp(lane,"nodeId",nodeId);mlh::setProp(lane,"pluginInstanceId",instanceId);mlh::setProp(lane,"parameterId",parameterId);
+    juce::Array<juce::var> list;for(const auto& [ppq,value]:points){juce::var point=mlh::makeObject();mlh::setProp(point,"ppq",ppq);mlh::setProp(point,"value",value);list.add(point);}
+    mlh::setProp(lane,"points",list);return lane;
+}
+
+void testSequencerAutomationRecording()
+{
+    // A knob bound to a plugin parameter, turned during a take (D-065), is kept
+    // by the armed track that plays that plugin -- round a loop, pass by pass --
+    // and a plugin no armed track plays keeps nothing.
+    mlh::SequencerEngine sequencer;sequencer.prepare(48000,512);mlh::Chain effect("fx-auto"),other("fx-other");
+    juce::Array<juce::var> tracks;tracks.add(midiTrack("track-auto","fx-auto",true));
+    juce::Array<juce::var> lanes;lanes.add(automationLane("fx-auto","plugin-7","12",{{0,.1},{8,.9}}));mlh::setProp(tracks.getReference(0),"automation",lanes);
+    juce::Array<juce::var> info;std::string error;
+    expect(sequencer.sync(makeSequencerProject(tracks),[&](const std::string&id){return id=="fx-auto"?&effect:id=="fx-other"?&other:nullptr;},48000,512,info,error),"a track with an automation lane compiles");
+    mlh::Transport transport;transport.setSampleRate(48000);transport.setLoop(true,4,8);transport.seekPpq(5);transport.setPlaying(true);
+    sequencer.recordParameter("fx-auto","plugin-7","C:/fx.vst3","12",.5f,transport);
+    sequencer.beginRecording(transport);
+    sequencer.recordParameter("fx-auto","plugin-7","C:/fx.vst3","12",.25f,transport);
+    transport.seekPpq(6);sequencer.recordParameter("fx-auto","plugin-7","C:/fx.vst3","12",.75f,transport);
+    sequencer.recordParameter("fx-other","plugin-9","C:/other.vst3","3",.5f,transport);
+    transport.seekPpq(4.5);sequencer.recordParameter("fx-auto","plugin-7","C:/fx.vst3","12",1.0f,transport);
+    transport.seekPpq(5);
+    const auto recorded=sequencer.finishRecording(transport);
+    const juce::var* take=nullptr;int automationTakes=0;
+    for(const auto& item:recorded)if(item["type"].toString()=="sequencerAutomationRecorded"){++automationTakes;take=&item;}
+    expect(automationTakes==1,"one parameter moved on a played plugin is one take; a plugin no armed track plays keeps nothing");
+    if(!take)return;
+    expect((*take)["trackId"].toString()=="track-auto"&&(*take)["nodeId"].toString()=="fx-auto"&&(*take)["pluginInstanceId"].toString()=="plugin-7"&&(*take)["parameterId"].toString()=="12"&&(*take)["pluginId"].toString()=="C:/fx.vst3","the take names the track, the node, the plugin and the parameter");
+    expect((double)(*take)["startPpq"]==4&&(double)(*take)["endPpq"]==8&&(int)(*take)["passes"]==2,"round the loop, it covers the loop, twice");
+    const auto* points=(*take)["points"].getArray();
+    expect(points&&points->size()==3,"a move before Record is not kept, the three during it are");
+    if(points&&points->size()==3){
+        expect((double)(*points)[0]["ppq"]==5&&std::abs((double)(*points)[0]["value"]-.25)<1e-6&&(int)(*points)[0]["pass"]==0,"each move where it was made, with its value");
+        expect((double)(*points)[2]["ppq"]==4.5&&(int)(*points)[2]["pass"]==1,"the move after the loop's return is on the loop's bars, a pass later");
+    }
+}
+
 void testSequencerLoopTakeFoldsOntoTheLoop()
 {
     // Round a loop, a take lands on the loop's bars every time round, each
@@ -1574,6 +1614,43 @@ void testVariableFrameNetworkBoundary(const mlh::PluginRecord& record)
     expect((largeTrace.blockId&0xffffffffULL)==2&&largeTrace.processCallInBlock==1&&largeTrace.numSamples==frames,"callback block ID maps to exactly one VST process call with 73 real frames");
 }
 
+void testRealVst3Automation(const mlh::PluginRecord& effectRecord)
+{
+    // The arrangement moves a real VST3's parameter (D-065): the effect's gain
+    // follows its lane where the playhead is, and a seek lands it on the
+    // lane's value there.
+    std::cerr << "[vst3-e2e] automation\n";
+    auto plugin=std::make_unique<mlh::PluginInstance>();juce::String loadError;
+    expect(plugin->create(effectRecord,48000,256,loadError),"the deterministic effect loads for automation");if(!plugin->isReady())return;
+    plugin->setInstanceId("plugin-7");
+    juce::String gainId;const auto parameterList=plugin->getParameters();
+    if(const auto* parameters=parameterList.getArray())for(const auto& parameter:*parameters)if(parameter["name"].toString()=="Gain")gainId=parameter["parameterId"].toString();
+    expect(gainId.isNotEmpty(),"the effect shows its Gain parameter");if(gainId.isEmpty())return;
+    mlh::Chain chain("fx-auto");expect(chain.insertPlugin(0,std::move(plugin)),"the effect enters its chain");chain.prepareToPlay(48000,256);
+    mlh::SequencerEngine sequencer;sequencer.prepare(48000,256);
+    juce::Array<juce::var> tracks;tracks.add(midiTrack("track-auto","vst-none"));
+    juce::Array<juce::var> lanes;lanes.add(automationLane("fx-auto","plugin-7",gainId,{{0,.2},{4,.2},{4,.6},{8,.6}}));mlh::setProp(tracks.getReference(0),"automation",lanes);
+    juce::Array<juce::var> info;std::string error;
+    expect(sequencer.sync(makeSequencerProject(tracks),[&](const std::string&id){return id=="fx-auto"?&chain:nullptr;},48000,256,info,error),"an automation lane on a real effect compiles");
+    const auto processed=[&](mlh::Transport& transport){transport.beginBlock();sequencer.processMidi(256,transport);juce::AudioBuffer<float> audio(2,256);for(int ch=0;ch<2;++ch)for(int i=0;i<256;++i)audio.setSample(ch,i,1.0f);juce::MidiBuffer midi;chain.processBlock(audio,midi,256,transport.blockSerial());transport.advance(256);return audio.getSample(0,128);};
+    mlh::Transport transport;transport.setSampleRate(48000);transport.setBpm(120);transport.setPlaying(true);
+    const float atStart=processed(transport);
+    expect(std::abs(atStart-.2f)<1.0e-4f,"at the start the effect plays its lane's value, not its own 0.75: "+juce::String(atStart));
+    transport.seekPpq(5);sequencer.release();
+    const float afterSeek=processed(transport);
+    expect(std::abs(afterSeek-.6f)<1.0e-4f,"after a seek it plays the lane's value there: "+juce::String(afterSeek));
+    // During a take, the parameter the hand turns is the hand's: its lane is
+    // not played over it -- here the lane would say 0.2 -- until the take ends.
+    sequencer.beginRecording(transport);
+    sequencer.recordParameter("fx-auto","plugin-7",effectRecord.pluginId.toStdString(),gainId.toStdString(),.9f,transport);
+    transport.seekPpq(1);
+    const float latched=processed(transport);
+    expect(std::abs(latched-.6f)<1.0e-4f,"a parameter turned during a take does not follow its lane: "+juce::String(latched));
+    sequencer.finishRecording(transport);
+    const float released=processed(transport);
+    expect(std::abs(released-.2f)<1.0e-4f,"after the take it follows its lane again: "+juce::String(released));
+}
+
 void testRealVst3SequencerPlaybackArpAndMasterExport()
 {
     std::cerr << "[vst3-e2e] locate\n";
@@ -1587,6 +1664,7 @@ void testRealVst3SequencerPlaybackArpAndMasterExport()
     expect(records[0].pluginId==vst3.getFullPathName()&&effectRecords[0].pluginId==effectPath.getFullPathName(),
            "a plugin folder is named by the folder, the path a project keeps");
     testDirectMiniHubVst3PlanarCapture(records[0],effectRecords[0]);
+    testRealVst3Automation(effectRecords[0]);
     testVariableFrameNetworkBoundary(records[0]);
     if(!testDirectJuceVst3(records[0]))return;
     std::cerr << "[vst3-e2e] load\n";
@@ -4657,6 +4735,7 @@ int main(int argc, char** argv)
     testSequencerPreCountKeepsTheDownbeat();
     testSequencerLoopTakeFoldsOntoTheLoop();
     testSequencerClipControls();
+    testSequencerAutomationRecording();
     std::cerr << "[core] sequencer-plan-readers\n";
     testSequencerPlanReadersKeepTheirPlans();
     std::cerr << "[core] sequencer-midi-stress\n";

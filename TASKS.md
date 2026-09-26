@@ -21,8 +21,14 @@ asked 2026-09-27 (D-063).
   them at their sample, chases them on Play, a seek and the loop, and lets
   the pedal and the wheel go on a stop. The arrangement draws them as a
   stepped line in the clip. No editor for them yet.
-- Next, agreed in principle: a knob's moves on a plugin parameter recorded
-  as automation; then layered audio takes shown apart.
+- Done (D-065): a knob bound to a plugin parameter, turned during a take,
+  is recorded as automation on the armed track that plays that plugin, and
+  played back into the plugin -- proved on a real VST3 by the e2e suite.
+  Overdub is Touch, Replace is Latch; a parameter turned during a take stops
+  following its lane. Each lane is a yellow line across its track; a track's
+  right-click takes a lane off. No hand-drawn points yet.
+- Next, agreed in principle: layered audio takes shown apart; editing the
+  controller moves and the automation points by hand.
 
 **Fades on audio clips, as in Reaper — in the author's test** — asked
 2026-09-26 (D-062).
