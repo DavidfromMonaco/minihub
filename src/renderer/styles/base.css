@@ -2271,7 +2271,16 @@ body ::-webkit-scrollbar-corner { background:transparent; }
 .seq-inspector .seq-route-summary { margin-left:auto; }
 .seq-mute.active { color:#121315!important; background:#f5c451!important; }
 .seq-track-delete:hover { color:#ef6a5b; }
-.seq-track-lane { position:absolute; top:0; height:100%; background-image:repeating-linear-gradient(to right,transparent 0,transparent calc(var(--seq-beat,72px) - 1px),rgba(255,255,255,.035) var(--seq-beat,72px)); }
+.seq-track-lane { position:absolute; top:0; height:100%; }
+/* A lane's grid, one stretch per signature the track holds (D-060): bars a
+   shade over beats, each stretch starting on its own bar line. */
+.seq-meter-span { position:absolute; top:0; height:100%; pointer-events:none;
+  background-image:
+    repeating-linear-gradient(to right,rgba(255,255,255,.085) 0,rgba(255,255,255,.085) 1px,transparent 1px,transparent var(--seq-bar,288px)),
+    repeating-linear-gradient(to right,rgba(255,255,255,.035) 0,rgba(255,255,255,.035) 1px,transparent 1px,transparent var(--seq-beat,72px)); }
+.seq-meter-mark { position:absolute; top:2px; z-index:2; height:14px; padding:0 4px; border:1px solid rgba(255,139,44,.55);
+  border-radius:3px; background:#1a1b1e; color:var(--accent); font:10px var(--mono); line-height:12px; cursor:pointer; }
+.seq-meter-mark:hover { background:rgba(255,139,44,.16); }
 /* No height: top and bottom inset it into whatever the lane is. A fixed 62px
    cannot follow a track that changes height, and it is what left 71px of
    every lane empty. */

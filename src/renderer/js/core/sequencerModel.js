@@ -1,6 +1,6 @@
 import { normalizePortPreference } from '../midi/portIdentity.js';
 import { clamp } from './clamp.js';
-import { COMMON_TIME, normalizeSignature, quartersPerBar } from './musicalTime.js';
+import { COMMON_TIME, meterBarAt, meterRegions, meterSnap, normalizeMeter, normalizeSignature, quartersPerBar } from './musicalTime.js';
 
 const SNAP_STEPS = Object.freeze({
   '1 bar': 4,
@@ -200,6 +200,9 @@ function normalizeTrack(track, index) {
     // launch. An audio track has nothing to fingerprint: its node id is ours.
     inputPort: type === 'midi' ? normalizePortPreference(track?.inputPort) : null,
     outputId: typeof track?.outputId === 'string' ? track.outputId : '',
+    // The track's own signature changes, by its own bar numbers (D-060).
+    // Empty: the track counts the project's signature.
+    meter: normalizeMeter(track?.meter),
     clips: Array.isArray(track?.clips) ? track.clips.slice(0, SEQUENCER_LIMITS.clipsPerTrack).map((clip) => normalizeClip(clip, type)) : []
   };
 }
@@ -239,9 +242,32 @@ export class SequencerModel {
     this.state = normalizeSequencerState(state);
   }
 
-  // Snap in the project's signature: `1 bar` is not four quarters in 3/4.
-  _snapPpq(value) { return snapPpq(value, this.state.snap, this.state.signature); }
-  _snapStep() { return snapStep(this.state.snap, this.state.signature); }
+  /** A track's bars (D-060); `null` is the project's, which the loop uses. */
+  trackRegions(track = null) { return meterRegions(track?.meter, this.state.signature); }
+
+  // Snap on a track's own grid -- its bars, which in a polymetric track are
+  // not the project's -- restarting at each of its bar lines.
+  _snapPpq(value, track = null) {
+    const step = this.state.snap === '1 bar' ? 'bar' : snapStep(this.state.snap);
+    return meterSnap(this.trackRegions(track), value, step);
+  }
+
+  _snapStep(track = null, atPpq = 0) {
+    return this.state.snap === '1 bar' ? meterBarAt(this.trackRegions(track), atPpq).lengthPpq : snapStep(this.state.snap);
+  }
+
+  /**
+   * Put a signature change on a track at its bar `bar`, or take it off with
+   * `null`. Notes keep their quarters; the track's later bar lines move.
+   */
+  setTrackMeterChange(trackId, bar, signature) {
+    const track = this._track(trackId);
+    const at = Math.trunc(Number(bar));
+    if (!track || !Number.isInteger(at) || at < 1) return null;
+    const others = track.meter.filter((change) => change.bar !== at);
+    track.meter = normalizeMeter(signature ? [...others, { bar: at, ...signature }] : others);
+    return track.meter;
+  }
 
   /** The project's signature. Notes keep their positions; bar lines move. */
   setSignature(signature) {
@@ -381,6 +407,7 @@ export class SequencerModel {
     if ('muted' in changes) track.muted = changes.muted === true;
     if ('volume' in changes) track.volume = clampFinite(changes.volume, 0, 2);
     if ('pan' in changes) track.pan = clampFinite(finite(changes.pan, 0), -1, 1);
+    if ('meter' in changes) track.meter = normalizeMeter(changes.meter);
     if ('inputId' in changes) track.inputId = String(changes.inputId || '');
     if ('inputPort' in changes) {
       track.inputPort = track.type === 'midi' ? normalizePortPreference(changes.inputPort) : null;
@@ -394,11 +421,13 @@ export class SequencerModel {
    * wrote -- a One Ring generation -- keeps the position it was heard at
    * (`snap: false`) and leaves the selection alone (`select: false`).
    */
-  addMidiClip(trackId, startPpq = 0, lengthPpq = quartersPerBar(this.state.signature), notes = [], { name = '', snap = true, select = true } = {}) {
+  addMidiClip(trackId, startPpq = 0, lengthPpq = null, notes = [], { name = '', snap = true, select = true } = {}) {
     const track = this._track(trackId);
     if (!track || track.type !== 'midi' || track.clips.length >= SEQUENCER_LIMITS.clipsPerTrack) return null;
-    const start = snap ? this._snapPpq(startPpq) : Math.max(0, finite(startPpq));
-    const clip = normalizeClip({ id: uid('clip'), name, startPpq: start, lengthPpq, notes }, 'midi');
+    const start = snap ? this._snapPpq(startPpq, track) : Math.max(0, finite(startPpq));
+    // Without a length, one of the track's own bars, where it is dropped.
+    const length = lengthPpq ?? meterBarAt(this.trackRegions(track), start).lengthPpq;
+    const clip = normalizeClip({ id: uid('clip'), name, startPpq: start, lengthPpq: length, notes }, 'midi');
     track.clips.push(clip);
     if (select) this.selectClip(clip.id);
     return clip;
@@ -407,7 +436,7 @@ export class SequencerModel {
   addAudioClip(trackId, clipData = {}) {
     const track = this._track(trackId);
     if (!track || track.type !== 'audio' || track.clips.length >= SEQUENCER_LIMITS.clipsPerTrack) return null;
-    const clip = normalizeClip({ id: uid('clip'), ...clipData, startPpq: this._snapPpq(clipData.startPpq || 0) }, 'audio');
+    const clip = normalizeClip({ id: uid('clip'), ...clipData, startPpq: this._snapPpq(clipData.startPpq || 0, track) }, 'audio');
     track.clips.push(clip);
     this.selectClip(clip.id);
     return clip;
@@ -423,7 +452,7 @@ export class SequencerModel {
       target.clips.push(found.clip);
       found.track = target;
     }
-    found.clip.startPpq = this._snapPpq(startPpq);
+    found.clip.startPpq = this._snapPpq(startPpq, found.track);
     return true;
   }
 
@@ -451,7 +480,7 @@ export class SequencerModel {
     if (!anchorTarget || anchorTarget.type !== anchor.type) return false;
     const targetAnchorIndex = this.state.tracks.indexOf(anchorTarget);
     const verticalDelta = targetAnchorIndex - anchor.trackIndex;
-    const desiredAnchorStart = this._snapPpq(anchor.startPpq + finite(deltaPpq));
+    const desiredAnchorStart = this._snapPpq(anchor.startPpq + finite(deltaPpq), anchorTarget);
     const minimumStart = Math.min(...source.map((item) => item.startPpq));
     const commonDelta = Math.max(-minimumStart, desiredAnchorStart - anchor.startPpq);
     const moves = [];
@@ -497,11 +526,11 @@ export class SequencerModel {
   resizeClip(clipId, valuePpq, edge = 'end', { bpm = 120 } = {}) {
     const found = this._clip(clipId);
     if (!found) return false;
-    const step = this._snapStep();
+    const step = this._snapStep(found.track, found.clip.startPpq);
     const tempo = clampFinite(bpm, 20, 300);
     if (edge === 'start') {
       const oldEnd = found.clip.startPpq + found.clip.lengthPpq;
-      let nextStart = Math.max(0, Math.min(oldEnd - step, this._snapPpq(valuePpq)));
+      let nextStart = Math.max(0, Math.min(oldEnd - step, this._snapPpq(valuePpq, found.track)));
       const delta = nextStart - found.clip.startPpq;
       if (found.track.type === 'midi') {
         const nextOffset = found.clip.sourceOffsetPpq + delta;
@@ -521,7 +550,11 @@ export class SequencerModel {
       found.clip.startPpq = nextStart;
       found.clip.lengthPpq = oldEnd - nextStart;
     } else {
-      let snapped = Math.max(step, this._snapPpq(valuePpq));
+      // A length, snapped where its end lands on the track's grid. In a track
+      // whose bars start where the project's do, that is the length snapped.
+      const start = found.clip.startPpq;
+      const end = this._snapPpq(start + finite(valuePpq), found.track);
+      let snapped = Math.max(step, end - start);
       if (found.track.type === 'midi') {
         found.clip.sourceLengthPpq = Math.max(found.clip.sourceLengthPpq, found.clip.sourceOffsetPpq + snapped);
       } else {
@@ -641,7 +674,7 @@ export class SequencerModel {
     const upper = lower + found.clip.lengthPpq;
     const earliest = Math.min(...notes.map((note) => note.startPpq));
     const latest = Math.max(...notes.map((note) => note.startPpq + note.durationPpq));
-    const offset = Math.max(this._snapStep(), latest - earliest);
+    const offset = Math.max(this._snapStep(found.track, found.clip.startPpq), latest - earliest);
     const room = SEQUENCER_LIMITS.notesPerClip - found.clip.notes.length;
     const copies = [];
     for (const note of notes) {
@@ -746,7 +779,8 @@ export class SequencerModel {
     grid = '1/16', strength = 100, scope = 'entire', selectedNoteIds = [], timing = 'starts'
   } = {}) {
     const found = this._clip(clipId);
-    const gridTicks = quantizeGridTicks(grid, this.state.signature);
+    const gridTicks = found
+      ? quantizeGridTicks(grid, meterBarAt(this.trackRegions(found.track), found.clip.startPpq).signature) : 0;
     if (!found || found.track.type !== 'midi' || !gridTicks) return 0;
     const amount = Math.round(clampFinite(strength, 0, 100));
     const lower = ppqToTicks(found.clip.sourceOffsetPpq);
@@ -824,7 +858,7 @@ export class SequencerModel {
     if (!found) return null;
     const { clip, track } = found;
     if (track.clips.length >= SEQUENCER_LIMITS.clipsPerTrack) return null;
-    const cut = this._snapPpq(atPpq);
+    const cut = this._snapPpq(atPpq, track);
     const headLength = cut - clip.startPpq;
     const tailLength = clip.startPpq + clip.lengthPpq - cut;
     if (headLength < MIN_CLIP_PPQ || tailLength < MIN_CLIP_PPQ) return null;
@@ -869,7 +903,6 @@ export class SequencerModel {
     if (!payload || !Array.isArray(payload.clips) || !payload.clips.length) return [];
     const originStart = finite(payload.originStartPpq,
       Math.min(...payload.clips.map((item) => finite(item.startPpq))));
-    const delta = this._snapPpq(startPpq) - originStart;
     const pending = [];
     for (const item of payload.clips) {
       let track = this._track(item.trackId);
@@ -881,6 +914,9 @@ export class SequencerModel {
       if (!track) return [];
       pending.push({ track, item });
     }
+    // On the grid of the track the first clip lands on: where it goes is
+    // what the hand placed.
+    const delta = this._snapPpq(startPpq, pending[0].track) - originStart;
     for (const track of new Set(pending.map((item) => item.track))) {
       if (track.clips.length + pending.filter((item) => item.track === track).length > SEQUENCER_LIMITS.clipsPerTrack) return [];
     }
@@ -902,7 +938,8 @@ export class SequencerModel {
   duplicateClips(clipIds = this.selectedClipIds()) {
     const payload = this.copyClips(clipIds);
     if (!payload) return [];
-    const span = Math.max(this._snapStep(), payload.originEndPpq - payload.originStartPpq);
+    const span = Math.max(this._snapStep(this._track(payload.clips[0].trackId), payload.originStartPpq),
+      payload.originEndPpq - payload.originStartPpq);
     return this.pasteClips(payload, payload.originStartPpq + span);
   }
 

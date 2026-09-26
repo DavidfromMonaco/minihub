@@ -19,9 +19,13 @@ finished, delete its entry**, in the same commit. What was done lives in git and
 - Fixed after the author saw it: the denominator's list opened white, and
   the numerator was a field to type in where he looked for a list; both are
   now lists, dark. Not seen in the application yet (MiniHub was open).
-- Not built, the author's to choose: a signature per track -- whether such a
-  track's bar is longer than the others' (drifting against them) or the same
-  length divided differently. One Ring still counts four-quarter bars.
+- Done, asked the same day once the author chose polymetry (D-060): a track
+  counts its own bars and changes them along the song -- right-click on a
+  lane, *Time signature from bar N…*. Seen in the application: a 7/8 track
+  whose 3/4 change lands on quarter 14, its clips 3.5 quarters long, the menu
+  replacing a change, and Undo putting it back.
+- Left: the Clip Editor snaps and draws in the project's signature, not the
+  track's. One Ring still counts four-quarter bars.
 
 **Export from the header, Space for the transport, the VST card's count —
 in the author's test** — asked 2026-09-25 (D-056).

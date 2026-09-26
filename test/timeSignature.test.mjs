@@ -149,3 +149,70 @@ test('the Clip Editor window accepts a signature from the main window, and only 
   assert.equal(validTransportState({ signature: { numerator: 6, denominator: 8, extra: 1 } }), false);
   assert.equal(validTransportState({ ppqPosition: 0, playing: false, recording: false, bpm: 120, signature: WALTZ }), true);
 });
+
+// ---- a signature per track, changing along it (D-060) ----------------------
+
+import { meterBarAt, meterBarPpq, meterRegions, meterSnap, normalizeMeter } from '../src/renderer/js/core/musicalTime.js';
+
+test('a track counts its own bars: the project\'s until its first change, then its own', () => {
+  const regions = meterRegions([{ bar: 3, numerator: 7, denominator: 8 }, { bar: 5, numerator: 4, denominator: 4 }]);
+  assert.deepEqual(regions.map((region) => [region.startPpq, region.startBar]), [[0, 1], [8, 3], [15, 5]]);
+  assert.equal(meterBarPpq(regions, 4), 11.5, 'bar 4 is the second 7/8 bar');
+  assert.deepEqual(meterBarAt(regions, 12).bar, 4);
+  assert.equal(meterSnap(regions, 12.3, 'bar'), 11.5);
+  assert.equal(meterSnap(regions, 12.3, 1), 12.5, 'a quarter grid restarts on the 7/8 bar line, half a quarter late');
+  // A track with no change follows the project, whatever it becomes.
+  assert.equal(meterBarPpq(meterRegions([], WALTZ), 3), 6);
+  assert.equal(meterBarPpq(meterRegions([{ bar: 1, numerator: 12, denominator: 8 }], WALTZ), 3), 12,
+    'a change at bar one replaces the project\'s signature for the whole track');
+});
+
+test('polymetry: a 7/8 track meets a 4/4 one again after 28 quarters', () => {
+  const seven = meterRegions([{ bar: 1, numerator: 7, denominator: 8 }]);
+  const four = meterRegions([]);
+  const lines = (regions) => new Set(Array.from({ length: 12 }, (_, bar) => meterBarPpq(regions, bar + 1)));
+  const shared = [...lines(seven)].filter((q) => lines(four).has(q));
+  assert.deepEqual(shared, [0, 28], 'eight 7/8 bars against seven 4/4 bars: they share a bar line every 28 quarters');
+});
+
+test('a meter keeps valid changes only, one per bar, in order', () => {
+  assert.deepEqual(normalizeMeter([
+    { bar: 9, numerator: 5, denominator: 4 }, { bar: 2, numerator: 7, denominator: 8 },
+    { bar: 9, numerator: 3, denominator: 4 }, { bar: 0, numerator: 3, denominator: 4 },
+    { bar: 4, numerator: 7, denominator: 3 }, null
+  ]), [{ bar: 2, numerator: 7, denominator: 8 }, { bar: 9, numerator: 3, denominator: 4 }]);
+});
+
+test('a track\'s changes are saved and undone with it, and its clips land on its bars', () => {
+  const { controller, commands, data } = controllerRig();
+  const four = controller.model.addTrack('midi');
+  const seven = controller.model.addTrack('midi');
+  controller.changed();
+  const sent = signaturesSent(commands).length;
+  controller.setTrackMeterChange(seven.id, 1, { numerator: 7, denominator: 8 });
+  assert.deepEqual(data.sequencerState.tracks[1].meter, [{ bar: 1, numerator: 7, denominator: 8 }]);
+  assert.equal(signaturesSent(commands).length, sent, 'the engine keeps the project\'s signature');
+
+  controller.model.state.snap = '1 bar';
+  controller.addMidiClip(seven.id, 7.2);
+  controller.addMidiClip(four.id, 7.2);
+  assert.deepEqual([seven.clips[0].startPpq, seven.clips[0].lengthPpq], [7, 3.5], 'on the 7/8 track: its third bar, one bar long');
+  assert.deepEqual([four.clips[0].startPpq, four.clips[0].lengthPpq], [8, 4], 'on the 4/4 track: the project\'s');
+  controller.model.moveClips([four.clips[0].id], -0.4, seven.id, { anchorClipId: four.clips[0].id });
+  assert.equal(seven.clips.at(-1).startPpq, 7, 'moved onto the 7/8 track, a clip lands on its bar line');
+
+  controller.setTrackMeterChange(seven.id, 1, null);
+  assert.deepEqual(controller.model.state.tracks[1].meter, [], 'Remove takes the change off');
+  assert.deepEqual(controller.setTrackMeterChange('nope', 1, null), null);
+});
+
+test('an agent sets a track\'s meter whole, and reads it back', async () => {
+  const { controller, hub } = controllerRig();
+  const track = controller.model.addTrack('midi');
+  hub.sequencer.setTrack = (trackId, changes) => { controller.model.updateTrack(trackId, changes); controller.changed(); return controller.model._track(trackId); };
+  const answer = await handleAgentRequest(hub, {
+    kind: 'set-track', trackId: track.id, expectedProjectId: 'project-signature',
+    changes: { meter: [{ bar: 1, numerator: 12, denominator: 8 }, { bar: 5, numerator: 5, denominator: 3 }] }
+  });
+  assert.deepEqual(answer.track.meter, [{ bar: 1, numerator: 12, denominator: 8 }], 'what is not a signature is dropped');
+});

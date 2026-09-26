@@ -625,6 +625,25 @@ test('the header sets the time signature, and the bars follow it (D-059)', async
   }
 });
 
+test('a lane is drawn in the bars of its own track, and a change is marked where it starts (D-060)', async () => {
+  const { hub } = await runtime();
+  hub.nodes.create('sequencer');
+  hub.modules.register(createSequencerModule(hub));
+  const view = captureContainer();
+  const straight = hub.sequencer.model.addTrack('midi');
+  const odd = hub.sequencer.model.addTrack('midi');
+  hub.sequencer.model.state.zoom = 24;
+  hub.modules.activate('sequencer', view.container);
+  hub.sequencer.setTrackMeterChange(odd.id, 3, { numerator: 7, denominator: 8 });
+  const markup = view.container.innerHTML;
+  assert.match(markup, /class="seq-meter-mark" data-meter-bar="3" data-seq-left="192"[^>]*>7\/8</,
+    'the chip sits on bar 3 of the track, quarter 8');
+  assert.match(markup, /class="seq-meter-span" data-seq-left="192" data-seq-width="[\d.]+" data-seq-beat="[\d.]+" data-seq-bar="84"/,
+    'from there the lane draws 7/8 bars, 3.5 quarters wide');
+  assert.equal((markup.match(/seq-meter-mark/g) || []).length, 1, 'the 4/4 track has no chip');
+  assert.ok(straight.meter.length === 0);
+});
+
 test('the shell transport seeks by bars, says where it is, and pauses without stopping a One Ring', async () => {
   const { api, hub } = await runtime();
   hub.nodes.create('sequencer');

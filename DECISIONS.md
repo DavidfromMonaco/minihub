@@ -3235,10 +3235,8 @@ Refused, or left for later:
   own clock; its panel's `bar.beat` counts what its Next bar counts. Making it
   follow the project is a separate step, in native code the author is still
   testing.
-- **A signature per track**, asked in the same message as a possibility. It
-  is not built: the author has a choice to make first (whether such a track's
-  bar is longer than the others', drifting against them, or the same length
-  divided in three). The signature being the project's does not close it off.
+- **A signature per track**, asked in the same message as a possibility:
+  built the same day as D-060, once the author had chosen polymetry.
 
 **Consequences**
 
@@ -3259,3 +3257,71 @@ and `ui/header.js`; `TimeSig`, `setSignature` and `getPosition` in
 `engine.cpp`. Tests: `test/timeSignature.test.mjs`, `test/musicalTime.test.mjs`,
 `test/sequencerUi.test.mjs` ("the header sets the time signature"), and the
 6/8 and 7/8 cases in the native core tests.
+
+## D-060 — A track may count its own bars, and change them along the way
+
+**Status**: in force · 2026-09-26 · **implemented**, checked by the JS tests
+and in the application; not yet tried by the author
+
+**Context** — With D-059 the author asked for a way to put "two tracks in 4/4
+and one in 12/8, just to do something elaborate". Asked what that meant --
+bars of different lengths drifting against each other, or the same bar divided
+in three -- he answered: **polymetry, with changes along the song, track by
+track**. The second reading was already possible with the 1/8 triplet grid.
+
+**Decision** — A track holds its own signature changes, `meter`: a list of
+`{ bar, numerator, denominator }`, each at one of the **track's own** bars.
+
+- Before its first change a track counts the project's signature, and a track
+  with no change is in the project's signature whatever it becomes. A change
+  at bar 1 puts the whole track in its own signature.
+- **Placed by the track's bar number, not in quarters.** A change can only sit
+  on one of the track's bar lines; stored in quarters, editing an earlier
+  change would leave the later ones in the middle of a bar. Kept that way,
+  editing a change moves the later bar lines with it, as a score does.
+- **Notes keep their quarters**, so the engine plays a track exactly as
+  before: polymetry is in how a track is drawn and edited, never in how it is
+  played. 7/8 against 4/4 shares a bar line every 28 quarters because that is
+  where the notes are.
+- **What follows the track**: its lane grid (a stretch per signature, bar
+  lines a shade over beats, each stretch starting on its own bar line), a
+  chip where each change starts, Snap -- the grid restarts at each of the
+  track's bar lines, as in every workstation --, `1 bar` in Snap and Quantize,
+  a new clip's length, a clip dragged onto it, split, paste.
+- **What stays the project's**: the ruler, the header's `bar.beat`, Back and
+  Forward, the loop, the metronome and the count-in, the export's bars, and
+  the signature plugins read. There is one transport, and one instrument may
+  be played by two tracks: it cannot be told two signatures.
+- **Where it is set**: right-click on a lane, *Time signature from bar N…*,
+  N being the track's bar under the pointer; the chip opens the same menu.
+  The common signatures are listed and any other is typed (13/16), as the
+  Patch Bay finds plugins; *Remove this change* takes one off. Saved and
+  undone with the arrangement, like D-059.
+- The agent channel sets a track's meter whole through `set-track`
+  (`changes.meter`), and `describe` gives it per track.
+
+Refused, or left for later:
+
+- **Changes along the project's own signature** (a 7/8 bar for every track).
+  Not asked -- the author wanted it track by track -- and each track can
+  already make it.
+- **The Clip Editor** still snaps `1 bar` and draws its grid in the project's
+  signature: it is another window, fed by the transport, and knows no track
+  meter yet.
+
+**Consequences**
+
+- Every lane is now drawn by `.seq-meter-span` rather than by the lane's own
+  background, and every lane shows its bar lines a shade stronger than its
+  beats -- the 4/4 ones included, which only had beat lines before.
+- A clip's end, when resized, snaps where it lands on the grid rather than
+  its length being a multiple of the step. The same thing for a clip that
+  starts on the grid; different, and conventional, for one placed off it.
+
+**Proof in the code** — `normalizeMeter`, `meterRegions`, `meterBarAt`,
+`meterBarPpq`, `meterSnap` and `meterSpans` in `core/musicalTime.js`;
+`trackRegions`, `_snapPpq` and `setTrackMeterChange` in
+`core/sequencerModel.js`; `SequencerController.setTrackMeterChange`;
+`laneMeterMarkup` and `openMeterMenu` in `modules/sequencer/sequencerModule.js`.
+Tests: the D-060 cases in `test/timeSignature.test.mjs` and
+`test/sequencerUi.test.mjs` ("a lane is drawn in the bars of its own track").

@@ -187,6 +187,7 @@ export function describeSequencer(hub) {
       armed: track.armed === true,
       monitored: track.monitored === true,
       volume: track.volume,
+      meter: Array.isArray(track.meter) ? track.meter : [],
       clips: (Array.isArray(track.clips) ? track.clips : []).map((clip) => ({
         id: clip.id,
         startPpq: clip.startPpq,

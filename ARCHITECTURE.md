@@ -773,6 +773,13 @@ passes the signature (`SequencerController.signature`): a function there
 called without one answers in 4/4, which is right only in a 4/4 project.
 `1 bar` in Snap and Quantize is the one grid value that depends on it.
 
+**A track may count its own bars** (D-060): `meter` on a track, signature
+changes at the track's own bar numbers, the project's signature before the
+first. The model reads a track's bars through `trackRegions(track)` and snaps
+on them; lanes are drawn from the same regions. The engine never sees a track
+meter: notes are in quarters, and the transport, the metronome and what
+plugins read stay the project's.
+
 Grilles de quantification : 1 mesure, 1/2, 1/4, 1/8, 1/16, 1/32, 1/8 triolet,
 1/16 triolet. Aimantation : 1 mesure, 1/2, 1/4, 1/8, 1/16, 1/32 — le premier
 vocabulaire **contient** le second, ce qui est ce qui permet au menu contextuel

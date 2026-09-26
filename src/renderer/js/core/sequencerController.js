@@ -314,6 +314,18 @@ export class SequencerController {
   }
 
   /**
+   * A signature change on one track, at one of its own bars; `null` takes it
+   * off (D-060). The engine is not told: notes are in quarters and play the
+   * same, and plugins keep the project's signature -- one transport, and an
+   * instrument two tracks may feed.
+   */
+  setTrackMeterChange(trackId, bar, signature) {
+    const meter = this.model.setTrackMeterChange(trackId, bar, signature);
+    if (meter) this.changed();
+    return meter;
+  }
+
+  /**
    * Tell the engine, the shell and the open Clip Editors when the signature
    * moved. It rides on `changed()` rather than on `setSignature` because an
    * undo, a project switch and an agent's edit all replace the state without
@@ -1339,9 +1351,9 @@ export class SequencerController {
 
   /**
    * Add a MIDI clip to a track, and publish it. Same reasoning as `addTrack`.
-   * Without a length it is one bar, in the project's signature.
+   * Without a length it is one of the track's own bars.
    */
-  addMidiClip(trackId, startPpq = 0, lengthPpq = quartersPerBar(this.signature), notes = []) {
+  addMidiClip(trackId, startPpq = 0, lengthPpq = null, notes = []) {
     const clip = this.model.addMidiClip(trackId, startPpq, lengthPpq, notes);
     if (clip) this.changed();
     return clip;

@@ -10,7 +10,10 @@ import { dbToGain, formatGainDb, formatPan, gainToDb } from '../../core/stripVal
 import { paneHasKeys } from '../../ui/interfaceLayout.js';
 import { createInstrumentTrack, instrumentPlugins, openPluginWhenReady, trackPlugin } from '../../core/instrumentTrack.js';
 import { icon } from '../../ui/icons.js';
-import { COMMON_TIME, loopBars, loopRangeFromBars, normalizeSignature, quartersPerBar, quartersPerBeat } from '../../core/musicalTime.js';
+import {
+  COMMON_TIME, SIGNATURE_DENOMINATORS, SIGNATURE_NUMERATOR_MAX, formatSignature, loopBars, loopRangeFromBars,
+  meterBarAt, meterBarPpq, meterSpans, normalizeSignature, quartersPerBar, quartersPerBeat
+} from '../../core/musicalTime.js';
 
 /**
  * The two numbers that decide how much arrangement fits on a screen.
@@ -235,6 +238,7 @@ function applyDynamicStyles(root) {
   // there are two rows and the corner has to cover both.
   const customProperties = {
     seqBeat: '--seq-beat',
+    seqBar: '--seq-bar',
     seqHead: '--seq-head',
     seqTimeRuler: '--seq-time-ruler',
     seqBarRuler: '--seq-bar-ruler'
@@ -299,6 +303,33 @@ function clipContent(track, clip, zoom) {
       return `<i data-seq-left="${(visibleStart - sourceOffset) * zoom}" data-seq-width="${Math.max(1, (visibleEnd - visibleStart) * zoom)}" data-seq-bottom-pct="${Math.max(2, (note.pitch - 24) / 104 * 70)}"></i>`;
     }).join('')}</span>`;
 }
+
+/**
+ * A lane's grid, drawn in the track's own bars (D-060): one stretch per
+ * signature the track holds, each starting on its bar line so its lines fall
+ * on that track's beats and bars -- in a 7/8 track against a 4/4 project, not
+ * on the project's. Bar lines are drawn a shade stronger than beats, or a
+ * polymetric track would be a grid nobody could read the bars of.
+ *
+ * A signature change is marked where it begins, by a chip that opens its menu.
+ */
+function laneMeterMarkup(track, regions, endPpq, zoom, visibleStart, visibleEnd) {
+  const spans = meterSpans(regions, 0, endPpq).map(({ fromPpq, toPpq, signature }) => {
+    const beat = gridPx(zoom, signature);
+    const bar = Math.max(beat, quartersPerBar(signature) * zoom);
+    return `<div class="seq-meter-span" data-seq-left="${fromPpq * zoom}" data-seq-width="${(toPpq - fromPpq) * zoom}" data-seq-beat="${beat}" data-seq-bar="${bar}"></div>`;
+  }).join('');
+  const marks = (track.meter || []).map((change) => {
+    const at = meterBarPpq(regions, change.bar);
+    if (at < visibleStart - 8 || at > visibleEnd) return '';
+    const text = formatSignature(change);
+    return `<button class="seq-meter-mark" data-meter-bar="${change.bar}" data-seq-left="${at * zoom}" title="${text} from bar ${change.bar} of this track. Click to change">${text}</button>`;
+  }).join('');
+  return spans + marks;
+}
+
+/** The signatures offered first; any other is found by typing it. */
+const COMMON_SIGNATURES = ['2/4', '3/4', '4/4', '5/4', '6/4', '7/4', '3/8', '5/8', '6/8', '7/8', '9/8', '11/8', '12/8', '5/16', '7/16'];
 
 function clipMarkup(track, clip, zoom, selected) {
   const left = clip.startPpq * zoom;
@@ -1001,7 +1032,7 @@ export function createSequencerModule(hub) {
                 <div class="seq-track-level"><input data-track-control="volume" type="range" min="-60" max="6" step="0.1" value="${gainToDb(track.volume)}" aria-label="${escapeHtml(track.name)} level in dB"><output data-track-level-value>${formatGainDb(track.volume)}</output><input class="seq-track-pan" data-track-control="pan" type="range" min="-100" max="100" step="1" value="${Math.round((track.pan || 0) * 100)}" title="Pan (double-click: centre)" aria-label="${escapeHtml(track.name)} pan"><output data-track-pan-value>${formatPan(track.pan)}</output></div>
                 ${routeDots(routeStates(hub, track, sequencerNode.id))}
               </div>
-              <div class="seq-track-lane" data-seq-left="${TRACK_HEADER}" data-seq-width="${timelineWidth}" data-seq-beat="${gridLinePx}">${track.clips.filter((clip) => clip.startPpq + clip.lengthPpq >= visibleStart && clip.startPpq <= visibleEnd).map((clip) => clipMarkup(track, clip, zoom, selectedClipIds.has(clip.id))).join('')}</div>
+              <div class="seq-track-lane" data-seq-left="${TRACK_HEADER}" data-seq-width="${timelineWidth}">${laneMeterMarkup(track, controller.model.trackRegions(track), endPpq, zoom, visibleStart, visibleEnd)}${track.clips.filter((clip) => clip.startPpq + clip.lengthPpq >= visibleStart && clip.startPpq <= visibleEnd).map((clip) => clipMarkup(track, clip, zoom, selectedClipIds.has(clip.id))).join('')}</div>
             </div>`).join('') : `<div class="seq-empty" data-seq-top="${HEAD_HEIGHT}">Create a MIDI or audio track to begin.</div>`}
             <div class="seq-playhead" data-playhead data-seq-left="${TRACK_HEADER + controller.playheadPpq * zoom}" data-seq-height="${HEAD_HEIGHT + Math.max(1, state.tracks.length) * TRACK_HEIGHT}"><span class="seq-playhead-grip" data-playhead-grip title="Drag to move the playhead (Alt: off the grid)"></span></div>
           </div>
@@ -1276,6 +1307,16 @@ export function createSequencerModule(hub) {
     element.addEventListener('click', (event) => {
       if (event.target.closest?.('.seq-clip,input,select,button,textarea,[contenteditable="true"]')) return;
       controller.focusTrack(trackId);
+    });
+    lane?.querySelectorAll('.seq-meter-mark').forEach((mark) => {
+      // The chip's own gestures: neither a band, a seek nor a new clip.
+      for (const name of ['pointerdown', 'dblclick']) mark.addEventListener(name, (event) => event.stopPropagation());
+      const open = (event) => {
+        event.preventDefault(); event.stopPropagation();
+        openMeterMenu(event, track, Number(mark.dataset.meterBar));
+      };
+      mark.addEventListener('click', open);
+      mark.addEventListener('contextmenu', open);
     });
     lane?.addEventListener('pointerdown', (event) => {
       if (event.button !== 0 || event.target.closest?.('.seq-clip')) return;
@@ -1592,9 +1633,48 @@ export function createSequencerModule(hub) {
     });
   }
 
+  /**
+   * The signatures a track can take from one of its bars (D-060). The common
+   * ones are listed; any other -- 13/16 -- is typed, as the Patch Bay's
+   * plugins are, since 128 entries is a list to search, not to read.
+   */
+  function openMeterMenu(event, track, bar) {
+    const regions = controller.model.trackRegions(track);
+    const current = formatSignature(meterBarAt(regions, meterBarPpq(regions, bar)).signature);
+    const change = (track.meter || []).find((item) => item.bar === bar);
+    const entry = (text, searchOnly = false) => {
+      const [numerator, denominator] = text.split('/').map(Number);
+      return {
+        label: text, searchOnly, hint: text === current ? 'current' : '',
+        action: () => controller.setTrackMeterChange(track.id, bar, { numerator, denominator })
+      };
+    };
+    const every = [];
+    for (let numerator = 1; numerator <= SIGNATURE_NUMERATOR_MAX; numerator += 1) {
+      for (const denominator of SIGNATURE_DENOMINATORS) {
+        const text = `${numerator}/${denominator}`;
+        if (!COMMON_SIGNATURES.includes(text)) every.push(entry(text, true));
+      }
+    }
+    openContextMenu({
+      x: event.clientX, y: event.clientY,
+      search: { placeholder: 'A signature, or type one: 13/16' },
+      items: [
+        { heading: `${track.name} from its bar ${bar}` },
+        ...COMMON_SIGNATURES.map((text) => entry(text)),
+        ...every,
+        ...(change ? [{ separator: true }, {
+          label: 'Remove this change', danger: true,
+          action: () => controller.setTrackMeterChange(track.id, bar, null)
+        }] : [])
+      ]
+    });
+  }
+
   /** The menu on empty lane space: what a double-click does, plus paste. */
   function openLaneMenu(event, track, lane) {
     const ppq = ppqAtPointer(event, lane);
+    const trackBar = meterBarAt(controller.model.trackRegions(track), ppq);
     openContextMenu({
       x: event.clientX, y: event.clientY,
       items: [
@@ -1605,6 +1685,11 @@ export function createSequencerModule(hub) {
           ? { label: 'New MIDI clip here', hint: 'Double-click', action: () => { controller.addMidiClip(track.id, ppq); } }
           : { label: 'Import audio here…', hint: 'Double-click', action: () => { controller.importAudio(track.id, ppq); } },
         { label: 'Paste here', hint: 'Ctrl+V', disabled: !controller.hasClipboard(), action: () => controller.pasteClips(ppq) },
+        { separator: true },
+        {
+          label: `Time signature from bar ${trackBar.bar}…`, hint: formatSignature(trackBar.signature),
+          action: () => openMeterMenu(event, track, trackBar.bar)
+        },
         { separator: true },
         { label: 'Select all clips', hint: 'Ctrl+A', action: () => controller.selectAllClips() }
       ]

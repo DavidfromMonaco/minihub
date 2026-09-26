@@ -173,3 +173,116 @@ export function loopRangeFromBars(from, to, fallback = {}, signature = COMMON_TI
   const startPpq = (fromBar - 1) * bar;
   return { startPpq, endPpq: Math.max(toBar * bar, startPpq + bar) };
 }
+
+/**
+ * A track's meter: the signature changes it makes, each at one of ITS bars
+ * (D-060). Polymetry is the point -- a track in 7/8 against the project's
+ * 4/4 has bars of its own, which drift against the project's and meet them
+ * again every 28 quarters -- so a change is placed by the track's bar number,
+ * never by the project's. Before its first change a track counts the
+ * project's signature, and a track with no change IS in the project's
+ * signature, whatever it becomes.
+ *
+ * Kept by bar rather than by quarter because a change can only sit on one of
+ * the track's own bar lines: stored in quarters, an edit to an earlier
+ * change would leave the later ones in the middle of a bar.
+ */
+export const METER_CHANGES_MAX = 256;
+const METER_BAR_MAX = 100000;
+
+/** A meter made safe: valid changes only, one per bar, in bar order. */
+export function normalizeMeter(value) {
+  const byBar = new Map();
+  for (const entry of Array.isArray(value) ? value : []) {
+    const bar = Number(entry?.bar);
+    if (!Number.isInteger(bar) || bar < 1 || bar > METER_BAR_MAX) continue;
+    const signature = normalizeSignature(entry, { numerator: 0, denominator: 0 });
+    if (signature.numerator !== Number(entry?.numerator) || signature.denominator !== Number(entry?.denominator)) continue;
+    byBar.set(bar, { bar, ...signature });
+  }
+  return [...byBar.values()].sort((a, b) => a.bar - b.bar).slice(0, METER_CHANGES_MAX);
+}
+
+/**
+ * The stretches of a track in which one signature holds, each from a bar
+ * line: `{ startPpq, startBar, signature }`, `startBar` counted from one.
+ * Everything below reads a track's bars through these.
+ */
+export function meterRegions(meter, projectSignature = COMMON_TIME) {
+  const regions = [{ startPpq: 0, startBar: 1, signature: normalizeSignature(projectSignature) }];
+  for (const change of normalizeMeter(meter)) {
+    const last = regions.at(-1);
+    const signature = { numerator: change.numerator, denominator: change.denominator };
+    if (change.bar === last.startBar) { last.signature = signature; continue; }
+    regions.push({
+      startPpq: last.startPpq + (change.bar - last.startBar) * quartersPerBar(last.signature),
+      startBar: change.bar,
+      signature
+    });
+  }
+  return regions;
+}
+
+function regionAt(regions, q) {
+  let found = regions[0];
+  for (const region of regions) {
+    if (region.startPpq <= q + EPSILON) found = region;
+    else break;
+  }
+  return found;
+}
+
+/** The track bar holding `quarters`: where it starts, how long it is, its number. */
+export function meterBarAt(regions, quarters) {
+  const q = Math.max(0, Number(quarters) || 0);
+  const region = regionAt(regions, q);
+  const length = quartersPerBar(region.signature);
+  const index = barIndex(q - region.startPpq, length);
+  return {
+    startPpq: region.startPpq + index * length,
+    lengthPpq: length,
+    bar: region.startBar + index,
+    signature: region.signature
+  };
+}
+
+/** Where the track's bar `bar` (from one) starts, in quarters. */
+export function meterBarPpq(regions, bar) {
+  const wanted = Math.max(1, Math.trunc(Number(bar) || 1));
+  let region = regions[0];
+  for (const candidate of regions) if (candidate.startBar <= wanted) region = candidate;
+  return region.startPpq + (wanted - region.startBar) * quartersPerBar(region.signature);
+}
+
+/**
+ * `quarters` on the track's grid: the nearest bar line for `'bar'`, else the
+ * nearest multiple of `step` counted from the bar it falls in -- a grid starts
+ * again at every bar line, as in every workstation, which is what keeps a
+ * quarter grid on the beats of a 7/8 bar that starts half a quarter late.
+ * In a 4/4 track from zero it is the rounding it always was.
+ */
+export function meterSnap(regions, quarters, step) {
+  const q = Math.max(0, Number(quarters) || 0);
+  const bar = meterBarAt(regions, q);
+  if (step === 'bar') {
+    return q - bar.startPpq < bar.lengthPpq / 2 ? bar.startPpq : bar.startPpq + bar.lengthPpq;
+  }
+  const size = Number(step) > 0 ? Number(step) : 0.25;
+  const snapped = bar.startPpq + Math.round((q - bar.startPpq) / size) * size;
+  return Math.max(0, Math.min(snapped, bar.startPpq + bar.lengthPpq));
+}
+
+/**
+ * The bar lines and signature changes between two positions, for drawing:
+ * each region cut to the window, as `{ fromPpq, toPpq, signature, startPpq }`.
+ */
+export function meterSpans(regions, fromPpq, toPpq) {
+  const spans = [];
+  regions.forEach((region, index) => {
+    const end = index + 1 < regions.length ? regions[index + 1].startPpq : Infinity;
+    const from = Math.max(region.startPpq, fromPpq);
+    const to = Math.min(end, toPpq);
+    if (to > from) spans.push({ fromPpq: from, toPpq: to, startPpq: region.startPpq, signature: region.signature });
+  });
+  return spans;
+}

@@ -171,7 +171,10 @@ const trackSummary = (track) => ({
   id: track.id, name: track.name, type: track.type,
   inputId: track.inputId || '', outputId: track.outputId || '',
   armed: track.armed === true, monitored: track.monitored === true,
-  muted: track.muted === true, volume: track.volume
+  muted: track.muted === true, volume: track.volume,
+  // Its own signature changes (D-060): `{ bar, numerator, denominator }`,
+  // set whole through `changes.meter`.
+  meter: Array.isArray(track.meter) ? track.meter : []
 });
 
 const endpoint = (value) => (value && typeof value === 'object'
