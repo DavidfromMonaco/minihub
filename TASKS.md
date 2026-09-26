@@ -7,6 +7,19 @@ finished, delete its entry**, in the same commit. What was done lives in git and
 
 ## Started, not finished
 
+**Export from the header, Space for the transport, the VST card's count —
+in the author's test** — asked 2026-09-25 (D-056).
+- Done: Export left the Sequencer's toolbar for the header, after Plays; its
+  panel gives the range with its length, the format, the tail, the progress.
+  The whole lasts as long as what Play plays, Audio Players included: a file
+  processed in the Patch Bay with no Sequencer exported one bar. Seen in the
+  application through the agent channel on 2026-09-26: 229 s for a 227 s file
+  and 2 s of tail.
+- Done: Space plays and stops on every page, a caret or an open list excepted.
+- Done: a VST card redraws when its chain changes (`vst:chainChanged`); it
+  said "empty", or an old count, until the VST's page was visited.
+- Not seen yet in the application: the panel, Space, the card redrawing.
+
 **The project's name, the clock ruler, track mute, the players, the context
 menus** —
 asked 2026-09-25 by the author, the day he reported every entry awaiting his
@@ -173,6 +186,12 @@ Plan: [plans/done/bindings-bar-docked.md](plans/done/bindings-bar-docked.md).
 
 
 ## Kept for the author, not started
+
+**`set-parameter` answers ok for a plugin that is not there** — found
+2026-09-26 while tuning TDR Nova through the agent channel: a request whose
+`pluginId` had lost its backslashes answered `ok: true` and changed nothing.
+The request should refuse a `pluginId` that does not match the instance named
+by `pluginInstanceId`. Not started.
 
 **Massive X moves a parameter by itself, and Learn takes it** — added on the
 author's request, 2026-09-15. In the author's session that morning, for the 36 s

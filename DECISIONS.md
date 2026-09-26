@@ -3041,8 +3041,10 @@ the menu description in `test/menuCommands.test.mjs`.
 
 ## D-056 — Export belongs to the header, and lasts as long as what Play plays
 
-**Status**: in force · 2026-09-25 · **implemented**, checked by the JS tests
-and in the application, not yet tried by the author
+**Status**: in force · 2026-09-25 · **implemented**, checked by the JS tests;
+in the application, the length only (2026-09-26: an Audio Player through a VST
+into the Audio Output, no Sequencer, exported 229 s for a 227 s file plus 2 s of
+tail). The panel and Space not seen yet, not yet tried by the author
 
 **Context** — The author processed a WAV through a chain of five effects,
 Audio Player into a VST into the Audio Output, with no Sequencer in the patch,
