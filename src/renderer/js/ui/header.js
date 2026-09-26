@@ -1,6 +1,6 @@
 import { bindTempoInput } from '../core/tempoControl.js';
 import { controllerName } from '../core/controllerNode.js';
-import { barBeat } from '../core/musicalTime.js';
+import { barBeat, normalizeSignature } from '../core/musicalTime.js';
 import { installExportPanel } from './exportPanel.js';
 
 /**
@@ -63,6 +63,8 @@ export function buildHeader(hub, statusEl) {
   const stopEl = document.getElementById('transport-stop');
   const recordEl = document.getElementById('transport-record');
   const bpmEl = document.getElementById('transport-bpm');
+  const numeratorEl = document.getElementById('transport-signature-numerator');
+  const denominatorEl = document.getElementById('transport-signature-denominator');
   const positionEl = document.getElementById('transport-position');
   const scopeEl = document.getElementById('transport-scope');
   const navEls = {
@@ -99,9 +101,11 @@ export function buildHeader(hub, statusEl) {
    * keeps that to four writes a bar at 120 BPM -- and nothing here logs, which
    * on a periodic event is what buries a startup log (see engineEventTrace).
    */
+  let lastPpq = hub.sequencer?.playheadPpq ?? 0;
   const renderPosition = (ppq) => {
+    lastPpq = ppq;
     if (!positionEl) return;
-    const text = barBeat(ppq);
+    const text = barBeat(ppq, hub.sequencer?.signature);
     if (positionEl.textContent !== text) positionEl.textContent = text;
   };
   const renderOneRing = () => {
@@ -186,6 +190,32 @@ export function buildHeader(hub, statusEl) {
   hub.events.on('sequencer:tempo', (tempo) => {
     if (bpmEl && bpmEl.value !== String(tempo)) bpmEl.value = String(tempo);
   });
+  /**
+   * The project's time signature (D-059), beside the tempo as other
+   * workstations put it. It is the arrangement's, so it is saved, reopened
+   * and undone with the project; the two lists only show and send it. A
+   * value that is not a signature -- which the lists cannot offer, but a
+   * stale page could send -- puts them back on the one in force rather than
+   * being repaired into another.
+   */
+  const renderSignature = (signature = hub.sequencer?.signature) => {
+    const { numerator, denominator } = normalizeSignature(signature);
+    if (numeratorEl && numeratorEl.value !== String(numerator)) numeratorEl.value = String(numerator);
+    if (denominatorEl && denominatorEl.value !== String(denominator)) denominatorEl.value = String(denominator);
+    // The position is written in bars: new bars, new position.
+    renderPosition(lastPpq);
+  };
+  const commitSignature = () => {
+    const next = normalizeSignature(
+      { numerator: Number(numeratorEl?.value), denominator: Number(denominatorEl?.value) },
+      hub.sequencer?.signature
+    );
+    renderSignature(hub.sequencer?.setSignature?.(next) ?? next);
+  };
+  numeratorEl?.addEventListener('change', commitSignature);
+  denominatorEl?.addEventListener('change', commitSignature);
+  hub.events.on('sequencer:signature', renderSignature);
+  renderSignature();
   hub.events.on('engine:transport',(state)=>{if(typeof state?.playing!=='boolean')return;playing=state.playing;renderTransport();});
   renderTransport();
   renderRecord();

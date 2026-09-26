@@ -11,11 +11,26 @@ inline float metronomeClickPhaseIncrement(bool accent, bool preCount) noexcept
  return normal * (preCount ? 1.25f : 1.0f);
 }
 
+/** A time signature (D-059). The renderer is its authority; the engine keeps
+ * the last one it was sent and never makes one up. A beat is the note value
+ * the denominator names, so a bar of 7/8 is 3.5 quarters. */
+struct TimeSig final {
+ int numerator=4,denominator=4;
+ static bool valid(int n,int d) noexcept { return n>=1&&n<=32&&(d==2||d==4||d==8||d==16); }
+ double beatQuarters() const noexcept { return 4.0/double(denominator); }
+ double barQuarters() const noexcept { return double(numerator)*beatQuarters(); }
+ // One word, so a reader never sees the numerator of one signature with the
+ // denominator of the one before.
+ uint32_t pack() const noexcept { return (uint32_t(numerator)<<8)|uint32_t(denominator); }
+ static TimeSig unpack(uint32_t v) noexcept { return {int(v>>8),int(v&0xffu)}; }
+};
+
 struct MetronomeTick final {
  int64_t sequence=0,timeInSamples=0,beat=0;
  double ppqPosition=0.0;
  int beatInBar=0;
  bool accent=false,preCount=false;
+ int numerator=4,denominator=4;
 };
 
 /** Fixed-capacity audio-thread -> message-thread queue. No lock, allocation,
@@ -47,28 +62,34 @@ private:
  int64_t nextSequence_=0; // producer-thread only
 };
 
-/** Select the nearest sample to a quarter-note boundary. The half-sample
- * window deliberately permits one candidate on either side; the engine's
- * minimum-distance guard collapses a mathematical tie to one audible click. */
-inline bool metronomeBeatAtSample(double ppq,double quarterNotesPerSample,int64_t& beat) noexcept {
+/** Select the nearest sample to a beat boundary, a beat being
+ * `beatQuarters` long (an eighth in 6/8). `beat` counts those beats from zero.
+ * The half-sample window deliberately permits one candidate on either side;
+ * the engine's minimum-distance guard collapses a mathematical tie to one
+ * audible click. */
+inline bool metronomeBeatAtSample(double ppq,double quarterNotesPerSample,int64_t& beat,
+                                  double beatQuarters=1.0) noexcept {
  if(!std::isfinite(ppq)||!std::isfinite(quarterNotesPerSample)||quarterNotesPerSample<=0)return false;
- beat=(int64_t)std::llround(ppq);
- return std::abs(ppq-(double)beat)<=quarterNotesPerSample*0.51;
+ if(!std::isfinite(beatQuarters)||beatQuarters<=0)return false;
+ beat=(int64_t)std::llround(ppq/beatQuarters);
+ return std::abs(ppq-(double)beat*beatQuarters)<=quarterNotesPerSample*0.51;
 }
 
 inline int64_t metronomePreCountSamples(double quarterNotesPerSample,
-                                        int beats) noexcept {
+                                        int beats,double beatQuarters=1.0) noexcept {
  if(!std::isfinite(quarterNotesPerSample)||quarterNotesPerSample<=0||beats<=0)return 0;
- return (int64_t)std::ceil((double)beats/quarterNotesPerSample);
+ if(!std::isfinite(beatQuarters)||beatQuarters<=0)return 0;
+ return (int64_t)std::ceil((double)beats*beatQuarters/quarterNotesPerSample);
 }
 
 inline bool metronomePreCountBeatAtSample(int64_t sampleOffset,
                                           double quarterNotesPerSample,
                                           int beats,
-                                          int64_t& beat) noexcept {
+                                          int64_t& beat,
+                                          double beatQuarters=1.0) noexcept {
  if(sampleOffset<0||beats<=0)return false;
  return metronomeBeatAtSample((double)sampleOffset*quarterNotesPerSample,
-                              quarterNotesPerSample,beat)
+                              quarterNotesPerSample,beat,beatQuarters)
      && beat>=0&&beat<beats;
 }
 class Transport final : public juce::AudioPlayHead {
@@ -76,6 +97,11 @@ public:
  static constexpr double kDefaultBpm=120.0,kMinBpm=20.0,kMaxBpm=300.0;
  void setSampleRate(double v) noexcept { sampleRate_.store(std::isfinite(v)&&v>0?v:48000.0); }
  void setBpm(double v) noexcept { if(std::isfinite(v))bpm_.store(juce::jlimit(kMinBpm,kMaxBpm,v)); }
+ /** Refused whole when it is not a signature: the engine keeps the last good one. */
+ bool setSignature(int numerator,int denominator) noexcept { if(!TimeSig::valid(numerator,denominator))return false;signature_.store(TimeSig{numerator,denominator}.pack());return true; }
+ TimeSig signature() const noexcept { return TimeSig::unpack(signature_.load()); }
+ // The signature this block is processed in, fixed by beginBlock like its tempo.
+ TimeSig blockSignature() const noexcept { return TimeSig::unpack(blockSignature_.load(std::memory_order_relaxed)); }
  void setPlaying(bool v) noexcept { playing_.store(v,std::memory_order_release); }
  void setRecording(bool v) noexcept { recording_.store(v,std::memory_order_release); }
  void seekPpq(double v) noexcept { if(!std::isfinite(v))return;const auto q=std::max(0.0,v);ppq_.store(q);samples_.store((int64_t)std::llround(q*60.0*sampleRate_.load()/bpm_.load()));seekSerial_.fetch_add(1); }
@@ -92,7 +118,7 @@ public:
  int64_t samplePosition() const noexcept { return samples_.load(); }
  double ppqPosition() const noexcept { return ppq_.load(); }
  double quarterNotesPerSample() const noexcept { return blockBpm_.load()/(60.0*sampleRate_.load()); }
- void beginBlock() noexcept { blockBpm_.store(bpm()); blockPlaying_.store(playing()); blockSerial_.fetch_add(1, std::memory_order_relaxed); }
+ void beginBlock() noexcept { blockBpm_.store(bpm()); blockSignature_.store(signature_.load(),std::memory_order_relaxed); blockPlaying_.store(playing()); blockSerial_.fetch_add(1, std::memory_order_relaxed); }
  // Which block this is: what one node leaves for another is only good for the block it was left in.
  uint64_t blockSerial() const noexcept { return blockSerial_.load(std::memory_order_relaxed); }
  double ppqAtSample(int offset) const noexcept { const double from=ppqPosition();return loopedPpq(from,from+std::max(0,offset)*quarterNotesPerSample()); }
@@ -102,10 +128,11 @@ public:
   *  from anywhere past the end threw a playhead at bar 20 to some point inside a
   *  bar 1-4 loop the moment Loop was ticked, with every note it held left on. */
  double loopedPpq(double from,double to) const noexcept { if(!loopEnabled())return to;const auto a=loopStart(),b=loopEnd(),length=b-a;if(length<=0||from>=b-1.0e-12||to<b-1.0e-12)return to;double q=a+std::fmod(std::max(0.0,to-a),length);if(q>=b-1.0e-12)q=a;return q; }
- juce::Optional<PositionInfo> getPosition() const override { PositionInfo i; TimeSignature signature; signature.numerator=4; signature.denominator=4;LoopPoints points;points.ppqStart=loopStart();points.ppqEnd=loopEnd(); const auto samples=samplePosition(); const auto ppq=ppqPosition(); i.setBpm(blockBpm_.load()); i.setTimeSignature(signature); i.setIsPlaying(processingPlaying()); i.setIsRecording(recording()); i.setIsLooping(loopEnabled());i.setLoopPoints(points);i.setTimeInSamples(samples); i.setTimeInSeconds(double(samples)/sampleRate_.load()); i.setPpqPosition(ppq); i.setPpqPositionOfLastBarStart(std::floor(ppq/4.0)*4.0); return i; }
+ juce::Optional<PositionInfo> getPosition() const override { PositionInfo i; const auto meter=blockSignature(); TimeSignature signature; signature.numerator=meter.numerator; signature.denominator=meter.denominator;LoopPoints points;points.ppqStart=loopStart();points.ppqEnd=loopEnd(); const auto samples=samplePosition(); const auto ppq=ppqPosition(); i.setBpm(blockBpm_.load()); i.setTimeSignature(signature); i.setIsPlaying(processingPlaying()); i.setIsRecording(recording()); i.setIsLooping(loopEnabled());i.setLoopPoints(points);i.setTimeInSamples(samples); i.setTimeInSeconds(double(samples)/sampleRate_.load()); i.setPpqPosition(ppq); const double bar=meter.barQuarters(); i.setPpqPositionOfLastBarStart(std::floor(ppq/bar+1.0e-9)*bar); return i; }
 private:
  std::atomic<double> bpm_{kDefaultBpm},sampleRate_{48000.0},ppq_{0.0},blockBpm_{kDefaultBpm};
  std::atomic<uint64_t> blockSerial_{0};
+ std::atomic<uint32_t> signature_{TimeSig{}.pack()},blockSignature_{TimeSig{}.pack()};
  std::atomic<int64_t> samples_{0}; std::atomic<bool> playing_{false},blockPlaying_{false},recording_{false},loopEnabled_{false};
  std::atomic<double> loopStart_{0.0},loopEnd_{16.0};std::atomic<uint64_t> seekSerial_{0};
 };

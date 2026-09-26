@@ -4,6 +4,7 @@ import { CONTROL_BINDING_VERSION } from './controlBindings.js';
 import { updateMasterOutput } from './masterOutput.js';
 import { handleOneRingRequest } from './oneRingRequests.js';
 import { PLAY_SCOPES } from './sequencerController.js';
+import { SIGNATURE_DENOMINATORS, SIGNATURE_NUMERATOR_MAX, normalizeSignature, parseSignature } from './musicalTime.js';
 
 /**
  * The one door an outside agent knocks on.
@@ -42,7 +43,8 @@ const MUTATING = new Set([
   'create-node', 'delete-node', 'connect', 'disconnect',
   'add-plugin', 'remove-plugin', 'set-parameter', 'move-plugin', 'set-plugin-bypass',
   'add-track', 'remove-track', 'set-track', 'add-clip',
-  'set-node-content', 'set-binding', 'clear-binding', 'plugin', 'one-ring', 'patch-bay', 'loop'
+  'set-node-content', 'set-binding', 'clear-binding', 'plugin', 'one-ring', 'patch-bay', 'loop',
+  'set-signature'
 ]);
 
 /**
@@ -530,6 +532,18 @@ export async function handleAgentRequest(hub, request = {}) {
   if (kind === 'set-tempo') {
     hub.sequencer?.setTempo?.(Number(request.bpm));
     return { ok: true, bpm: hub.sequencer?.tempo ?? null };
+  }
+
+  // The project's time signature (D-059). Gated where `set-tempo` is not: it
+  // is written into the arrangement and undone with it, as the loop is.
+  if (kind === 'set-signature') {
+    const text = typeof request.signature === 'string' ? parseSignature(request.signature) : null;
+    const asked = text || { numerator: Number(request.numerator), denominator: Number(request.denominator) };
+    const signature = normalizeSignature(asked, { numerator: 0, denominator: 0 });
+    if (signature.numerator !== asked.numerator || signature.denominator !== asked.denominator) {
+      return failed('invalid-signature', `numerator 1 to ${SIGNATURE_NUMERATOR_MAX} and denominator ${SIGNATURE_DENOMINATORS.join(', ')}, or signature "6/8"`);
+    }
+    return { ok: true, signature: hub.sequencer?.setSignature?.(signature) ?? null };
   }
 
   if (kind === 'set-master') {

@@ -308,7 +308,7 @@ test('Clip Editor transport commands control and reflect the one Sequencer/nativ
   assert.equal(request('independent-clock').reason, 'unsupported-request');
   await new Promise((resolve) => setImmediate(resolve));
   assert.deepEqual(published.at(-1), {
-    ppqPosition: 0, playing: false, recording: false, bpm: 120
+    ppqPosition: 0, playing: false, recording: false, bpm: 120, signature: { numerator: 4, denominator: 4 }
   });
 });
 

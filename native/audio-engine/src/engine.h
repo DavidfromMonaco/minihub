@@ -423,7 +423,10 @@ private:
     std::atomic<bool> metronomeEnabled_{false};
     std::atomic<float> metronomeVolume_{0.35f};
     MetronomeTickQueue metronomeTicks_;
-    static constexpr int kPreCountBeats = 4;
+    // The count-in is one bar of the signature in force when Record was
+    // pressed: six eighths in 6/8, three quarters in 3/4. Fixed for the
+    // count-in's length, so a signature changed during it cannot shorten it.
+    std::atomic<uint32_t> preCountSignature_{TimeSig{}.pack()};
     std::atomic<bool> preCountActive_{false};
     std::atomic<bool> preCountComplete_{false};
     std::atomic<uint64_t> preCountGeneration_{0};

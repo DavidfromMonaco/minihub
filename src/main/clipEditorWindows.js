@@ -98,12 +98,22 @@ function validPayload(operation, value) {
   return false;
 }
 
+// The time signature (D-059), in the renderer's `musicalTime.js` bounds. This
+// process is CommonJS and cannot import that module; the two lists are short.
+function validSignature(value) {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+    && Object.keys(value).every((key) => key === 'numerator' || key === 'denominator')
+    && Number.isInteger(value.numerator) && value.numerator >= 1 && value.numerator <= 32
+    && [2, 4, 8, 16].includes(value.denominator);
+}
+
 function validTransportState(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   const keys = Object.keys(value);
   return keys.length > 0 && keys.length <= 6
-    && keys.every((key) => ['ppqPosition', 'playing', 'recording', 'bpm'].includes(key))
+    && keys.every((key) => ['ppqPosition', 'playing', 'recording', 'bpm', 'signature'].includes(key))
     && (value.ppqPosition === undefined || (finite(value.ppqPosition) && value.ppqPosition >= 0))
+    && (value.signature === undefined || validSignature(value.signature))
     && (value.bpm === undefined || (finite(value.bpm) && value.bpm >= 20 && value.bpm <= 300))
     && (value.playing === undefined || typeof value.playing === 'boolean')
     && (value.recording === undefined || typeof value.recording === 'boolean');

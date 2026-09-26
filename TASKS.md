@@ -7,6 +7,22 @@ finished, delete its entry**, in the same commit. What was done lives in git and
 
 ## Started, not finished
 
+**The time signature — in the author's test** — asked 2026-09-26 (D-059).
+- Done: the header's signature, beside the tempo, is the project's (saved and
+  undone with the arrangement). The ruler, the grid, Snap and Quantize
+  `1 bar`, a new clip, the loop fields, the export panel, Back and Forward,
+  the metronome and the count-in count its bars; plugins receive it. The agent
+  channel has `set-signature`. Seen in the application through the agent
+  channel: 7/8 in the header, two bars forward landing on quarter 7 (`3.1`),
+  the engine answering 7/8, the metronome clicking every eighth with its
+  accent back every seven; the header fits a 960 px window.
+- Fixed after the author saw it: the denominator's list opened white, and
+  the numerator was a field to type in where he looked for a list; both are
+  now lists, dark. Not seen in the application yet (MiniHub was open).
+- Not built, the author's to choose: a signature per track -- whether such a
+  track's bar is longer than the others' (drifting against them) or the same
+  length divided differently. One Ring still counts four-quarter bars.
+
 **Export from the header, Space for the transport, the VST card's count —
 in the author's test** — asked 2026-09-25 (D-056).
 - Done: Export left the Sequencer's toolbar for the header, after Plays; its

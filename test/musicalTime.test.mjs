@@ -1,6 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { QUARTERS_PER_BAR, barBeat, barStart, barStep, loopBars, loopRangeFromBars } from '../src/renderer/js/core/musicalTime.js';
+import {
+  COMMON_TIME, barBeat, barStart, barStep, formatSignature, loopBars, loopRangeFromBars, normalizeSignature,
+  parseSignature, quartersPerBar, quartersPerBeat
+} from '../src/renderer/js/core/musicalTime.js';
 
 test('a position is written bar.beat, counted from one', () => {
   assert.equal(barBeat(0), '1.1', 'the beginning is bar one beat one, not zero');
@@ -17,7 +20,8 @@ test('a position is written bar.beat, counted from one', () => {
 });
 
 test('a bar starts where the bar line is', () => {
-  assert.equal(QUARTERS_PER_BAR, 4);
+  assert.equal(quartersPerBar(COMMON_TIME), 4);
+  assert.equal(quartersPerBar(), 4, 'a project without a signature is in 4/4');
   assert.equal(barStart(0), 0);
   assert.equal(barStart(3.99), 0);
   assert.equal(barStart(4), 4);
@@ -65,4 +69,61 @@ test('a loop typed backwards or half typed stays a loop', () => {
   assert.deepEqual(loopRangeFromBars('4', '4'), { startPpq: 12, endPpq: 16 }, 'From 4 To 4 is bar four');
   assert.deepEqual(loopRangeFromBars('', '8', { startPpq: 16, endPpq: 64 }), { startPpq: 16, endPpq: 32 }, 'a cleared field keeps what the loop had');
   assert.deepEqual(loopRangeFromBars('0', '2'), { startPpq: 0, endPpq: 8 }, 'there is no bar before bar one');
+});
+
+const WALTZ = { numerator: 3, denominator: 4 };
+const COMPOUND = { numerator: 6, denominator: 8 };
+const SEVEN_EIGHT = { numerator: 7, denominator: 8 };
+const TWELVE_EIGHT = { numerator: 12, denominator: 8 };
+
+test('a bar lasts what its signature says, in quarters', () => {
+  assert.equal(quartersPerBar(WALTZ), 3);
+  assert.equal(quartersPerBar(COMPOUND), 3);
+  assert.equal(quartersPerBar(SEVEN_EIGHT), 3.5, 'a bar that is not a whole number of quarters');
+  assert.equal(quartersPerBar(TWELVE_EIGHT), 6);
+  assert.equal(quartersPerBar({ numerator: 2, denominator: 2 }), 4);
+  assert.equal(quartersPerBeat(COMPOUND), 0.5, 'the beat of 6/8 is the eighth');
+  assert.equal(quartersPerBeat({ numerator: 5, denominator: 16 }), 0.25);
+});
+
+test('bar.beat counts the beats of the signature', () => {
+  assert.equal(barBeat(3, WALTZ), '2.1');
+  assert.equal(barBeat(8.5, WALTZ), '3.3');
+  // In 6/8 the beat is an eighth: 1.5 quarters in is the fourth eighth.
+  assert.equal(barBeat(1.5, COMPOUND), '1.4');
+  assert.equal(barBeat(3, COMPOUND), '2.1');
+  assert.equal(barBeat(3.4999, SEVEN_EIGHT), '1.7');
+  assert.equal(barBeat(3.5, SEVEN_EIGHT), '2.1');
+  // A double the engine reports a hair short of the bar line is the bar line.
+  assert.equal(barBeat(6.9999999999, SEVEN_EIGHT), '3.1');
+  assert.equal(barBeat(-1, WALTZ), '—');
+});
+
+test('the transport steps and the loop fields follow the signature', () => {
+  assert.equal(barStart(10, WALTZ), 9);
+  assert.equal(barStep(10, -1, WALTZ), 9);
+  assert.equal(barStep(9, -1, WALTZ), 6);
+  assert.equal(barStep(10, 1, WALTZ), 12);
+  assert.equal(barStep(0, 3, SEVEN_EIGHT), 10.5);
+  assert.equal(barStep(7, -1, SEVEN_EIGHT), 3.5, 'on a line, back goes to the bar before');
+  assert.deepEqual(loopRangeFromBars('1', '4', {}, WALTZ), { startPpq: 0, endPpq: 12 });
+  assert.deepEqual(loopBars({ startPpq: 6, endPpq: 24 }, TWELVE_EIGHT), { from: 2, to: 4 });
+  // A loop drawn in 4/4 read after a change to 3/4 keeps its quarters and
+  // shows where they now fall.
+  assert.deepEqual(loopBars({ startPpq: 0, endPpq: 16 }, WALTZ), { from: 1, to: 5.333 });
+});
+
+test('a signature that is not one falls back whole', () => {
+  assert.deepEqual(normalizeSignature({ numerator: 7, denominator: 8 }), SEVEN_EIGHT);
+  assert.deepEqual(normalizeSignature(null), COMMON_TIME);
+  assert.deepEqual(normalizeSignature({ numerator: 7, denominator: 3 }), COMMON_TIME, '7/3 is not repaired into 7/4');
+  assert.deepEqual(normalizeSignature({ numerator: 0, denominator: 4 }), COMMON_TIME);
+  assert.deepEqual(normalizeSignature({ numerator: 33, denominator: 4 }), COMMON_TIME);
+  assert.deepEqual(normalizeSignature({ numerator: 2.5, denominator: 4 }), COMMON_TIME);
+  assert.deepEqual(normalizeSignature({ numerator: '5', denominator: '4' }), { numerator: 5, denominator: 4 });
+  assert.deepEqual(normalizeSignature({ numerator: 9 }, WALTZ), WALTZ, 'the fallback is the one given');
+  assert.equal(formatSignature(TWELVE_EIGHT), '12/8');
+  assert.deepEqual(parseSignature(' 6 / 8 '), COMPOUND);
+  assert.equal(parseSignature('6/7'), null);
+  assert.equal(parseSignature('four'), null);
 });

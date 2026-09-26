@@ -10,7 +10,7 @@ import { dbToGain, formatGainDb, formatPan, gainToDb } from '../../core/stripVal
 import { paneHasKeys } from '../../ui/interfaceLayout.js';
 import { createInstrumentTrack, instrumentPlugins, openPluginWhenReady, trackPlugin } from '../../core/instrumentTrack.js';
 import { icon } from '../../ui/icons.js';
-import { loopBars, loopRangeFromBars } from '../../core/musicalTime.js';
+import { COMMON_TIME, loopBars, loopRangeFromBars, normalizeSignature, quartersPerBar, quartersPerBeat } from '../../core/musicalTime.js';
 
 /**
  * The two numbers that decide how much arrangement fits on a screen.
@@ -87,17 +87,18 @@ const FOLLOW_LEAD = 0.18;
  * So: always a screenful of empty bars past the right edge of what you are
  * looking at. Scrolling right therefore never reaches an end, which is the
  * point; the rail's thumb shrinks as you travel, which is the price and what
- * Reaper's does too. Rounded up to a whole bar so the ruler's last mark is a
- * bar and not a fraction of one, and so the width does not change by a
- * pixel-and-a-half on every scroll event.
+ * Reaper's does too. Rounded up to a whole bar -- `barPpq`, the signature's --
+ * so the ruler's last mark is a bar and not a fraction of one, and so the
+ * width does not change by a pixel-and-a-half on every scroll event.
  *
  * `Fit` deliberately does NOT use this -- it frames `compositionEndPpq()`,
  * the music. Framing the empty room ahead would zoom out for nothing.
  */
-export function timelineEndPpq({ minimumPpq = 0, contentEndPpq = 0, scrollPpq = 0, viewportPpq = 0 } = {}) {
+export function timelineEndPpq({ minimumPpq = 0, contentEndPpq = 0, scrollPpq = 0, viewportPpq = 0, barPpq = 4 } = {}) {
+  const bar = Number(barPpq) > 0 ? Number(barPpq) : 4;
   const ahead = Math.max(0, scrollPpq) + Math.max(0, viewportPpq) * 2;
   const wanted = Math.max(minimumPpq, contentEndPpq + 16, ahead);
-  return Math.ceil(Math.max(4, wanted) / 4) * 4;
+  return Math.ceil(Math.max(bar, wanted) / bar) * bar;
 }
 
 /**
@@ -459,15 +460,25 @@ const RULER_MIN_MARK_PX = 54;
  * The grid was drawn one line per quarter, which is right at 72 px and a solid
  * tint at 4: `calc(var(--seq-beat) - 1px)` leaves nothing transparent between
  * two 1 px rules. The answer is not to hide the grid but to draw a coarser
- * musical division -- the narrowest multiple of the quarter still worth
- * looking at.
+ * musical division -- the narrowest one still worth looking at.
+ *
+ * The divisions are the signature's: a beat, a group of beats that fills the
+ * bar evenly, the bar, then bars by powers of two. In 4/4 that is the 1, 2,
+ * 4, 8... quarters it always was; in 3/4 it skips 2, which would draw a line
+ * across the middle of every other bar.
  */
-export function gridPx(zoom) {
+export function gridPx(zoom, signature = COMMON_TIME) {
   const step = Math.max(0.01, Number(zoom) || 0);
-  for (const quarters of [1, 2, 4, 8, 16, 32, 64]) {
+  const { numerator } = normalizeSignature(signature);
+  const beat = quartersPerBeat(signature);
+  const bar = quartersPerBar(signature);
+  const divisions = [];
+  for (let beats = 1; beats <= numerator; beats += 1) if (numerator % beats === 0) divisions.push(beats * beat);
+  for (let bars = 2; bars <= 16; bars *= 2) divisions.push(bars * bar);
+  for (const quarters of divisions) {
     if (quarters * step >= 12) return quarters * step;
   }
-  return 64 * step;
+  return divisions.at(-1) * step;
 }
 
 /**
@@ -543,14 +554,14 @@ export function formatClock(seconds, stride = 1) {
  * The position a press on the timeline names: `clientX` against the left edge
  * of the timeline's zero, on the Snap grid unless `free` (Alt held).
  */
-export function timelinePpqAt(clientX, originX, zoom, snap, free = false) {
+export function timelinePpqAt(clientX, originX, zoom, snap, free = false, signature = COMMON_TIME) {
   const raw = Math.max(0, (Number(clientX) - Number(originX)) / Math.max(0.01, Number(zoom) || 0));
   if (!Number.isFinite(raw)) return 0;
-  return free ? raw : snapPpq(raw, snap);
+  return free ? raw : snapPpq(raw, snap, signature);
 }
 
-export function rulerStride(bars, zoom) {
-  const barPx = Math.max(0.01, 4 * (Number(zoom) || 0));
+export function rulerStride(bars, zoom, barPpq = 4) {
+  const barPx = Math.max(0.01, (Number(barPpq) > 0 ? Number(barPpq) : 4) * (Number(zoom) || 0));
   const wanted = Math.max(RULER_MIN_MARK_PX / barPx, Math.max(1, Number(bars) || 1) / 512, 1);
   return 2 ** Math.ceil(Math.log2(wanted));
 }
@@ -585,11 +596,12 @@ function timeRulerMarkup(endPpq, zoom, bpm, fromPpq = 0, toPpq = endPpq) {
     .join('');
 }
 
-function rulerMarkup(endPpq, zoom) {
-  const bars = Math.ceil(endPpq / 4);
-  const stride = rulerStride(bars, zoom);
+function rulerMarkup(endPpq, zoom, signature = COMMON_TIME) {
+  const length = quartersPerBar(signature);
+  const bars = Math.ceil(endPpq / length - 1e-9);
+  const stride = rulerStride(bars, zoom, length);
   return Array.from({ length: Math.ceil(bars / stride) }, (_, index) => index * stride)
-    .map((bar) => `<button class="seq-ruler-mark" data-seek="${bar * 4}" data-seq-left="${bar * 4 * zoom}" data-seq-width="${4 * stride * zoom}"><strong>${bar + 1}</strong></button>`).join('');
+    .map((bar) => `<button class="seq-ruler-mark" data-seek="${bar * length}" data-seq-left="${bar * length * zoom}" data-seq-width="${length * stride * zoom}"><strong>${bar + 1}</strong></button>`).join('');
 }
 
 export function createSequencerModule(hub) {
@@ -929,9 +941,11 @@ export function createSequencerModule(hub) {
     const state = controller.model.state;
     const selectedClipIds = new Set(state.selectedClipIds || (state.selectedClipId ? [state.selectedClipId] : []));
     const zoom = state.zoom;
-    const gridLinePx = gridPx(zoom);
+    const signature = controller.signature;
+    const gridLinePx = gridPx(zoom, signature);
     const viewportPpq = Math.max(16, (container.clientWidth - TRACK_HEADER) / zoom);
     const endPpq = timelineEndPpq({
+      barPpq: quartersPerBar(signature),
       minimumPpq: TIMELINE_BEATS,
       contentEndPpq: controller.model.compositionEndPpq(),
       scrollPpq: state.scrollPpq,
@@ -965,15 +979,15 @@ export function createSequencerModule(hub) {
         <div class="row mt-12 seq-tools"><label>Snap <select data-control="snap">${Object.keys(SNAP_STEPS).map((value) => `<option ${value === state.snap ? 'selected' : ''}>${value}</option>`).join('')}</select></label>
           <label class="seq-zoom-control">Zoom <input data-control="zoom" type="range" min="0" max="100" value="${zoomToSlider(zoom)}" aria-label="Timeline zoom"><button class="btn seq-zoom-btn" data-action="zoom-fit" title="Frame the whole arrangement (Ctrl+wheel zooms under the cursor)">Fit</button><button class="btn seq-zoom-btn" data-action="zoom-focus" title="Frame the selected clips, or the loop range">Focus</button></label>
           <label><input data-control="loop-enabled" type="checkbox" ${state.loop.enabled ? 'checked' : ''}> Loop</label>
-          <label title="First bar of the loop">From <input data-control="loop-start" type="number" min="1" step="any" value="${loopBars(state.loop).from}"></label>
-          <label title="Last bar of the loop, included">To <input data-control="loop-end" type="number" min="1" step="any" value="${loopBars(state.loop).to}"></label>
+          <label title="First bar of the loop">From <input data-control="loop-start" type="number" min="1" step="any" value="${loopBars(state.loop, signature).from}"></label>
+          <label title="Last bar of the loop, included">To <input data-control="loop-end" type="number" min="1" step="any" value="${loopBars(state.loop, signature).to}"></label>
         </div>
         ${inspectorMarkup(hub, focusedTrack, sequencerNode.id)}
       </section>
       <section class="panel seq-arrangement">
         <div class="seq-scroll" data-timeline-scroll>
           <div class="seq-canvas" data-seq-canvas data-seq-head="${TRACK_HEADER}" data-seq-time-ruler="${TIME_RULER_HEIGHT}" data-seq-bar-ruler="${RULER_HEIGHT}" data-seq-width="${TRACK_HEADER + timelineWidth}" data-seq-height="${HEAD_HEIGHT + Math.max(1, state.tracks.length) * TRACK_HEIGHT}">
-            <div class="seq-corner">TRACKS</div><div class="seq-time-ruler" data-seq-time-scale data-seq-left="${TRACK_HEADER}" data-seq-width="${timelineWidth}">${timeRulerMarkup(endPpq, zoom, controller.tempo, visibleStart, visibleEnd)}</div><div class="seq-ruler" data-seq-left="${TRACK_HEADER}" data-seq-width="${timelineWidth}" data-seq-beat="${gridLinePx}">${rulerMarkup(endPpq, zoom)}</div>
+            <div class="seq-corner">TRACKS</div><div class="seq-time-ruler" data-seq-time-scale data-seq-left="${TRACK_HEADER}" data-seq-width="${timelineWidth}">${timeRulerMarkup(endPpq, zoom, controller.tempo, visibleStart, visibleEnd)}</div><div class="seq-ruler" data-seq-left="${TRACK_HEADER}" data-seq-width="${timelineWidth}" data-seq-beat="${gridLinePx}">${rulerMarkup(endPpq, zoom, signature)}</div>
             <div class="seq-loop-range ${state.loop.enabled ? 'enabled' : ''}" data-seq-left="${TRACK_HEADER + state.loop.startPpq * zoom}" data-seq-width="${(state.loop.endPpq - state.loop.startPpq) * zoom}" data-seq-height="${HEAD_HEIGHT + Math.max(1, state.tracks.length) * TRACK_HEIGHT}"></div>
             ${state.tracks.length ? state.tracks.map((track, index) => `<div class="seq-track ${state.focusedTrackId === track.id ? 'focused' : ''}" data-track-id="${track.id}" data-seq-top="${HEAD_HEIGHT + index * TRACK_HEIGHT}" data-seq-height="${TRACK_HEIGHT}">
               <div class="seq-track-head" data-seq-width="${TRACK_HEADER}">
@@ -1037,7 +1051,7 @@ export function createSequencerModule(hub) {
       );
     }, { passive: false });
     for (const key of ['loop-enabled', 'loop-start', 'loop-end']) container.querySelector(`[data-control="${key}"]`)?.addEventListener('change', () => {
-      const range = loopRangeFromBars(container.querySelector('[data-control="loop-start"]').value, container.querySelector('[data-control="loop-end"]').value, controller.model.state.loop);
+      const range = loopRangeFromBars(container.querySelector('[data-control="loop-start"]').value, container.querySelector('[data-control="loop-end"]').value, controller.model.state.loop, controller.signature);
       controller.model.setLoop({ enabled: container.querySelector('[data-control="loop-enabled"]').checked, ...range }); controller.changed();
     });
     container.querySelector('[data-timeline-scroll]')?.addEventListener('scroll', (event) => {
@@ -1117,7 +1131,7 @@ export function createSequencerModule(hub) {
     event.preventDefault();
     const origin = ruler.getBoundingClientRect().left;
     const at = (pointer) => timelinePpqAt(pointer.clientX, origin, controller.model.state.zoom,
-      controller.model.state.snap, pointer.altKey);
+      controller.model.state.snap, pointer.altKey, controller.signature);
     const live = !controller.playing;
     scrub = { ppq: at(event) };
     const place = () => {
@@ -1153,6 +1167,7 @@ export function createSequencerModule(hub) {
     if (!row) return;
     const { zoom, scrollPpq } = controller.model.state;
     const endPpq = timelineEndPpq({
+      barPpq: quartersPerBar(controller.signature),
       minimumPpq: TIMELINE_BEATS,
       contentEndPpq: controller.model.compositionEndPpq(),
       scrollPpq,
@@ -1276,7 +1291,7 @@ export function createSequencerModule(hub) {
       // Reaper. Not during a take: a seek ends it. Measured before the
       // deselection, whose render replaces this lane.
       const state = controller.model.state;
-      const ppq = timelinePpqAt(event.clientX, lane.getBoundingClientRect().left, state.zoom, state.snap, event.altKey);
+      const ppq = timelinePpqAt(event.clientX, lane.getBoundingClientRect().left, state.zoom, state.snap, event.altKey, controller.signature);
       controller.selectClip(null);
       if (!controller.recording && !controller.preCounting) controller.seek(ppq);
     });
@@ -1288,7 +1303,7 @@ export function createSequencerModule(hub) {
     lane?.addEventListener('dblclick', async (event) => {
       if (event.target.closest('.seq-clip')) return;
       const ppq = Math.max(0, (event.offsetX || 0) / controller.model.state.zoom);
-      if (track.type === 'midi') { controller.addMidiClip(trackId, ppq, 4); }
+      if (track.type === 'midi') { controller.addMidiClip(trackId, ppq); }
       else await controller.importAudio(trackId, ppq);
     });
   }
@@ -1587,7 +1602,7 @@ export function createSequencerModule(hub) {
         { separator: true },
         ...(trackPlugin(hub, track) ? [{ label: 'Open Plugin Window', action: () => { const target = trackPlugin(hub, track); if (target) openPluginWhenReady(hub, target.nodeId, target.pluginInstanceId); } }, { separator: true }] : []),
         track.type === 'midi'
-          ? { label: 'New MIDI clip here', hint: 'Double-click', action: () => { controller.addMidiClip(track.id, ppq, 4); } }
+          ? { label: 'New MIDI clip here', hint: 'Double-click', action: () => { controller.addMidiClip(track.id, ppq); } }
           : { label: 'Import audio here…', hint: 'Double-click', action: () => { controller.importAudio(track.id, ppq); } },
         { label: 'Paste here', hint: 'Ctrl+V', disabled: !controller.hasClipboard(), action: () => controller.pasteClips(ppq) },
         { separator: true },
@@ -1667,7 +1682,7 @@ export function createSequencerModule(hub) {
       controller.deleteSelectedClips();
       return;
     }
-    const step = snapStep(controller.model.state.snap);
+    const step = snapStep(controller.model.state.snap, controller.signature);
     const nudges = {
       ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -1], ArrowDown: [0, 1]
     };

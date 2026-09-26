@@ -683,6 +683,15 @@ pré-décompte. Tout est en `std::atomic`.
 callback choisit l'horloge live ou l'horloge privée d'export avant de traiter un
 bloc. Un VST ne reçoit donc jamais le timing du mauvais transport.
 
+**Time signature** (D-059). The transport holds the project's signature as one
+packed word (`TimeSig`), sent by the renderer with `setTransport`; a value
+that is not a signature is refused and the last good one kept. `beginBlock`
+fixes it for the block, like the tempo, and `getPosition` gives plugins that
+signature and the start of the current bar in it. The metronome clicks every
+beat of it (the denominator's note), accented on the bar; the count-in is one
+bar, in the signature Record was pressed in. One Ring's own bar stays four
+quarters.
+
 ---
 
 ## 8. Contrats de threading
@@ -755,6 +764,14 @@ same thread.
 [sequencerModel.js](src/renderer/js/core/sequencerModel.js). Résolution :
 `TICKS_PER_QUARTER = 960`. Limites dures : **64 pistes, 2048 clips par piste,
 65 536 notes par clip** (`SEQUENCER_LIMITS`).
+
+**The time signature is the arrangement's** (D-059): `signature` in the state,
+4/4 when absent, so it is saved and undone with the tracks. Positions stay in
+quarters; what a bar is comes from [musicalTime.js](src/renderer/js/core/musicalTime.js)
+and nowhere else -- `quartersPerBar(signature)` is 3.5 in 7/8. Every caller
+passes the signature (`SequencerController.signature`): a function there
+called without one answers in 4/4, which is right only in a 4/4 project.
+`1 bar` in Snap and Quantize is the one grid value that depends on it.
 
 Grilles de quantification : 1 mesure, 1/2, 1/4, 1/8, 1/16, 1/32, 1/8 triolet,
 1/16 triolet. Aimantation : 1 mesure, 1/2, 1/4, 1/8, 1/16, 1/32 — le premier

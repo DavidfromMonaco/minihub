@@ -1,4 +1,4 @@
-import { QUARTERS_PER_BAR } from '../core/musicalTime.js';
+import { COMMON_TIME, loopBars } from '../core/musicalTime.js';
 
 /**
  * Export, in the header beside the transport (D-056).
@@ -46,11 +46,13 @@ export function exportStatusText(status, exporting) {
 }
 
 /** What the range selector says of each span: its length, and what it comes from. */
-export function spanLabel(range, span, tempo) {
+export function spanLabel(range, span, tempo, signature = COMMON_TIME) {
   const seconds = Math.max(0, (Number(span?.endPpq) || 0) - (Number(span?.startPpq) || 0)) * 60 / (Number(tempo) || 120);
   if (range === 'loop') {
-    const from = Math.floor(Math.max(0, Number(span?.startPpq) || 0) / QUARTERS_PER_BAR) + 1;
-    const to = Math.max(from, Math.ceil((Number(span?.endPpq) || 0) / QUARTERS_PER_BAR));
+    // Read as the loop fields read it, so the two never name different bars.
+    const bars = loopBars(span, signature);
+    const from = Math.floor(bars.from + 1e-9);
+    const to = Math.max(from, Math.ceil(bars.to - 1e-9));
     return `Loop — bars ${from} to ${to}, ${clockText(seconds)}`;
   }
   const from = span?.source === 'players' ? 'the Audio Players'
@@ -157,8 +159,8 @@ export function installExportPanel(hub, button = globalThis.document?.getElement
       const loopOn = seq.model?.state?.loop?.enabled === true;
       if (!loopOn && options.range === 'loop') options.range = 'full';
       range.replaceChildren();
-      option(range, 'full', spanLabel('full', seq.exportSpan('full'), seq.tempo), { selected: options.range !== 'loop' });
-      const loop = option(range, 'loop', loopOn ? spanLabel('loop', seq.exportSpan('loop'), seq.tempo) : 'Loop — turn the loop on first',
+      option(range, 'full', spanLabel('full', seq.exportSpan('full'), seq.tempo, seq.signature), { selected: options.range !== 'loop' });
+      const loop = option(range, 'loop', loopOn ? spanLabel('loop', seq.exportSpan('loop'), seq.tempo, seq.signature) : 'Loop — turn the loop on first',
         { selected: options.range === 'loop', disabled: !loopOn });
       loop.title = loopOn ? '' : 'The loop is set in the Sequencer';
     };

@@ -13,7 +13,7 @@ import {
 } from './oneRingFaceplate.js';
 import { liveRulesText } from './oneRingNotes.js';
 // The header shows a position too, and one arithmetic writes both.
-import { barBeat } from '../../core/musicalTime.js';
+import { COMMON_TIME, barBeat, quartersPerBar } from '../../core/musicalTime.js';
 
 /**
  * The One Ring node's page: the faceplate of oneRingFaceplate.js, played and
@@ -110,10 +110,11 @@ const isReady = (hub, nodeId) => Number.isSafeInteger(hub.oneRing?.generationOf?
 /** The Sequencer's MIDI clips, as the Writer and a load name them. */
 function midiClips(hub) {
   const tracks = hub.sequencer?.model?.state?.tracks ?? [];
+  const bar = quartersPerBar(hub.sequencer?.signature);
   return tracks.filter((track) => track.type === 'midi').flatMap((track) => track.clips.map((clip) => ({
     id: clip.id,
     // A generation's clip is named after its track: said once.
-    label: `${clip.name === track.name ? track.name : `${track.name} · ${clip.name}`} · bar ${Math.floor(clip.startPpq / 4) + 1}`
+    label: `${clip.name === track.name ? track.name : `${track.name} · ${clip.name}`} · bar ${Math.floor(clip.startPpq / bar + 1e-9) + 1}`
   })));
 }
 
@@ -209,7 +210,10 @@ export function applyStatus(container, context) {
   const live = (name) => container.querySelector(`[data-ring-live="${name}"]`);
   setText(live('state'), !ready ? 'NOT IN THE ENGINE' : playing ? '▶ RUNNING' : '■ STOPPED');
   setText(live('scene'), content.scenes[scene].id);
-  setText(live('bar'), status ? barBeat(status.beat) : '—');
+  // One Ring's own clock, whose bar is four quarters whatever the project's
+  // signature (`beatsPerBar` in one_ring/material.h): this counts what its
+  // Next bar counts.
+  setText(live('bar'), status ? barBeat(status.beat, COMMON_TIME) : '—');
   setText(live('bpm'), status && status.bpm > 0 ? status.bpm.toFixed(1) : '—');
   setText(live('pending'), pending >= 0 ? `NEXT BAR → ${content.scenes[pending].id}` : '');
   setText(live('refused'), String(status?.rejected ?? 0));

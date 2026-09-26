@@ -3178,3 +3178,84 @@ transport keys declares none and nothing changes.
 `BINDING_KEYS` (`midi/controllerProfile.js`), the five bindings in
 `profiles/minilab-3.json`, the early returns in `core/midiRouting.js` and
 `core/controlRouting.js`. Tests: `test/controllerTransport.test.mjs`.
+
+## D-059 — The time signature is the project's, and a bar is the signature's
+
+**Status**: in force · 2026-09-26 · **implemented**, checked by the JS and
+native tests; not yet tried by the author
+
+**Context** — The author asked on 2026-09-26 for a way to choose 4/4, 3/4 and
+the rest, "at the top with the other global functions". Until then a bar was
+four quarters everywhere, written `QUARTERS_PER_BAR` in `core/musicalTime.js`
+and `4` in a dozen other places: the ruler, the grid, Snap and Quantize
+`1 bar`, the loop fields, the export panel, Back and Forward, the metronome's
+accent, the count-in, and what the engine told every plugin
+(`signature.numerator = 4`). D-048 had named this as the case that would
+reopen it.
+
+**Decision** — One signature per project, set in the header beside the tempo
+as the other workstations place it: a numerator from 1 to 32 over 2, 4, 8 or
+16.
+
+- **It belongs to the arrangement.** It is `signature` in `sequencerState`,
+  so it is saved, reopened and undone with the tracks -- and the save code is
+  not touched: the state it already writes carries one more field. A project
+  from before reads 4/4. A value that is not a signature is refused whole,
+  never repaired into another ("7/3" does not become "7/4").
+- **Notes keep their quarters; bar lines move.** A change of signature moves
+  nothing under the hand, as in a workstation whose song has one signature.
+- **A beat is the denominator's note.** 6/8 counts six eighths: the header's
+  `bar.beat`, the metronome's clicks (the accent on the bar's first), and a
+  count-in of one bar -- six eighths, three quarters at 120 BPM -- which is
+  what Ableton does.
+- **Every place that counted four counts the signature**, through
+  `musicalTime.js`: the ruler's bars, the grid's divisions (a beat, groups of
+  beats that fill the bar, then bars -- 3/4 never draws a line two quarters
+  in), Snap and Quantize `1 bar`, a new clip's length, the loop fields, the
+  export panel, Back and Forward, the timeline's end. Note values (`1/8`,
+  `1/16`...) stay note values.
+- **Plugins read it.** `Transport::getPosition` gives the signature and the
+  start of the current bar in it; the export's private transport takes the
+  same. The Morpher's pattern spans one bar of it.
+- **Changed at a block boundary.** The engine keeps the signature as one
+  packed word and fixes it per block with the tempo (`beginBlock`), so a
+  plugin never reads half of one; the count-in keeps the signature it started
+  in.
+- The agent channel has `set-signature` (`"6/8"`, or a numerator and a
+  denominator), gated on the project id as the loop is, since it is an edit
+  of the arrangement; `describe` gives it.
+
+Refused, or left for later:
+
+- **Signature changes along the timeline** (a bar of 7/8 in a 4/4 song).
+  Every position-to-bar function assumes one signature from bar one; a
+  change list is a larger piece, not asked.
+- **One Ring keeps its own four-quarter bar.** Its Next bar and its capture
+  windows count `beatsPerBar = 4` in `one_ring/material.h`, and it runs on its
+  own clock; its panel's `bar.beat` counts what its Next bar counts. Making it
+  follow the project is a separate step, in native code the author is still
+  testing.
+- **A signature per track**, asked in the same message as a possibility. It
+  is not built: the author has a choice to make first (whether such a track's
+  bar is longer than the others', drifting against them, or the same length
+  divided in three). The signature being the project's does not close it off.
+
+**Consequences**
+
+- A loop drawn in 4/4 keeps its quarters when the signature changes, and its
+  From and To show the fraction of a bar they now fall on (`5.333`).
+- The header is ~70 px wider. Under 1360 px the readout labels already hide;
+  at the 960 px minimum it has not been measured.
+- The Clip Editor, its own window, receives the signature with the transport
+  (`clip-editor:transport-state`), and the main process validates it there.
+
+**Proof in the code** — `core/musicalTime.js` (`normalizeSignature`,
+`quartersPerBar`, `quartersPerBeat`); `SequencerController.setSignature` and
+`_publishSignature`; `snapStep`, `quantizeGridTicks` and `normalizeSequencerState`
+in `core/sequencerModel.js`; `gridPx`, `rulerMarkup` and `timelineEndPpq` in
+`modules/sequencer/sequencerModule.js`; the signature cell in `index.html`
+and `ui/header.js`; `TimeSig`, `setSignature` and `getPosition` in
+`native/audio-engine/src/transport.h`; the metronome and count-in in
+`engine.cpp`. Tests: `test/timeSignature.test.mjs`, `test/musicalTime.test.mjs`,
+`test/sequencerUi.test.mjs` ("the header sets the time signature"), and the
+6/8 and 7/8 cases in the native core tests.

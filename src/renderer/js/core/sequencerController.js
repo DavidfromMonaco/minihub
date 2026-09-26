@@ -4,7 +4,7 @@ import { AUDIO_INPUT_NODE_ID, SEQUENCER_NODE_ID } from './systemNodes.js';
 import { isControllerNode, controllerName } from './controllerNode.js';
 import { preferenceForPort, resolvePortPreference } from '../midi/portIdentity.js';
 import { midiThruReach } from './midiThru.js';
-import { barStep } from './musicalTime.js';
+import { barStep, normalizeSignature, quartersPerBar } from './musicalTime.js';
 
 const STATE_KEY = 'sequencerState';
 /** What Play plays -- `setPlayScope`. The first is the default. */
@@ -106,6 +106,9 @@ export class SequencerController {
     this._projectTransitionEvents = [];
     this._editorTransportPending = null;
     this._editorTransportPublishing = false;
+    // The signature the engine was last told, as "n/d": `changed()` runs on
+    // every edit, and the engine is told again only when it moved.
+    this._signatureSent = '';
     this._disposed = false;
     this._exportWatchdog = null;
     this._exportWatchdogFrames = -1;
@@ -280,6 +283,7 @@ export class SequencerController {
 
   _syncTransportControls() {
     this.hub.engine.setTransport({ bpm: this.tempo });
+    this._publishSignature({ force: true });
     this._publishMetronome();
     this.hub.engine.setPlayScope?.(this.playScope);
   }
@@ -291,6 +295,41 @@ export class SequencerController {
     // engine may not yet know the renderer's persisted authoritative tempo.
     this.hub.engine.setTransport({ bpm: next });
     return next;
+  }
+
+  /** The project's time signature, `{ numerator, denominator }` (D-059). */
+  get signature() {
+    return normalizeSignature(this.model?.state?.signature);
+  }
+
+  /**
+   * Change the project's time signature. The notes keep their positions in
+   * quarters and the bar lines move over them, which is what a workstation
+   * does when a whole song's signature changes: nothing moves under you, and
+   * an undo puts the old bars back.
+   */
+  setSignature(signature) {
+    if (this.model.setSignature(signature)) this.changed();
+    return this.signature;
+  }
+
+  /**
+   * Tell the engine, the shell and the open Clip Editors when the signature
+   * moved. It rides on `changed()` rather than on `setSignature` because an
+   * undo, a project switch and an agent's edit all replace the state without
+   * passing through the setter.
+   */
+  _publishSignature({ force = false } = {}) {
+    const signature = this.signature;
+    const key = `${signature.numerator}/${signature.denominator}`;
+    if (!force && key === this._signatureSent) return;
+    const moved = key !== this._signatureSent;
+    this._signatureSent = key;
+    this.hub.engine.setTransport({ signature });
+    if (moved) {
+      this.hub.events.emit('sequencer:signature', signature);
+      this._queueEditorTransport();
+    }
   }
 
   setMetronome(enabled) {
@@ -451,6 +490,7 @@ export class SequencerController {
   changed({ render = true, syncNative = true, invalidateEditors = true } = {}) {
     const snapshot = this.model.snapshot();
     this.hub.settings.set(STATE_KEY, snapshot);
+    this._publishSignature();
     if (syncNative) this.syncNative();
     if (invalidateEditors) Promise.resolve(this.hub.api.clipEditorInvalidate?.()).catch(() => {});
     if (render) this.hub.events.emit('sequencer:changed', snapshot);
@@ -610,7 +650,8 @@ export class SequencerController {
       ppqPosition: Math.max(0, Number(this.playheadPpq) || 0),
       playing: this.playing === true,
       recording: this.recording === true,
-      bpm: this.tempo
+      bpm: this.tempo,
+      signature: this.signature
     };
   }
 
@@ -1296,8 +1337,11 @@ export class SequencerController {
     return track;
   }
 
-  /** Add a MIDI clip to a track, and publish it. Same reasoning as `addTrack`. */
-  addMidiClip(trackId, startPpq = 0, lengthPpq = 4, notes = []) {
+  /**
+   * Add a MIDI clip to a track, and publish it. Same reasoning as `addTrack`.
+   * Without a length it is one bar, in the project's signature.
+   */
+  addMidiClip(trackId, startPpq = 0, lengthPpq = quartersPerBar(this.signature), notes = []) {
     const clip = this.model.addMidiClip(trackId, startPpq, lengthPpq, notes);
     if (clip) this.changed();
     return clip;
@@ -1475,7 +1519,7 @@ export class SequencerController {
    * seek), so stepping through an arrangement cannot leave a note hanging.
    */
   nudgeBars(bars) {
-    return this.seek(barStep(this.playheadPpq, bars));
+    return this.seek(barStep(this.playheadPpq, bars, this.signature));
   }
 
   seek(ppq) {
@@ -1522,7 +1566,7 @@ export class SequencerController {
     const arrangementEnd = this.playScope === 'players' ? 0 : this.model.arrangementEndPpq();
     const playerSeconds = this.playScope === 'sequencer' ? 0 : (this.hub.audioPlayers?.longestHeardSeconds?.() || 0);
     const playersEnd = playerSeconds * this.tempo / 60;
-    if (arrangementEnd <= 0 && playersEnd <= 0) return { startPpq: 0, endPpq: 4, source: 'empty' };
+    if (arrangementEnd <= 0 && playersEnd <= 0) return { startPpq: 0, endPpq: quartersPerBar(this.signature), source: 'empty' };
     return playersEnd > arrangementEnd
       ? { startPpq: 0, endPpq: playersEnd, source: 'players' }
       : { startPpq: 0, endPpq: arrangementEnd, source: 'arrangement' };

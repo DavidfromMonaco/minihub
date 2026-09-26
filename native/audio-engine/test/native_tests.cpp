@@ -366,6 +366,20 @@ void testUtf8HostChromeAndMetronomeEvents()
     }
     expect(!mlh::metronomePreCountBeatAtSample(96000, qps, 4, beat),
            "record downbeat is not duplicated as a fifth pre-count click");
+
+    // 6/8 (D-059): a click on every eighth, and a count-in of one bar of six.
+    const mlh::TimeSig compound{6, 8};
+    expect(mlh::metronomeBeatAtSample(0.5, qps, beat, compound.beatQuarters()) && beat == 1,
+           "in 6/8 the second eighth is a beat of its own");
+    expect(!mlh::metronomeBeatAtSample(0.25, qps, beat, compound.beatQuarters()),
+           "a sixteenth between two eighths is not a 6/8 beat");
+    expect(mlh::metronomeBeatAtSample(3.0, qps, beat, compound.beatQuarters()) && beat % compound.numerator == 0,
+           "the second bar of 6/8 starts on the sixth eighth, where the accent falls");
+    expect(mlh::metronomePreCountSamples(qps, compound.numerator, compound.beatQuarters()) == 72000,
+           "a 6/8 count-in lasts one bar: three quarters at 120 BPM");
+    expect(mlh::metronomePreCountBeatAtSample(12000, qps, compound.numerator, beat, compound.beatQuarters()) && beat == 1
+               && !mlh::metronomePreCountBeatAtSample(72000, qps, compound.numerator, beat, compound.beatQuarters()),
+           "a 6/8 count-in clicks the eighths and stops at the bar line");
 }
 
 void testTransportTimingAndFreeze()
@@ -395,6 +409,21 @@ void testTransportTimingAndFreeze()
     expect(position && position->getBpm() && *position->getBpm()==300.0,"PositionInfo exposes current BPM");
     expect(position && position->getTimeSignature()->numerator==4,"PositionInfo exposes time signature");
     expect(position && position->getTimeInSeconds(),"PositionInfo exposes derived seconds");
+
+    // A plugin reads the project's signature, and its bars (D-059).
+    expect(transport.setSignature(7, 8), "7/8 is a signature");
+    expect(!transport.setSignature(7, 3) && transport.signature().denominator == 8,
+           "a signature that is not one is refused whole and the last good one kept");
+    const auto before=transport.getPosition();
+    expect(before && before->getTimeSignature()->numerator==4,
+           "the signature reaches plugins at the next block, never inside one");
+    transport.seekPpq(8.0);
+    transport.beginBlock();
+    const auto odd=transport.getPosition();
+    expect(odd && odd->getTimeSignature()->numerator==7 && odd->getTimeSignature()->denominator==8,
+           "PositionInfo carries the signature the renderer sent");
+    expect(odd && odd->getPpqPositionOfLastBarStart() && std::abs(*odd->getPpqPositionOfLastBarStart()-7.0)<1.0e-9,
+           "a 7/8 bar is three and a half quarters, so quarter 8 is in the bar that starts at 7");
 }
 
 void testTransportSeekAndLoop()
@@ -546,6 +575,7 @@ void testMorpherStepperMath()
     expect(std::abs(mlh::AudioExecutionPlan::morpherPosition(n,0.5)-0.5f)<0.0001f,"stepper interpolates within step");
     expect(std::abs(mlh::AudioExecutionPlan::morpherPosition(n,3.5)-0.5f)<0.0001f,"last step interpolates to first");
     for(int count:{4,8,16,32}){n.stepCount=count;expect(mlh::AudioExecutionPlan::morpherPosition(n,4.0)==n.step(0),"pattern wraps after one bar");}
+    for(int count:{4,8,16,32}){n.stepCount=count;expect(mlh::AudioExecutionPlan::morpherPosition(n,3.0,3,4)==n.step(0),"in 3/4 the pattern wraps after three quarters");}
 }
 
 void testMixerAndMorpherNumerics()

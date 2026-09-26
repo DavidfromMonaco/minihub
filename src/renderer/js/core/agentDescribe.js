@@ -1,4 +1,5 @@
 import { getNodeType } from './nodeTypes.js';
+import { normalizeSignature } from './musicalTime.js';
 
 /**
  * What an outside agent reads before it acts: the setup, as data.
@@ -173,6 +174,7 @@ export function describeSequencer(hub) {
   const loop = state.loop && typeof state.loop === 'object' ? state.loop : null;
   return {
     bpm: hub.settings?.get?.('transportBpm') ?? null,
+    signature: normalizeSignature(state.signature),
     playScope: hub.sequencer?.playScope ?? hub.settings?.get?.('playScope') ?? 'all',
     loop: loop ? { enabled: loop.enabled === true, startPpq: loop.startPpq, endPpq: loop.endPpq } : null,
     tracks: tracks.map((track) => ({

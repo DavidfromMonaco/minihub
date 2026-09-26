@@ -2,7 +2,8 @@ import { escapeHtml } from './core/html.js';
 import { attachNavigationBar, navigationBarMarkup } from './ui/navigationBar.js';
 import { historyIntent, isTextEditingTarget } from './ui/historyKeys.js';
 import { notesInBox, selectNoteIds } from './core/clipEditorSelection.js';
-import { MIN_NOTE_PPQ, SNAP_STEPS, clampNoteGroupDelta } from './core/sequencerModel.js';
+import { MIN_NOTE_PPQ, SNAP_STEPS, clampNoteGroupDelta, snapStep } from './core/sequencerModel.js';
+import { COMMON_TIME, normalizeSignature } from './core/musicalTime.js';
 import { formatSeconds, secondsMarks, secondsStride } from './ui/secondsRuler.js';
 import { installTooltips } from './ui/tooltip.js';
 
@@ -43,7 +44,7 @@ let audioScrollLeft = 0;
 const clipId = new URLSearchParams(globalThis.location.search).get('clipId') || '';
 const root = document.getElementById('clip-editor-root');
 let current = null;
-let transport = { ppqPosition: 0, playing: false, recording: false, bpm: 120 };
+let transport = { ppqPosition: 0, playing: false, recording: false, bpm: 120, signature: { ...COMMON_TIME } };
 let selectedNoteIds = new Set();
 let drag = null;
 let lasso = null;
@@ -89,12 +90,15 @@ let requestEpoch = 0;
 let editQueue = Promise.resolve();
 let disposed = false;
 
+// The Snap step, `1 bar` in the project's signature, which arrives with the
+// transport: this window has no model of its own to read it from.
+const snapLength = () => snapStep(current?.snap, transport.signature);
 const snap = (value) => {
-  const step = SNAP_STEPS[current?.snap] || 0.25;
+  const step = snapLength();
   return Math.max(0, Math.round(value / step) * step);
 };
 const snapDelta = (value) => {
-  const step = SNAP_STEPS[current?.snap] || 0.25;
+  const step = snapLength();
   return Math.round(value / step) * step;
 };
 
@@ -257,7 +261,8 @@ function applyTransportState(next = {}) {
     ppqPosition: Math.max(0, Number(next.ppqPosition ?? transport.ppqPosition) || 0),
     playing: typeof next.playing === 'boolean' ? next.playing : transport.playing,
     recording: typeof next.recording === 'boolean' ? next.recording : transport.recording,
-    bpm: Math.max(20, Math.min(300, Number(next.bpm ?? transport.bpm) || 120))
+    bpm: Math.max(20, Math.min(300, Number(next.bpm ?? transport.bpm) || 120)),
+    signature: normalizeSignature(next.signature, transport.signature)
   };
   const play = root.querySelector('[data-transport-action="play"]');
   if (play) {
@@ -708,7 +713,7 @@ function bind() {
     const localY = event.clientY - rect.top;
     const sourceOffset = current.clip.sourceOffsetPpq || 0;
     mutate('add-note', {
-      startPpq: sourceOffset + snap(localX / view.ppqWidth), durationPpq: SNAP_STEPS[current.snap] || 0.25,
+      startPpq: sourceOffset + snap(localX / view.ppqWidth), durationPpq: snapLength(),
       pitch: Math.max(0, Math.min(127, 127 - Math.floor(localY / view.noteHeight))), velocity: 100, channel: 1
     });
   });
@@ -1032,8 +1037,8 @@ function keyDown(event) {
     return;
   }
   const nudge = {
-    ArrowLeft: { deltaPpq: -(SNAP_STEPS[current.snap] || 0.25) },
-    ArrowRight: { deltaPpq: SNAP_STEPS[current.snap] || 0.25 },
+    ArrowLeft: { deltaPpq: -snapLength() },
+    ArrowRight: { deltaPpq: snapLength() },
     ArrowUp: { deltaPitch: 1 },
     ArrowDown: { deltaPitch: -1 }
   }[event.key];

@@ -577,6 +577,54 @@ test('Sequencer and header controls share one global Play/Stop transport state',
  * a One Ring node, a plugin's page or the Patch Bay, the arrangement is not on
  * screen and there is no other way to move the playhead or to know where it is.
  */
+test('the header sets the time signature, and the bars follow it (D-059)', async () => {
+  const { api, hub } = await runtime();
+  hub.nodes.create('sequencer');
+  hub.modules.register(createSequencerModule(hub));
+  const view = captureContainer();
+  const denominator = makeEl('select');
+  const ids = new Map([
+    ['project-identity', makeEl('span')], ['transport-back', makeEl('button')],
+    ['transport-position', makeEl('output')],
+    ['transport-signature-numerator', makeEl('select')], ['transport-signature-denominator', denominator]
+  ]);
+  const previousGetElementById = document.getElementById;
+  document.getElementById = (id) => ids.get(id) || null;
+  const signatures = () => api.sent
+    .filter((message) => message.type === 'setTransport' && Object.hasOwn(message, 'numerator'))
+    .map((message) => `${message.numerator}/${message.denominator}`);
+  try {
+    buildHeader(hub, makeEl('span'));
+    hub.modules.activate('sequencer', view.container);
+    assert.equal(ids.get('transport-signature-numerator').value, '4', 'a new project is in 4/4');
+    assert.equal(denominator.value, '4');
+
+    ids.get('transport-signature-numerator').value = '6';
+    denominator.value = '8';
+    fire(denominator, 'change');
+    assert.deepEqual(hub.sequencer.signature, { numerator: 6, denominator: 8 });
+    assert.equal(signatures().at(-1), '6/8', 'the engine is told, so the metronome and the plugins count it');
+    assert.deepEqual(hub.settings.get('sequencerState').signature, { numerator: 6, denominator: 8 },
+      'it belongs to the arrangement, saved with it');
+
+    hub.events.emit('engine:transport', { playing: false, ppqPosition: 4.5 });
+    assert.equal(ids.get('transport-position').textContent, '2.4', 'bar 2, fourth eighth');
+    fire(ids.get('transport-back'), 'click');
+    assert.equal(hub.sequencer.playheadPpq, 3, 'Back lands on the 6/8 bar line');
+
+    assert.match(view.container.innerHTML, /class="seq-ruler-mark" data-seek="3"[^>]*><strong>2</,
+      'the ruler numbers 6/8 bars of three quarters');
+
+    const sent = signatures().length;
+    ids.get('transport-signature-numerator').value = '40';
+    fire(ids.get('transport-signature-numerator'), 'change');
+    assert.equal(ids.get('transport-signature-numerator').value, '6', 'a value that is not a signature is put back');
+    assert.equal(signatures().length, sent, 'and nothing is sent for it');
+  } finally {
+    document.getElementById = previousGetElementById;
+  }
+});
+
 test('the shell transport seeks by bars, says where it is, and pauses without stopping a One Ring', async () => {
   const { api, hub } = await runtime();
   hub.nodes.create('sequencer');

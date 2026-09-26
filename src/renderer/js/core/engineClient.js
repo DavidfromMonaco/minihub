@@ -646,9 +646,15 @@ export class EngineClient {
   }
 
   /** `stopOneRings`, with a stop: the engine stops its One Ring nodes too. */
-  setTransport({ bpm, playing, seekPpq, loop, stopOneRings } = {}) {
+  setTransport({ bpm, signature, playing, seekPpq, loop, stopOneRings } = {}) {
     const command = { type: 'setTransport' };
     if (Number.isFinite(bpm)) command.bpm = Math.max(20, Math.min(300, bpm));
+    // Both halves or neither: the engine keeps a signature as one value, and
+    // half of one is a signature nobody chose.
+    if (signature && Number.isInteger(signature.numerator) && Number.isInteger(signature.denominator)) {
+      command.numerator = signature.numerator;
+      command.denominator = signature.denominator;
+    }
     if (typeof playing === 'boolean') command.playing = playing;
     if (playing === false && stopOneRings === true) command.stopOneRings = true;
     if (Number.isFinite(seekPpq)) command.seekPpq = Math.max(0, seekPpq);
