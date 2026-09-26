@@ -644,6 +644,23 @@ test('a lane is drawn in the bars of its own track, and a change is marked where
   assert.ok(straight.meter.length === 0);
 });
 
+test('an audio clip draws its fades as Reaper does: a curve, and a handle where each ends (D-062)', async () => {
+  const { hub } = await runtime();
+  hub.nodes.create('sequencer');
+  hub.modules.register(createSequencerModule(hub));
+  const view = captureContainer();
+  const track = hub.sequencer.model.addTrack('audio');
+  const clip = hub.sequencer.model.addAudioClip(track.id, { name: 'Decay', filePath: 'C:/Decay.wav', lengthPpq: 8, durationSeconds: 4, trimEndSeconds: 4 });
+  hub.sequencer.model.state.zoom = 20;
+  hub.modules.activate('sequencer', view.container);
+  hub.sequencer.setClipFade(clip.id, 'in', { seconds: 1 });
+  const markup = view.container.innerHTML;
+  assert.match(markup, /class="seq-fade in"[^>]*data-seq-left="0" data-seq-width="40"/, 'one second at 120 BPM and 20 px a quarter is 40 px');
+  assert.match(markup, /class="seq-fade-line" d="M0\.00 100\.00/, 'the fade-in curve rises from silence');
+  assert.match(markup, /class="seq-fade-handle in" data-seq-left="40"/, 'its handle sits where it ends');
+  assert.match(markup, /class="seq-fade-handle out" data-seq-left="160"/, 'and the fade-out that is not there has one in the corner');
+});
+
 test('the shell transport seeks by bars, says where it is, and pauses without stopping a One Ring', async () => {
   const { api, hub } = await runtime();
   hub.nodes.create('sequencer');

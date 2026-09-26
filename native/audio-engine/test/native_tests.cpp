@@ -1649,6 +1649,34 @@ void testSequencerAudioInputRoutingAuthority()
     expect(hiddenTakes.isEmpty(),"nodes outside Sequencer direct upstreams have no hidden recording taps");
 }
 
+void testClipFades()
+{
+    // The same values as test/fades.test.mjs: the drawing and the sound agree (D-062).
+    expect(std::abs(mlh::fadeShapeGain(1,.3)-.51f)<1.0e-6f,"fast start at 0.3 is 0.51, as the renderer draws it");
+    expect(std::abs(mlh::fadeShapeGain(6,.25)-.03125f)<1.0e-6f,"steep S-curve at a quarter is 1/32");
+    expect(std::abs(mlh::fadeGain(1,.5f,.5)-.8660254f)<1.0e-5f,"a curvature of 0.5 takes the square root of the shape");
+    expect(mlh::fadeGain(3,-1.0f,0.0)==0.0f&&mlh::fadeGain(3,1.0f,1.0)==1.0f,"a fade's ends stay at silence and full level whatever its curve");
+
+    const auto sourceFile=makeSineWav();mlh::SequencerEngine sequencer;sequencer.prepare(48000,4800);juce::Array<juce::var> info;std::string error;
+    mlh::Transport transport;transport.setSampleRate(48000);transport.setBpm(120);transport.setPlaying(true);
+    auto fade=[](double seconds,int shape,bool lowPass){juce::var value=mlh::makeObject();mlh::setProp(value,"seconds",seconds);mlh::setProp(value,"shape",shape);mlh::setProp(value,"curve",0.0);mlh::setProp(value,"lowPass",lowPass);return value;};
+    auto render=[&](const juce::var& fadeIn,const juce::var& fadeOut){
+        auto track=audioTrack("track-fade",sourceFile,false);auto* clips=track["clips"].getArray();
+        if(clips&&clips->size()){if(fadeIn.isObject())mlh::setProp(clips->getReference(0),"fadeIn",fadeIn);if(fadeOut.isObject())mlh::setProp(clips->getReference(0),"fadeOut",fadeOut);}
+        juce::Array<juce::var> tracks;tracks.add(track);
+        expect(sequencer.sync(makeSequencerProject(tracks),[](const std::string&){return (mlh::Chain*)nullptr;},48000,4800,info,error),"a clip with fades compiles");
+        transport.setLoop(false,0,4);transport.seekPpq(0);transport.beginBlock();juce::AudioBuffer<float> out(2,4800);sequencer.renderAudio(out,4800,transport);return out;};
+    const auto plain=render({},{});
+    const auto rising=render(fade(.05,0,false),{});
+    expect(std::abs(rising.getSample(0,1200)-.5f*plain.getSample(0,1200))<1.0e-4f,"half-way through a linear fade-in the clip plays at half level");
+    expect(rising.getSample(0,3000)==plain.getSample(0,3000),"after the fade-in the clip plays untouched");
+    const auto falling=render({},fade(.02,0,false));
+    expect(std::abs(falling.getSample(0,4320)-.5f*plain.getSample(0,4320))<1.0e-4f,"ten milliseconds before the end of a 20 ms fade-out, half level");
+    const auto swept=render(fade(.05,0,true),{});
+    expect(swept.getMagnitude(0,0,600)<.5f*rising.getMagnitude(0,0,600),"a low-pass fade-in takes the tone away while the level is low");
+    expect(swept.getSample(0,3000)==plain.getSample(0,3000),"and leaves the sound alone once the fade is over");
+}
+
 void testSequencerTrackSumGainAndTrace()
 {
     const auto sourceFile=makeSineWav();mlh::SequencerEngine sequencer;sequencer.prepare(48000,1024);juce::Array<juce::var> info;std::string error;
@@ -4551,6 +4579,7 @@ int main(int argc, char** argv)
     testArmedAudioTrackPassesItsInput();
     std::cerr << "[core] sequencer-sum-gain\n";
     testSequencerTrackSumGainAndTrace();
+    testClipFades();
     std::cerr << "[core] audio-record-export\n";
     testSequencerAudioRecordingAndMasterExport();
     std::cerr << "[core] one-ring-registry\n";

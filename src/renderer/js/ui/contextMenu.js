@@ -31,11 +31,14 @@
  *   entry left.
  *
  * `items` is a flat list of `{ label, hint, action, disabled, danger, keywords,
- * searchOnly }`, `{ heading: 'Family' }`, or `{ separator: true }`. An entry with
+ * searchOnly, checked, icon }`, `{ heading: 'Family' }`, or `{ separator: true }`. An entry with
  * no `action` renders inert. A `searchOnly` entry shows only once something is
  * typed: the Patch Bay lists every installed plugin that way, a list to search
  * rather than one to read. `search` is `{ placeholder }`; `className` adds a class to
- * the menu for a caller's own sizing.
+ * the menu for a caller's own sizing. `checked` (true or false) gives the entry
+ * a tick column, as a list of options has; `icon` is an SVG path in a 24 by 12
+ * box, drawn as a picture -- the fade shapes, which a word names badly. The
+ * path is set as an attribute of an element made here, never parsed as markup.
  */
 
 let openMenu = null;
@@ -121,7 +124,26 @@ export function openContextMenu({ x = 0, y = 0, items = [], onClose, search = nu
     button.setAttribute('role', 'menuitem');
     const inert = item.disabled === true || typeof item.action !== 'function';
     if (inert) button.disabled = true;
+    if (typeof item.checked === 'boolean') {
+      const tick = document.createElement('span');
+      tick.setAttribute('class', 'ctx-check');
+      tick.textContent = item.checked ? '✓' : '';
+      button.appendChild(tick);
+      button.setAttribute('role', 'menuitemcheckbox');
+      button.setAttribute('aria-checked', String(item.checked));
+    }
+    if (typeof item.icon === 'string' && item.icon) {
+      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      svg.setAttribute('class', 'ctx-icon');
+      svg.setAttribute('viewBox', '0 0 24 12');
+      svg.setAttribute('aria-hidden', 'true');
+      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      path.setAttribute('d', item.icon);
+      svg.appendChild(path);
+      button.appendChild(svg);
+    }
     const label = document.createElement('span');
+    label.setAttribute('class', 'ctx-label');
     label.textContent = String(item.label);
     button.appendChild(label);
     if (item.hint) {

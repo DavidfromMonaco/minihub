@@ -3384,3 +3384,69 @@ reading of "which bar is this" whatever the song does.
 `native/audio-engine/src/transport.h`. Tests: the D-061 cases in
 `test/timeSignature.test.mjs`, and the signature map cases in the native core
 tests.
+
+## D-062 — An audio clip fades as it does in Reaper
+
+**Status**: in force · 2026-09-26 · **implemented**, checked by the JS and
+native tests; not yet seen or heard in the application
+
+**Context** — The author asked for "a function exactly like Reaper's": the
+cursor changes in a clip's top left and right corners, a drag there makes a
+fade, the curve itself can be dragged, and a right-click chooses among
+interpolations -- the seven shapes of Reaper's menu, and its *Low pass fade*,
+shown in his screenshot. He added that it is not a one-shot: the fade is
+taken again and dragged as often as you like.
+
+**Decision** — Audio clips have `fadeIn` and `fadeOut`: `{ seconds, shape,
+curve, lowPass }`.
+
+- **In seconds**, as Reaper keeps them: a fade belongs to the sound, and a
+  tempo change stretches the clip in quarters, not in time.
+- **Reaper's seven shapes, in Reaper's order** -- linear, fast start, slow
+  start, their steep versions, and two S-curves -- the default being the one
+  Reaper ticks, *Fast start*. The **curvature**, -1 to 1, bends the shape (its
+  gain raised to 4^-curve); dragging the curve up bulges it, down sags it.
+  Choosing a shape starts it straight again, so it looks like its picture.
+- **Low pass fade**: while the level fades, two one-pole low-pass stages
+  follow it, from 20 Hz silent to 20 kHz at full level, exponentially. Off
+  outside the fade, so the rest of the clip is untouched.
+- **The gestures**: over the top of a clip, near where a fade ends -- or the
+  corner, where none has begun -- the cursor becomes the fade cursor, and a
+  sideways drag sets the length, again and again. Near the curve inside a
+  fade, an up-and-down cursor, and a vertical drag bends it. A right-click
+  inside a fade opens its menu: the shapes pictured, a tick on the current
+  one, then *Low pass fade*. A drag previews in place and is published once
+  on release, one undo step; Escape puts it back. A fade corner lies over the
+  resize edge, and the fade wins there.
+- **They fit the sound**: the two fades may meet, never cross, the fade-out
+  giving way; a trim or a resize shorter than the fades shortens them; a cut
+  leaves the head its fade-in and the tail its fade-out.
+- **The arithmetic is written twice**, `core/fades.js` for the drawing and
+  `fade_shape.h` for the sound, pinned to the same values by both test
+  suites. The engine applies the fades in the audio clip's own render loop,
+  export included; the filter's state lives in the plan, written by the one
+  thread that renders it, and nothing is allocated (invariant 3).
+
+Left out:
+
+- **MIDI clips**: a fade there has nothing to fade -- the notes play an
+  instrument whose sound the clip does not hold. Reaper draws them on MIDI
+  items for the same reason as nowhere else: its items are one kind.
+- **The agent channel** cannot set a fade yet, and the Clip Editor's audio
+  view does not draw them.
+
+**Consequences**
+
+- The context menu gained a tick column and SVG pictures (`checked`, `icon`),
+  built with `createElementNS`, never parsed as markup.
+- The fade cursor is an SVG in the stylesheet, a `data:` image, which the
+  CSP's `img-src 'self' data:` already allowed.
+
+**Proof in the code** — `core/fades.js`; `native/audio-engine/src/fade_shape.h`;
+the fade loop in `SequencerEngine::renderAudioForOutput` and `readClipFade` in
+`sequencer.cpp`; `fitFades` in `normalizeClip`, `updateAudioClip`,
+`splitClip` and `resizeClip`; `SequencerController.setClipFade`;
+`fadeMarkup`, `fadeZoneAt`, `startFadeDrag` and `openFadeMenu` in
+`modules/sequencer/sequencerModule.js`; `checked` and `icon` in
+`ui/contextMenu.js`. Tests: `test/fades.test.mjs`, `test/sequencerUi.test.mjs`
+("an audio clip draws its fades"), `testClipFades` in the native core tests.

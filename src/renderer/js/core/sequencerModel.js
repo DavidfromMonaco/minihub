@@ -1,5 +1,6 @@
 import { normalizePortPreference } from '../midi/portIdentity.js';
 import { clamp } from './clamp.js';
+import { fitFades } from './fades.js';
 import {
   COMMON_TIME, meterBarAt, meterRegionAt, meterRegions, meterSnap, normalizeMeter, normalizeSignature, quartersPerBar
 } from './musicalTime.js';
@@ -180,6 +181,8 @@ function normalizeClip(clip, type) {
     base.trimEndSeconds = Math.max(base.trimStartSeconds + 0.001, finite(clip?.trimEndSeconds, fallbackEnd));
     base.durationSeconds = Math.max(0.001, finite(clip?.durationSeconds, base.trimEndSeconds));
     base.peaks = Array.isArray(clip?.peaks) ? clip.peaks.slice(0, 512).map((p) => clampFinite(p, 0, 1)) : [];
+    // Its fades (D-062), in seconds of the sound, fitted into what it plays.
+    Object.assign(base, fitFades(clip?.fadeIn, clip?.fadeOut, base.trimEndSeconds - base.trimStartSeconds));
   }
   return base;
 }
@@ -600,6 +603,11 @@ export class SequencerModel {
       }
       found.clip.lengthPpq = snapped;
     }
+    // A trim that leaves less sound than the fades hold shortens them.
+    if (found.track.type === 'audio') {
+      Object.assign(found.clip, fitFades(found.clip.fadeIn, found.clip.fadeOut,
+        Math.min(found.clip.trimEndSeconds - found.clip.trimStartSeconds, found.clip.lengthPpq * 60 / tempo)));
+    }
     return true;
   }
 
@@ -806,6 +814,11 @@ export class SequencerModel {
       found.clip.trimEndSeconds = clampFinite(changes.trimEndSeconds, found.clip.trimStartSeconds + 0.001, duration);
     }
     if ('gain' in changes) found.clip.gain = clampFinite(changes.gain, 0, 2);
+    // A fade is changed by part -- a drag moves its length, the menu its
+    // shape -- so the part given is laid over the fade the clip has.
+    const fadeIn = 'fadeIn' in changes ? { ...found.clip.fadeIn, ...changes.fadeIn } : found.clip.fadeIn;
+    const fadeOut = 'fadeOut' in changes ? { ...found.clip.fadeOut, ...changes.fadeOut } : found.clip.fadeOut;
+    Object.assign(found.clip, fitFades(fadeIn, fadeOut, found.clip.trimEndSeconds - found.clip.trimStartSeconds));
     const tempo = clampFinite(bpm, 20, 300);
     found.clip.lengthPpq = Math.max(MIN_CLIP_PPQ, (found.clip.trimEndSeconds - found.clip.trimStartSeconds) * tempo / 60);
     return found.clip;
@@ -907,9 +920,17 @@ export class SequencerModel {
     } else {
       raw.trimStartSeconds = clip.trimStartSeconds + headLength * 60 / tempo;
     }
+    if (track.type === 'audio') {
+      // A cut keeps each fade on the side it belongs to: the head its fade-in,
+      // the tail its fade-out, and nothing where the two halves meet.
+      raw.fadeIn = { ...clip.fadeIn, seconds: 0 };
+    }
     const tail = normalizeClip(raw, track.type);
     clip.lengthPpq = headLength;
-    if (track.type === 'audio') clip.trimEndSeconds = tail.trimStartSeconds;
+    if (track.type === 'audio') {
+      clip.trimEndSeconds = tail.trimStartSeconds;
+      Object.assign(clip, fitFades(clip.fadeIn, { ...clip.fadeOut, seconds: 0 }, clip.trimEndSeconds - clip.trimStartSeconds));
+    }
     track.clips.push(tail);
     return [clip, tail];
   }

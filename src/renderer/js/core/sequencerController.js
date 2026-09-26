@@ -344,6 +344,17 @@ export class SequencerController {
   }
 
   /**
+   * Change part of an audio clip's fade -- its length, shape, curve or low-pass
+   * sweep -- and publish it (D-062). `direction` is `in` or `out`.
+   */
+  setClipFade(clipId, direction, changes) {
+    const key = direction === 'out' ? 'fadeOut' : 'fadeIn';
+    const clip = this.model.updateAudioClip(clipId, { [key]: changes }, { bpm: this.tempo });
+    if (clip) this.changed();
+    return clip ? clip[key] : null;
+  }
+
+  /**
    * A signature change on one track, at one of its own bars; `null` takes it
    * off (D-060). The engine is not told: notes are in quarters and play the
    * same, and plugins keep the project's signature -- one transport, and an

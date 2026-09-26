@@ -7,6 +7,16 @@ finished, delete its entry**, in the same commit. What was done lives in git and
 
 ## Started, not finished
 
+**Fades on audio clips, as in Reaper — in the author's test** — asked
+2026-09-26 (D-062).
+- Done: the fade cursor at a clip's top corners and at each fade's handle, a
+  length dragged as often as wanted, the curve bent by a vertical drag, a
+  right-click menu of Reaper's seven shapes and *Low pass fade*. The engine
+  plays them, export included.
+- Not seen or heard in the application: built while the author was away
+  from the screen, with nothing opened on it.
+- Left out: MIDI clips, the agent channel, the Clip Editor's audio view.
+
 **The time signature — in the author's test** — asked 2026-09-26 (D-059).
 - Done: the header's signature, beside the tempo, is the project's (saved and
   undone with the arrangement). The ruler, the grid, Snap and Quantize

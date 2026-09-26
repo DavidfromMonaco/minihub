@@ -2145,6 +2145,13 @@ body:has(.export-panel) .app-header { -webkit-app-region: no-drag; }
 /* The Patch Bay's menus (routingModule.js): family headings, a search field
    that narrows the node list, and a height that scrolls rather than leaving
    the window. */
+/* A tick column and a picture, for a list of options drawn as shapes (the
+   fade menu, D-062). The label follows them and takes the room left. */
+.ctx-menu .ctx-check { flex:0 0 12px; color:var(--accent); font:12px var(--mono); }
+.ctx-menu .ctx-icon { flex:0 0 72px; height:22px; padding:2px 4px; border:1px solid var(--border-strong); border-radius:3px; background:#141517; }
+.ctx-menu .ctx-icon path { fill:rgba(255,139,44,.28); stroke:var(--accent); stroke-width:1; vector-effect:non-scaling-stroke; }
+.ctx-menu .ctx-item:has(.ctx-check) { justify-content:flex-start; }
+.ctx-menu .ctx-item:has(.ctx-check) .ctx-hint { margin-left:auto; }
 .ctx-menu .ctx-group { display:block; padding:8px 10px 3px; color:var(--text-faint); font:600 10px var(--mono); letter-spacing:.08em; text-transform:uppercase; }
 .ctx-menu .ctx-group[hidden], .ctx-menu .ctx-item[hidden], .ctx-menu .ctx-separator[hidden] { display:none; }
 .ctx-search { display:block; width:100%; box-sizing:border-box; margin:0 0 4px; padding:6px 9px; border:1px solid var(--border-strong); border-radius:var(--radius-sm); background:var(--bg); color:var(--text); font-size:13px; }
@@ -2298,6 +2305,20 @@ body ::-webkit-scrollbar-corner { background:transparent; }
 .seq-clip.dragging { z-index:6; opacity:.78; box-shadow:0 8px 20px rgba(0,0,0,.48); transition:none; }
 .seq-clip-name { position:relative; z-index:2; display:block; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; font:600 10px var(--font); pointer-events:none; }
 .seq-clip-resize { position:absolute; z-index:4; top:0; bottom:0; width:8px; cursor:ew-resize; background:rgba(255,255,255,.08); }
+/* An audio clip's fades (D-062), as Reaper draws them: the sound taken away
+   shaded, the curve in red, a round handle at the top where each fade ends --
+   shown while the hand is over the clip, since it is only a place to grab. */
+.seq-fade { position:absolute; top:0; height:100%; z-index:3; overflow:visible; pointer-events:none; }
+.seq-fade-shade { fill:rgba(8,9,10,.42); }
+.seq-fade-line { fill:none; stroke:#ff4d4d; stroke-width:1.5; vector-effect:non-scaling-stroke; }
+.seq-fade-handle { position:absolute; top:1px; z-index:5; width:7px; height:7px; margin-left:-4px; border:1px solid #f4f4f4; border-radius:50%; background:#1b1c1f; opacity:0; pointer-events:none; }
+.seq-clip.audio:hover .seq-fade-handle, .seq-clip.audio.fading .seq-fade-handle { opacity:1; }
+/* The cursors: a fade's length is dragged sideways, its curve up and down.
+   Over a fade corner the resize edge beneath gives way. */
+.seq-clip.audio[data-fade-zone$="length"], .seq-clip.audio[data-fade-zone$="length"] .seq-clip-resize {
+  cursor:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24'%3E%3Cpath d='M3 18 C9 18 12 8 21 6' fill='none' stroke='%23000' stroke-width='3.5'/%3E%3Cpath d='M3 18 C9 18 12 8 21 6' fill='none' stroke='%23fff' stroke-width='1.6'/%3E%3Cpath d='M2 12 L6 9 L6 15 Z M22 12 L18 9 L18 15 Z' fill='%23fff' stroke='%23000' stroke-width='.8'/%3E%3C/svg%3E") 12 12, ew-resize; }
+.seq-clip.audio[data-fade-zone$="curve"], .seq-clip.audio[data-fade-zone$="curve"] .seq-clip-resize { cursor:ns-resize; }
+.ctx-fade-menu { min-width:220px; }
 .seq-clip-resize.start { left:0; border-right:1px solid rgba(255,255,255,.2); }
 .seq-clip-resize.end { right:0; border-left:1px solid rgba(255,255,255,.2); }
 .seq-midi-preview,.seq-waveform { position:absolute; left:3px; right:4px; top:15px; bottom:3px; pointer-events:none; }

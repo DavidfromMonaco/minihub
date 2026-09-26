@@ -16,6 +16,21 @@ float boundedGain(const juce::var& value, float fallback=1.0f)
     const auto number=(double)value;
     return std::isfinite(number)?juce::jlimit(0.0f, 2.0f, (float)number):fallback;
 }
+/** A clip's fade as the renderer sent it (D-062), bounded: what is not a fade
+ * is no fade. */
+ClipFade readClipFade(const juce::var& value)
+{
+    ClipFade fade;
+    if(!value.isObject())return fade;
+    const auto& seconds=value["seconds"];
+    if(seconds.isInt()||seconds.isInt64()||seconds.isDouble()){const double s=(double)seconds;if(std::isfinite(s)&&s>0.0)fade.seconds=std::min(s,3600.0);}
+    if(value["shape"].isInt()){const int shape=(int)value["shape"];if(shape>=0&&shape<kFadeShapes)fade.shape=shape;}
+    const auto& curve=value["curve"];
+    if(curve.isInt()||curve.isDouble()){const double c=(double)curve;if(std::isfinite(c))fade.curve=(float)juce::jlimit(-1.0,1.0,c);}
+    fade.lowPass=value["lowPass"].isBool()&&(bool)value["lowPass"];
+    return fade;
+}
+
 double boundedPpq(const juce::var& value, double fallback=0.0)
 {
     if (!value.isInt() && !value.isInt64() && !value.isDouble()) return fallback;
@@ -293,6 +308,7 @@ bool SequencerEngine::sync(const juce::var& project,
                 if(assetFound!=audioAssets_.end())asset=assetFound->second;else{std::unique_ptr<juce::AudioFormatReader> reader(formats_.createReaderFor(file));if(!reader){silentClip("Unsupported audio file: "+file.getFullPathName());continue;}if(reader->lengthInSamples<=0||reader->lengthInSamples>std::numeric_limits<int>::max()){silentClip("Audio file is empty or too large: "+file.getFullPathName());continue;}asset=std::make_shared<AudioAsset>();asset->sampleRate=reader->sampleRate;asset->durationSeconds=double(reader->lengthInSamples)/reader->sampleRate;asset->samples.setSize(2,(int)reader->lengthInSamples,false,true,false);reader->read(&asset->samples,0,(int)reader->lengthInSamples,0,true,true);if(reader->numChannels==1)asset->samples.copyFrom(1,0,asset->samples,0,0,asset->samples.getNumSamples());const int buckets=std::min(256,std::max(1,(int)reader->lengthInSamples));for(int b=0;b<buckets;++b){const int begin=(int)(int64_t(b)*reader->lengthInSamples/buckets),end=(int)(int64_t(b+1)*reader->lengthInSamples/buckets);float peak=0;for(int ch=0;ch<2;++ch)peak=std::max(peak,asset->samples.getMagnitude(ch,begin,std::max(1,end-begin)));asset->peaks.push_back(peak);}audioAssets_[assetKey]=asset;}
                 AudioClip clip;clip.id=clipId.toStdString();clip.startPpq=clipStart;clip.lengthPpq=clipLength;clip.gain=boundedGain(clipValue["gain"]);clip.asset=asset;
                 const double duration=asset->durationSeconds;clip.trimStartSeconds=juce::jlimit(0.0,duration,boundedPpq(clipValue["trimStartSeconds"]));clip.trimEndSeconds=juce::jlimit(clip.trimStartSeconds,duration,boundedPpq(clipValue["trimEndSeconds"],duration));
+                clip.fadeIn=readClipFade(clipValue["fadeIn"]);clip.fadeOut=readClipFade(clipValue["fadeOut"]);
                 juce::var info=makeObject();setProp(info,"type","sequencerAudioInfo");setProp(info,"clipId",clipId);setProp(info,"available",true);setProp(info,"durationSeconds",duration);setProp(info,"bpm",120.0);
                 juce::Array<juce::var> peaks;for(const auto peak:asset->peaks)peaks.add(peak);setProp(info,"peaks",peaks);audioInfo.add(info);
                 track.audio.push_back(std::move(clip));
@@ -580,7 +596,24 @@ void SequencerEngine::renderAudioForOutput(juce::AudioBuffer<float>& out,int cou
         // whole, is the Plays scope's job (D-053). The fader still applies to
         // both, as it did.
         const bool trackMuted=track.runtime&&track.runtime->muted.load(std::memory_order_acquire);
-        if(playing&&!trackMuted&&!clipsSilenced_.load(std::memory_order_acquire))for(const auto& clip:track.audio){if(!clip.asset)continue;bool active=false;for(int sample=0;sample<count;++sample){const double q=transport.ppqAtSample(sample);if(exportContext&&q>=exportSourceEndPpq())continue;if(q<clip.startPpq||q>=clip.startPpq+clip.lengthPpq)continue;const double seconds=clip.trimStartSeconds+(q-clip.startPpq)*60.0/bpm;if(seconds<clip.trimStartSeconds||seconds>=clip.trimEndSeconds)continue;const double source=seconds*clip.asset->sampleRate;const int i=(int)source;if(i<0||i+1>=clip.asset->samples.getNumSamples())continue;active=true;const float f=(float)(source-i);for(int ch=0;ch<2;++ch){const float* data=clip.asset->samples.getReadPointer(ch);const float value=(data[i]+(data[i+1]-data[i])*f)*clip.gain;peakBeforeSum=std::max(peakBeforeSum,std::abs(value));sum.addSample(ch,sample,value);}}if(active)++activeClips;}
+        if(playing&&!trackMuted&&!clipsSilenced_.load(std::memory_order_acquire))for(auto& clip:track.audio){if(!clip.asset)continue;bool active=false;
+            // The fades (D-062), fitted into what the clip plays: they may
+            // meet, never cross, the fade-out giving way as the renderer's does.
+            const double clipEnd=std::min(clip.trimEndSeconds,clip.trimStartSeconds+clip.lengthPpq*60.0/bpm);
+            const double played=std::max(0.0,clipEnd-clip.trimStartSeconds);
+            const double fadeIn=std::min(clip.fadeIn.seconds,played),fadeOut=std::min(clip.fadeOut.seconds,std::max(0.0,played-fadeIn));
+            for(int sample=0;sample<count;++sample){const double q=transport.ppqAtSample(sample);if(exportContext&&q>=exportSourceEndPpq())continue;if(q<clip.startPpq||q>=clip.startPpq+clip.lengthPpq)continue;const double seconds=clip.trimStartSeconds+(q-clip.startPpq)*60.0/bpm;if(seconds<clip.trimStartSeconds||seconds>=clip.trimEndSeconds)continue;const double source=seconds*clip.asset->sampleRate;const int i=(int)source;if(i<0||i+1>=clip.asset->samples.getNumSamples())continue;active=true;const float f=(float)(source-i);
+                float fade=1.0f,sweep=1.0f;bool sweeping=false;
+                const double into=seconds-clip.trimStartSeconds,left=clipEnd-seconds;
+                if(fadeIn>0.0&&into<fadeIn){const float g=fadeGain(clip.fadeIn.shape,clip.fadeIn.curve,into/fadeIn);fade*=g;if(clip.fadeIn.lowPass){sweep=std::min(sweep,g);sweeping=true;}}
+                if(fadeOut>0.0&&left<fadeOut){const float g=fadeGain(clip.fadeOut.shape,clip.fadeOut.curve,left/fadeOut);fade*=g;if(clip.fadeOut.lowPass){sweep=std::min(sweep,g);sweeping=true;}}
+                // The low-pass fade: two one-pole stages whose cutoff follows the
+                // fade's gain, from 20 Hz silent to 20 kHz at full level.
+                const float coefficient=sweeping?(float)(1.0-std::exp(-2.0*juce::MathConstants<double>::pi*lowPassCutoffHz(sweep)/std::max(1.0,sampleRate_))):1.0f;
+                for(int ch=0;ch<2;++ch){const float* data=clip.asset->samples.getReadPointer(ch);float value=(data[i]+(data[i+1]-data[i])*f)*clip.gain;
+                    if(sweeping){auto& stage=clip.lowPassState[ch];if(!clip.lowPassPrimed){stage[0]=value;stage[1]=value;}stage[0]+=coefficient*(value-stage[0]);stage[1]+=coefficient*(stage[0]-stage[1]);value=stage[1];}
+                    value*=fade;peakBeforeSum=std::max(peakBeforeSum,std::abs(value));sum.addSample(ch,sample,value);}
+                clip.lowPassPrimed=sweeping;}if(active)++activeClips;}
         const float peakAfterSum=std::max(sum.getMagnitude(0,0,count),sum.getMagnitude(1,0,count));const float gain=track.runtime?track.runtime->gain.load(std::memory_order_acquire):1.0f;if(gain!=1.0f)sum.applyGain(0,count,gain);const auto sides=balanceGains(track.runtime?track.runtime->pan.load(std::memory_order_acquire):0.0f);if(sides.left!=1.0f)sum.applyGain(0,0,count,sides.left);if(sides.right!=1.0f)sum.applyGain(1,0,count,sides.right);const float peakAfterGain=std::max(sum.getMagnitude(0,0,count),sum.getMagnitude(1,0,count));
         if(track.runtime){track.runtime->activeClips.store(activeClips,std::memory_order_release);track.runtime->peakBeforeSum.store(peakBeforeSum,std::memory_order_release);track.runtime->peakAfterSum.store(peakAfterSum,std::memory_order_release);track.runtime->gainApplied.store(gain,std::memory_order_release);track.runtime->peakAfterGain.store(peakAfterGain,std::memory_order_release);}for(int ch=0;ch<2;++ch)out.addFrom(ch,0,sum,ch,0,count);
     }

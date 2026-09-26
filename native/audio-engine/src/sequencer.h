@@ -4,6 +4,7 @@
 #include "audio_take_writer.h"
 #include "transport.h"
 #include "pan_law.h"
+#include "fade_shape.h"
 #include <limits>
 
 #include <juce_audio_formats/juce_audio_formats.h>
@@ -181,7 +182,13 @@ private:
         double startPpq = 0, lengthPpq = 4;
         double trimStartSeconds = 0, trimEndSeconds = 0;
         float gain = 1;
+        ClipFade fadeIn, fadeOut;
         std::shared_ptr<const AudioAsset> asset;
+        // The low-pass fade's filter, two one-pole stages per channel. Written
+        // by the one thread that renders this plan (the live callback, or the
+        // export's worker on its own plan), as the track's scratch buffers are.
+        float lowPassState[2][2] {};
+        bool lowPassPrimed = false;
     };
     struct ClipTrace {
         std::string id, type;

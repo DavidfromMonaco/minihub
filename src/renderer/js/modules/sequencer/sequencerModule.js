@@ -1,6 +1,7 @@
 import { escapeHtml } from '../../core/html.js';
 import { attachNavigationBar, navigationBarMarkup } from '../../ui/navigationBar.js';
 import { SEQUENCER_LIMITS, SNAP_STEPS, ZOOM_MAX, ZOOM_MIN, snapPpq, snapStep } from '../../core/sequencerModel.js';
+import { FADE_SHAPES, fadeGain, fadePaths, fadeShapeIcon } from '../../core/fades.js';
 import { bindTempoInput } from '../../core/tempoControl.js';
 import { isCanonicalMidiIngress } from '../../core/sequencerController.js';
 import { closeContextMenu, openContextMenu } from '../../ui/contextMenu.js';
@@ -339,14 +340,79 @@ function laneMeterMarkup(track, regions, endPpq, zoom, visibleStart, visibleEnd)
 /** The signatures offered first; any other is found by typing it. */
 const COMMON_SIGNATURES = ['2/4', '3/4', '4/4', '5/4', '6/4', '7/4', '3/8', '5/8', '6/8', '7/8', '9/8', '11/8', '12/8', '5/16', '7/16'];
 
-function clipMarkup(track, clip, zoom, selected) {
+/*
+ * An audio clip's fades (D-062), drawn and grabbed as Reaper does: a red
+ * curve over a shaded area, a round handle at the top where each fade ends,
+ * and a cursor that changes where the hand can take one. The top corners
+ * start a fade that is not there yet; a handle is taken again as often as you
+ * like; the curve itself is dragged up and down to bend it.
+ */
+const FADE_GRAB_PX = 6;
+const FADE_TOP_PX = 10;
+
+function fadePixels(clip, zoom, bpm, width) {
+  const perSecond = ((Number(bpm) || 120) / 60) * zoom;
+  return {
+    in: Math.min(width, (Number(clip.fadeIn?.seconds) || 0) * perSecond),
+    out: Math.min(width, (Number(clip.fadeOut?.seconds) || 0) * perSecond)
+  };
+}
+
+function fadeMarkup(clip, zoom, bpm, width) {
+  const px = fadePixels(clip, zoom, bpm, width);
+  const part = (direction, fade, length) => {
+    const handle = direction === 'in' ? length : width - length;
+    let curve = '';
+    if (length > 0) {
+      const { line, shade } = fadePaths(fade, direction);
+      curve = `<svg class="seq-fade ${direction}" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true" data-seq-left="${direction === 'in' ? 0 : width - length}" data-seq-width="${length}"><path class="seq-fade-shade" d="${shade}"></path><path class="seq-fade-line" d="${line}"></path></svg>`;
+    }
+    return `${curve}<span class="seq-fade-handle ${direction}" data-seq-left="${handle}" aria-hidden="true"></span>`;
+  };
+  return part('in', clip.fadeIn, px.in) + part('out', clip.fadeOut, px.out);
+}
+
+/**
+ * What the hand is over, in a clip `width` by `height`: a fade's length
+ * (`in-length`, `out-length`) at the top, where a fade ends or where one can
+ * begin, or its curve (`in-curve`, `out-curve`) within a few pixels of it.
+ */
+export function fadeZoneAt(clip, zoom, bpm, width, height, x, y) {
+  const px = fadePixels(clip, zoom, bpm, width);
+  const inEnd = px.in;
+  const outStart = width - px.out;
+  if (y <= FADE_TOP_PX) {
+    const toIn = Math.abs(x - inEnd);
+    const toOut = Math.abs(x - outStart);
+    if (Math.min(toIn, toOut) <= FADE_GRAB_PX) return toIn <= toOut ? 'in-length' : 'out-length';
+  }
+  if (px.in > 0 && x >= 0 && x <= inEnd) {
+    const gain = fadeGain(clip.fadeIn.shape, clip.fadeIn.curve, x / inEnd);
+    if (Math.abs(y - (1 - gain) * height) <= FADE_GRAB_PX) return 'in-curve';
+  }
+  if (px.out > 0 && x >= outStart && x <= width) {
+    const gain = fadeGain(clip.fadeOut.shape, clip.fadeOut.curve, (width - x) / px.out);
+    if (Math.abs(y - (1 - gain) * height) <= FADE_GRAB_PX) return 'out-curve';
+  }
+  return '';
+}
+
+/** Which fade `x` is inside, for its menu: `in`, `out`, or none. */
+export function fadeRegionAt(clip, zoom, bpm, width, x) {
+  const px = fadePixels(clip, zoom, bpm, width);
+  if (px.in > 0 && x <= px.in) return 'in';
+  if (px.out > 0 && x >= width - px.out) return 'out';
+  return '';
+}
+
+function clipMarkup(track, clip, zoom, selected, bpm = 120) {
   const left = clip.startPpq * zoom;
   const width = Math.max(CLIP_MIN_PX, clip.lengthPpq * zoom);
   const content = clipContent(track, clip, zoom);
   const unavailable = track.type === 'audio' && clip.mediaAvailable === false;
   const title = unavailable ? `${clip.name} — ${clip.mediaError || 'Audio media is unavailable'}` : clip.name;
   return `<button class="seq-clip ${track.type} ${selected ? 'selected' : ''} ${unavailable ? 'unavailable' : ''}" data-clip-id="${clip.id}" data-track-id="${track.id}" data-seq-left="${left}" data-seq-width="${width}" title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}">
-    <span class="seq-clip-resize start" data-resize="start" aria-hidden="true"></span><span class="seq-clip-name">${escapeHtml(clip.name)}</span>${unavailable ? '<span class="seq-clip-media-error">Missing media</span>' : content}<span class="seq-clip-resize end" data-resize="end" aria-hidden="true"></span></button>`;
+    <span class="seq-clip-resize start" data-resize="start" aria-hidden="true"></span><span class="seq-clip-name">${escapeHtml(clip.name)}</span>${unavailable ? '<span class="seq-clip-media-error">Missing media</span>' : content}${track.type === 'audio' && !unavailable ? fadeMarkup(clip, zoom, bpm, width) : ''}<span class="seq-clip-resize end" data-resize="end" aria-hidden="true"></span></button>`;
 }
 
 function trackSources(hub, track) {
@@ -1052,7 +1118,7 @@ export function createSequencerModule(hub) {
                 <div class="seq-track-level"><input data-track-control="volume" type="range" min="-60" max="6" step="0.1" value="${gainToDb(track.volume)}" aria-label="${escapeHtml(track.name)} level in dB"><output data-track-level-value>${formatGainDb(track.volume)}</output><input class="seq-track-pan" data-track-control="pan" type="range" min="-100" max="100" step="1" value="${Math.round((track.pan || 0) * 100)}" title="Pan (double-click: centre)" aria-label="${escapeHtml(track.name)} pan"><output data-track-pan-value>${formatPan(track.pan)}</output></div>
                 ${routeDots(routeStates(hub, track, sequencerNode.id))}
               </div>
-              <div class="seq-track-lane" data-seq-left="${TRACK_HEADER}" data-seq-width="${timelineWidth}">${laneMeterMarkup(track, controller.model.trackRegions(track), endPpq, zoom, visibleStart, visibleEnd)}${track.clips.filter((clip) => clip.startPpq + clip.lengthPpq >= visibleStart && clip.startPpq <= visibleEnd).map((clip) => clipMarkup(track, clip, zoom, selectedClipIds.has(clip.id))).join('')}</div>
+              <div class="seq-track-lane" data-seq-left="${TRACK_HEADER}" data-seq-width="${timelineWidth}">${laneMeterMarkup(track, controller.model.trackRegions(track), endPpq, zoom, visibleStart, visibleEnd)}${track.clips.filter((clip) => clip.startPpq + clip.lengthPpq >= visibleStart && clip.startPpq <= visibleEnd).map((clip) => clipMarkup(track, clip, zoom, selectedClipIds.has(clip.id), controller.tempo)).join('')}</div>
             </div>`).join('') : `<div class="seq-empty" data-seq-top="${HEAD_HEIGHT}">Create a MIDI or audio track to begin.</div>`}
             <div class="seq-playhead" data-playhead data-seq-left="${TRACK_HEADER + controller.playheadPpq * zoom}" data-seq-height="${HEAD_HEIGHT + Math.max(1, state.tracks.length) * TRACK_HEIGHT}"><span class="seq-playhead-grip" data-playhead-grip title="Drag to move the playhead (Alt: off the grid)"></span></div>
           </div>
@@ -1421,8 +1487,29 @@ export function createSequencerModule(hub) {
     });
     element.addEventListener('contextmenu', (event) => {
       event.preventDefault(); event.stopPropagation();
-      openClipMenu(event, element.dataset.clipId);
+      const direction = fadeRegionFor(element, event);
+      if (direction) openFadeMenu(event, element.dataset.clipId, direction);
+      else openClipMenu(event, element.dataset.clipId);
     });
+    if (element.classList.contains('audio')) {
+      // The cursor says what a press would take, before it is pressed.
+      element.addEventListener('pointermove', (event) => {
+        if (fadeDrag) return;
+        const zone = fadeZoneFor(element, event);
+        if (zone) element.dataset.fadeZone = zone;
+        else delete element.dataset.fadeZone;
+      });
+      element.addEventListener('pointerleave', () => { if (!fadeDrag) delete element.dataset.fadeZone; });
+      // Registered before the move and resize press below, and stopping it:
+      // a fade corner lies over the clip's resize edge, and the fade wins there.
+      element.addEventListener('pointerdown', (event) => {
+        if (event.button !== 0) return;
+        const zone = fadeZoneFor(element, event);
+        if (!zone) return;
+        event.preventDefault(); event.stopImmediatePropagation();
+        startFadeDrag(event, element, zone);
+      });
+    }
     element.addEventListener('pointerdown', (event) => {
       event.preventDefault(); event.stopPropagation();
       const found = controller.model._clip(element.dataset.clipId); if (!found) return;
@@ -1459,6 +1546,114 @@ export function createSequencerModule(hub) {
       document.addEventListener('pointermove', pointerMove);
       document.addEventListener('pointerup', pointerUp, { once: true });
       document.addEventListener('pointercancel', pointerCancel, { once: true });
+    });
+  }
+
+  // The fade gesture in progress, if any: one at a time, like every drag here.
+  let fadeDrag = null;
+
+  function clipGeometry(element, event) {
+    const found = controller.model._clip(element.dataset.clipId);
+    const rect = element.getBoundingClientRect?.();
+    if (!found || !rect) return null;
+    return { found, width: rect.width, height: rect.height, x: event.clientX - rect.left, y: event.clientY - rect.top };
+  }
+
+  function fadeZoneFor(element, event) {
+    const at = clipGeometry(element, event);
+    return at ? fadeZoneAt(at.found.clip, controller.model.state.zoom, controller.tempo, at.width, at.height, at.x, at.y) : '';
+  }
+
+  function fadeRegionFor(element, event) {
+    const at = clipGeometry(element, event);
+    if (!at || at.found.track.type !== 'audio') return '';
+    return fadeRegionAt(at.found.clip, controller.model.state.zoom, controller.tempo, at.width, at.x);
+  }
+
+  /** Redraw one clip's fades in place, while a drag bends or stretches them. */
+  function repaintFades(element, clipId) {
+    const found = controller.model._clip(clipId);
+    if (!found) return;
+    element.querySelectorAll('.seq-fade, .seq-fade-handle').forEach((node) => node.remove());
+    const zoom = controller.model.state.zoom;
+    const width = Math.max(CLIP_MIN_PX, found.clip.lengthPpq * zoom);
+    element.querySelector('.seq-clip-resize.end')?.insertAdjacentHTML('beforebegin', fadeMarkup(found.clip, zoom, controller.tempo, width));
+    applyDynamicStyles(element);
+  }
+
+  /**
+   * Drag a fade's length, horizontally, or its curve, vertically. Previewed on
+   * the model and in place, published once on release -- one undo step per
+   * gesture -- and put back by Escape or a cancelled pointer.
+   */
+  function startFadeDrag(event, element, zone) {
+    const clipId = element.dataset.clipId;
+    const found = controller.model._clip(clipId);
+    if (!found) return;
+    const direction = zone.startsWith('in') ? 'in' : 'out';
+    const key = direction === 'in' ? 'fadeIn' : 'fadeOut';
+    const original = { ...found.clip[key] };
+    const secondsPerPx = 60 / ((controller.tempo || 120) * Math.max(0.01, controller.model.state.zoom));
+    const height = element.getBoundingClientRect?.().height || 1;
+    const x0 = event.clientX;
+    const y0 = event.clientY;
+    let moved = false;
+    fadeDrag = { clipId, zone };
+    element.dataset.fadeZone = zone;
+    element.classList.add('fading');
+    const apply = (changes) => {
+      controller.model.updateAudioClip(clipId, { [key]: changes }, { bpm: controller.tempo });
+      repaintFades(element, clipId);
+    };
+    const move = (next) => {
+      const dx = next.clientX - x0;
+      const dy = next.clientY - y0;
+      if (!moved && Math.abs(dx) < 2 && Math.abs(dy) < 2) return;
+      moved = true;
+      if (zone.endsWith('length')) apply({ seconds: Math.max(0, original.seconds + (direction === 'in' ? dx : -dx) * secondsPerPx) });
+      else apply({ curve: Math.max(-1, Math.min(1, original.curve - (dy / height) * 2)) });
+    };
+    const finish = (commit) => {
+      document.removeEventListener('pointermove', move);
+      document.removeEventListener('pointerup', up);
+      document.removeEventListener('pointercancel', cancel);
+      document.removeEventListener('keydown', escape, true);
+      fadeDrag = null;
+      element.classList.remove('fading');
+      if (!moved) return;
+      // A fade drag is not a click on the clip: its selection is left alone.
+      suppressSelectionClickId = clipId;
+      if (commit) controller.changed();
+      else apply(original);
+    };
+    const up = () => finish(true);
+    const cancel = () => finish(false);
+    const escape = (key) => { if (key.key === 'Escape') { key.preventDefault(); finish(false); } };
+    try { element.setPointerCapture?.(event.pointerId); } catch (_) { /* capture is a nicety */ }
+    document.addEventListener('pointermove', move);
+    document.addEventListener('pointerup', up);
+    document.addEventListener('pointercancel', cancel);
+    document.addEventListener('keydown', escape, true);
+  }
+
+  /** The fade's menu: Reaper's seven shapes, pictured, then the low-pass sweep. */
+  function openFadeMenu(event, clipId, direction) {
+    const found = controller.model._clip(clipId);
+    if (!found) return;
+    const fade = found.clip[direction === 'in' ? 'fadeIn' : 'fadeOut'];
+    openContextMenu({
+      x: event.clientX, y: event.clientY,
+      className: 'ctx-fade-menu',
+      items: [
+        ...FADE_SHAPES.map((name, shape) => ({
+          label: name, icon: fadeShapeIcon(shape, direction), checked: fade.shape === shape,
+          // A shape chosen is that shape, as its picture draws it: the bend
+          // given by dragging the curve starts again from straight.
+          action: () => controller.setClipFade(clipId, direction, { shape, curve: 0 })
+        })),
+        { separator: true },
+        { label: 'Low pass fade', checked: fade.lowPass === true, action: () => controller.setClipFade(clipId, direction, { lowPass: !fade.lowPass }) }
+      ]
     });
   }
 
