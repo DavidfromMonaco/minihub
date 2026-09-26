@@ -7,33 +7,6 @@ finished, delete its entry**, in the same commit. What was done lives in git and
 
 ## Started, not finished
 
-**Fewer trips between the Patch Bay and the Sequencer** — asked 2026-09-26 by
-the author after his session "Forward backward", all of it on his word ("fais
-tout ce qu'on a dit du début à la fin").
-- Done, seen in the application on a copy of his project: a duplicated VST
-  node loads its plugin (Analog Lab V ready in vst-004, no reopening); the
-  ruler places the playhead where it is clicked (5.1), its grip drags it
-  (7.3), a click in an empty lane places it (2.4); a track's pan (L100, a
-  double-click back to C); the metronome's Rec / Play + Rec.
-- Done, checked by the tests: a new MIDI track takes the last MIDI input
-  chosen; a pan on every Mixer strip; the pan law in the engine (native
-  tests).
-- Done, seen in the application: the Original / Hybrid 1 interfaces -- the
-  Sequencer above, the Patch Bay or the page opened below, the bar between
-  them, the keys to the half pressed last; two keys in the header, the View
-  menu. The author's settings were put back to Original and Play + Rec after
-  the check.
-- Done, seen in the application: "+ MIDI Track" with its instrument --
-  Infinite Space Piano 2 taken from the list made VST 4, loaded it, cabled the
-  Sequencer to it and it to Mixer 1 beside the other synths, and opened its
-  window; a track's plugin key opened Analog Lab V. D-057.
-- Done, tried by the author ("c'est tout bon"): Shift + Loop / Stop / Play /
-  Rec / Tap drive the transport, Tap as a tap tempo (D-058); the dB and pan
-  values beside the Mixer's and the tracks' sliders; the header fitting a
-  window that is not maximised.
-- Built, checked by the tests, not yet seen by the author: Home is whole in
-  Hybrid 1, the next page splits the window again (asked 2026-09-26).
-
 **The project's name, the clock ruler, track mute, the players, the context
 menus** —
 asked 2026-09-25 by the author, the day he reported every entry awaiting his
