@@ -1732,8 +1732,21 @@ void Engine::cmdSetTransport(const juce::var& msg)
 {
     const bool wasPlaying=transport_.playing();
     if (msg.hasProperty("bpm")) transport_.setBpm(static_cast<double>(msg["bpm"]));
-    if (msg["numerator"].isInt() && msg["denominator"].isInt())
+    // The project's signature map (D-061), or one signature for the song.
+    if (const auto* meter = msg["meter"].getArray()) {
+        std::array<MeterRegion, Transport::kMaxMeterRegions> regions{};
+        int count = 0;
+        bool readable = meter->size() >= 1 && meter->size() <= Transport::kMaxMeterRegions;
+        for (const auto& entry : *meter) {
+            if (!readable) break;
+            const auto& start = entry["startPpq"];
+            if (!(start.isInt() || start.isInt64() || start.isDouble()) || !entry["numerator"].isInt() || !entry["denominator"].isInt()) { readable = false; break; }
+            regions[size_t(count++)] = { static_cast<double>(start), TimeSig{ static_cast<int>(entry["numerator"]), static_cast<int>(entry["denominator"]) } };
+        }
+        if (readable) transport_.setMeter(regions.data(), count);
+    } else if (msg["numerator"].isInt() && msg["denominator"].isInt()) {
         transport_.setSignature(static_cast<int>(msg["numerator"]), static_cast<int>(msg["denominator"]));
+    }
     if(msg["loop"].isObject()){const auto loop=msg["loop"];transport_.setLoop(loop["enabled"].isBool()?(bool)loop["enabled"]:false,(double)loop["startPpq"],(double)loop["endPpq"]);}
     const bool seeking=msg.hasProperty("seekPpq")&&(msg["seekPpq"].isInt()||msg["seekPpq"].isInt64()||msg["seekPpq"].isDouble());
     if(seeking||(msg["playing"].isBool()&&!static_cast<bool>(msg["playing"]))) {
@@ -2123,7 +2136,7 @@ void Engine::cmdSequencerExport(const juce::var& msg)
             // the live one keeps its place, as the live chains keep theirs.
             for(const auto& entry:audioPlayers_)owned->players[entry.first.toStdString()]=entry.second.player->cloneForExport();
             const auto playerLookup=[&](const std::string& id)->AudioPlayer*{auto& player=owned->players[id];if(!player)player=std::make_unique<AudioPlayer>(id);return player.get();};
-            owned->audioPlan=AudioExecutionPlan::compile(audioSpec,lookup,&sequencer_,blockSize,compileError,true,playerLookup);if(!owned->audioPlan){fail(juce::String(compileError));return;}if(!sequencer_.prepareExportPlan(lookup,compileError)){fail(juce::String(compileError));return;}ipc_.send(makeExportStage("preparing", "build-network", file, options.format, "end"));clearExportContext();exportContext_=std::move(owned);activeExportContext_.store(exportContext_.get(),std::memory_order_release);ipc_.send(makeExportStage("preparing", "render-context", file, options.format, "end"));ipc_.send(makeExportStage("preparing", "timeline", file, options.format, "begin"));Transport tempoSnapshot;tempoSnapshot.setSampleRate(sampleRate);tempoSnapshot.setBpm(exportBpm);{const auto meter=transport_.signature();tempoSnapshot.setSignature(meter.numerator,meter.denominator);}juce::String startError;if(!sequencer_.startExport(file,start,end,tail,tempoSnapshot,options,startError)){clearExportContext();fail(startError);return;}ipc_.send(makeExportStage("preparing", "timeline", file, options.format, "end"));exportPreparing_.store(false,std::memory_order_release);exportCancel_.reset();lastPublishedExportFrames_=-1;exportProgressStartedAtMs_=juce::Time::getMillisecondCounterHiRes();exportLastAdvancedAtMs_=exportProgressStartedAtMs_;auto out=makeExportStage("started","render-blocks",file,options.format,"begin");setProp(out,"exportStartPpq",start);setProp(out,"exportEndPpq",end);setProp(out,"tailSeconds",tail);setProp(out,"livePlaying",transport_.playing());setProp(out,"liveRecording",transport_.recording());setProp(out,"livePpqPosition",transport_.ppqPosition());setProp(out,"liveSamplePosition",transport_.samplePosition());setProp(out,"liveLoopEnabled",transport_.loopEnabled());setProp(out,"liveLoopStartPpq",transport_.loopStart());setProp(out,"liveLoopEndPpq",transport_.loopEnd());auto& offline=sequencer_.exportTransport();setProp(out,"offlinePlaying",offline.playing());setProp(out,"offlinePpqPosition",offline.ppqPosition());setProp(out,"offlineSamplePosition",offline.samplePosition());setProp(out,"offlineLoopEnabled",offline.loopEnabled());setProp(out,"snapshot",sequencer_.exportSnapshotTrace());setProp(out,"vstSnapshot",vstTrace);setProp(out,"deferredMutationCount",0);setProp(out,"audibleTransport","live");setProp(out,"renderThread","offline-worker");setProp(out,"deviceIndependent",true);setProp(out,"hardwareOutput",false);ipc_.send(out);ipc_.send(makeExportStage("started","Master",file,options.format,"begin"));ipc_.send(makeExportStage("started","encoder",file,options.format,"begin"));launchWorker([this,generation](){renderOfflineExport(generation);});
+            owned->audioPlan=AudioExecutionPlan::compile(audioSpec,lookup,&sequencer_,blockSize,compileError,true,playerLookup);if(!owned->audioPlan){fail(juce::String(compileError));return;}if(!sequencer_.prepareExportPlan(lookup,compileError)){fail(juce::String(compileError));return;}ipc_.send(makeExportStage("preparing", "build-network", file, options.format, "end"));clearExportContext();exportContext_=std::move(owned);activeExportContext_.store(exportContext_.get(),std::memory_order_release);ipc_.send(makeExportStage("preparing", "render-context", file, options.format, "end"));ipc_.send(makeExportStage("preparing", "timeline", file, options.format, "begin"));Transport tempoSnapshot;tempoSnapshot.setSampleRate(sampleRate);tempoSnapshot.setBpm(exportBpm);tempoSnapshot.copyMeterFrom(transport_);juce::String startError;if(!sequencer_.startExport(file,start,end,tail,tempoSnapshot,options,startError)){clearExportContext();fail(startError);return;}ipc_.send(makeExportStage("preparing", "timeline", file, options.format, "end"));exportPreparing_.store(false,std::memory_order_release);exportCancel_.reset();lastPublishedExportFrames_=-1;exportProgressStartedAtMs_=juce::Time::getMillisecondCounterHiRes();exportLastAdvancedAtMs_=exportProgressStartedAtMs_;auto out=makeExportStage("started","render-blocks",file,options.format,"begin");setProp(out,"exportStartPpq",start);setProp(out,"exportEndPpq",end);setProp(out,"tailSeconds",tail);setProp(out,"livePlaying",transport_.playing());setProp(out,"liveRecording",transport_.recording());setProp(out,"livePpqPosition",transport_.ppqPosition());setProp(out,"liveSamplePosition",transport_.samplePosition());setProp(out,"liveLoopEnabled",transport_.loopEnabled());setProp(out,"liveLoopStartPpq",transport_.loopStart());setProp(out,"liveLoopEndPpq",transport_.loopEnd());auto& offline=sequencer_.exportTransport();setProp(out,"offlinePlaying",offline.playing());setProp(out,"offlinePpqPosition",offline.ppqPosition());setProp(out,"offlineSamplePosition",offline.samplePosition());setProp(out,"offlineLoopEnabled",offline.loopEnabled());setProp(out,"snapshot",sequencer_.exportSnapshotTrace());setProp(out,"vstSnapshot",vstTrace);setProp(out,"deferredMutationCount",0);setProp(out,"audibleTransport","live");setProp(out,"renderThread","offline-worker");setProp(out,"deviceIndependent",true);setProp(out,"hardwareOutput",false);ipc_.send(out);ipc_.send(makeExportStage("started","Master",file,options.format,"begin"));ipc_.send(makeExportStage("started","encoder",file,options.format,"begin"));launchWorker([this,generation](){renderOfflineExport(generation);});
         });
     });
 }
@@ -3522,15 +3535,21 @@ void Engine::processEngine2Block(const float* const* inputChannelData,
         }
     }else if(metronomeEnabled_.load()&&blockTransport.processingPlaying()){
         const double qps=blockTransport.quarterNotesPerSample();
-        // A click on every beat of the signature: the eighths of 6/8, as the
-        // other workstations count it. Half a beat apart at the least, which a
-        // sixteenth beat needs where half a quarter would swallow every other click.
-        const auto meter=blockTransport.blockSignature();
-        const double beatQuarters=meter.beatQuarters();
-        const int64_t minimumDistance=std::max<int64_t>(1,(int64_t)std::llround(0.5*beatQuarters/qps));
+        // A click on every beat of the signature where the playhead is: the
+        // eighths of 6/8, as the other workstations count it, counted from
+        // where that signature began (D-061). Looked up again only when the
+        // playhead leaves the region, or loops back out of it.
+        double regionNext=0.0;
+        MeterRegion region=blockTransport.meterAt(blockTransport.ppqAtSample(0),&regionNext);
         for(int i=0;i<numSamples;++i){
             const double q=blockTransport.ppqAtSample(i);int64_t beat=0;
-            if(!metronomeBeatAtSample(q,qps,beat,beatQuarters))continue;
+            if(q<region.startPpq-1.0e-9||q>=regionNext-1.0e-9)region=blockTransport.meterAt(q,&regionNext);
+            const auto meter=region.sig;
+            const double beatQuarters=meter.beatQuarters();
+            // Half a beat apart at the least, which a sixteenth beat needs
+            // where half a quarter would swallow every other click.
+            const int64_t minimumDistance=std::max<int64_t>(1,(int64_t)std::llround(0.5*beatQuarters/qps));
+            if(!metronomeBeatAtSample(q-region.startPpq,qps,beat,beatQuarters))continue;
             const int64_t absoluteSample=blockTransport.samplePosition()+i;
             if(lastMetronomeTickSample_!=std::numeric_limits<int64_t>::min()
                 && std::abs(absoluteSample-lastMetronomeTickSample_)<minimumDistance)continue;

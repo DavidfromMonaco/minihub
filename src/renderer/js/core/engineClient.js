@@ -646,7 +646,7 @@ export class EngineClient {
   }
 
   /** `stopOneRings`, with a stop: the engine stops its One Ring nodes too. */
-  setTransport({ bpm, signature, playing, seekPpq, loop, stopOneRings } = {}) {
+  setTransport({ bpm, signature, meter, playing, seekPpq, loop, stopOneRings } = {}) {
     const command = { type: 'setTransport' };
     if (Number.isFinite(bpm)) command.bpm = Math.max(20, Math.min(300, bpm));
     // Both halves or neither: the engine keeps a signature as one value, and
@@ -654,6 +654,15 @@ export class EngineClient {
     if (signature && Number.isInteger(signature.numerator) && Number.isInteger(signature.denominator)) {
       command.numerator = signature.numerator;
       command.denominator = signature.denominator;
+    }
+    // The project's signature map (D-061): where each signature starts, in
+    // quarters, from 0. The engine refuses a map that is not one, whole.
+    if (Array.isArray(meter) && meter.length) {
+      command.meter = meter.map((region) => ({
+        startPpq: Number(region.startPpq) || 0,
+        numerator: region.signature?.numerator ?? region.numerator,
+        denominator: region.signature?.denominator ?? region.denominator
+      }));
     }
     if (typeof playing === 'boolean') command.playing = playing;
     if (playing === false && stopOneRings === true) command.stopOneRings = true;

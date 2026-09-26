@@ -424,6 +424,29 @@ void testTransportTimingAndFreeze()
            "PositionInfo carries the signature the renderer sent");
     expect(odd && odd->getPpqPositionOfLastBarStart() && std::abs(*odd->getPpqPositionOfLastBarStart()-7.0)<1.0e-9,
            "a 7/8 bar is three and a half quarters, so quarter 8 is in the bar that starts at 7");
+
+    // A song that changes signature (D-061): 4/4 for two bars, then 7/8.
+    const mlh::MeterRegion song[]{{0.0, {4, 4}}, {8.0, {7, 8}}};
+    expect(transport.setMeter(song, 2), "a signature map is taken whole");
+    double next = 0.0;
+    const auto first = transport.meterAt(3.0, &next);
+    expect(first.sig.numerator == 4 && first.startPpq == 0.0 && next == 8.0, "before the change, 4/4 until quarter 8");
+    const auto later = transport.meterAt(12.0, &next);
+    expect(later.sig.numerator == 7 && later.startPpq == 8.0 && std::isinf(next), "after it, 7/8 to the end");
+    transport.seekPpq(12.0);
+    transport.beginBlock();
+    const auto changed = transport.getPosition();
+    expect(changed && changed->getTimeSignature()->numerator == 7
+               && std::abs(*changed->getPpqPositionOfLastBarStart() - 11.5) < 1.0e-9,
+           "a plugin at quarter 12 reads 7/8, in the bar that began at 11.5 -- counted from the change, not from 0");
+    const mlh::MeterRegion late[]{{1.0, {3, 4}}};
+    const mlh::MeterRegion backwards[]{{0.0, {4, 4}}, {8.0, {3, 4}}, {6.0, {5, 4}}};
+    expect(!transport.setMeter(late, 1) && !transport.setMeter(backwards, 3) && transport.meterAt(12.0).sig.numerator == 7,
+           "a map that does not start at 0 or does not rise is refused, and the last good one kept");
+    mlh::Transport exportClock;
+    exportClock.copyMeterFrom(transport);
+    expect(exportClock.meterAt(12.0).sig.numerator == 7 && exportClock.meterAt(2.0).sig.numerator == 4,
+           "the export's private transport takes the same map");
 }
 
 void testTransportSeekAndLoop()

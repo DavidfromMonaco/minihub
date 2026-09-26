@@ -159,8 +159,8 @@ export function installExportPanel(hub, button = globalThis.document?.getElement
       const loopOn = seq.model?.state?.loop?.enabled === true;
       if (!loopOn && options.range === 'loop') options.range = 'full';
       range.replaceChildren();
-      option(range, 'full', spanLabel('full', seq.exportSpan('full'), seq.tempo, seq.signature), { selected: options.range !== 'loop' });
-      const loop = option(range, 'loop', loopOn ? spanLabel('loop', seq.exportSpan('loop'), seq.tempo, seq.signature) : 'Loop — turn the loop on first',
+      option(range, 'full', spanLabel('full', seq.exportSpan('full'), seq.tempo, seq.projectRegions?.() ?? seq.signature), { selected: options.range !== 'loop' });
+      const loop = option(range, 'loop', loopOn ? spanLabel('loop', seq.exportSpan('loop'), seq.tempo, seq.projectRegions?.() ?? seq.signature) : 'Loop — turn the loop on first',
         { selected: options.range === 'loop', disabled: !loopOn });
       loop.title = loopOn ? '' : 'The loop is set in the Sequencer';
     };

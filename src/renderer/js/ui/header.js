@@ -102,11 +102,20 @@ export function buildHeader(hub, statusEl) {
    * on a periodic event is what buries a startup log (see engineEventTrace).
    */
   let lastPpq = hub.sequencer?.playheadPpq ?? 0;
+  function showSignature() {
+    const signature = normalizeSignature(hub.sequencer?.signatureAt?.(lastPpq) ?? hub.sequencer?.signature);
+    const { numerator, denominator } = signature;
+    if (numeratorEl && numeratorEl.value !== String(numerator)) numeratorEl.value = String(numerator);
+    if (denominatorEl && denominatorEl.value !== String(denominator)) denominatorEl.value = String(denominator);
+  }
   const renderPosition = (ppq) => {
     lastPpq = ppq;
     if (!positionEl) return;
-    const text = barBeat(ppq, hub.sequencer?.signature);
+    const text = barBeat(ppq, hub.sequencer?.projectRegions?.() ?? hub.sequencer?.signature);
     if (positionEl.textContent !== text) positionEl.textContent = text;
+    // The fields say the signature in force where the playhead is: a song
+    // with changes shows 7/8 while its 7/8 bars play (D-061).
+    showSignature();
   };
   const renderOneRing = () => {
     const now = hub.oneRing?.anyPlaying?.() === true;
@@ -198,19 +207,20 @@ export function buildHeader(hub, statusEl) {
    * stale page could send -- puts them back on the one in force rather than
    * being repaired into another.
    */
-  const renderSignature = (signature = hub.sequencer?.signature) => {
-    const { numerator, denominator } = normalizeSignature(signature);
-    if (numeratorEl && numeratorEl.value !== String(numerator)) numeratorEl.value = String(numerator);
-    if (denominatorEl && denominatorEl.value !== String(denominator)) denominatorEl.value = String(denominator);
-    // The position is written in bars: new bars, new position.
+  const renderSignature = () => {
+    // The position is written in bars: new bars, new position -- and the
+    // position is what writes the fields.
     renderPosition(lastPpq);
   };
   const commitSignature = () => {
+    const current = hub.sequencer?.signatureAt?.(lastPpq) ?? hub.sequencer?.signature;
     const next = normalizeSignature(
       { numerator: Number(numeratorEl?.value), denominator: Number(denominatorEl?.value) },
-      hub.sequencer?.signature
+      current
     );
-    renderSignature(hub.sequencer?.setSignature?.(next) ?? next);
+    if (hub.sequencer?.setSignatureAt) hub.sequencer.setSignatureAt(lastPpq, next);
+    else hub.sequencer?.setSignature?.(next);
+    renderSignature();
   };
   numeratorEl?.addEventListener('change', commitSignature);
   denominatorEl?.addEventListener('change', commitSignature);

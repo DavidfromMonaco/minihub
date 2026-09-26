@@ -13,7 +13,7 @@ import {
 } from './oneRingFaceplate.js';
 import { liveRulesText } from './oneRingNotes.js';
 // The header shows a position too, and one arithmetic writes both.
-import { COMMON_TIME, barBeat, quartersPerBar } from '../../core/musicalTime.js';
+import { COMMON_TIME, barBeat, meterBarAt } from '../../core/musicalTime.js';
 
 /**
  * The One Ring node's page: the faceplate of oneRingFaceplate.js, played and
@@ -110,11 +110,11 @@ const isReady = (hub, nodeId) => Number.isSafeInteger(hub.oneRing?.generationOf?
 /** The Sequencer's MIDI clips, as the Writer and a load name them. */
 function midiClips(hub) {
   const tracks = hub.sequencer?.model?.state?.tracks ?? [];
-  const bar = quartersPerBar(hub.sequencer?.signature);
+  const regions = hub.sequencer?.projectRegions?.() ?? [{ startPpq: 0, startBar: 1, signature: COMMON_TIME }];
   return tracks.filter((track) => track.type === 'midi').flatMap((track) => track.clips.map((clip) => ({
     id: clip.id,
     // A generation's clip is named after its track: said once.
-    label: `${clip.name === track.name ? track.name : `${track.name} · ${clip.name}`} · bar ${Math.floor(clip.startPpq / bar + 1e-9) + 1}`
+    label: `${clip.name === track.name ? track.name : `${track.name} · ${clip.name}`} · bar ${meterBarAt(regions, clip.startPpq).bar}`
   })));
 }
 

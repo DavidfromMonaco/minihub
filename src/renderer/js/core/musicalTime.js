@@ -88,12 +88,22 @@ function barIndex(q, bar) {
   return Math.floor(q / bar + EPSILON);
 }
 
+/**
+ * Everything below takes a signature OR a meter -- the regions `meterRegions`
+ * makes -- because a project's signature can change along the song (D-061):
+ * a bar is then the bar of whichever signature holds where you are.
+ */
+export function asRegions(signatureOrRegions) {
+  return Array.isArray(signatureOrRegions)
+    ? signatureOrRegions
+    : [{ startPpq: 0, startBar: 1, signature: normalizeSignature(signatureOrRegions) }];
+}
+
 /** The quarter the bar containing `quarters` starts on. */
 export function barStart(quarters, signature = COMMON_TIME) {
   const q = Number(quarters);
   if (!Number.isFinite(q) || q <= 0) return 0;
-  const bar = quartersPerBar(signature);
-  return barIndex(q, bar) * bar;
+  return meterBarAt(asRegions(signature), q).startPpq;
 }
 
 /**
@@ -107,12 +117,10 @@ export function barStart(quarters, signature = COMMON_TIME) {
 export function barBeat(quarters, signature = COMMON_TIME) {
   const q = Number(quarters);
   if (!Number.isFinite(q) || q < 0) return '—';
-  const { numerator } = normalizeSignature(signature);
-  const bar = quartersPerBar(signature);
-  const index = barIndex(q, bar);
-  const into = Math.max(0, q - index * bar);
-  const beat = Math.min(numerator, Math.floor(into / quartersPerBeat(signature) + EPSILON) + 1);
-  return `${index + 1}.${beat}`;
+  const at = meterBarAt(asRegions(signature), q);
+  const into = Math.max(0, q - at.startPpq);
+  const beat = Math.min(at.signature.numerator, Math.floor(into / quartersPerBeat(at.signature) + EPSILON) + 1);
+  return `${at.bar}.${beat}`;
 }
 
 /**
@@ -130,11 +138,25 @@ export function barStep(quarters, bars, signature = COMMON_TIME) {
   if (!Number.isFinite(q) || !Number.isFinite(count) || count === 0) {
     return Math.max(0, Number.isFinite(q) ? q : 0);
   }
-  const bar = quartersPerBar(signature);
-  const start = barStart(q, signature);
+  const regions = asRegions(signature);
+  const at = meterBarAt(regions, Math.max(0, q));
   // Mid-bar, the first step back is the distance already travelled into it.
-  const from = count < 0 && q > start + EPSILON ? start + bar : start;
-  return Math.max(0, from + count * bar);
+  const from = count < 0 && q > at.startPpq + EPSILON ? at.bar + 1 : at.bar;
+  const target = from + count;
+  return target < 1 ? 0 : meterBarPpq(regions, target);
+}
+
+/** A position as a count of bars from the start: 1 is bar one's line, 1.5 half-way through it. */
+function barsAt(regions, quarters) {
+  const at = meterBarAt(regions, quarters);
+  return at.bar + (quarters - at.startPpq) / at.lengthPpq;
+}
+
+/** The position `barsAt` names. */
+function quartersAtBars(regions, bars) {
+  const whole = Math.max(1, Math.floor(bars + EPSILON));
+  const start = meterBarPpq(regions, whole);
+  return start + Math.max(0, bars - whole) * meterBarAt(regions, start).lengthPpq;
 }
 
 /**
@@ -153,10 +175,10 @@ export function barStep(quarters, bars, signature = COMMON_TIME) {
  */
 export function loopBars(loop, signature = COMMON_TIME) {
   const round = (value) => Math.round(value * 1000) / 1000;
-  const bar = quartersPerBar(signature);
+  const regions = asRegions(signature);
   const startPpq = Math.max(0, Number(loop?.startPpq) || 0);
   const endPpq = Math.max(startPpq, Number(loop?.endPpq) || 0);
-  return { from: round(startPpq / bar + 1), to: round(endPpq / bar) };
+  return { from: round(barsAt(regions, startPpq)), to: round(barsAt(regions, endPpq) - 1) };
 }
 
 /**
@@ -166,12 +188,13 @@ export function loopBars(loop, signature = COMMON_TIME) {
  */
 export function loopRangeFromBars(from, to, fallback = {}, signature = COMMON_TIME) {
   const read = (value) => (value === '' || value === null || value === undefined ? NaN : Number(value));
-  const bar = quartersPerBar(signature);
-  const kept = loopBars(fallback, signature);
+  const regions = asRegions(signature);
+  const kept = loopBars(fallback, regions);
   const fromBar = Math.max(1, Number.isFinite(read(from)) ? read(from) : kept.from);
   const toBar = Number.isFinite(read(to)) ? read(to) : kept.to;
-  const startPpq = (fromBar - 1) * bar;
-  return { startPpq, endPpq: Math.max(toBar * bar, startPpq + bar) };
+  const startPpq = quartersAtBars(regions, fromBar);
+  const minimumEnd = startPpq + meterBarAt(regions, startPpq).lengthPpq;
+  return { startPpq, endPpq: Math.max(quartersAtBars(regions, toBar + 1), minimumEnd) };
 }
 
 /**
@@ -204,15 +227,28 @@ export function normalizeMeter(value) {
 }
 
 /**
- * The stretches of a track in which one signature holds, each from a bar
- * line: `{ startPpq, startBar, signature }`, `startBar` counted from one.
- * Everything below reads a track's bars through these.
+ * The stretches in which one signature holds, each from a bar line:
+ * `{ startPpq, startBar, signature }`, `startBar` counted from one. Everything
+ * here reads bars through these.
+ *
+ * `base` is what holds before the first change: a signature, or another
+ * meter's regions. The project's meter is built on its signature at bar one;
+ * a track's on the project's regions (D-061), so a track with no change of
+ * its own follows every change the project makes, and one that has changes
+ * counts the project's bars up to its first.
  */
-export function meterRegions(meter, projectSignature = COMMON_TIME) {
-  const regions = [{ startPpq: 0, startBar: 1, signature: normalizeSignature(projectSignature) }];
-  for (const change of normalizeMeter(meter)) {
-    const last = regions.at(-1);
+export function meterRegions(meter, base = COMMON_TIME) {
+  const changes = normalizeMeter(meter);
+  const inherited = Array.isArray(base)
+    ? base.map((region) => ({ ...region }))
+    : [{ startPpq: 0, startBar: 1, signature: normalizeSignature(base) }];
+  if (!changes.length) return inherited;
+  const firstAt = meterBarPpq(inherited, changes[0].bar);
+  const regions = inherited.filter((region) => region.startPpq < firstAt - EPSILON);
+  for (const change of changes) {
     const signature = { numerator: change.numerator, denominator: change.denominator };
+    const last = regions.at(-1);
+    if (!last) { regions.push({ startPpq: firstAt, startBar: change.bar, signature }); continue; }
     if (change.bar === last.startBar) { last.signature = signature; continue; }
     regions.push({
       startPpq: last.startPpq + (change.bar - last.startBar) * quartersPerBar(last.signature),
@@ -221,6 +257,11 @@ export function meterRegions(meter, projectSignature = COMMON_TIME) {
     });
   }
   return regions;
+}
+
+/** The region holding `quarters`: the signature in force there, and where it began. */
+export function meterRegionAt(regions, quarters) {
+  return regionAt(regions, Math.max(0, Number(quarters) || 0));
 }
 
 function regionAt(regions, q) {

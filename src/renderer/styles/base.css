@@ -2214,7 +2214,10 @@ body ::-webkit-scrollbar-corner { background:transparent; }
 .seq-time-mark { position:absolute; top:0; height:var(--seq-time-ruler,18px); border:0; border-left:1px solid #2a2c31; background:transparent; color:var(--text-faint); text-align:left; padding:0 4px; cursor:pointer; overflow:hidden; white-space:nowrap; }
 .seq-time-mark strong { font:10px var(--mono); font-weight:500; }
 .seq-time-mark:hover { background:rgba(255, 139, 44, .12); color:var(--text-dim); }
-.seq-ruler { position:absolute; top:var(--seq-time-ruler,18px); height:var(--seq-bar-ruler,30px); z-index:3; background-color:#131416; background-image:repeating-linear-gradient(to right,transparent 0,transparent calc(var(--seq-beat) - 1px),rgba(255,255,255,.07) var(--seq-beat)); border-bottom:1px solid var(--border); }
+.seq-ruler { position:absolute; top:var(--seq-time-ruler,18px); height:var(--seq-bar-ruler,30px); z-index:3; background-color:#131416; border-bottom:1px solid var(--border); }
+/* The ruler draws the project's bars as a lane draws its track's (D-061), and
+   its signature changes sit at the foot of the row, under the bar numbers. */
+.seq-ruler .seq-meter-mark { top:auto; bottom:2px; }
 .seq-ruler-mark { position:absolute; top:0; height:var(--seq-bar-ruler,30px); border:0; border-left:1px solid #34363b; background:transparent; color:var(--text-dim); text-align:left; padding:3px 5px; cursor:pointer; }
 .seq-ruler-mark:hover { background:rgba(255, 139, 44, .12); }
 .seq-ruler-mark strong { font:10px var(--mono); }

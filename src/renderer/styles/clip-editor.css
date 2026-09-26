@@ -37,7 +37,13 @@
 .clip-key.black:active { background:#6b57b8; color:#fff; }
 .clip-key:focus-visible { outline:1px solid var(--accent); outline-offset:-1px; }
 .clip-key.black { width:calc(var(--ce-keys,80px) * .66); color:#d6d3cc; background:#1c1d21; border-color:#111; }
-.clip-piano-grid { position:absolute; top:0; background-image:repeating-linear-gradient(to right,transparent 0,transparent calc(var(--ce-beat) - 1px),rgba(255,255,255,.09) var(--ce-beat)),repeating-linear-gradient(to bottom,transparent 0,transparent calc(var(--ce-row,18px) - 1px),rgba(255,255,255,.055) var(--ce-row,18px)); }
+.clip-piano-grid { position:absolute; top:0; background-image:repeating-linear-gradient(to bottom,transparent 0,transparent calc(var(--ce-row,18px) - 1px),rgba(255,255,255,.055) var(--ce-row,18px)); }
+/* The grid's vertical lines, in the clip's track's bars (D-061): bars a shade
+   over beats, phased to where the signature began in the song. */
+.clip-meter-span { position:absolute; top:0; height:100%; pointer-events:none; background-position:var(--ce-phase,0) 0;
+  background-image:
+    repeating-linear-gradient(to right,rgba(255,255,255,.2) 0,rgba(255,255,255,.2) 1px,transparent 1px,transparent var(--ce-bar,480px)),
+    repeating-linear-gradient(to right,rgba(255,255,255,.09) 0,rgba(255,255,255,.09) 1px,transparent 1px,transparent var(--ce-beat,120px)); }
 /* A rubber band over the grid. Ignores the pointer that is drawing it. */
 .clip-marquee { position:absolute; z-index:3; border:1px solid rgba(115,89,199,.95); border-radius:2px; background:rgba(115,89,199,.18); pointer-events:none; }
 .clip-editor-playhead { position:absolute; top:0; bottom:0; width:2px; z-index:4; pointer-events:none; background:#ff6b67; box-shadow:0 0 0 1px #0008,0 0 7px #ff6b6788; transform:translateX(-1px); }

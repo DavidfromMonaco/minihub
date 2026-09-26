@@ -36,9 +36,11 @@ function controllerRig() {
   return { controller, commands, emitted, published, data, hub };
 }
 
+// What the engine was sent: the project's map, written "4/4@0 7/8@8".
 const signaturesSent = (commands) => commands
-  .filter((command) => command.type === 'transport' && command.signature)
-  .map((command) => `${command.signature.numerator}/${command.signature.denominator}`);
+  .filter((command) => command.type === 'transport' && command.meter)
+  .map((command) => command.meter.map((region) => `${region.signature.numerator}/${region.signature.denominator}`
+    + (region.startPpq ? `@${region.startPpq}` : '')).join(' '));
 
 test('a project from before signatures opens in 4/4, and a broken one too', () => {
   assert.deepEqual(normalizeSequencerState({ tracks: [] }).signature, { numerator: 4, denominator: 4 });
@@ -57,9 +59,8 @@ test('changing the signature moves bar lines, never notes', async () => {
   assert.equal(JSON.stringify(controller.model.state.tracks), before, 'the clip and its note keep their quarters');
   assert.deepEqual(data.sequencerState.signature, WALTZ, 'saved with the arrangement');
   assert.deepEqual(signaturesSent(commands), ['3/4'], 'the engine is told once');
-  assert.deepEqual(emitted.filter(([name]) => name === 'sequencer:signature').map(([, value]) => value), [WALTZ]);
-  await new Promise((resolve) => setImmediate(resolve));
-  assert.deepEqual(published.at(-1).signature, WALTZ, 'an open Clip Editor snaps a 3/4 bar');
+  assert.deepEqual(emitted.filter(([name]) => name === 'sequencer:signature').map(([, value]) => value[0].signature), [WALTZ],
+    'the shell is told the new map');
 
   controller.changed();
   assert.deepEqual(signaturesSent(commands), ['3/4'], 'an edit that is not a signature change tells the engine nothing');
@@ -215,4 +216,74 @@ test('an agent sets a track\'s meter whole, and reads it back', async () => {
     changes: { meter: [{ bar: 1, numerator: 12, denominator: 8 }, { bar: 5, numerator: 5, denominator: 3 }] }
   });
   assert.deepEqual(answer.track.meter, [{ bar: 1, numerator: 12, denominator: 8 }], 'what is not a signature is dropped');
+});
+
+// ---- the project's signature, changing along the song (D-061) ---------------
+
+import { barBeat, barStep, loopBars } from '../src/renderer/js/core/musicalTime.js';
+
+test('the project changes signature along the song, and its tracks follow', () => {
+  const model = new SequencerModel();
+  model.setProjectMeterChange(3, { numerator: 7, denominator: 8 });
+  const project = model.projectRegions();
+  assert.deepEqual(project.map((region) => [region.startPpq, region.startBar]), [[0, 1], [8, 3]]);
+  assert.equal(barBeat(8.5, project), '3.2', 'bar 3 is the first 7/8 bar');
+  assert.equal(barStep(8, 2, project), 15, 'two 7/8 bars on');
+  assert.deepEqual(loopBars({ startPpq: 8, endPpq: 15 }, project), { from: 3, to: 4 });
+
+  const follower = model.addTrack('midi');
+  assert.deepEqual(model.trackRegions(follower), project, 'a track with no change of its own follows the project');
+  const own = model.addTrack('midi');
+  model.setTrackMeterChange(own.id, 5, { numerator: 3, denominator: 4 });
+  assert.deepEqual(model.trackRegions(own).map((region) => [region.startPpq, region.startBar, formatSig(region.signature)]),
+    [[0, 1, '4/4'], [8, 3, '7/8'], [15, 5, '3/4']], 'and one with its own counts the project\'s bars up to its first change');
+
+  assert.equal(model.setProjectMeterChange(1, null), null, 'bar one cannot be taken off, only changed');
+  model.setProjectMeterChange(1, { numerator: 3, denominator: 4 });
+  assert.deepEqual(model.state.signature, { numerator: 3, denominator: 4 }, 'a change at bar one is the project\'s signature');
+  assert.deepEqual(model.state.meter, [{ bar: 3, numerator: 7, denominator: 8 }]);
+  model.setProjectMeterChange(3, null);
+  assert.deepEqual(model.state.meter, []);
+});
+
+const formatSig = (signature) => `${signature.numerator}/${signature.denominator}`;
+
+test('the header changes the signature in force where the playhead is', () => {
+  const { controller, commands } = controllerRig();
+  controller.setProjectMeterChange(3, { numerator: 7, denominator: 8 });
+  assert.equal(signaturesSent(commands).at(-1), '4/4 7/8@8', 'the engine is sent the whole map');
+  controller.playheadPpq = 10;
+  assert.deepEqual(controller.signatureAt(), { numerator: 7, denominator: 8 });
+  controller.setSignatureAt(10, { numerator: 5, denominator: 8 });
+  assert.deepEqual(controller.model.state.meter, [{ bar: 3, numerator: 5, denominator: 8 }],
+    'under the change, it is the change that is edited');
+  controller.setSignatureAt(2, { numerator: 3, denominator: 4 });
+  assert.deepEqual(controller.signature, { numerator: 3, denominator: 4 }, 'before it, bar one\'s');
+  assert.equal(signaturesSent(commands).at(-1), '3/4 5/8@6', 'and the change moves with the bars before it');
+});
+
+test('a project saved before D-061 has no changes, and a broken change is dropped', () => {
+  assert.deepEqual(normalizeSequencerState({}).meter, []);
+  assert.deepEqual(normalizeSequencerState({ meter: [{ bar: 1, numerator: 3, denominator: 4 }, { bar: 4, numerator: 9, denominator: 8 }, { bar: 6, numerator: 2, denominator: 5 }] }).meter,
+    [{ bar: 4, numerator: 9, denominator: 8 }]);
+});
+
+test('an agent places and removes a change of the project\'s signature', async () => {
+  const { controller, hub } = controllerRig();
+  const ask = (request) => handleAgentRequest(hub, { expectedProjectId: 'project-signature', ...request });
+  assert.deepEqual(await ask({ kind: 'set-signature', signature: '7/8', bar: 9 }),
+    { ok: true, meter: [{ bar: 9, numerator: 7, denominator: 8 }] });
+  assert.deepEqual(await ask({ kind: 'set-signature', bar: 9, remove: true }), { ok: true, meter: [] });
+  assert.equal((await ask({ kind: 'set-signature', bar: 1, remove: true })).reason, 'invalid-bar');
+  assert.deepEqual(controller.signature, { numerator: 4, denominator: 4 });
+});
+
+test('the Clip Editor is given its track\'s bars, in arrangement quarters', () => {
+  const { controller } = controllerRig();
+  const track = controller.model.addTrack('midi');
+  controller.setProjectMeterChange(2, { numerator: 7, denominator: 8 });
+  const clip = controller.model.addMidiClip(track.id, 5, 7);
+  const state = controller.clipEditorState(clip.id);
+  assert.deepEqual(state.meter.map((region) => [region.startPpq, `${region.signature.numerator}/${region.signature.denominator}`]),
+    [[0, '4/4'], [4, '7/8']]);
 });

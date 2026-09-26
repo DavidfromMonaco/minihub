@@ -3302,12 +3302,8 @@ track**. The second reading was already possible with the 1/8 triplet grid.
 
 Refused, or left for later:
 
-- **Changes along the project's own signature** (a 7/8 bar for every track).
-  Not asked -- the author wanted it track by track -- and each track can
-  already make it.
-- **The Clip Editor** still snaps `1 bar` and draws its grid in the project's
-  signature: it is another window, fed by the transport, and knows no track
-  meter yet.
+- **Changes along the project's own signature**, and **the Clip Editor in
+  the track's bars**: both asked by the author the same day, built in D-061.
 
 **Consequences**
 
@@ -3325,3 +3321,66 @@ Refused, or left for later:
 `laneMeterMarkup` and `openMeterMenu` in `modules/sequencer/sequencerModule.js`.
 Tests: the D-060 cases in `test/timeSignature.test.mjs` and
 `test/sequencerUi.test.mjs` ("a lane is drawn in the bars of its own track").
+
+## D-061 — The project's signature changes along the song, and every bar reads the map
+
+**Status**: in force · 2026-09-26 · **implemented**, checked by the JS and
+native tests; not yet tried by the author
+
+**Context** — Trying D-060, the author found no signature in any right-click
+menu: it was offered on a lane's empty space only, and the lanes he clicked
+were full of clips. He asked in the same message for the project's own
+signature to change along the song too, and for Snap to follow the signature
+where you are -- the Clip Editor was still snapping in the project's bar-one
+signature.
+
+**Decision** — The project has a signature map: `signature` at bar one, and
+`meter`, its changes after it by bar number, as a track's (D-060). Every
+function in `musicalTime.js` takes a signature or a map, so there is one
+reading of "which bar is this" whatever the song does.
+
+- **Tracks are built on the project's map.** A track with no change follows
+  every change the project makes; one with changes counts the project's bars
+  up to its first.
+- **Where it is set, as Reaper does**: a right-click on the bar ruler,
+  *Time signature from bar N…*, the change shown as a chip at the ruler's foot.
+  The header's fields show the signature in force **under the playhead** and
+  edit that one -- bar one's, or the change the playhead is under -- which is
+  what Ableton's and Reaper's transport fields do once a song has changes.
+  A track's own menu is now also on its head and on any clip.
+- **The engine reads the map.** `setTransport` carries `meter`, every region
+  from quarter 0. The transport keeps it in fixed arrays of atomics behind a
+  sequence counter: the message thread writes, the audio thread reads without
+  waiting and reads again in the rare block that overlapped a write
+  (invariant 3). The metronome counts beats from where the signature in force
+  began, the count-in is one bar of the signature where Record was pressed,
+  the Morpher's bar is the one it is in, and a plugin reads the signature and
+  the bar start of the region its block starts in. The export's transport
+  copies the map. A map that is not one -- not from 0, not rising -- is
+  refused whole.
+- **The Clip Editor snaps and draws in its track's bars**, given with its
+  state in arrangement quarters: Snap restarts at the track's bar lines, `1
+  bar` is the track's bar where the clip starts, and the grid shows bars and
+  beats phased to where their signature began in the song.
+- The agent channel's `set-signature` takes a `bar`, and `remove: true`;
+  `describe` gives the project's `meter`.
+
+**Consequences**
+
+- The header's fields change as the playhead crosses a change. Editing them
+  while playing edits the change being played.
+- The Clip Editor no longer receives a signature with the transport; the
+  main process still accepts one, from D-059, and nothing sends it.
+- The Clip Editor's grid now has bar lines; it only had a line per quarter,
+  counted from the clip's left edge rather than from the song's beats.
+
+**Proof in the code** — `asRegions`, `meterRegions` (built on a base),
+`meterRegionAt` and the position functions in `core/musicalTime.js`;
+`projectRegions`, `setProjectMeterChange` and `setSignatureAt` in
+`core/sequencerModel.js` and `SequencerController`; `rulerMarkup`,
+`meterSpansMarkup`, `meterMarksMarkup` and `openMeterMenu` in
+`modules/sequencer/sequencerModule.js`; `meterGridMarkup` and `snap` in
+`clipEditor.js`; `MeterRegion`, `setMeter`, `meterAt` and `copyMeterFrom` in
+`native/audio-engine/src/transport.h`. Tests: the D-061 cases in
+`test/timeSignature.test.mjs`, and the signature map cases in the native core
+tests.

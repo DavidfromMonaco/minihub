@@ -736,7 +736,7 @@ bool SequencerEngine::startExport(const juce::File& file,double start,double end
     exportTargetFrames_=(int64_t)std::ceil(((end-start)*60.0/liveTransport.bpm()+std::max(0.0,tail))*sampleRate_);
     exportEndPpq_=end;exportError_.clear();exportFinishPending_=false;exportCancelledPending_=false;exportSourceStopSent_=false;
     exportCancelRequested_.store(false,std::memory_order_release);
-    offlineExportTransport_.setSampleRate(sampleRate_);offlineExportTransport_.setBpm(liveTransport.bpm());{const auto meter=liveTransport.signature();offlineExportTransport_.setSignature(meter.numerator,meter.denominator);}offlineExportTransport_.setRecording(false);offlineExportTransport_.setLoop(false,0,16);offlineExportTransport_.seekPpq(start);offlineExportTransport_.setPlaying(true);
+    offlineExportTransport_.setSampleRate(sampleRate_);offlineExportTransport_.setBpm(liveTransport.bpm());offlineExportTransport_.copyMeterFrom(liveTransport);offlineExportTransport_.setRecording(false);offlineExportTransport_.setLoop(false,0,16);offlineExportTransport_.seekPpq(start);offlineExportTransport_.setPlaying(true);
     exportCleanupPending_.store(false,std::memory_order_release);exportMidiCleanupPending_.store(false,std::memory_order_release);exportPlan_.store(preparedExportPlan_.get(),std::memory_order_release);
     exportTransactionActive_.store(true,std::memory_order_release);exportActive_.store(true,std::memory_order_release);
     // Clones are newly created and chase from the requested range. Live held

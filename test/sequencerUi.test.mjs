@@ -591,8 +591,8 @@ test('the header sets the time signature, and the bars follow it (D-059)', async
   const previousGetElementById = document.getElementById;
   document.getElementById = (id) => ids.get(id) || null;
   const signatures = () => api.sent
-    .filter((message) => message.type === 'setTransport' && Object.hasOwn(message, 'numerator'))
-    .map((message) => `${message.numerator}/${message.denominator}`);
+    .filter((message) => message.type === 'setTransport' && Array.isArray(message.meter))
+    .map((message) => message.meter.map((region) => `${region.numerator}/${region.denominator}`).join(' '));
   try {
     buildHeader(hub, makeEl('span'));
     hub.modules.activate('sequencer', view.container);

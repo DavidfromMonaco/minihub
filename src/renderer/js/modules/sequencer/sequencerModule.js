@@ -12,7 +12,8 @@ import { createInstrumentTrack, instrumentPlugins, openPluginWhenReady, trackPlu
 import { icon } from '../../ui/icons.js';
 import {
   COMMON_TIME, SIGNATURE_DENOMINATORS, SIGNATURE_NUMERATOR_MAX, formatSignature, loopBars, loopRangeFromBars,
-  meterBarAt, meterBarPpq, meterSpans, normalizeSignature, quartersPerBar, quartersPerBeat
+  asRegions, meterBarAt, meterBarPpq, meterRegionAt, meterSnap, meterSpans, normalizeSignature, quartersPerBar,
+  quartersPerBeat
 } from '../../core/musicalTime.js';
 
 /**
@@ -313,19 +314,26 @@ function clipContent(track, clip, zoom) {
  *
  * A signature change is marked where it begins, by a chip that opens its menu.
  */
-function laneMeterMarkup(track, regions, endPpq, zoom, visibleStart, visibleEnd) {
-  const spans = meterSpans(regions, 0, endPpq).map(({ fromPpq, toPpq, signature }) => {
+function meterSpansMarkup(regions, endPpq, zoom) {
+  return meterSpans(regions, 0, endPpq).map(({ fromPpq, toPpq, signature }) => {
     const beat = gridPx(zoom, signature);
     const bar = Math.max(beat, quartersPerBar(signature) * zoom);
     return `<div class="seq-meter-span" data-seq-left="${fromPpq * zoom}" data-seq-width="${(toPpq - fromPpq) * zoom}" data-seq-beat="${beat}" data-seq-bar="${bar}"></div>`;
   }).join('');
-  const marks = (track.meter || []).map((change) => {
+}
+
+function meterMarksMarkup(changes, regions, zoom, visibleStart, visibleEnd, owner) {
+  return (changes || []).map((change) => {
     const at = meterBarPpq(regions, change.bar);
     if (at < visibleStart - 8 || at > visibleEnd) return '';
     const text = formatSignature(change);
-    return `<button class="seq-meter-mark" data-meter-bar="${change.bar}" data-seq-left="${at * zoom}" title="${text} from bar ${change.bar} of this track. Click to change">${text}</button>`;
+    return `<button class="seq-meter-mark" data-meter-bar="${change.bar}" data-seq-left="${at * zoom}" title="${text} from bar ${change.bar} of ${owner}. Click to change">${text}</button>`;
   }).join('');
-  return spans + marks;
+}
+
+function laneMeterMarkup(track, regions, endPpq, zoom, visibleStart, visibleEnd) {
+  return meterSpansMarkup(regions, endPpq, zoom)
+    + meterMarksMarkup(track.meter, regions, zoom, visibleStart, visibleEnd, 'this track');
 }
 
 /** The signatures offered first; any other is found by typing it. */
@@ -585,10 +593,10 @@ export function formatClock(seconds, stride = 1) {
  * The position a press on the timeline names: `clientX` against the left edge
  * of the timeline's zero, on the Snap grid unless `free` (Alt held).
  */
-export function timelinePpqAt(clientX, originX, zoom, snap, free = false, signature = COMMON_TIME) {
+export function timelinePpqAt(clientX, originX, zoom, snap, free = false, meter = COMMON_TIME) {
   const raw = Math.max(0, (Number(clientX) - Number(originX)) / Math.max(0.01, Number(zoom) || 0));
   if (!Number.isFinite(raw)) return 0;
-  return free ? raw : snapPpq(raw, snap, signature);
+  return free ? raw : meterSnap(asRegions(meter), raw, snap === '1 bar' ? 'bar' : snapStep(snap));
 }
 
 export function rulerStride(bars, zoom, barPpq = 4) {
@@ -627,12 +635,24 @@ function timeRulerMarkup(endPpq, zoom, bpm, fromPpq = 0, toPpq = endPpq) {
     .join('');
 }
 
-function rulerMarkup(endPpq, zoom, signature = COMMON_TIME) {
-  const length = quartersPerBar(signature);
-  const bars = Math.ceil(endPpq / length - 1e-9);
-  const stride = rulerStride(bars, zoom, length);
-  return Array.from({ length: Math.ceil(bars / stride) }, (_, index) => index * stride)
-    .map((bar) => `<button class="seq-ruler-mark" data-seek="${bar * length}" data-seq-left="${bar * length * zoom}" data-seq-width="${length * stride * zoom}"><strong>${bar + 1}</strong></button>`).join('');
+function rulerMarkup(endPpq, zoom, meter = COMMON_TIME) {
+  const regions = asRegions(meter);
+  // Every bar line to the end, walked through the changes (D-061): a bar is
+  // not one length once a song changes signature.
+  const lines = [];
+  for (let q = 0; q < endPpq - 1e-9 && lines.length < 100000;) {
+    const at = meterBarAt(regions, q);
+    lines.push(at.startPpq);
+    q = at.startPpq + at.lengthPpq;
+  }
+  const shortest = Math.min(...regions.map((region) => quartersPerBar(region.signature)));
+  const stride = rulerStride(lines.length, zoom, shortest);
+  const marks = [];
+  for (let index = 0; index < lines.length; index += stride) {
+    const next = lines[index + stride] ?? endPpq;
+    marks.push(`<button class="seq-ruler-mark" data-seek="${lines[index]}" data-seq-left="${lines[index] * zoom}" data-seq-width="${(next - lines[index]) * zoom}"><strong>${index + 1}</strong></button>`);
+  }
+  return marks.join('');
 }
 
 export function createSequencerModule(hub) {
@@ -972,11 +992,11 @@ export function createSequencerModule(hub) {
     const state = controller.model.state;
     const selectedClipIds = new Set(state.selectedClipIds || (state.selectedClipId ? [state.selectedClipId] : []));
     const zoom = state.zoom;
-    const signature = controller.signature;
-    const gridLinePx = gridPx(zoom, signature);
+    const projectRegions = controller.projectRegions();
+    const lastBar = meterBarAt(projectRegions, Infinity);
     const viewportPpq = Math.max(16, (container.clientWidth - TRACK_HEADER) / zoom);
     const endPpq = timelineEndPpq({
-      barPpq: quartersPerBar(signature),
+      barPpq: lastBar.lengthPpq,
       minimumPpq: TIMELINE_BEATS,
       contentEndPpq: controller.model.compositionEndPpq(),
       scrollPpq: state.scrollPpq,
@@ -1010,15 +1030,15 @@ export function createSequencerModule(hub) {
         <div class="row mt-12 seq-tools"><label>Snap <select data-control="snap">${Object.keys(SNAP_STEPS).map((value) => `<option ${value === state.snap ? 'selected' : ''}>${value}</option>`).join('')}</select></label>
           <label class="seq-zoom-control">Zoom <input data-control="zoom" type="range" min="0" max="100" value="${zoomToSlider(zoom)}" aria-label="Timeline zoom"><button class="btn seq-zoom-btn" data-action="zoom-fit" title="Frame the whole arrangement (Ctrl+wheel zooms under the cursor)">Fit</button><button class="btn seq-zoom-btn" data-action="zoom-focus" title="Frame the selected clips, or the loop range">Focus</button></label>
           <label><input data-control="loop-enabled" type="checkbox" ${state.loop.enabled ? 'checked' : ''}> Loop</label>
-          <label title="First bar of the loop">From <input data-control="loop-start" type="number" min="1" step="any" value="${loopBars(state.loop, signature).from}"></label>
-          <label title="Last bar of the loop, included">To <input data-control="loop-end" type="number" min="1" step="any" value="${loopBars(state.loop, signature).to}"></label>
+          <label title="First bar of the loop">From <input data-control="loop-start" type="number" min="1" step="any" value="${loopBars(state.loop, projectRegions).from}"></label>
+          <label title="Last bar of the loop, included">To <input data-control="loop-end" type="number" min="1" step="any" value="${loopBars(state.loop, projectRegions).to}"></label>
         </div>
         ${inspectorMarkup(hub, focusedTrack, sequencerNode.id)}
       </section>
       <section class="panel seq-arrangement">
         <div class="seq-scroll" data-timeline-scroll>
           <div class="seq-canvas" data-seq-canvas data-seq-head="${TRACK_HEADER}" data-seq-time-ruler="${TIME_RULER_HEIGHT}" data-seq-bar-ruler="${RULER_HEIGHT}" data-seq-width="${TRACK_HEADER + timelineWidth}" data-seq-height="${HEAD_HEIGHT + Math.max(1, state.tracks.length) * TRACK_HEIGHT}">
-            <div class="seq-corner">TRACKS</div><div class="seq-time-ruler" data-seq-time-scale data-seq-left="${TRACK_HEADER}" data-seq-width="${timelineWidth}">${timeRulerMarkup(endPpq, zoom, controller.tempo, visibleStart, visibleEnd)}</div><div class="seq-ruler" data-seq-left="${TRACK_HEADER}" data-seq-width="${timelineWidth}" data-seq-beat="${gridLinePx}">${rulerMarkup(endPpq, zoom, signature)}</div>
+            <div class="seq-corner">TRACKS</div><div class="seq-time-ruler" data-seq-time-scale data-seq-left="${TRACK_HEADER}" data-seq-width="${timelineWidth}">${timeRulerMarkup(endPpq, zoom, controller.tempo, visibleStart, visibleEnd)}</div><div class="seq-ruler" data-seq-left="${TRACK_HEADER}" data-seq-width="${timelineWidth}">${meterSpansMarkup(projectRegions, endPpq, zoom)}${rulerMarkup(endPpq, zoom, projectRegions)}${meterMarksMarkup(state.meter, projectRegions, zoom, visibleStart, visibleEnd, 'the project')}</div>
             <div class="seq-loop-range ${state.loop.enabled ? 'enabled' : ''}" data-seq-left="${TRACK_HEADER + state.loop.startPpq * zoom}" data-seq-width="${(state.loop.endPpq - state.loop.startPpq) * zoom}" data-seq-height="${HEAD_HEIGHT + Math.max(1, state.tracks.length) * TRACK_HEIGHT}"></div>
             ${state.tracks.length ? state.tracks.map((track, index) => `<div class="seq-track ${state.focusedTrackId === track.id ? 'focused' : ''}" data-track-id="${track.id}" data-seq-top="${HEAD_HEIGHT + index * TRACK_HEIGHT}" data-seq-height="${TRACK_HEIGHT}">
               <div class="seq-track-head" data-seq-width="${TRACK_HEADER}">
@@ -1082,7 +1102,7 @@ export function createSequencerModule(hub) {
       );
     }, { passive: false });
     for (const key of ['loop-enabled', 'loop-start', 'loop-end']) container.querySelector(`[data-control="${key}"]`)?.addEventListener('change', () => {
-      const range = loopRangeFromBars(container.querySelector('[data-control="loop-start"]').value, container.querySelector('[data-control="loop-end"]').value, controller.model.state.loop, controller.signature);
+      const range = loopRangeFromBars(container.querySelector('[data-control="loop-start"]').value, container.querySelector('[data-control="loop-end"]').value, controller.model.state.loop, controller.projectRegions());
       controller.model.setLoop({ enabled: container.querySelector('[data-control="loop-enabled"]').checked, ...range }); controller.changed();
     });
     container.querySelector('[data-timeline-scroll]')?.addEventListener('scroll', (event) => {
@@ -1152,6 +1172,28 @@ export function createSequencerModule(hub) {
     for (const selector of rows) {
       container.querySelector(selector)?.addEventListener('pointerdown', startScrub);
     }
+    const ruler = container.querySelector('.seq-ruler');
+    bindMeterMarks(ruler, null);
+    // The project's signature changes are made on the bar ruler, as Reaper
+    // inserts its markers from the ruler's menu (D-061).
+    ruler?.addEventListener('contextmenu', (event) => {
+      event.preventDefault(); event.stopPropagation();
+      const ppq = ppqAtPointer(event, ruler);
+      openMeterMenu(event, null, meterBarAt(controller.projectRegions(), ppq).bar);
+    });
+  }
+
+  /** A chip opens its change's menu, and is nothing else: no seek, no band, no clip. */
+  function bindMeterMarks(root, track) {
+    root?.querySelectorAll('.seq-meter-mark').forEach((mark) => {
+      for (const name of ['pointerdown', 'dblclick']) mark.addEventListener(name, (event) => event.stopPropagation());
+      const open = (event) => {
+        event.preventDefault(); event.stopPropagation();
+        openMeterMenu(event, track, Number(mark.dataset.meterBar));
+      };
+      mark.addEventListener('click', open);
+      mark.addEventListener('contextmenu', open);
+    });
   }
 
   function startScrub(event) {
@@ -1162,7 +1204,7 @@ export function createSequencerModule(hub) {
     event.preventDefault();
     const origin = ruler.getBoundingClientRect().left;
     const at = (pointer) => timelinePpqAt(pointer.clientX, origin, controller.model.state.zoom,
-      controller.model.state.snap, pointer.altKey, controller.signature);
+      controller.model.state.snap, pointer.altKey, controller.projectRegions());
     const live = !controller.playing;
     scrub = { ppq: at(event) };
     const place = () => {
@@ -1308,15 +1350,24 @@ export function createSequencerModule(hub) {
       if (event.target.closest?.('.seq-clip,input,select,button,textarea,[contenteditable="true"]')) return;
       controller.focusTrack(trackId);
     });
-    lane?.querySelectorAll('.seq-meter-mark').forEach((mark) => {
-      // The chip's own gestures: neither a band, a seek nor a new clip.
-      for (const name of ['pointerdown', 'dblclick']) mark.addEventListener(name, (event) => event.stopPropagation());
-      const open = (event) => {
-        event.preventDefault(); event.stopPropagation();
-        openMeterMenu(event, track, Number(mark.dataset.meterBar));
-      };
-      mark.addEventListener('click', open);
-      mark.addEventListener('contextmenu', open);
+    bindMeterMarks(lane, track);
+    // The track's head too: a right-click there is where a track's settings
+    // are looked for, and a lane full of clips leaves no empty space to click.
+    element.querySelector('.seq-track-head')?.addEventListener('contextmenu', (event) => {
+      if (event.target.closest?.('input,select,textarea')) return;
+      event.preventDefault(); event.stopPropagation();
+      const trackBar = meterBarAt(controller.model.trackRegions(track), controller.playheadPpq);
+      openContextMenu({
+        x: event.clientX, y: event.clientY,
+        items: [
+          { label: track.name },
+          { separator: true },
+          {
+            label: `Time signature from bar ${trackBar.bar}…`, hint: formatSignature(trackBar.signature),
+            action: () => openMeterMenu(event, track, trackBar.bar)
+          }
+        ]
+      });
     });
     lane?.addEventListener('pointerdown', (event) => {
       if (event.button !== 0 || event.target.closest?.('.seq-clip')) return;
@@ -1332,7 +1383,7 @@ export function createSequencerModule(hub) {
       // Reaper. Not during a take: a seek ends it. Measured before the
       // deselection, whose render replaces this lane.
       const state = controller.model.state;
-      const ppq = timelinePpqAt(event.clientX, lane.getBoundingClientRect().left, state.zoom, state.snap, event.altKey, controller.signature);
+      const ppq = timelinePpqAt(event.clientX, lane.getBoundingClientRect().left, state.zoom, state.snap, event.altKey, controller.projectRegions());
       controller.selectClip(null);
       if (!controller.recording && !controller.preCounting) controller.seek(ppq);
     });
@@ -1614,6 +1665,11 @@ export function createSequencerModule(hub) {
       return target && controller.playheadPpq > target.clip.startPpq
         && controller.playheadPpq < target.clip.startPpq + target.clip.lengthPpq;
     });
+    // The bar under the pointer, in the clip's own track: a lane full of clips
+    // must still let its track's signature be changed from where you are.
+    const clipTrack = found.track;
+    const clipBar = meterBarAt(model.trackRegions(clipTrack),
+      ppqAtPointer(event, event.target?.closest?.('.seq-track-lane')));
     openContextMenu({
       x: event.clientX, y: event.clientY,
       items: [
@@ -1628,6 +1684,10 @@ export function createSequencerModule(hub) {
         { separator: true },
         { label: `Quantize to ${snap}`, disabled: !midi, action: () => controller.quantizeClips(ids, { grid: snap, strength: 100 }) },
         { separator: true },
+        ...(clipTrack ? [{
+          label: `Time signature from bar ${clipBar.bar}…`, hint: formatSignature(clipBar.signature),
+          action: () => openMeterMenu(event, clipTrack, clipBar.bar)
+        }, { separator: true }] : []),
         { label: many ? `Delete ${ids.length} clips` : 'Delete', hint: 'Del', danger: true, action: () => controller.deleteSelectedClips() }
       ]
     });
@@ -1639,14 +1699,19 @@ export function createSequencerModule(hub) {
    * plugins are, since 128 entries is a list to search, not to read.
    */
   function openMeterMenu(event, track, bar) {
+    // `track` null is the project's own signature, from the ruler (D-061).
     const regions = controller.model.trackRegions(track);
     const current = formatSignature(meterBarAt(regions, meterBarPpq(regions, bar)).signature);
-    const change = (track.meter || []).find((item) => item.bar === bar);
+    const changes = track ? (track.meter || []) : (controller.model.state.meter || []);
+    const change = changes.find((item) => item.bar === bar);
+    const apply = (signature) => (track
+      ? controller.setTrackMeterChange(track.id, bar, signature)
+      : controller.setProjectMeterChange(bar, signature));
     const entry = (text, searchOnly = false) => {
       const [numerator, denominator] = text.split('/').map(Number);
       return {
         label: text, searchOnly, hint: text === current ? 'current' : '',
-        action: () => controller.setTrackMeterChange(track.id, bar, { numerator, denominator })
+        action: () => apply({ numerator, denominator })
       };
     };
     const every = [];
@@ -1660,12 +1725,12 @@ export function createSequencerModule(hub) {
       x: event.clientX, y: event.clientY,
       search: { placeholder: 'A signature, or type one: 13/16' },
       items: [
-        { heading: `${track.name} from its bar ${bar}` },
+        { heading: track ? `${track.name} from its bar ${bar}` : `Project from bar ${bar}` },
         ...COMMON_SIGNATURES.map((text) => entry(text)),
         ...every,
         ...(change ? [{ separator: true }, {
           label: 'Remove this change', danger: true,
-          action: () => controller.setTrackMeterChange(track.id, bar, null)
+          action: () => apply(null)
         }] : [])
       ]
     });

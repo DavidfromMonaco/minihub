@@ -3,7 +3,7 @@ import { attachNavigationBar, navigationBarMarkup } from './ui/navigationBar.js'
 import { historyIntent, isTextEditingTarget } from './ui/historyKeys.js';
 import { notesInBox, selectNoteIds } from './core/clipEditorSelection.js';
 import { MIN_NOTE_PPQ, SNAP_STEPS, clampNoteGroupDelta, snapStep } from './core/sequencerModel.js';
-import { COMMON_TIME, normalizeSignature } from './core/musicalTime.js';
+import { COMMON_TIME, asRegions, meterBarAt, meterSnap, meterSpans, quartersPerBar, quartersPerBeat } from './core/musicalTime.js';
 import { formatSeconds, secondsMarks, secondsStride } from './ui/secondsRuler.js';
 import { installTooltips } from './ui/tooltip.js';
 
@@ -44,7 +44,7 @@ let audioScrollLeft = 0;
 const clipId = new URLSearchParams(globalThis.location.search).get('clipId') || '';
 const root = document.getElementById('clip-editor-root');
 let current = null;
-let transport = { ppqPosition: 0, playing: false, recording: false, bpm: 120, signature: { ...COMMON_TIME } };
+let transport = { ppqPosition: 0, playing: false, recording: false, bpm: 120 };
 let selectedNoteIds = new Set();
 let drag = null;
 let lasso = null;
@@ -90,17 +90,39 @@ let requestEpoch = 0;
 let editQueue = Promise.resolve();
 let disposed = false;
 
-// The Snap step, `1 bar` in the project's signature, which arrives with the
-// transport: this window has no model of its own to read it from.
-const snapLength = () => snapStep(current?.snap, transport.signature);
+// The clip's track counts its own bars (D-060, D-061), which arrive with the
+// editor's state in arrangement quarters. The grid here starts where the clip
+// sits in the song, so a position in the window is the clip's start plus it.
+const trackMeter = () => (Array.isArray(current?.meter) && current.meter.length ? current.meter : asRegions(COMMON_TIME));
+const clipStart = () => Number(current?.clip?.startPpq) || 0;
+// The Snap step: `1 bar` is the track's bar where the clip starts.
+const snapLength = () => (current?.snap === '1 bar'
+  ? meterBarAt(trackMeter(), clipStart()).lengthPpq
+  : snapStep(current?.snap));
 const snap = (value) => {
-  const step = snapLength();
-  return Math.max(0, Math.round(value / step) * step);
+  const step = current?.snap === '1 bar' ? 'bar' : snapStep(current?.snap);
+  return Math.max(0, meterSnap(trackMeter(), clipStart() + value, step) - clipStart());
 };
 const snapDelta = (value) => {
   const step = snapLength();
   return Math.round(value / step) * step;
 };
+
+/**
+ * The grid's vertical lines, in the track's bars: one stretch per signature
+ * under the clip, bars a shade over beats, phased to where each signature
+ * began in the song -- a clip dropped half a quarter into a 7/8 bar shows
+ * that bar's lines, not lines counted from its own left edge.
+ */
+function meterGridMarkup(clip) {
+  const from = Number(clip.startPpq) || 0;
+  const to = from + (Number(clip.lengthPpq) || 0);
+  return meterSpans(trackMeter(), from, Math.max(to, from + 0.001)).map(({ fromPpq, toPpq, startPpq, signature }) => {
+    const beat = quartersPerBeat(signature) * view.ppqWidth;
+    const bar = quartersPerBar(signature) * view.ppqWidth;
+    return `<div class="clip-meter-span" data-ce-left="${(fromPpq - from) * view.ppqWidth}" data-ce-width="${(toPpq - fromPpq) * view.ppqWidth}" data-ce-beat="${beat}" data-ce-bar="${bar}" data-ce-phase="${(fromPpq - startPpq) * view.ppqWidth}"></div>`;
+  }).join('');
+}
 
 function applyDynamicStyles() {
   const pixels = { ceLeft: 'left', ceTop: 'top', ceWidth: 'width', ceHeight: 'height' };
@@ -112,6 +134,8 @@ function applyDynamicStyles() {
   root.querySelectorAll('[data-ce-left-pct]').forEach((element) => { element.style.left = `${Number(element.dataset.ceLeftPct) || 0}%`; });
   root.querySelectorAll('[data-ce-height-pct]').forEach((element) => { element.style.height = `${Number(element.dataset.ceHeightPct) || 0}%`; });
   root.querySelectorAll('[data-ce-beat]').forEach((element) => { element.style.setProperty('--ce-beat', `${Number(element.dataset.ceBeat) || 0}px`); });
+  root.querySelectorAll('[data-ce-bar]').forEach((element) => { element.style.setProperty('--ce-bar', `${Number(element.dataset.ceBar) || 0}px`); });
+  root.querySelectorAll('[data-ce-phase]').forEach((element) => { element.style.setProperty('--ce-phase', `${-(Number(element.dataset.cePhase) || 0)}px`); });
   // The row height and the keyboard gutter were spelled in the stylesheet as
   // 18px and 80px while JavaScript held its own copies. Now the zoom moves
   // them, so there is one source and the sheet reads it.
@@ -234,7 +258,7 @@ function midiMarkup(state) {
       <div class="clip-piano-scroll" data-piano-scroll>
         <div class="clip-piano-canvas" data-ce-width="${KEY_WIDTH + gridWidth}" data-ce-height="${gridHeight}" data-ce-row="${view.noteHeight}" data-ce-keys="${KEY_WIDTH}">
           <div class="clip-piano-keys" data-ce-width="${KEY_WIDTH}" data-ce-height="${gridHeight}">${pianoKeys()}</div>
-          <div class="clip-piano-grid" data-piano-grid data-ce-left="${KEY_WIDTH}" data-ce-width="${gridWidth}" data-ce-height="${gridHeight}" data-ce-beat="${view.ppqWidth}">${playheadMarkup()}${noteMarkup(clip)}</div>
+          <div class="clip-piano-grid" data-piano-grid data-ce-left="${KEY_WIDTH}" data-ce-width="${gridWidth}" data-ce-height="${gridHeight}">${meterGridMarkup(clip)}${playheadMarkup()}${noteMarkup(clip)}</div>
         </div>
       </div>
       ${navigationBarMarkup(`data-ce-keys="${KEY_WIDTH}"`)}
@@ -261,8 +285,7 @@ function applyTransportState(next = {}) {
     ppqPosition: Math.max(0, Number(next.ppqPosition ?? transport.ppqPosition) || 0),
     playing: typeof next.playing === 'boolean' ? next.playing : transport.playing,
     recording: typeof next.recording === 'boolean' ? next.recording : transport.recording,
-    bpm: Math.max(20, Math.min(300, Number(next.bpm ?? transport.bpm) || 120)),
-    signature: normalizeSignature(next.signature, transport.signature)
+    bpm: Math.max(20, Math.min(300, Number(next.bpm ?? transport.bpm) || 120))
   };
   const play = root.querySelector('[data-transport-action="play"]');
   if (play) {

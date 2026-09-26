@@ -4,7 +4,7 @@ import { AUDIO_INPUT_NODE_ID, SEQUENCER_NODE_ID } from './systemNodes.js';
 import { isControllerNode, controllerName } from './controllerNode.js';
 import { preferenceForPort, resolvePortPreference } from '../midi/portIdentity.js';
 import { midiThruReach } from './midiThru.js';
-import { barStep, normalizeSignature, quartersPerBar } from './musicalTime.js';
+import { barStep, meterBarAt, meterRegionAt, normalizeSignature } from './musicalTime.js';
 
 const STATE_KEY = 'sequencerState';
 /** What Play plays -- `setPlayScope`. The first is the default. */
@@ -297,9 +297,39 @@ export class SequencerController {
     return next;
   }
 
-  /** The project's time signature, `{ numerator, denominator }` (D-059). */
+  /** The project's time signature at bar one, `{ numerator, denominator }` (D-059). */
   get signature() {
     return normalizeSignature(this.model?.state?.signature);
+  }
+
+  /** The project's bars, its changes included (D-061). */
+  projectRegions() {
+    return this.model.projectRegions();
+  }
+
+  /** The project's signature where `ppq` is -- the playhead by default. */
+  signatureAt(ppq = this.playheadPpq) {
+    return meterRegionAt(this.projectRegions(), ppq).signature;
+  }
+
+  /**
+   * The header's gesture: change the signature in force at the playhead, from
+   * where it began -- bar one's, or the change the playhead is under. What
+   * Ableton's and Reaper's transport field do once a song has changes.
+   */
+  setSignatureAt(ppq, signature) {
+    const before = JSON.stringify(this.projectRegions());
+    this.model.setSignatureAt(ppq, normalizeSignature(signature, this.signatureAt(ppq)));
+    if (JSON.stringify(this.projectRegions()) !== before) this.changed();
+    return this.signatureAt(ppq);
+  }
+
+  /** A change of the project's signature at its bar `bar`; `null` takes it off (D-061). */
+  setProjectMeterChange(bar, signature) {
+    const before = JSON.stringify(this.projectRegions());
+    const meter = this.model.setProjectMeterChange(bar, signature);
+    if (meter && JSON.stringify(this.projectRegions()) !== before) this.changed();
+    return meter;
   }
 
   /**
@@ -332,16 +362,15 @@ export class SequencerController {
    * passing through the setter.
    */
   _publishSignature({ force = false } = {}) {
-    const signature = this.signature;
-    const key = `${signature.numerator}/${signature.denominator}`;
+    const regions = this.projectRegions();
+    const key = JSON.stringify(regions);
     if (!force && key === this._signatureSent) return;
     const moved = key !== this._signatureSent;
     this._signatureSent = key;
-    this.hub.engine.setTransport({ signature });
-    if (moved) {
-      this.hub.events.emit('sequencer:signature', signature);
-      this._queueEditorTransport();
-    }
+    // The whole map: the engine's metronome, count-in and plugins read the
+    // signature at the position they are at (D-061).
+    this.hub.engine.setTransport({ meter: regions });
+    if (moved) this.hub.events.emit('sequencer:signature', regions);
   }
 
   setMetronome(enabled) {
@@ -652,6 +681,9 @@ export class SequencerController {
       projectId: this.hub.project?.projectId || '',
       snap: this.model.state.snap,
       track: { id: found.track.id, name: found.track.name, type: found.track.type },
+      // The track's bars, in arrangement quarters (D-061): the editor snaps
+      // and draws its grid in them, where its clip sits in the song.
+      meter: this.model.trackRegions(found.track),
       clip: structuredClone(found.clip),
       transport: this.editorTransportState()
     };
@@ -662,8 +694,7 @@ export class SequencerController {
       ppqPosition: Math.max(0, Number(this.playheadPpq) || 0),
       playing: this.playing === true,
       recording: this.recording === true,
-      bpm: this.tempo,
-      signature: this.signature
+      bpm: this.tempo
     };
   }
 
@@ -1531,7 +1562,7 @@ export class SequencerController {
    * seek), so stepping through an arrangement cannot leave a note hanging.
    */
   nudgeBars(bars) {
-    return this.seek(barStep(this.playheadPpq, bars, this.signature));
+    return this.seek(barStep(this.playheadPpq, bars, this.projectRegions()));
   }
 
   seek(ppq) {
@@ -1578,7 +1609,7 @@ export class SequencerController {
     const arrangementEnd = this.playScope === 'players' ? 0 : this.model.arrangementEndPpq();
     const playerSeconds = this.playScope === 'sequencer' ? 0 : (this.hub.audioPlayers?.longestHeardSeconds?.() || 0);
     const playersEnd = playerSeconds * this.tempo / 60;
-    if (arrangementEnd <= 0 && playersEnd <= 0) return { startPpq: 0, endPpq: quartersPerBar(this.signature), source: 'empty' };
+    if (arrangementEnd <= 0 && playersEnd <= 0) return { startPpq: 0, endPpq: meterBarAt(this.projectRegions(), 0).lengthPpq, source: 'empty' };
     return playersEnd > arrangementEnd
       ? { startPpq: 0, endPpq: playersEnd, source: 'players' }
       : { startPpq: 0, endPpq: arrangementEnd, source: 'arrangement' };

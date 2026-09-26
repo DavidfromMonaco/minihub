@@ -24,8 +24,16 @@ finished, delete its entry**, in the same commit. What was done lives in git and
   lane, *Time signature from bar N…*. Seen in the application: a 7/8 track
   whose 3/4 change lands on quarter 14, its clips 3.5 quarters long, the menu
   replacing a change, and Undo putting it back.
-- Left: the Clip Editor snaps and draws in the project's signature, not the
-  track's. One Ring still counts four-quarter bars.
+- The author found no signature in any right-click menu (lanes full of
+  clips). Now also on the ruler, a track's head and any clip.
+- Done (D-061): the project's signature changes along the song -- ruler
+  right-click, the header editing the one under the playhead -- and the
+  engine's metronome, count-in, Morpher and plugins read the map. The Clip
+  Editor snaps and draws in its track's bars.
+- Not seen in the application yet: D-061 was built while the author was away
+  from the screen, with nothing opened on it. The realtime output test binary
+  was not run for the same reason (it plays through the audio device).
+- One Ring still counts four-quarter bars.
 
 **Export from the header, Space for the transport, the VST card's count —
 in the author's test** — asked 2026-09-25 (D-056).

@@ -175,6 +175,8 @@ export function describeSequencer(hub) {
   return {
     bpm: hub.settings?.get?.('transportBpm') ?? null,
     signature: normalizeSignature(state.signature),
+    // The project's changes after bar one (D-061).
+    meter: Array.isArray(state.meter) ? state.meter : [],
     playScope: hub.sequencer?.playScope ?? hub.settings?.get?.('playScope') ?? 'all',
     loop: loop ? { enabled: loop.enabled === true, startPpq: loop.startPpq, endPpq: loop.endPpq } : null,
     tracks: tracks.map((track) => ({

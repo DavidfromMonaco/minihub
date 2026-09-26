@@ -1,6 +1,8 @@
 import { normalizePortPreference } from '../midi/portIdentity.js';
 import { clamp } from './clamp.js';
-import { COMMON_TIME, meterBarAt, meterRegions, meterSnap, normalizeMeter, normalizeSignature, quartersPerBar } from './musicalTime.js';
+import {
+  COMMON_TIME, meterBarAt, meterRegionAt, meterRegions, meterSnap, normalizeMeter, normalizeSignature, quartersPerBar
+} from './musicalTime.js';
 
 const SNAP_STEPS = Object.freeze({
   '1 bar': 4,
@@ -130,6 +132,9 @@ export function defaultSequencerState() {
     // The project's time signature (D-059). It lives with the arrangement it
     // measures, so it is saved, reopened and undone with it.
     signature: { ...COMMON_TIME },
+    // The project's signature changes after bar one, by bar (D-061). Bar one
+    // is `signature`, which a project always has.
+    meter: [],
     snap: '1/16',
     zoom: 72,
     scrollPpq: 0,
@@ -226,6 +231,7 @@ export function normalizeSequencerState(value) {
     tracks,
     loop: { enabled: value?.loop?.enabled === true, startPpq: loopStart, endPpq: loopEnd },
     signature: normalizeSignature(value?.signature),
+    meter: normalizeMeter(value?.meter).filter((change) => change.bar > 1),
     snap: Object.hasOwn(SNAP_STEPS, value?.snap) ? value.snap : base.snap,
     zoom: clampFinite(value?.zoom, ZOOM_MIN, ZOOM_MAX),
     scrollPpq: Math.max(0, finite(value?.scrollPpq)),
@@ -242,8 +248,18 @@ export class SequencerModel {
     this.state = normalizeSequencerState(state);
   }
 
-  /** A track's bars (D-060); `null` is the project's, which the loop uses. */
-  trackRegions(track = null) { return meterRegions(track?.meter, this.state.signature); }
+  /** The project's bars: its signature at bar one, then its changes (D-061). */
+  projectRegions() { return meterRegions(this.state.meter, this.state.signature); }
+
+  /**
+   * A track's bars (D-060), built on the project's: a track follows every
+   * change the project makes until one of its own. `null` is the project's,
+   * which the loop uses.
+   */
+  trackRegions(track = null) {
+    const project = this.projectRegions();
+    return track ? meterRegions(track.meter, project) : project;
+  }
 
   // Snap on a track's own grid -- its bars, which in a polymetric track are
   // not the project's -- restarting at each of its bar lines.
@@ -269,7 +285,27 @@ export class SequencerModel {
     return track.meter;
   }
 
-  /** The project's signature. Notes keep their positions; bar lines move. */
+  /**
+   * A change of the project's signature at its bar `bar`, or `null` to take it
+   * off. Bar one is the project's own signature and cannot be taken off.
+   */
+  setProjectMeterChange(bar, signature) {
+    const at = Math.trunc(Number(bar));
+    if (!Number.isInteger(at) || at < 1) return null;
+    if (at === 1) return signature ? (this.setSignature(signature), this.state.meter) : null;
+    const others = this.state.meter.filter((change) => change.bar !== at);
+    this.state.meter = normalizeMeter(signature ? [...others, { bar: at, ...signature }] : others)
+      .filter((change) => change.bar > 1);
+    return this.state.meter;
+  }
+
+  /** Change the signature in force at `ppq`, where that signature began. */
+  setSignatureAt(ppq, signature) {
+    const region = meterRegionAt(this.projectRegions(), ppq);
+    return this.setProjectMeterChange(region.startBar, signature);
+  }
+
+  /** The project's signature at bar one. Notes keep their positions; bar lines move. */
   setSignature(signature) {
     const next = normalizeSignature(signature, this.state.signature);
     const changed = next.numerator !== this.state.signature.numerator

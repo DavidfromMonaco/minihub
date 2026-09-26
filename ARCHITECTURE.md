@@ -692,6 +692,12 @@ beat of it (the denominator's note), accented on the bar; the count-in is one
 bar, in the signature Record was pressed in. One Ring's own bar stays four
 quarters.
 
+Since D-061 that signature is a map: `setMeter` takes every region from
+quarter 0 into fixed arrays of atomics behind a sequence counter -- written by
+the message thread, read by the audio thread without a lock, again if a write
+overlapped. `meterAt(ppq)` answers the region and where the next begins, so
+the metronome and the Morpher look it up only when they cross into another.
+
 ---
 
 ## 8. Contrats de threading
@@ -779,6 +785,11 @@ first. The model reads a track's bars through `trackRegions(track)` and snaps
 on them; lanes are drawn from the same regions. The engine never sees a track
 meter: notes are in quarters, and the transport, the metronome and what
 plugins read stay the project's.
+
+**The project's signature changes along the song** (D-061): `meter` in the
+state, changes after bar one; `projectRegions()` is the map every bar is
+read from, and tracks are built on it. The engine is sent the whole map
+(`setTransport.meter`).
 
 Grilles de quantification : 1 mesure, 1/2, 1/4, 1/8, 1/16, 1/32, 1/8 triolet,
 1/16 triolet. Aimantation : 1 mesure, 1/2, 1/4, 1/8, 1/16, 1/32 — le premier

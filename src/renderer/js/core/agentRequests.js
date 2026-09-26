@@ -540,11 +540,24 @@ export async function handleAgentRequest(hub, request = {}) {
   // The project's time signature (D-059). Gated where `set-tempo` is not: it
   // is written into the arrangement and undone with it, as the loop is.
   if (kind === 'set-signature') {
+    // A `bar` places a change of the project's signature there (D-061);
+    // `remove: true` takes the change at that bar off.
+    const bar = request.bar === undefined ? 1 : Math.trunc(Number(request.bar));
+    if (!Number.isInteger(bar) || bar < 1) return failed('invalid-bar', 'bar is a bar number from 1');
+    if (request.remove === true) {
+      if (bar === 1) return failed('invalid-bar', 'bar one holds the signature of the project: change it, it cannot be removed');
+      hub.sequencer?.setProjectMeterChange?.(bar, null);
+      return { ok: true, meter: hub.sequencer?.model?.state?.meter ?? [] };
+    }
     const text = typeof request.signature === 'string' ? parseSignature(request.signature) : null;
     const asked = text || { numerator: Number(request.numerator), denominator: Number(request.denominator) };
     const signature = normalizeSignature(asked, { numerator: 0, denominator: 0 });
     if (signature.numerator !== asked.numerator || signature.denominator !== asked.denominator) {
       return failed('invalid-signature', `numerator 1 to ${SIGNATURE_NUMERATOR_MAX} and denominator ${SIGNATURE_DENOMINATORS.join(', ')}, or signature "6/8"`);
+    }
+    if (bar > 1) {
+      hub.sequencer?.setProjectMeterChange?.(bar, signature);
+      return { ok: true, meter: hub.sequencer?.model?.state?.meter ?? [] };
     }
     return { ok: true, signature: hub.sequencer?.setSignature?.(signature) ?? null };
   }
