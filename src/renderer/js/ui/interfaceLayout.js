@@ -30,6 +30,12 @@ const SPLIT_KEY = 'hybridSplit';
 const DOCKED_MODULE = 'sequencer';
 /** What the lower page shows when the Sequencer leaves it for the top. */
 const LOWER_DEFAULT = 'routing';
+/**
+ * Pages that take the whole window even in Hybrid 1: Home, which is where a
+ * project is chosen, not worked on -- the author asked for it whole
+ * (2026-09-26). The split comes back with the next page opened.
+ */
+const WHOLE_PAGES = Object.freeze(['home']);
 /** The Sequencer's share of the height: never so small or so large that the
  *  other half is a strip nobody can use. */
 const SPLIT_MIN = 0.2;
@@ -93,6 +99,44 @@ export function installInterfaceLayout(hub, {
     for (const key of keys) key.setAttribute('aria-pressed', String(key.dataset.layout === current));
   };
 
+  /**
+   * Split the window or not, from the layout and the page on screen. Runs on
+   * a change of layout and on every page opened, since Home is whole and the
+   * page after it is not.
+   */
+  let arranging = false;
+  function arrange() {
+    if (arranging) return;
+    arranging = true;
+    try {
+      const split = current === 'hybrid-1' && !WHOLE_PAGES.includes(hub.modules.activeId);
+      const wasSplit = workspace.classList.contains('layout-hybrid');
+      workspace.classList.toggle('layout-hybrid', split);
+      top.hidden = !split;
+      splitter.hidden = !split;
+      if (split) {
+        top.dataset.pane = 'top';
+        main.dataset.pane = 'bottom';
+        // The Sequencer cannot be in both halves: the page it leaves shows the
+        // Patch Bay, the other half of what the author works between. That is
+        // also what "Sequencer", clicked on Home, opens.
+        if (hub.modules.activeId === DOCKED_MODULE) hub.modules.activate(LOWER_DEFAULT, main);
+        hub.modules.dock(DOCKED_MODULE, top);
+        applySplit();
+        if (!wasSplit) setActivePane(top);
+      } else {
+        hub.modules.undock();
+        delete top.dataset.pane;
+        delete main.dataset.pane;
+        top.classList.remove('pane-active');
+        main.classList.remove('pane-active');
+      }
+    } finally {
+      arranging = false;
+    }
+  }
+  hub.events.on('module:activated', arrange);
+
   function set(name) {
     const next = normalizeLayout(name);
     if (next === current) {
@@ -100,26 +144,7 @@ export function installInterfaceLayout(hub, {
       return current;
     }
     current = next;
-    const hybrid = current === 'hybrid-1';
-    workspace.classList.toggle('layout-hybrid', hybrid);
-    top.hidden = !hybrid;
-    splitter.hidden = !hybrid;
-    if (hybrid) {
-      top.dataset.pane = 'top';
-      main.dataset.pane = 'bottom';
-      // The Sequencer cannot be in both halves: the page it leaves shows the
-      // Patch Bay, the other half of what the author works between.
-      if (hub.modules.activeId === DOCKED_MODULE) hub.modules.activate(LOWER_DEFAULT, main);
-      hub.modules.dock(DOCKED_MODULE, top);
-      applySplit();
-      setActivePane(top);
-    } else {
-      hub.modules.undock();
-      delete top.dataset.pane;
-      delete main.dataset.pane;
-      top.classList.remove('pane-active');
-      main.classList.remove('pane-active');
-    }
+    arrange();
     hub.settings.set(LAYOUT_KEY, current);
     renderKeys();
     hub.events.emit('layout:changed', current);

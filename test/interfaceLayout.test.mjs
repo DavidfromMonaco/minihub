@@ -30,7 +30,7 @@ function shell(settings = {}) {
   const hub = makeHub(settings);
   hub.modules = new ModuleSystem(hub);
   const log = [];
-  const pages = Object.fromEntries(['home', 'routing', 'sequencer'].map((id) => [id, page(id, log)]));
+  const pages = Object.fromEntries(['home', 'routing', 'sequencer', 'vst-001'].map((id) => [id, page(id, log)]));
   Object.values(pages).forEach((p) => hub.modules.register(p));
   const workspace = region();
   const top = region('section');
@@ -81,7 +81,7 @@ test('Hybrid 1 docks the Sequencer above and gives the page area to the Patch Ba
 
 test('in Hybrid 1 the keys go to the half pressed last', () => {
   const s = shell({ interfaceLayout: 'hybrid-1' });
-  s.hub.modules.activate('home', s.main);
+  s.hub.modules.activate('vst-001', s.main);
   installInterfaceLayout(s.hub, s);
   const inTop = makeEl('div'); s.top.appendChild(inTop);
   const inMain = makeEl('div'); s.main.appendChild(inMain);
@@ -97,7 +97,7 @@ test('in Hybrid 1 the keys go to the half pressed last', () => {
 
 test('opening the Sequencer while it is docked looks at it instead of mounting it twice', () => {
   const s = shell({ interfaceLayout: 'hybrid-1' });
-  s.hub.modules.activate('home', s.main);
+  s.hub.modules.activate('vst-001', s.main);
   installInterfaceLayout(s.hub, s);
   let shown = null;
   s.hub.events.on('module:dock-shown', (id) => { shown = id; });
@@ -115,12 +115,12 @@ test('opening the Sequencer while it is docked looks at it instead of mounting i
 
 test('back to Original, the Sequencer leaves the dock and the page below stays', () => {
   const s = shell({ interfaceLayout: 'hybrid-1' });
-  s.hub.modules.activate('home', s.main);
+  s.hub.modules.activate('vst-001', s.main);
   const layout = installInterfaceLayout(s.hub, s);
   layout.set('original');
   assert.equal(s.pages.sequencer.mounted, null);
   assert.equal(s.hub.modules.dockedId, null);
-  assert.equal(s.pages.home.mounted, s.main);
+  assert.equal(s.pages['vst-001'].mounted, s.main);
   assert.equal(s.top.hidden, true);
   assert.equal(s.main.dataset.pane, undefined);
   assert.equal(paneHasKeys(s.main), true);
@@ -133,7 +133,7 @@ test('the bar between the halves keeps each half usable, and a double-click halv
   assert.equal(clampSplit(0.95), 0.8);
   assert.equal(clampSplit('x'), 0.5);
   const s = shell({ interfaceLayout: 'hybrid-1', hybridSplit: 0.7 });
-  s.hub.modules.activate('home', s.main);
+  s.hub.modules.activate('vst-001', s.main);
   installInterfaceLayout(s.hub, s);
   assert.equal(s.top.style.flexBasis, '70%', 'the remembered share');
   fire(s.splitter, 'keydown', { key: 'ArrowDown' });
@@ -141,6 +141,30 @@ test('the bar between the halves keeps each half usable, and a double-click halv
   fire(s.splitter, 'dblclick');
   assert.equal(s.top.style.flexBasis, '50%');
   assert.equal(s.hub.settings.data.hybridSplit, 0.5);
+});
+
+test('Home is whole in Hybrid 1, and the next page splits the window again', () => {
+  const s = shell({ interfaceLayout: 'hybrid-1' });
+  s.hub.modules.activate('home', s.main);
+  installInterfaceLayout(s.hub, s);
+  assert.equal(s.top.hidden, true, 'Home takes the whole window');
+  assert.equal(s.splitter.hidden, true);
+  assert.equal(s.hub.modules.dockedId, null);
+  assert.equal(paneHasKeys(s.main), true);
+
+  s.hub.modules.activate('vst-001', s.main);
+  assert.equal(s.top.hidden, false, 'a node page brings the Sequencer back above it');
+  assert.equal(s.pages.sequencer.mounted, s.top);
+
+  s.hub.modules.activate('home', s.main);
+  assert.equal(s.top.hidden, true, 'and Home is whole again');
+  assert.equal(s.pages.sequencer.mounted, null);
+
+  // "Sequencer", clicked on Home: the split, with the Patch Bay below.
+  s.hub.modules.activate('sequencer', s.main);
+  assert.equal(s.pages.sequencer.mounted, s.top);
+  assert.equal(s.pages.routing.mounted, s.main);
+  assert.equal(s.top.hidden, false);
 });
 
 test('the View menu offers the two layouts', () => {
