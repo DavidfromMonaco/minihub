@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <limits>
 
 namespace mlh::one_ring {
 namespace {
@@ -223,16 +224,33 @@ void Runtime::reach(double beat) noexcept
     render(offset);
 }
 
+Bars Runtime::barsAt(double beat) const noexcept
+{
+    Bars bars;
+    if (meter_ == nullptr || !std::isfinite(beat)) return bars;
+    double next = 0;
+    const auto region = meter_->meterAt(std::max(0.0, beat), &next);
+    bars.start = region.startPpq;
+    bars.length = region.sig.barQuarters();
+    bars.end = next;
+    return bars;
+}
+
+// The clock a bar is counted on: the sequence's while it plays, the
+// arrangement's while only that plays -- both in the arrangement's quarters,
+// since RUN starts the sequence where the playhead is. None at rest.
+double Runtime::clockBeat() const noexcept
+{
+    if (scheduler_->playing()) return blockBegin_;
+    if (hostPlaying_) return hostBeat_;
+    return std::numeric_limits<double>::quiet_NaN();
+}
+
 double Runtime::nextBarWait() const noexcept
 {
-    const auto wait = [](double beat) {
-        if (!std::isfinite(beat) || beat < 0) return 0.0;
-        const double bar = std::ceil(beat / beatsPerBar - 1.0e-9) * beatsPerBar;
-        return std::max(0.0, bar - beat);
-    };
-    if (scheduler_->playing()) return wait(blockBegin_);
-    if (hostPlaying_) return wait(hostBeat_);
-    return 0.0;
+    const double beat = clockBeat();
+    if (!std::isfinite(beat) || beat < 0) return 0.0;
+    return std::max(0.0, barsAt(beat).lineFrom(beat) - beat);
 }
 
 void Runtime::noteOn(int offset, int channel, int pitch, int velocity) noexcept
@@ -263,9 +281,11 @@ void Runtime::writer(WriterCommand command, int offset) noexcept
         feedbackStopped_ = false;
         return;
     }
-    // WRITE: what was heard over the window, up to this sample.
+    // WRITE: what was heard over the window, up to this sample -- the
+    // project's bars where the sequence is.
     const double until = take_.at(offset);
-    const double window = static_cast<double>(settings.bars) * beatsPerBar;
+    const double bar = barsAt(blockBegin_).length;
+    const double window = static_cast<double>(settings.bars) * bar;
     take_.generation(until, window, generation_.notes);
     if (generation_.notes.count == 0) {
         ++writesEmpty_;
@@ -283,7 +303,7 @@ void Runtime::writer(WriterCommand command, int offset) noexcept
         feedbackStopped_ = true;
         return;
     }
-    if (until - lastFeedback_ < static_cast<double>(settings.delayBars) * beatsPerBar - 1.0e-9) return;
+    if (until - lastFeedback_ < static_cast<double>(settings.delayBars) * bar - 1.0e-9) return;
     lastFeedback_ = until;
     if (settings.feedbackMode == CaptureMode::Replace) {
         material_.current = generation_.notes;
@@ -407,8 +427,16 @@ void Runtime::memory(MemoryCommand command, int offset, bool fromOutside) noexce
             return;
         }
         const auto mode = command == MemoryCommand::CaptureAdd ? CaptureMode::Add : CaptureMode::Replace;
-        if (fromOutside) capture_.arm(offset, mode, bars, nextBarWait());
-        else capture_.start(offset, mode, bars);
+        // Its bars are the project's where it starts: on the next bar line
+        // from outside, at once from the sequence.
+        const double clock = clockBeat();
+        const double at = std::isfinite(clock) ? clock : beat_;
+        if (fromOutside) {
+            const double wait = nextBarWait();
+            capture_.arm(offset, mode, bars, wait, barsAt(at + wait).length);
+        } else {
+            capture_.start(offset, mode, bars, barsAt(at + offset * blockBeatsPerSample_).length);
+        }
         return;
     }
     case MemoryCommand::CaptureEnd:
@@ -421,7 +449,7 @@ void Runtime::memory(MemoryCommand command, int offset, bool fromOutside) noexce
         }
         if (material_.origin.count == 0 && !material_.hasCurrent && material_.generation == 0) return;
         material_.origin.clear();
-        material_.origin.length = ticksPerBar;
+        material_.origin.length = barsAt(beat_).ticks();
         material_.current.clear();
         material_.hasCurrent = false;
         material_.generation = 0;
@@ -454,6 +482,13 @@ void Runtime::process(const Transport& transport, int numSamples, double sampleR
                       MidiExecutionPlan* arpeggiators, MidiOutputSink* hardware, double callbackStartMs) noexcept
 {
     readers_.fetch_add(1, std::memory_order_acq_rel);
+    // The bars are read from this transport for this block only: an export's
+    // own transport is gone once the export is.
+    struct MeterScope {
+        const Transport*& meter;
+        ~MeterScope() { meter = nullptr; }
+    } meterScope{meter_};
+    meter_ = &transport;
     arpeggiators_ = arpeggiators;
     hardware_ = hardware;
     callbackStartMs_ = callbackStartMs;
@@ -558,6 +593,7 @@ void Runtime::process(const Transport& transport, int numSamples, double sampleR
         scheduler.play(beat_);
     }
     previousHostPlaying_ = hostPlaying;
+    scheduler.setBars(barsAt(beat_));
     Command command;
     for (int i = 0; i < 256 && input_.pop(command); ++i) {
         scheduler.beginCommand(beat_);

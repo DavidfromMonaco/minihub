@@ -8,14 +8,14 @@ namespace {
 
 constexpr double epsilon = 1.0e-9;
 
-// A capture with no window of its own ends where the material would.
-double windowBeats(std::uint32_t bars) noexcept
-{
-    const auto effective = bars > 0 ? bars : static_cast<std::uint32_t>(maximumMaterialTicks / ticksPerBar);
-    return static_cast<double>(effective) * beatsPerBar;
-}
-
 } // namespace
+
+// Its bars, or -- with no window of its own -- as long as a material may be.
+double Capture::windowBeats() const noexcept
+{
+    return bars_ > 0 ? static_cast<double>(bars_) * bar_.length
+                     : static_cast<double>(maximumMaterialTicks) / ticksPerBeat;
+}
 
 std::int32_t Capture::ticks(double beats) noexcept
 {
@@ -36,7 +36,7 @@ void Capture::begin(int numSamples, double beatsPerSample) noexcept
     base_ = 0;
     endAt_ = -1;
     if (state_ == CaptureState::Capturing && beatsPerSample_ > 0) {
-        const double remaining = windowBeats(bars_) - elapsed_;
+        const double remaining = windowBeats() - elapsed_;
         endAt_ = remaining <= 0 ? 0 : static_cast<long long>(std::ceil(remaining / beatsPerSample_ - epsilon));
     }
 }
@@ -60,13 +60,13 @@ void Capture::open(int offset) noexcept
 {
     state_ = CaptureState::Capturing;
     list_.clear();
-    list_.length = ticksPerBar;
+    list_.length = bar_.ticks();
     open_.fill(-1);
     elapsed_ = 0;
     base_ = offset;
     armAt_ = -1;
     endAt_ = beatsPerSample_ > 0
-        ? offset + static_cast<long long>(std::ceil(windowBeats(bars_) / beatsPerSample_ - epsilon))
+        ? offset + static_cast<long long>(std::ceil(windowBeats() / beatsPerSample_ - epsilon))
         : -1;
 }
 
@@ -83,9 +83,10 @@ void Capture::close(int offset) noexcept
 {
     const auto end = ticks(beatsAt(offset));
     for (std::size_t key = 0; key < open_.size(); ++key) closeNote(key, end);
+    const std::int32_t bar = bar_.ticks();
     const std::int32_t length = bars_ > 0
-        ? static_cast<std::int32_t>(bars_) * ticksPerBar
-        : std::clamp<std::int32_t>((end + ticksPerBar - 1) / ticksPerBar * ticksPerBar, ticksPerBar, maximumMaterialTicks);
+        ? ticks(windowBeats())
+        : std::clamp<std::int32_t>((end + bar - 1) / bar * bar, bar, maximumMaterialTicks);
     // A note that starts where the window ends belongs to the next one.
     std::uint32_t kept = 0;
     for (std::uint32_t i = 0; i < list_.count; ++i)
@@ -136,19 +137,21 @@ void Capture::finish() noexcept
     }
 }
 
-void Capture::start(int offset, CaptureMode mode, std::uint32_t bars) noexcept
+void Capture::start(int offset, CaptureMode mode, std::uint32_t bars, double barBeats) noexcept
 {
     if (state_ == CaptureState::Capturing) return;
     mode_ = mode;
     bars_ = std::min(bars, maximumCaptureBars);
+    bar_.length = std::isfinite(barBeats) && barBeats > 0 ? barBeats : beatsPerBar;
     open(std::clamp(offset, 0, std::max(0, samples_ - 1)));
 }
 
-void Capture::arm(int offset, CaptureMode mode, std::uint32_t bars, double beats) noexcept
+void Capture::arm(int offset, CaptureMode mode, std::uint32_t bars, double beats, double barBeats) noexcept
 {
     if (state_ == CaptureState::Capturing) return;
     mode_ = mode;
     bars_ = std::min(bars, maximumCaptureBars);
+    bar_.length = std::isfinite(barBeats) && barBeats > 0 ? barBeats : beatsPerBar;
     const int at = std::clamp(offset, 0, std::max(0, samples_ - 1));
     if (!(beats > epsilon) || beatsPerSample_ <= 0) {
         open(at);

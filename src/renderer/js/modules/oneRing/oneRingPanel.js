@@ -4,7 +4,7 @@ import {
   CAPTURE_MODE, CHANNEL_COUNT, MAX_STEPS, SCENE_BANKS, SCENE_POSITION, SCENE_TIMING, STEP_MODE, VOICE_COUNT,
   addScene, cellAt, clearMaterial, defaultVoice, defaultWriter, loadMaterial, mutateSequence, noteListFromClip,
   oneRingTargets, parseSeed, reseed, revertMaterial, sceneIndex, scenePlace, setCaptureSettings, setFrozen, setVoice,
-  setWriterSettings, storeSceneAt
+  TICKS_PER_BEAT, setWriterSettings, storeSceneAt
 } from '../../core/oneRingSequence.js';
 import { syncDragKnob } from '../../ui/omniPearl.js';
 import * as edits from '../../core/oneRingEdits.js';
@@ -14,7 +14,7 @@ import {
 import { liveRulesText, trackPlaysChoice } from './oneRingNotes.js';
 import { instrumentPlugins } from '../../core/instrumentTrack.js';
 // The header shows a position too, and one arithmetic writes both.
-import { COMMON_TIME, barBeat, meterBarAt } from '../../core/musicalTime.js';
+import { COMMON_TIME, asRegions, barBeat, meterBarAt, quartersPerBeat } from '../../core/musicalTime.js';
 
 /**
  * The One Ring node's page: the faceplate of oneRingFaceplate.js, played and
@@ -108,10 +108,26 @@ function mountOf(context) {
 const clampIndex = (value, count) => (Number.isInteger(value) && value >= 0 && value < count ? value : 0);
 const isReady = (hub, nodeId) => Number.isSafeInteger(hub.oneRing?.generationOf?.(nodeId));
 
+/** The project's signatures, as its header sets them (D-059, D-061). */
+const projectRegions = (hub) => hub.sequencer?.projectRegions?.() ?? asRegions(COMMON_TIME);
+
+/**
+ * The project's bar where One Ring's clock stands, in ticks, and a beat of
+ * it: the engine counts Next bar, a capture's window and a generation in the
+ * project's bars, and the page draws a material and names a length in them.
+ */
+function barOf(hub, status) {
+  const at = meterBarAt(projectRegions(hub), status?.beat ?? 0);
+  return {
+    ticks: Math.round(at.lengthPpq * TICKS_PER_BEAT),
+    beatTicks: Math.round(quartersPerBeat(at.signature) * TICKS_PER_BEAT)
+  };
+}
+
 /** The Sequencer's MIDI clips, as the Writer and a load name them. */
 function midiClips(hub) {
   const tracks = hub.sequencer?.model?.state?.tracks ?? [];
-  const regions = hub.sequencer?.projectRegions?.() ?? [{ startPpq: 0, startBar: 1, signature: COMMON_TIME }];
+  const regions = projectRegions(hub);
   return tracks.filter((track) => track.type === 'midi').flatMap((track) => track.clips.map((clip) => ({
     id: clip.id,
     // A generation's clip is named after its track: said once.
@@ -166,6 +182,7 @@ function viewOf(context) {
     conditionChannel: selection.conditionChannel,
     tab,
     status,
+    bar: barOf(hub, status),
     voiceIndex,
     voiceRules: sceneData.voices[voiceIndex],
     materialView: selection.materialView,
@@ -212,10 +229,9 @@ export function applyStatus(container, context) {
   const live = (name) => container.querySelector(`[data-ring-live="${name}"]`);
   setText(live('state'), !ready ? 'NOT IN THE ENGINE' : playing ? '▶ RUNNING' : '■ STOPPED');
   setText(live('scene'), content.scenes[scene].id);
-  // One Ring's own clock, whose bar is four quarters whatever the project's
-  // signature (`beatsPerBar` in one_ring/material.h): this counts what its
-  // Next bar counts.
-  setText(live('bar'), status ? barBeat(status.beat, COMMON_TIME) : '—');
+  // One Ring's own clock, in the arrangement's quarters, counted in the
+  // project's bars as its Next bar counts them.
+  setText(live('bar'), status ? barBeat(status.beat, projectRegions(hub)) : '—');
   setText(live('bpm'), status && status.bpm > 0 ? status.bpm.toFixed(1) : '—');
   setText(live('pending'), pending >= 0 ? `NEXT BAR → ${content.scenes[pending].id}` : '');
   setText(live('refused'), String(status?.rejected ?? 0));

@@ -12,6 +12,7 @@ import {
 import * as edits from '../src/renderer/js/core/oneRingEdits.js';
 import { renderPage, renderRegions } from '../src/renderer/js/modules/oneRing/oneRingFaceplate.js';
 import { applyStatus, registerOneRingPanel } from '../src/renderer/js/modules/oneRing/oneRingPanel.js';
+import { durationChoices, renderMaterial } from '../src/renderer/js/modules/oneRing/oneRingNotes.js';
 
 /**
  * Contract: the One Ring page edits a sequence the way the VST's editor did,
@@ -877,4 +878,39 @@ test('part two\'s lights and readouts follow the status in place', async () => {
   } finally {
     unregister();
   }
+});
+
+test('One Ring counts the project\'s bars: its clock, its material and the lengths it names', async () => {
+  const unregister = registerOneRingPanel();
+  try {
+    const { api, hub, ring, liveElement, teardown } = await page();
+    hub.sequencer.setSignature({ numerator: 3, denominator: 4 });
+    api.emitEvent({
+      type: 'oneRingStatus', nodeId: ring.id, generation: 3, playing: true, beat: 9.5, bpm: 120, scene: 0, pendingScene: -1,
+      playheads: Array(16).fill(-1), active: Array(16).fill(false), rejected: 0, guarded: 0
+    });
+    assert.equal(liveElement('[data-ring-live="bar"]').textContent, '4.1', 'bar four of 3/4 begins on quarter 9');
+    teardown();
+  } finally {
+    unregister();
+  }
+
+  // A material captured over one bar of 3/4 is one bar, drawn with its bar line.
+  const material = {
+    origin: { length: 2880, notes: [{ start: 0, duration: 960, pitch: 60, velocity: 100, channel: 1 }] },
+    current: null, generation: 0, frozen: false
+  };
+  const drawn = renderMaterial({
+    content: { material }, materialView: 'origin', clips: [], loadChoice: '', materialError: '',
+    bar: { ticks: 2880, beatTicks: 960 }
+  });
+  assert.match(drawn, /origin: 1 notes, 1 bar /);
+  assert.match(drawn, /<line class="bar" x1="2880"/);
+  assert.match(drawn, /<line class="beat" x1="1920"/);
+
+  const lengths = (barTicks) => durationChoices(barTicks).map(([ticks, label]) => `${label}=${ticks}`);
+  assert.deepEqual(lengths(3840).slice(-5), ['1 bar=3840', '2 bars=7680', '4 bars=15360', '8 bars=30720', '16 bars=61440'],
+    'in 4/4, the lengths it always offered');
+  assert.deepEqual(lengths(2880).slice(-5), ['1 bar=2880', '2 bars=5760', '4 bars=11520', '8 bars=23040', '16 bars=46080']);
+  assert.ok(!lengths(6720).includes('16 bars=107520'), 'no longer than a note may last (7/4)');
 });

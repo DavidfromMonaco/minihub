@@ -41,9 +41,11 @@ public:
     void finish() noexcept;
 
     // Starts at `offset` of this block. A running capture is left alone.
-    void start(int offset, CaptureMode, std::uint32_t bars) noexcept;
+    // `barBeats` is a bar of the project's where the capture starts: its
+    // window and the material it makes are counted in those bars.
+    void start(int offset, CaptureMode, std::uint32_t bars, double barBeats = beatsPerBar) noexcept;
     // Starts after `beats` more beats from `offset` -- the next bar.
-    void arm(int offset, CaptureMode, std::uint32_t bars, double beats) noexcept;
+    void arm(int offset, CaptureMode, std::uint32_t bars, double beats, double barBeats = beatsPerBar) noexcept;
     // Ends at `offset` of this block; an armed capture is dropped.
     void end(int offset) noexcept;
     // Everything dropped, nothing reported: the node is going.
@@ -53,6 +55,7 @@ private:
     void open(int offset) noexcept;
     void close(int offset) noexcept;
     double beatsAt(int offset) const noexcept;
+    double windowBeats() const noexcept;
     static std::int32_t ticks(double beats) noexcept;
     void closeNote(std::size_t key, std::int32_t at) noexcept;
 
@@ -60,6 +63,7 @@ private:
     CaptureState state_ = CaptureState::Off;
     CaptureMode mode_ = CaptureMode::Replace;
     std::uint32_t bars_ = 1;
+    Bars bar_;
     NoteList list_;
     // For each channel and pitch, the sounding note's index in `list_`, or -1.
     std::array<std::int16_t, 16 * 128> open_{};

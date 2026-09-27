@@ -2712,7 +2712,7 @@ void testOneRingSchedulerContracts()
         p.scenes[1].channels[0].enabled = true;
         OneRingRun run(p);
         auto& s = *run.scheduler;
-        s.setBarLength(3);
+        s.setBars(oring::Bars{0, 3});
         s.play(0);
         s.advance(0, .4);
         s.scene(1, .4);
@@ -3265,6 +3265,60 @@ void testOneRingRuntime()
         const auto stopped = bench.runtime->status();
         expect(!stopped.playing && stopped.scene == 3 && stopped.pendingScene == -1,
                "one-ring runtime: STOP plays the recall it cut short");
+    });
+    oneRingChecks("one-ring counts the project's bars", [] {
+        // Bar lines where the transport's signature map puts them (D-059).
+        const oring::Bars waltz{0, 3};
+        expect(waltz.lineFrom(1) == 3 && waltz.lineFrom(3) == 3 && waltz.lineFrom(3, true) == 6,
+               "one-ring bars: a 3/4 bar line, at or strictly after");
+        mlh::Transport map;
+        const mlh::MeterRegion regions[] = {{0.0, mlh::TimeSig{4, 4}}, {8.0, mlh::TimeSig{7, 8}}};
+        expect(map.setMeter(regions, 2), "one-ring bars: a map of two signatures");
+        const auto barsAt = [&](double beat) {
+            double next = 0;
+            const auto region = map.meterAt(beat, &next);
+            return oring::Bars{region.startPpq, region.sig.barQuarters(), next};
+        };
+        expect(barsAt(7.5).lineFrom(7.5) == 8 && barsAt(9).lineFrom(9) == 11.5 && barsAt(6).lineFrom(6.5, true) == 8,
+               "one-ring bars: a change of signature begins a bar, and the bars after it are its own");
+        expect(waltz.ticks() == 2880 && oring::Bars{0, 3.5}.ticks() == 3360, "one-ring bars: a bar in ticks");
+
+        OneRingBench bench;
+        bench.transport.setSignature(3, 4);
+        auto project = oneRingRuntimeProject();
+        project.sceneTiming = oring::SceneTiming::NextBar;
+        expect(bench.load(project) && bench.aim(), "one-ring 3/4: loaded");
+        bench.runtime->run();
+        bench.blocks(10);
+        expect(bench.runtime->recallScene(1), "one-ring 3/4: a recall while playing queued");
+        bench.blocks(139);
+        expect(bench.runtime->status().pendingScene == 1, "one-ring 3/4: before beat 3 the recall waits");
+        bench.blocks(3);
+        expect(bench.runtime->status().scene == 1 && bench.runtime->status().pendingScene == -1,
+               "one-ring 3/4: Next bar is the project's bar, three quarters, not four");
+    });
+    oneRingChecks("one-ring captures in the project's bars", [] {
+        OneRingBench bench;
+        bench.transport.setSignature(3, 4);
+        auto project = oneRingRuntimeProject();
+        project.scenes[0].channels[0].enabled = false;
+        expect(bench.load(project) && bench.aim(), "one-ring 3/4 capture: loaded");
+        bench.transport.setPlaying(true);
+        bench.blocks(10);
+        bench.runtime->memoryCommand(oring::MemoryCommand::CaptureReplace);
+        bench.blocks(1);
+        expect(bench.runtime->status().capture == oring::CaptureState::Armed,
+               "one-ring 3/4 capture: from outside, it waits for the next bar");
+        bench.blocks(140);
+        expect(bench.runtime->status().capture == oring::CaptureState::Capturing,
+               "one-ring 3/4 capture: it starts on beat 3");
+        juce::MidiBuffer note;
+        note.addEvent(juce::MidiMessage::noteOn(1, 60, (juce::uint8)100), 0);
+        bench.runtime->pushInput(note);
+        bench.blocks(150);
+        const auto* report = bench.runtime->takeMaterialReport();
+        expect(report != nullptr && report->material.origin.count == 1 && report->material.origin.length == 2880,
+               "one-ring 3/4 capture: a window of one bar makes a material three quarters long");
     });
 }
 
@@ -4181,6 +4235,17 @@ void testOneRingWriter()
                    && std::abs(made[1].transportBeat - 24.0) < 1e-6
                    && made[1].notes.length == 2 * oring::ticksPerBar && made[1].notes.count == 8,
                "one-ring writer: a window of two bars, and where the arrangement stood when it was written");
+    });
+    oneRingChecks("one-ring writer in the project's bars", [] {
+        VoiceBench bench;
+        bench.transport.setSignature(3, 4);
+        expect(bench.load(writerProject()), "one-ring writer 3/4: loaded");
+        bench.runtime->setMaterial(chordMaterial());
+        bench.runtime->run();
+        bench.until(96000 + 480);
+        const auto made = drainGenerations(*bench.runtime);
+        expect(!made.empty() && made.back().notes.length == 2880,
+               "one-ring writer 3/4: a generation of one bar is three quarters long");
     });
     oneRingChecks("one-ring writer feedback", [] {
         auto project = writerProject();

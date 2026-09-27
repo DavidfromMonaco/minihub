@@ -5,18 +5,55 @@
 // *Part two -- design*). Fixed capacity, so the audio callback captures into it
 // and plays from it without allocating.
 
+#include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 
 namespace mlh::one_ring {
 
 constexpr std::int32_t ticksPerBeat = 960; // the Sequencer's resolution
-constexpr std::int32_t beatsPerBar = 4;    // as Next bar counts a bar
+// A bar where no signature is known -- a test's clock, a material given with
+// no length. What a running node counts is the project's bar (Bars, below).
+constexpr std::int32_t beatsPerBar = 4;
 constexpr std::int32_t ticksPerBar = ticksPerBeat * beatsPerBar;
 constexpr std::size_t materialCapacity = 256;
+// 256 quarters: sixty-four bars of 4/4, and the same length whatever the
+// signature, so a material written in one project reads in every other.
 constexpr std::int32_t maximumMaterialTicks = 64 * ticksPerBar;
 constexpr std::uint32_t maximumCaptureBars = 16;
+
+// The bars a node counts in: the project's (D-059, D-061), read from the
+// engine's transport where the node's clock is. Next bar, a capture's window,
+// a generation's and a feedback delay all counted four quarters until
+// 2026-09-27, whatever the project's signature. One stretch of one signature
+// -- where it began, a bar of it, where the next begins -- is all a block
+// needs: a bar line it can reach lies in it, or is the next stretch's first.
+struct Bars {
+    double start = 0;
+    double length = beatsPerBar;
+    double end = std::numeric_limits<double>::infinity();
+
+    // The first bar line at `beat` or after it; strictly after it with `after`,
+    // as a recall asked on a bar line waits for the next one.
+    double lineFrom(double beat, bool after = false) const noexcept
+    {
+        if (!std::isfinite(beat) || !(length > 0)) return beat;
+        const double into = (beat - start) / length;
+        const double count = after ? std::floor(into + 1.0e-9) + 1.0 : std::ceil(into - 1.0e-9);
+        const double line = start + std::max(0.0, count) * length;
+        const bool reachesEnd = after ? end > beat + 1.0e-9 : end >= beat - 1.0e-9;
+        return line > end && reachesEnd ? end : line;
+    }
+    // A bar in the material's ticks, within what a material may hold.
+    std::int32_t ticks() const noexcept
+    {
+        const double value = std::round(length * ticksPerBeat);
+        return value >= maximumMaterialTicks ? maximumMaterialTicks : std::max<std::int32_t>(1, static_cast<std::int32_t>(value));
+    }
+};
 
 enum class CaptureMode : std::uint8_t { Replace, Add };
 

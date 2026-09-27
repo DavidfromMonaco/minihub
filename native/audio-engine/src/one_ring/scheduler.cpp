@@ -373,7 +373,7 @@ void Scheduler::scene(std::size_t index, double beat) noexcept
     // to wait for, and a recall left pending would fire wherever RUN starts.
     if (project_->sceneTiming == SceneTiming::NextBar && playing_) {
         pendingScene_ = index;
-        pendingSceneBeat_ = std::ceil((beat + epsilon) / barBeats_) * barBeats_;
+        pendingSceneBeat_ = bars_.lineFrom(beat, true);
     } else applyScene(index, beat);
     dispatch();
 }

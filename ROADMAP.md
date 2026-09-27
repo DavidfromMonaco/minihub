@@ -821,8 +821,9 @@ No commitment, no priority — written down so they are not forgotten.
   and dragged on a track's automation lines (D-065).
 ~~Fades set through the agent channel, and drawn in the Clip Editor's audio
   view (D-062)~~ — **done 2026-09-27**.
-- One Ring counting in the project's time signature: it still counts
-  four-quarter bars (D-059).
+~~One Ring counting in the project's time signature~~ — **done 2026-09-27**
+  (D-074): Next bar, captures, generations and feedback delays count the
+  project's bars.
 - An MCP wrapper around the agent channel, so an agent calls its requests as
   tools.
 ~~The ten `runtime-*-gauntlet.mjs` scripts, one-off harnesses tied to closed

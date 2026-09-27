@@ -62,7 +62,8 @@ public:
     // it. A press is its own tick; what it sets off is still guarded.
     void beginCommand(double beat) noexcept;
     void shiftTimeline(double delta) noexcept;
-    void setBarLength(double beats) noexcept { if (beats > 0) barBeats_ = beats; }
+    // The project's bars where the sequence is, given each block (D-059).
+    void setBars(const Bars& bars) noexcept { if (bars.length > 0) bars_ = bars; }
     const std::array<ChannelState, channelCount>& states() const noexcept { return states_; }
     std::size_t currentScene() const noexcept { return scene_; }
     // The scene a Next bar recall waits to play, or -1.
@@ -85,7 +86,7 @@ private:
     bool playing_ = false, sceneChangedThisTick_ = false;
     bool dispatching_ = false;
     double tick_ = -1;
-    double barBeats_ = 4;
+    Bars bars_;
     std::size_t pendingScene_ = 0;
     double pendingSceneBeat_ = -1;
     std::uint64_t rejected_ = 0, cycleGuards_ = 0, recalls_ = 0;

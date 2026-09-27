@@ -744,6 +744,10 @@ did around it, with the live `Transport` where the VST had a host playhead:
   `syncMidiNetwork` handed it — only when they change, the old destinations
   given their Note Offs first; generations as `oneRingWrite`; a status on any
   change and every 100 ms while playing.
+- **Bars** (D-074): the project's, read in the callback from the transport's
+  signature map where the node's clock stands (`Runtime::barsAt`, `Bars` in
+  `material.h`) -- Next bar, a capture's window and material, a generation's
+  window, a feedback delay.
 - **A node removed** plays on, out of the set, until the callback has ended its
   notes (`drainingOneRings_`); a panic makes it forget them, a seek releases
   them.
@@ -777,8 +781,8 @@ that is not a signature is refused and the last good one kept. `beginBlock`
 fixes it for the block, like the tempo, and `getPosition` gives plugins that
 signature and the start of the current bar in it. The metronome clicks every
 beat of it (the denominator's note), accented on the bar; the count-in is one
-bar, in the signature Record was pressed in. One Ring's own bar stays four
-quarters.
+bar, in the signature Record was pressed in. One Ring counts the same bars
+(D-074): its runtime reads the map below where its clock stands.
 
 Since D-061 that signature is a map: `setMeter` takes every region from
 quarter 0 into fixed arrays of atomics behind a sequence counter -- written by

@@ -259,6 +259,8 @@ private:
     void memory(MemoryCommand, int offset, bool fromOutside) noexcept;
     void drainTo(int offset) noexcept;
     int offsetOf(double beat) const noexcept;
+    Bars barsAt(double beat) const noexcept;
+    double clockBeat() const noexcept;
     double nextBarWait() const noexcept;
     void report() noexcept;
 
@@ -327,6 +329,9 @@ private:
     int blockSamples_ = 0;
     double hostBeat_ = 0;
     bool hostPlaying_ = false;
+    // The transport whose signature map the node counts bars in, while a
+    // block is processed; null outside one.
+    const Transport* meter_ = nullptr;
 };
 
 } // namespace mlh::one_ring

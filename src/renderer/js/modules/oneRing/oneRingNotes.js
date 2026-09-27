@@ -46,10 +46,11 @@ export function renderCapture(view) {
 }
 
 /**
- * The notes of a list over its length, as a small piano roll. Everything that
- * varies is SVG geometry, since the page may carry no style attribute.
+ * The notes of a list over its length, as a small piano roll, its lines the
+ * project's beats and bars (`bar`, from the panel). Everything that varies is
+ * SVG geometry, since the page may carry no style attribute.
  */
-function materialRoll(list, label) {
+function materialRoll(list, label, bar = { ticks: TICKS_PER_BAR, beatTicks: TICKS_PER_BEAT }) {
   const length = Math.max(1, list.length);
   if (!list.notes.length) {
     return `<div class="op-ring-roll is-empty" role="img" aria-label="${escapeHtml(`${label}: no notes`)}"><span>No notes</span></div>`;
@@ -70,8 +71,8 @@ function materialRoll(list, label) {
     if (pitch % 12 === 0) shaded.push(`<rect class="c-row" x="0" y="${high - pitch}" width="${length}" height="1"></rect>`);
   }
   const lines = [];
-  for (let tick = 0; tick <= length; tick += TICKS_PER_BEAT) {
-    lines.push(`<line class="${tick % TICKS_PER_BAR === 0 ? 'bar' : 'beat'}" x1="${tick}" y1="0" x2="${tick}" y2="${rows}"></line>`);
+  for (let tick = 0; tick <= length; tick += bar.beatTicks) {
+    lines.push(`<line class="${tick % bar.ticks === 0 ? 'bar' : 'beat'}" x1="${tick}" y1="0" x2="${tick}" y2="${rows}"></line>`);
   }
   const minimum = length / 400;
   const notes = list.notes.map((note) => `<rect class="note" x="${note.start}" y="${high - note.pitch + 0.12}" width="${Math.max(minimum, note.duration)}" height="0.76" data-tip="${escapeHtml(`${noteName(note.pitch)} · velocity ${note.velocity} · channel ${note.channel}`)}"></rect>`);
@@ -81,8 +82,8 @@ function materialRoll(list, label) {
     </div>`;
 }
 
-const barsOf = (ticks) => {
-  const bars = ticks / TICKS_PER_BAR;
+const barsOf = (ticks, barTicks = TICKS_PER_BAR) => {
+  const bars = ticks / barTicks;
   return `${Number.isInteger(bars) ? bars : bars.toFixed(2)} bar${bars === 1 ? '' : 's'}`;
 };
 
@@ -90,9 +91,9 @@ export function renderMaterial(view) {
   const { material } = view.content;
   const current = view.materialView === 'current' && material.current !== null;
   const list = current ? material.current : material.origin;
-  const origin = `origin: ${material.origin.notes.length} notes, ${barsOf(material.origin.length)}`;
+  const origin = `origin: ${material.origin.notes.length} notes, ${barsOf(material.origin.length, view.bar?.ticks)}`;
   const generation = material.current
-    ? `generation ${material.generation}: ${material.current.notes.length} notes, ${barsOf(material.current.length)}`
+    ? `generation ${material.generation}: ${material.current.notes.length} notes, ${barsOf(material.current.length, view.bar?.ticks)}`
     : 'no generation yet: the voices play the origin';
   const shown = [
     pearlKeycap({ label: 'Origin', size: 'sm', state: current ? '' : 'white', pressed: !current, attrs: act('material-view', 'origin') }),
@@ -118,7 +119,7 @@ export function renderMaterial(view) {
       ${field('Load a clip as the origin', `<span class="op-ring-load">${load}</span>`)}
     </div>
     ${error ? `<div class="op-ring-materialerror">${error}</div>` : ''}
-    ${materialRoll(list, current ? 'The current generation' : 'The origin')}`;
+    ${materialRoll(list, current ? 'The current generation' : 'The origin', view.bar)}`;
 }
 
 // ---------- voices ----------
@@ -129,11 +130,21 @@ const ORDER_OPTIONS = [
   { value: NOTE_ORDER.falling, label: 'Down' },
   { value: NOTE_ORDER.shuffled, label: 'Shuffle' }
 ];
-const DURATIONS = [
+const NOTE_VALUES = [
   [SHORTEST_DURATION, '1/64'], [TICKS_PER_BEAT / 8, '1/32'], [TICKS_PER_BEAT / 4, '1/16'], [TICKS_PER_BEAT / 2, '1/8'],
-  [TICKS_PER_BEAT, '1/4'], [TICKS_PER_BEAT * 2, '1/2'], [TICKS_PER_BAR, '1 bar'], [TICKS_PER_BAR * 2, '2 bars'],
-  [TICKS_PER_BAR * 4, '4 bars'], [TICKS_PER_BAR * 8, '8 bars'], [LONGEST_DURATION, '16 bars']
+  [TICKS_PER_BEAT, '1/4'], [TICKS_PER_BEAT * 2, '1/2']
 ];
+/**
+ * A note's shortest and longest lengths: note values, then bars of the
+ * project's signature -- a bar of 3/4 is three quarters -- as long as a note
+ * may last. In 4/4, 16 bars is the longest.
+ */
+export function durationChoices(barTicks = TICKS_PER_BAR) {
+  const bars = [1, 2, 4, 8, 16]
+    .map((count) => [count * barTicks, `${count} bar${count === 1 ? '' : 's'}`])
+    .filter(([ticks]) => ticks <= LONGEST_DURATION);
+  return [...NOTE_VALUES, ...bars];
+}
 /** The rules a channel's commands move while the voice plays, and how the page shows them. */
 const LIVE_RULES = [
   ['transpose', (v) => `transpose ${v > 0 ? '+' : ''}${v}`],
@@ -152,10 +163,11 @@ export function liveRulesText(live, rules) {
   return moved.length ? moved.join(' · ') : 'as the scene sets it';
 }
 
-function durationSelect(rule, value, label) {
-  const listed = DURATIONS.some(([ticks]) => ticks === value);
+function durationSelect(rule, value, label, barTicks) {
+  const choices = durationChoices(barTicks);
+  const listed = choices.some(([ticks]) => ticks === value);
   const other = listed ? '' : optionTag(value, `${value / TICKS_PER_BEAT} beats`, true);
-  const options = DURATIONS.map(([ticks, text]) => optionTag(ticks, text, ticks === value)).join('');
+  const options = choices.map(([ticks, text]) => optionTag(ticks, text, ticks === value)).join('');
   return field(label, selectBox(`${other}${options}`, `${act('voice-rule', rule)} data-ring-focus="voice-${rule}"`, label));
 }
 
@@ -193,8 +205,8 @@ export function renderVoices(view) {
       ${knobControl('voice-gateSpread', view)}
       <span class="op-ring-sep"></span>
       <div class="op-ring-fieldstack">
-        ${durationSelect('shortest', rules.shortest, 'Shortest')}
-        ${durationSelect('longest', rules.longest, 'Longest')}
+        ${durationSelect('shortest', rules.shortest, 'Shortest', view.bar?.ticks)}
+        ${durationSelect('longest', rules.longest, 'Longest', view.bar?.ticks)}
       </div>`);
   const play = group('Playing', `
       ${selectorControl('voice-order', 'Order', ORDER_OPTIONS, rules.order)}

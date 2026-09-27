@@ -3311,11 +3311,11 @@ Refused, or left for later:
 - **Signature changes along the timeline** (a bar of 7/8 in a 4/4 song).
   Every position-to-bar function assumes one signature from bar one; a
   change list is a larger piece, not asked.
-- **One Ring keeps its own four-quarter bar.** Its Next bar and its capture
+- ~~**One Ring keeps its own four-quarter bar.** Its Next bar and its capture
   windows count `beatsPerBar = 4` in `one_ring/material.h`, and it runs on its
   own clock; its panel's `bar.beat` counts what its Next bar counts. Making it
   follow the project is a separate step, in native code the author is still
-  testing.
+  testing.~~ **Done 2026-09-27: it counts the project's bars (D-074).**
 - **A signature per track**, asked in the same message as a possibility:
   built the same day as D-060, once the author had chosen polymetry.
 
@@ -3890,7 +3890,7 @@ sources. Four things decided the shape:
   arrangement rather than letting it drift. The transport stopping does not
   stop it — it keeps its own time at the last tempo, so a sequence can stop
   the arrangement and play on, which is what D-017 was protecting. Its bar is
-  four quarters, whatever the project's signature (D-059).
+  the project's since D-074; it was four quarters until then (D-059).
 - **Which Stop stops it.** Every Stop a person gives — the header, the
   Sequencer, the Clip Editor, an agent's `stop` — stops the One Ring nodes
   with the arrangement (`stopOneRings` on `setTransport`). The STOP a sequence
@@ -4130,3 +4130,49 @@ silenced it.
 `native/audio-engine/src/sequencer.*`; `keptRouting` in `cmdSyncSequencer`
 (`engine.cpp`). Test: `testSyncKeepingRoutingReleasesOnlyWhatChanged`
 (`[core] sync-keeps-routing`), which fails with the carry taken out.
+
+## D-074 — One Ring counts the project's bars
+
+**Status**: in force · 2026-09-27 · **implemented**, checked by the JS and
+native tests
+
+**Context** — D-059 left One Ring on a bar of four quarters whatever the
+project's signature, in native code the author was still testing; the
+ROADMAP carried it as the step to take. In 3/4, a Next bar recall landed on
+quarter 4, a capture of one bar took four quarters, and the page's `bar.beat`
+counted bars the header did not.
+
+**Decision** — Everything One Ring counts in bars is counted in the
+project's, as the engine's transport maps them (D-061), where One Ring's
+clock stands: the Next bar a scene recall and a capture from outside wait
+for, a capture's window and the length of the material it makes, a
+generation's window and a feedback delay.
+
+- **Read from the transport's map, in the callback.** `Runtime::barsAt` asks
+  `Transport::meterAt`, the lock-free read the plugins' `getPosition` already
+  makes, for the stretch of one signature holding a beat: where it began, a
+  bar of it, where the next begins (`Bars` in `one_ring/material.h`). A change
+  of signature begins a bar, so a bar line is one of that stretch's or the
+  next one's first.
+- **One Ring's clock is in the arrangement's quarters**: RUN starts it where
+  the playhead is, and a seek moves it with the arrangement. Playing on alone
+  after a Stop, it keeps counting those quarters, so its bars stay the song's.
+- **A length is counted where it starts.** A capture takes the bar where it
+  begins; a generation and a feedback delay, the bar where the block is. A
+  window across a change of signature is the one case this makes
+  approximate.
+- **What does not move.** A material's capacity stays 256 quarters -- 64
+  bars of 4/4 -- whatever the signature, so a material written in one project
+  reads in every other; a step's resolution stays a note value. The page draws
+  a material with the project's bar and beat lines, names its length in the
+  project's bars, and offers a voice's shortest and longest lengths as note
+  values, then 1 to 16 of the project's bars as long as a note may last.
+
+**Proof in the code** — `Bars` in `one_ring/material.h`; `barsAt`,
+`clockBeat` and `nextBarWait` in `one_ring/runtime.cpp`; `Scheduler::setBars`;
+the bar a `Capture` is started with; `barOf` and `projectRegions` in
+`modules/oneRing/oneRingPanel.js`, `durationChoices` and `materialRoll` in
+`modules/oneRing/oneRingNotes.js`. Tests: "one-ring counts the project's
+bars", "one-ring captures in the project's bars" and "one-ring writer in the
+project's bars" in the native core tests; "One Ring counts the project's
+bars" in `test/oneRingPage.test.mjs`.
