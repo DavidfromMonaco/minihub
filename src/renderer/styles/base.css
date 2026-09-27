@@ -2184,9 +2184,12 @@ body ::-webkit-scrollbar-corner { background:transparent; }
 
 .seq-arrangement { position:relative; display:flex; flex-direction:column; min-height:0; padding:0; overflow:hidden; }
 .seq-scroll { flex:1 1 auto; width:100%; min-height:0; box-sizing:border-box; overflow:auto; overscroll-behavior:contain; }
-/* The horizontal bar is replaced by .nav-bar below. The vertical one is kept:
-   with up to 64 tracks, "there is more below" has to be visible somewhere. */
+/* The horizontal bar is replaced by .nav-bar below. The vertical one is gone
+   too, asked by the author on 2026-09-27: the wheel scrolls the tracks, over
+   their heads as over their lanes, and the bar at the right edge was more
+   screen than help. */
 .seq-scroll::-webkit-scrollbar:horizontal { height:0; }
+.seq-scroll::-webkit-scrollbar:vertical { width:0; }
 /* Lined up under the timeline, not under the track heads: the thumb is a
    picture of the timeline, and it reads as one only when it sits below it. */
 .seq-arrangement > .nav-bar { padding-left:calc(var(--seq-head,260px) + 4px); }

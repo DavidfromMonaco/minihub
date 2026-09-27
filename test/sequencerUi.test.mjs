@@ -1247,6 +1247,8 @@ test('the arrangement replaces the native horizontal scrollbar rather than keepi
   const css = fs.readFileSync(new URL('../src/renderer/styles/base.css', import.meta.url), 'utf8');
   assert.match(css, /\.seq-scroll::-webkit-scrollbar:horizontal \{ height:0; \}/,
     'the light slab under the arrangement is gone');
+  assert.match(css, /\.seq-scroll::-webkit-scrollbar:vertical \{ width:0; \}/,
+    'and the bar at the right edge: the wheel scrolls the tracks');
   assert.match(css, /\.nav-bar \{/, 'and a navigation bar says the same thing in its place');
   assert.match(css, /body ::-webkit-scrollbar \{/,
     'the shell dresses its remaining scrollbars instead of leaving them white');

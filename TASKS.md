@@ -35,7 +35,8 @@ asked 2026-09-27 (D-063).
   clip's right-click too. Not seen in the application yet.
 - Done (D-068), asked the same day after six layered takes proved
   unreadable: Alt+wheel grows the selected track, which keeps its height for
-  when it is selected again. Not seen in the application yet.
+  when it is selected again. The vertical scrollbar is gone, the wheel
+  scrolling the tracks. Not seen in the application yet.
 - Not started: editing the controller moves and the automation points by
   hand.
 
