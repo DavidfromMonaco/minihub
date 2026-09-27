@@ -6,6 +6,7 @@ import {
   QUANTIZE_GRIDS, SNAP_STEPS, SequencerModel, TICKS_PER_QUARTER, ppqToTicks, ticksToPpq
 } from '../src/renderer/js/core/sequencerModel.js';
 import { SequencerController } from '../src/renderer/js/core/sequencerController.js';
+import { createHub } from '../src/renderer/js/core/hub.js';
 import { notesInBox, selectNoteIds } from '../src/renderer/js/core/clipEditorSelection.js';
 
 function controllerRig() {
@@ -279,6 +280,50 @@ test('Clip Editor operations mutate the same canonical project state and reject 
   }).reason, 'stale-project');
   controller.model.removeClip(midiClip.id);
   assert.equal(controller.handleClipEditorRequest({ kind: 'get', clipId: midiClip.id }).reason, 'clip-not-found');
+});
+
+test('a take zoomed in asks the engine for its peaks, and only an audio clip with a file is asked for', async () => {
+  const { controller, hub } = controllerRig();
+  const asked = [];
+  let answer = { ok: true, peaks: [0.1, 0.9] };
+  hub.engine.sequencerAudioPeaks = async (...args) => { asked.push(args); return answer; };
+  const audio = controller.model.addTrack('audio');
+  const take = controller.model.addAudioClip(audio.id, { filePath: 'C:/takes/one.wav', durationSeconds: 8, trimEndSeconds: 8 });
+  const midi = controller.model.addTrack('midi');
+  const notes = controller.model.addMidiClip(midi.id, 0, 4);
+  const payload = { fromSeconds: 2, toSeconds: 4, count: 2 };
+  assert.deepEqual(await controller.handleClipEditorRequest({ kind: 'peaks', clipId: take.id, payload }),
+    { ok: true, fromSeconds: 2, toSeconds: 4, peaks: [0.1, 0.9] });
+  assert.deepEqual(asked, [['C:/takes/one.wav', 2, 4, 2]], "the file is the clip's own, never one the window names");
+  assert.equal((await controller.handleClipEditorRequest({ kind: 'peaks', clipId: notes.id, payload })).reason, 'clip-not-found');
+  answer = { ok: false, reason: 'not-answered' };
+  assert.equal((await controller.handleClipEditorRequest({ kind: 'peaks', clipId: take.id, payload })).reason, 'not-answered');
+  hub.engine.sequencerAudioPeaks = async () => { throw new Error('engine stopped'); };
+  assert.equal((await controller.handleClipEditorRequest({ kind: 'peaks', clipId: take.id, payload })).reason, 'engine-unavailable');
+});
+
+test('an answer the main window gives later reaches the Clip Editor whole', async () => {
+  const replies = [];
+  let listener = null;
+  const hub = createHub({
+    loadSettings: async () => ({}), saveSettings: async () => true,
+    engineCommand: async () => ({ ok: true }), engineState: async () => ({ state: 'running', error: null }),
+    onEngineEvent: () => () => {}, onEngineState: () => () => {},
+    onClipEditorRequest: (callback) => { listener = callback; return () => {}; },
+    clipEditorRespond: async (reply) => { replies.push(reply); return true; }
+  });
+  hub.project._loading = false;
+  hub.nodes.create('sequencer');
+  hub.sequencer.load();
+  assert.equal(typeof listener, 'function');
+  const audio = hub.sequencer.model.addTrack('audio');
+  const take = hub.sequencer.model.addAudioClip(audio.id, { filePath: 'C:/takes/one.wav', durationSeconds: 8, trimEndSeconds: 8 });
+  hub.engine.sequencerAudioPeaks = async () => ({ ok: true, peaks: [0.5] });
+  listener({ requestId: 'r-1', kind: 'peaks', clipId: take.id, payload: { fromSeconds: 0, toSeconds: 1, count: 1 } });
+  listener({ requestId: 'r-2', kind: 'history', operation: 'undo' });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.deepEqual(replies.find((reply) => reply.requestId === 'r-1'), { requestId: 'r-1', ok: true, fromSeconds: 0, toSeconds: 1, peaks: [0.5] });
+  assert.equal(typeof replies.find((reply) => reply.requestId === 'r-2')?.ok, 'boolean', 'undo said whether it did anything, as it promised');
 });
 
 test('Clip Editor transport commands control and reflect the one Sequencer/native transport', async () => {

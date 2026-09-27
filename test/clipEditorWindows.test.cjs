@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const {
-  ClipEditorWindows, OPERATIONS, AUDITION_MAX_MS, validAudition, validPayload, validTransportState
+  ClipEditorWindows, OPERATIONS, AUDITION_MAX_MS, MAX_PEAKS, validAudition, validPayload, validPeaksRequest, validTransportState
 } = require('../src/main/clipEditorWindows');
 
 let nextWebContentsId = 10;
@@ -269,7 +269,7 @@ test('sequential open/close cycles replace WebContents IDs and cannot consume st
   // handler per channel.
   assert.deepEqual([...handlers.keys()].sort(), [
     'clip-editor:audition', 'clip-editor:close', 'clip-editor:close-all', 'clip-editor:get',
-    'clip-editor:history', 'clip-editor:invalidate', 'clip-editor:open',
+    'clip-editor:history', 'clip-editor:invalidate', 'clip-editor:open', 'clip-editor:peaks',
     'clip-editor:ready', 'clip-editor:respond', 'clip-editor:transport',
     'clip-editor:transport-publish', 'clip-editor:update'
   ], 'bind remains idempotent and does not accumulate IPC handlers');
@@ -310,6 +310,31 @@ test('Clip Editor preload is narrowly scoped and no browser security setting is 
   assert.match(windows, /nodeIntegration:\s*false/);
   assert.doesNotMatch(windows, /webSecurity\s*:\s*false/);
   assert.doesNotMatch(windows, /loadURL|https?:\/\//);
+});
+
+test("a take's peaks are asked for its own clip, bounded, and answered by the main renderer", async () => {
+  const { handlers, mainWindow, mainEvent } = rig();
+  await handlers.get('clip-editor:open')(mainEvent, 'clip-audio-1');
+  const editorEvent = { sender: FakeWindow.instances[0].webContents };
+  const promise = handlers.get('clip-editor:peaks')(editorEvent, 'clip-audio-1', { fromSeconds: 1.5, toSeconds: 3, count: 1200 });
+  const request = mainWindow.webContents.sent.at(-1);
+  assert.equal(request.payload.kind, 'peaks', 'a read: no edit, no project gate');
+  assert.deepEqual(request.payload.payload, { fromSeconds: 1.5, toSeconds: 3, count: 1200 });
+  handlers.get('clip-editor:respond')(mainEvent, { requestId: request.payload.requestId, ok: true, peaks: [0.5] });
+  assert.deepEqual((await promise).peaks, [0.5]);
+  assert.deepEqual(await handlers.get('clip-editor:peaks')(editorEvent, 'clip-audio-2', { fromSeconds: 0, toSeconds: 1, count: 1 }),
+    { ok: false, reason: 'invalid-request' }, 'a window reads its own take only');
+
+  assert.equal(validPeaksRequest({ fromSeconds: 0, toSeconds: 0.001, count: MAX_PEAKS }), true);
+  for (const bad of [
+    { fromSeconds: 1, toSeconds: 1, count: 10 }, { fromSeconds: 2, toSeconds: 1, count: 10 },
+    { fromSeconds: -1, toSeconds: 1, count: 10 }, { fromSeconds: 0, toSeconds: 2e6, count: 10 },
+    { fromSeconds: 0, toSeconds: 1, count: 0 }, { fromSeconds: 0, toSeconds: 1, count: MAX_PEAKS + 1 },
+    { fromSeconds: 0, toSeconds: 1, count: 1.5 }, { fromSeconds: 0, toSeconds: 1, count: 10, filePath: 'C:/x.wav' },
+    null, []
+  ]) assert.equal(validPeaksRequest(bad), false, JSON.stringify(bad));
+  const preload = fs.readFileSync(path.join(__dirname, '..', 'src', 'main', 'clipEditorPreload.js'), 'utf8');
+  assert.match(preload, /'clip-editor:peaks'/, 'the bridge exposes it');
 });
 
 test('sounding a note is its own channel, bounded, and refused for a stale project', async () => {

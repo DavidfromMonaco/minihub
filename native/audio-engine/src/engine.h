@@ -129,6 +129,7 @@ private:
     void cmdSequencerCancelExport(const juce::var& msg);
     void cmdSequencerQuiesce(const juce::var& msg);
     void cmdSequencerPanic(const juce::var& msg);
+    void cmdSequencerAudioPeaks(const juce::var& msg);
     void cmdShutdown(const juce::var& msg);
 
     Chain* getOrCreateChain(const juce::String& chainId);

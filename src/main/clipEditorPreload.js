@@ -16,6 +16,7 @@ contextBridge.exposeInMainWorld('clipEditorAPI', {
   // Undo and redo belong to the application, not to this window. It asks; the
   // main renderer's history answers.
   history: (direction) => ipcRenderer.invoke('clip-editor:history', direction),
+  peaks: (clipId, request) => ipcRenderer.invoke('clip-editor:peaks', clipId, request),
   onChanged: (callback) => {
     const listener = () => callback();
     ipcRenderer.on('clip-editor:changed', listener);

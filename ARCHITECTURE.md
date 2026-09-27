@@ -306,7 +306,8 @@ automatiques.
   logged), `oneRingMaterial`, `oneRingMaterialSet`, `oneRingWrite`
 - transport : `transport`, `metronomeTick`
 - séquenceur : `sequencerMidiRecorded`, `sequencerAudioRecorded`,
-  `sequencerAudioInfo`, `sequencerExport`, `sequencerQuiesced`
+  `sequencerAudioInfo`, `sequencerExport`, `sequencerQuiesced`,
+  `sequencerAudioPeaks` (the answer to the command of that name, never logged)
 - télémétrie : `masterMeter`, `hostTiming`, `audioPathTelemetry`,
   `audioRuntimeTelemetry`
 
@@ -943,6 +944,18 @@ by which the audio thread writes a plugin parameter.
 
 Une piste est `midi` ou `audio` ; un clip audio porte `trimStartSeconds`,
 `trimEndSeconds`, `gain`, `peaks` et un état de disponibilité du média.
+
+A take's `peaks` are 256 for the whole file, enough for the arrangement. The
+Clip Editor zooms an audio take down to a millisecond per pixel, where one of
+them spans a screen, so it asks for what it shows: `clip-editor:peaks` (main
+checks the range and the count, at most 4096) reaches the main window, which
+names the clip's own file in the engine command `sequencerAudioPeaks`. The
+engine reads the take it already holds in memory for the arrangement
+(`SequencerEngine::audioPeaks`, message thread, as the sync that loaded it)
+and never the disk; a take changed on disk since is not answered. The editor
+asks for the screen and one either side at a slice per pixel, once the view
+has been still for 80 ms, and draws it over the 256, which it then shows
+faint.
 
 ### Le contrôleur (renderer)
 

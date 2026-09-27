@@ -37,7 +37,10 @@ const PERIODIC_EVENTS = new Set([
   // step while it plays.
   'oneRingStatus',
   // Where an Audio Player is in its file, ten times a second while it plays.
-  'audioPlayerStatus'
+  'audioPlayerStatus',
+  // A take's outline for the Clip Editor, asked as it scrolls: up to four
+  // thousand numbers each time, and nothing a log reader needs.
+  'sequencerAudioPeaks'
 ]);
 
 const RUNTIME_TELEMETRY = 'audioRuntimeTelemetry';

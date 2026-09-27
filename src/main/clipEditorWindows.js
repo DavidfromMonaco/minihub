@@ -44,6 +44,18 @@ function validTransportPayload(action, payload) {
     && payload.ppq >= 0 && payload.ppq <= MAX_SEEK_PPQ;
 }
 const HISTORY_DIRECTIONS = new Set(['undo', 'redo']);
+/** The most slices a take's outline is asked in at once: a screen either side
+ *  of a wide one, at a slice per pixel. The engine refuses more. */
+const MAX_PEAKS = 4096;
+
+/** A part of a take, in seconds from the file's start, and how finely. */
+function validPeaksRequest(value) {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+    && Object.keys(value).length === 3
+    && finite(value.fromSeconds) && finite(value.toSeconds)
+    && value.fromSeconds >= 0 && value.toSeconds > value.fromSeconds && value.toSeconds <= 1e6
+    && Number.isInteger(value.count) && value.count >= 1 && value.count <= MAX_PEAKS;
+}
 // Kept identical to QUANTIZE_GRIDS in core/sequencerModel.js. The process
 // boundary is why this is a second list -- main is CommonJS, the model is an
 // ES module -- so a test compares the two rather than trusting this comment.
@@ -213,6 +225,12 @@ class ClipEditorWindows {
       if (!editor || editor.clipId !== clipId || !PROJECT_ID.test(String(expectedProjectId || ''))
           || !TRANSPORT_ACTIONS.has(action) || !validTransportPayload(action, payload)) return { ok: false, reason: 'invalid-request' };
       return this._requestCanonical(editor, 'transport', action, action === 'seek' ? { ppq: payload.ppq } : null, expectedProjectId);
+    });
+    this.ipcMain.handle('clip-editor:peaks', (event, clipId, request) => {
+      const editor = this._editorForSender(event);
+      if (!editor || editor.clipId !== clipId || !validPeaksRequest(request)) return { ok: false, reason: 'invalid-request' };
+      const { fromSeconds, toSeconds, count } = request;
+      return this._requestCanonical(editor, 'peaks', null, { fromSeconds, toSeconds, count }, '');
     });
     this.ipcMain.handle('clip-editor:audition', (event, clipId, expectedProjectId, payload) => {
       const editor = this._editorForSender(event);
@@ -389,5 +407,5 @@ class ClipEditorWindows {
 
 module.exports = {
   ClipEditorWindows, CLIP_ID, PROJECT_ID, OPERATIONS, TRANSPORT_ACTIONS, AUDITION_MAX_MS,
-  validAudition, validPayload, validTransportState
+  validAudition, validPayload, validPeaksRequest, validTransportState, MAX_PEAKS
 };

@@ -537,6 +537,7 @@ void Engine::handleCommand(const juce::var& msg)
     else if (type == "sequencerCancelExport") cmdSequencerCancelExport(msg);
     else if (type == "sequencerQuiesce") cmdSequencerQuiesce(msg);
     else if (type == "sequencerPanic") cmdSequencerPanic(msg);
+    else if (type == "sequencerAudioPeaks") cmdSequencerAudioPeaks(msg);
     else if (type == "capturePluginStates") cmdCapturePluginStates(msg);
     else if (type == "shutdown") cmdShutdown(msg);
     else
@@ -2184,6 +2185,44 @@ void Engine::cmdSequencerQuiesce(const juce::var& msg)
     panicAllMidi();
     juce::var out=makeObject();setProp(out,"type","sequencerQuiesced");setProp(out,"requestId",msg["requestId"]);setProp(out,"wasRecording",wasRecording);setProp(out,"cancelledExport",cancelledExport);ipc_.send(out);
     cmdGetTransport(msg);
+}
+
+/** A take's outline at the Clip Editor's zoom: 256 peaks for a whole file
+ *  are an outline, not the signal, once one of them spans a screen. Read from
+ *  the take the arrangement already holds in memory, never from the disk. */
+void Engine::cmdSequencerAudioPeaks(const juce::var& msg)
+{
+    const juce::String requestId = msg["requestId"].toString();
+    juce::var out = makeObject();
+    setProp(out, "type", "sequencerAudioPeaks");
+    setProp(out, "requestId", requestId);
+    const auto number = [&](const char* key) {
+        const auto& value = msg[key];
+        return value.isInt() || value.isInt64() || value.isDouble()
+            ? (double)value : std::numeric_limits<double>::quiet_NaN();
+    };
+    const juce::String filePath = msg["filePath"].toString();
+    const double from = number("fromSeconds"), to = number("toSeconds"), count = number("count");
+    std::vector<float> peaks;
+    double duration = 0.0;
+    std::string error;
+    const bool ok = !requestId.isEmpty() && requestId.length() <= 160
+        && filePath.isNotEmpty() && filePath.length() <= 4096 && juce::File::isAbsolutePath(filePath)
+        && std::isfinite(count) && count == std::floor(count)
+        && sequencer_.audioPeaks(juce::File(filePath), from, to, (int)juce::jlimit(0.0, 4097.0, count), peaks, duration, error);
+    setProp(out, "ok", ok);
+    if (ok)
+    {
+        juce::Array<juce::var> list;
+        list.ensureStorageAllocated((int)peaks.size());
+        for (const auto peak : peaks)
+            list.add(std::round(static_cast<double>(peak) * 10000.0) / 10000.0);
+        setProp(out, "peaks", list);
+        setProp(out, "durationSeconds", duration);
+    }
+    else
+        setProp(out, "message", error.empty() ? juce::String("invalid request") : juce::String(error));
+    ipc_.send(out);
 }
 
 void Engine::cmdSequencerPanic(const juce::var&)

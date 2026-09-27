@@ -276,10 +276,12 @@ export class SequencerController {
       let response;
       try { response = this.handleClipEditorRequest(request); }
       catch (_) { response = { ok: false, reason: 'invalid-request' }; }
-      Promise.resolve(this.hub.api.clipEditorRespond?.({
-        requestId: request?.requestId,
-        ...response
-      })).catch(() => {});
+      // Awaited: `history` and `peaks` answer later, and a promise spread
+      // into the reply carried nothing but its id.
+      Promise.resolve(response)
+        .catch(() => ({ ok: false, reason: 'invalid-request' }))
+        .then((answer) => this.hub.api.clipEditorRespond?.({ requestId: request?.requestId, ...answer }))
+        .catch(() => {});
     });
     if (offEditorRequests) this._unsubs.push(offEditorRequests);
     Promise.resolve(this.hub.api.clipEditorReady?.()).catch(() => {});
@@ -823,6 +825,17 @@ export class SequencerController {
     if (request.kind === 'get') {
       const state = this.clipEditorState(clipId);
       return state ? { ok: true, state } : { ok: false, reason: 'clip-not-found' };
+    }
+    if (request.kind === 'peaks') {
+      // A read, not an edit: no project gate, as `get` has none. What is
+      // asked is bounded by main (clipEditorWindows.js), the take by its clip.
+      const found = this.model._clip(clipId);
+      if (!found || found.track.type !== 'audio' || !found.clip.filePath) return { ok: false, reason: 'clip-not-found' };
+      if (typeof this.hub.engine?.sequencerAudioPeaks !== 'function') return { ok: false, reason: 'unsupported-request' };
+      const { fromSeconds, toSeconds, count } = request.payload || {};
+      return Promise.resolve(this.hub.engine.sequencerAudioPeaks(found.clip.filePath, fromSeconds, toSeconds, count))
+        .then((answer) => (answer?.ok ? { ok: true, fromSeconds, toSeconds, peaks: answer.peaks } : { ok: false, reason: answer?.reason || 'not-answered' }))
+        .catch(() => ({ ok: false, reason: 'engine-unavailable' }));
     }
     if (request.kind === 'audition') {
       if (this.hub.project?._transitionPending) return { ok: false, reason: 'project-transition' };

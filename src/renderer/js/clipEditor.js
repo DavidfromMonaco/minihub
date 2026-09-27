@@ -45,6 +45,21 @@ let audioView = { pxPerSecond: 0, fitted: false };
  *  reason the arrangement reads its position from its model: freshly inserted
  *  markup can read back a scroll of zero for a view that is in the middle. */
 let audioScrollLeft = 0;
+/**
+ * The part of the take around the screen, drawn finely: `{ filePath,
+ * fromSeconds, toSeconds, pxPerSecond, peaks }`, or null.
+ *
+ * The take's own peaks are 256 for the whole file, so zoomed in one of them
+ * spans a screen and the outline is not the signal. What is on screen, and a
+ * screen either side, is asked of the engine at a slice per pixel, once the
+ * view has been still for `AUDIO_DETAIL_DELAY_MS`; an answer for a view that
+ * has moved on since is dropped.
+ */
+let audioDetail = null;
+let audioDetailTimer = 0;
+let audioDetailAsk = 0;
+const AUDIO_DETAIL_DELAY_MS = 80;
+const AUDIO_DETAIL_MAX_PEAKS = 4096;
 const clipId = new URLSearchParams(globalThis.location.search).get('clipId') || '';
 const root = document.getElementById('clip-editor-root');
 let current = null;
@@ -357,7 +372,8 @@ function audioMarkup(state) {
       <div class="clip-audio-scroll" data-audio-scroll>
         <div class="clip-audio-canvas" data-ce-width="${audioCanvasWidth()}">
           <div class="clip-audio-ruler" data-audio-ruler></div>
-          <svg class="clip-audio-wave" viewBox="0 -1 ${wave.count} 2" preserveAspectRatio="none" aria-hidden="true"><path d="${wave.path}"/></svg>
+          <svg class="clip-audio-wave" data-audio-wave viewBox="0 -1 ${wave.count} 2" preserveAspectRatio="none" aria-hidden="true"><path d="${wave.path}"/></svg>
+          <svg class="clip-audio-wave clip-audio-wave--detail is-off" data-audio-detail viewBox="0 -1 1 2" preserveAspectRatio="none" aria-hidden="true"><path d=""/></svg>
         </div>
       </div>
       ${navigationBarMarkup()}
@@ -397,6 +413,84 @@ function renderAudioRuler() {
   ruler.querySelectorAll('.clip-audio-mark').forEach((mark, index) => { mark.style.left = `${marks[index] * scale}px`; });
 }
 
+/** Whether the take's own peaks are coarser than the screen: two pixels each. */
+function audioDetailNeeded() {
+  const count = Array.isArray(current?.clip?.peaks) ? current.clip.peaks.length : 0;
+  return Boolean(current?.clip?.filePath) && current.clip.mediaAvailable !== false
+    && audioCanvasWidth() > Math.max(1, count) * 2;
+}
+
+/** Whether the fine outline in hand was asked at this zoom, for this take. */
+function audioDetailShown() {
+  return Boolean(audioDetail && audioDetail.pxPerSecond === audioView.pxPerSecond
+    && audioDetail.filePath === current?.clip?.filePath && audioDetailNeeded());
+}
+
+/**
+ * The take's own 256 peaks: hidden where the fine outline covers the screen,
+ * faint while a scroll has gone past it, whole when there is none. Called on
+ * every scroll, so it only reads the view and flips two classes.
+ */
+function shadeAudioWave() {
+  const wave = root.querySelector('[data-audio-wave]');
+  if (!wave) return;
+  const shown = audioDetailShown();
+  const scale = audioView.pxPerSecond;
+  const from = audioScrollLeft / scale;
+  const to = Math.min(audioDuration(), (audioScrollLeft + audioViewportPx()) / scale);
+  const covered = shown && audioDetail.fromSeconds <= from + 1e-9 && audioDetail.toSeconds >= to - 1e-9;
+  wave.classList.toggle('is-covered', covered);
+  wave.classList.toggle('is-faint', shown && !covered);
+}
+
+/** Draw the fine outline where it was asked, or put the take's own back. */
+function drawAudioDetail() {
+  const detail = root.querySelector('[data-audio-detail]');
+  if (!detail) return;
+  const scale = audioView.pxPerSecond;
+  const shown = audioDetailShown();
+  detail.classList.toggle('is-off', !shown);
+  shadeAudioWave();
+  if (!shown) return;
+  const outline = waveformPath(audioDetail.peaks);
+  detail.setAttribute('viewBox', `0 -1 ${outline.count} 2`);
+  detail.querySelector('path')?.setAttribute('d', outline.path);
+  detail.style.marginLeft = `${audioDetail.fromSeconds * scale}px`;
+  detail.style.width = `${(audioDetail.toSeconds - audioDetail.fromSeconds) * scale}px`;
+}
+
+/** Ask for the fine outline once the view has been still a moment. */
+function scheduleAudioDetail() {
+  globalThis.clearTimeout(audioDetailTimer);
+  audioDetailTimer = globalThis.setTimeout(askAudioDetail, AUDIO_DETAIL_DELAY_MS);
+}
+
+async function askAudioDetail() {
+  const width = audioViewportPx();
+  const scale = audioView.pxPerSecond;
+  const filePath = current?.clip?.filePath;
+  if (!audioDetailNeeded() || !(width > 0) || !(scale > 0) || typeof globalThis.clipEditorAPI?.peaks !== 'function') {
+    drawAudioDetail();
+    return;
+  }
+  const seen = { from: audioScrollLeft / scale, to: (audioScrollLeft + width) / scale };
+  if (audioDetail && audioDetail.pxPerSecond === scale && audioDetail.filePath === filePath
+      && audioDetail.fromSeconds <= seen.from && audioDetail.toSeconds >= Math.min(seen.to, audioDuration())) {
+    drawAudioDetail();
+    return;
+  }
+  const fromSeconds = Math.max(0, (audioScrollLeft - width) / scale);
+  const toSeconds = Math.min(audioDuration(), (audioScrollLeft + width * 2) / scale);
+  if (!(toSeconds > fromSeconds)) return;
+  const count = Math.max(1, Math.min(AUDIO_DETAIL_MAX_PEAKS, Math.round((toSeconds - fromSeconds) * scale)));
+  const ask = ++audioDetailAsk;
+  let answer = null;
+  try { answer = await globalThis.clipEditorAPI.peaks(clipId, { fromSeconds, toSeconds, count }); } catch (_) { answer = null; }
+  if (ask !== audioDetailAsk || scale !== audioView.pxPerSecond || !answer?.ok || !Array.isArray(answer.peaks)) return;
+  audioDetail = { filePath, fromSeconds, toSeconds, pxPerSecond: scale, peaks: answer.peaks };
+  drawAudioDetail();
+}
+
 /** The take as the navigation bar sees it, in seconds. */
 function audioNavigationView() {
   const width = audioViewportPx();
@@ -421,6 +515,8 @@ function applyAudioNavigation({ start, span }) {
     scroll.scrollLeft = left;
     audioScrollLeft = left;
     renderAudioRuler();
+    shadeAudioWave();
+    scheduleAudioDetail();
     return;
   }
   audioView = { pxPerSecond: scale, fitted: true };
@@ -464,6 +560,8 @@ function settleAudio() {
     audioScrollLeft = scroll.scrollLeft;
     renderAudioRuler();
     navigation.render();
+    shadeAudioWave();
+    scheduleAudioDetail();
   });
   scroll.addEventListener('wheel', (event) => {
     if (!(event.ctrlKey || event.metaKey)) return;
@@ -473,6 +571,10 @@ function settleAudio() {
   }, { passive: false });
   renderAudioRuler();
   navigation.render();
+  // Redrawn markup starts with the take's own outline: the fine one is put
+  // back where it still fits, and asked for where it does not.
+  drawAudioDetail();
+  scheduleAudioDetail();
 }
 
 const clampZoom = (next = {}) => ({

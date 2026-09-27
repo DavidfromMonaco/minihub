@@ -1964,6 +1964,28 @@ void testSequencerTrackSumGainAndTrace()
     loopTracks.clear();loopTracks.add(track({a,b}));expect(sequencer.sync(makeSequencerProject(loopTracks),[](const std::string&){return (mlh::Chain*)nullptr;},48000,1024,info,error),"dynamic track-gain arrangement compiles");transport.setLoop(false,0,4);auto renderControl=[&](float gain,bool muted){expect(sequencer.setTrackControl("track-correctness",gain,muted),"live track control updates without rebuilding the clip plan");transport.seekPpq(0);transport.beginBlock();juce::AudioBuffer<float> result(2,1024);sequencer.renderAudio(result,1024,transport);return result;};auto unity=renderControl(1.0f,false);auto minusSix=renderControl(.501187f,false);auto plusSix=renderControl(1.995262f,false);auto muted=renderControl(1.0f,true);const float unityPeak=unity.getMagnitude(0,1024);expect(std::abs(minusSix.getMagnitude(0,1024)/unityPeak-.501187f)<1.0e-6f,"-6 dB track fader applies 0.501187 after the 2A clip sum");expect(std::abs(plusSix.getMagnitude(0,1024)/unityPeak-1.995262f)<1.0e-6f,"+6 dB track fader applies 1.995262 after the 2A clip sum");expect(muted.getMagnitude(0,1024)==0,"track mute outputs exact zero without stopping transport");auto minusTwelve=renderControl(.251189f,false);auto restored=renderControl(1.0f,false);expect(std::abs(minusTwelve.getMagnitude(0,1024)/unityPeak-.251189f)<1.0e-6f&&std::abs(restored.getMagnitude(0,1024)-unityPeak)<1.0e-6f,"dynamic 0 dB -> -12 dB -> 0 dB reacts on consecutive live blocks");expect(sequencer.setTrackControl("track-correctness",1.0f,false,-1.0f),"a track takes a pan with its fader");auto hardLeft=renderControl(1.0f,false);expect(std::abs(hardLeft.getMagnitude(0,0,1024)-unity.getMagnitude(0,0,1024))<1.0e-6f&&hardLeft.getMagnitude(1,0,1024)==0,"a track panned hard left keeps its left side whole and silences its right");auto keptPan=renderControl(.5f,false);expect(keptPan.getMagnitude(1,0,1024)==0,"a fader move that says nothing of the pan leaves it where it was");expect(sequencer.setTrackControl("track-correctness",1.0f,false,0.0f),"the pan comes back to the centre");auto centred=renderControl(1.0f,false);expect(std::abs(centred.getMagnitude(1,0,1024)-unity.getMagnitude(1,0,1024))<1.0e-6f,"centred, the track is the signal it was before pans existed");const auto trace=sequencer.trackSignalTrace(&transport);expect(trace.size()==1&&trace[0].activeClips==2&&std::abs(trace[0].peakAfterSum-2.0f*trace[0].peakBeforeSum)<.0001f&&trace[0].gainApplied==1.0f&&std::abs(trace[0].peakAfterGain-trace[0].peakAfterSum)<.0001f&&trace[0].destinationBuffer=="mixer-001:audio-in","instrumentation reports clips -> SUM -> gain -> destination without resetting a clip buffer");sourceFile.deleteFile();
 }
 
+void testSequencerAudioPeaksAtAnyZoom()
+{
+    const auto sourceFile=makeSineWav();mlh::SequencerEngine sequencer;sequencer.prepare(48000,256);
+    std::vector<float> peaks;double duration=0;std::string error;
+    expect(!sequencer.audioPeaks(sourceFile,0,.1,64,peaks,duration,error)&&peaks.empty(),"a take the arrangement never loaded is not answered");
+    juce::Array<juce::var> tracks;tracks.add(audioTrack("track-peaks",sourceFile,false));juce::Array<juce::var> info;
+    expect(sequencer.sync(makeSequencerProject(tracks),[](const std::string&){return (mlh::Chain*)nullptr;},48000,256,info,error),"the take loads");
+    expect(sequencer.audioPeaks(sourceFile,0,.1,100,peaks,duration,error)&&peaks.size()==100,"a hundred slices of the whole take");
+    float loudest=0;for(const auto peak:peaks)loudest=std::max(loudest,peak);
+    expect(std::abs(duration-.1)<1.0e-9&&std::abs(loudest-.4f)<.001f,"the slices hold the take's own level, and its length comes back");
+    // Zoomed to a sample per slice, the outline is the signal itself.
+    expect(sequencer.audioPeaks(sourceFile,0,48.0/48000.0,48,peaks,duration,error)&&peaks.size()==48,"one slice per sample");
+    float worst=0;for(int i=0;i<48;++i)worst=std::max(worst,std::abs(peaks[(size_t)i]-std::abs(.4f*std::sin(float(i)*.05f))));
+    expect(worst<1.0e-4f,"each slice is its sample's own level");
+    expect(sequencer.audioPeaks(sourceFile,.05,.2,10,peaks,duration,error)&&peaks.size()==10&&peaks.back()>0.0f,"a range past the end reads up to the last sample");
+    for(const auto& bad:std::vector<std::pair<std::pair<double,double>,int>>{{{.05,.05},10},{{.06,.05},10},{{-1,.05},10},{{0,.1},0},{{0,.1},4097}})
+        expect(!sequencer.audioPeaks(sourceFile,bad.first.first,bad.first.second,bad.second,peaks,duration,error),"an empty, backward or oversized request is refused");
+    sourceFile.setLastModificationTime(juce::Time::getCurrentTime()+juce::RelativeTime::hours(1));
+    expect(!sequencer.audioPeaks(sourceFile,0,.1,10,peaks,duration,error),"a take changed on disk since it was loaded is not answered for");
+    sourceFile.deleteFile();
+}
+
 void testSequencerAudioRecordingAndMasterExport()
 {
     std::cerr << "[export] setup-and-recording\n";
@@ -4861,6 +4883,8 @@ int main(int argc, char** argv)
     std::cerr << "[core] sequencer-sum-gain\n";
     testSequencerTrackSumGainAndTrace();
     testClipFades();
+    std::cerr << "[core] audio-peaks\n";
+    testSequencerAudioPeaksAtAnyZoom();
     std::cerr << "[core] audio-record-export\n";
     testSequencerAudioRecordingAndMasterExport();
     std::cerr << "[core] one-ring-registry\n";

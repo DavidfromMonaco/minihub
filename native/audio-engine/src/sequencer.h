@@ -58,6 +58,14 @@ public:
     /** Publish an empty immutable plan, silencing any arrangement that was
      *  active before a failed sync or project handoff. */
     void clearPlan();
+    /** Message thread, as `sync` is: the loudest sample of each of `count`
+     *  equal slices of [fromSeconds, toSeconds) of a take the last sync
+     *  loaded. A take is read once, into memory, so the Clip Editor can ask
+     *  for what it shows at any zoom without the file being read again; a
+     *  file the arrangement never loaded, or has changed on disk since, is
+     *  not answered. */
+    bool audioPeaks(const juce::File& file, double fromSeconds, double toSeconds, int count,
+                    std::vector<float>& peaks, double& durationSeconds, std::string& error) const;
 
     void prepare(double sampleRate, int blockSize);
     void processMidi(int numSamples, Transport&, MidiExecutionPlan* = nullptr,

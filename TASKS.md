@@ -17,7 +17,3 @@ Nothing.
 **Splice's Expression reads 0.85 through `parameters` while the saved plugin
 state holds 1.0** — seen through the agent channel. Unexplained.
 
-**A take's waveform, zoomed in, is an outline** — left from the timelines'
-navigation (2026-09-24): a take draws the engine's 256 peaks for the whole
-file, so zoomed in it is not the signal. Finer peaks for what is on screen
-need native work. Not started.

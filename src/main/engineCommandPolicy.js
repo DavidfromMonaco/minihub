@@ -10,7 +10,7 @@ const ALLOWED_ENGINE_COMMANDS = new Set([
   'syncAudioPlayers','audioPlayerTransport',
   'setTransport','getTransport','syncAudioNetwork','setAudioNodeValues','syncMidiNetwork',
   'midiNode','setMetronome','setPlayScope','setMasterOutput','resetMasterClip','syncSequencer','setSequencerTrackControl','sequencerMidiInput',
-  'sequencerRecord','sequencerExport','sequencerCancelExport','sequencerQuiesce','sequencerPanic'
+  'sequencerRecord','sequencerExport','sequencerCancelExport','sequencerQuiesce','sequencerPanic','sequencerAudioPeaks'
 ]);
 
 module.exports = { ALLOWED_ENGINE_COMMANDS };

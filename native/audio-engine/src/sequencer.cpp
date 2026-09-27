@@ -10,6 +10,13 @@
 namespace mlh {
 
 namespace {
+/** A file as the asset cache knows it: its path, and the size and date that
+ *  say it is still the take that was read. */
+std::string audioAssetKey(const juce::File& file)
+{
+    return file.getFullPathName().toStdString()+":"+std::to_string(file.getSize())+":"
+        +std::to_string(file.getLastModificationTime().toMilliseconds());
+}
 float boundedGain(const juce::var& value, float fallback=1.0f)
 {
     if (!value.isInt() && !value.isInt64() && !value.isDouble()) return fallback;
@@ -221,6 +228,34 @@ void SequencerEngine::prepare(double sampleRate, int blockSize)
     for (auto& item : takeWriters_) item.second->prepare(sampleRate_, blockSize_);
 }
 
+bool SequencerEngine::audioPeaks(const juce::File& file, double fromSeconds, double toSeconds, int count,
+                                 std::vector<float>& peaks, double& durationSeconds, std::string& error) const
+{
+    peaks.clear();
+    const auto found=audioAssets_.find(audioAssetKey(file));
+    if(found==audioAssets_.end()||!found->second){error="the take is not loaded";return false;}
+    const auto& asset=*found->second;
+    durationSeconds=asset.durationSeconds;
+    const int total=asset.samples.getNumSamples();
+    if(count<1||count>4096||!std::isfinite(fromSeconds)||!std::isfinite(toSeconds)||fromSeconds<0.0||toSeconds<=fromSeconds||total<=0)
+    {error="invalid range";return false;}
+    const double first=fromSeconds*asset.sampleRate, last=std::min(toSeconds*asset.sampleRate,(double)total);
+    peaks.reserve((size_t)count);
+    for(int b=0;b<count;++b)
+    {
+        // A slice narrower than a sample still reads the one it falls in:
+        // zoomed past the samples, the outline steps rather than vanishing.
+        const int begin=(int)std::min<double>(total-1,std::floor(first+(last-first)*b/count));
+        const int end=(int)std::min<double>(total,std::max<double>(begin+1,std::floor(first+(last-first)*(b+1)/count)));
+        float peak=0.0f;
+        if(begin<total&&begin>=0)
+            for(int ch=0;ch<asset.samples.getNumChannels()&&ch<2;++ch)
+                peak=std::max(peak,asset.samples.getMagnitude(ch,begin,end-begin));
+        peaks.push_back(peak);
+    }
+    return true;
+}
+
 bool SequencerEngine::sync(const juce::var& project,
                            const std::function<Chain*(const std::string&)>& chainLookup,
                            double engineSampleRate, int maxBlockSize,
@@ -329,7 +364,7 @@ bool SequencerEngine::sync(const juce::var& project,
                     audioInfo.add(info);
                 };
                 if(!file.existsAsFile()){silentClip("Audio file is missing: "+file.getFullPathName());continue;}
-                const auto assetKey=file.getFullPathName().toStdString()+":"+std::to_string(file.getSize())+":"+std::to_string(file.getLastModificationTime().toMilliseconds());auto assetFound=audioAssets_.find(assetKey);std::shared_ptr<AudioAsset> asset;
+                const auto assetKey=audioAssetKey(file);auto assetFound=audioAssets_.find(assetKey);std::shared_ptr<AudioAsset> asset;
                 if(assetFound!=audioAssets_.end())asset=assetFound->second;else{std::unique_ptr<juce::AudioFormatReader> reader(formats_.createReaderFor(file));if(!reader){silentClip("Unsupported audio file: "+file.getFullPathName());continue;}if(reader->lengthInSamples<=0||reader->lengthInSamples>std::numeric_limits<int>::max()){silentClip("Audio file is empty or too large: "+file.getFullPathName());continue;}asset=std::make_shared<AudioAsset>();asset->sampleRate=reader->sampleRate;asset->durationSeconds=double(reader->lengthInSamples)/reader->sampleRate;asset->samples.setSize(2,(int)reader->lengthInSamples,false,true,false);reader->read(&asset->samples,0,(int)reader->lengthInSamples,0,true,true);if(reader->numChannels==1)asset->samples.copyFrom(1,0,asset->samples,0,0,asset->samples.getNumSamples());const int buckets=std::min(256,std::max(1,(int)reader->lengthInSamples));for(int b=0;b<buckets;++b){const int begin=(int)(int64_t(b)*reader->lengthInSamples/buckets),end=(int)(int64_t(b+1)*reader->lengthInSamples/buckets);float peak=0;for(int ch=0;ch<2;++ch)peak=std::max(peak,asset->samples.getMagnitude(ch,begin,std::max(1,end-begin)));asset->peaks.push_back(peak);}audioAssets_[assetKey]=asset;}
                 AudioClip clip;clip.id=clipId.toStdString();clip.startPpq=clipStart;clip.lengthPpq=clipLength;clip.gain=boundedGain(clipValue["gain"]);clip.asset=asset;
                 const double duration=asset->durationSeconds;clip.trimStartSeconds=juce::jlimit(0.0,duration,boundedPpq(clipValue["trimStartSeconds"]));clip.trimEndSeconds=juce::jlimit(clip.trimStartSeconds,duration,boundedPpq(clipValue["trimEndSeconds"],duration));

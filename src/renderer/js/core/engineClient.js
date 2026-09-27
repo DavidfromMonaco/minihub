@@ -333,6 +333,16 @@ export class EngineClient {
       case 'audioPlayerTransportResult':
         this.events.emit(`engine:${msg.type}`, msg);
         break;
+      case 'sequencerAudioPeaks': {
+        const pending = this._pendingParams.get(msg.requestId);
+        if (!pending || pending.kind !== 'audio-peaks' || pending.generation !== this._engineGeneration) break;
+        this._pendingParams.delete(msg.requestId);
+        clearTimeout(pending.timer);
+        pending.resolve(msg.ok === true && Array.isArray(msg.peaks)
+          ? { ok: true, peaks: msg.peaks, durationSeconds: msg.durationSeconds }
+          : { ok: false, reason: 'not-answered', message: String(msg.message || '') });
+        break;
+      }
       case 'pluginRequestResult': {
         const pending = this._pendingParams.get(msg.requestId);
         if (!pending || pending.kind !== 'plugin-request') break;
@@ -492,8 +502,10 @@ export class EngineClient {
 
   command(msg) {
     // MIDI and CONTROL can arrive at hardware rate. Logging every value would
-    // turn normal knob movement into unbounded renderer/main-process work.
-    if (msg.type !== 'midi' && msg.type !== 'sequencerMidiInput' && msg.type !== 'setVstParameter') {
+    // turn normal knob movement into unbounded renderer/main-process work. A
+    // take's peaks are asked for as the Clip Editor scrolls, for the same cost.
+    if (msg.type !== 'midi' && msg.type !== 'sequencerMidiInput' && msg.type !== 'setVstParameter'
+        && msg.type !== 'sequencerAudioPeaks') {
       console.log(`[engineClient:command] ${msg.type}`);
     }
     return this.api.engineCommand({ v: PROTOCOL_VERSION, ...msg });
@@ -866,6 +878,35 @@ export class EngineClient {
           if (!this._pendingParams.delete(requestId)) return;
           clearTimeout(timer);
           resolve({ status: 'engine-unavailable', message: String(error?.message || error) });
+        });
+    });
+  }
+
+  /**
+   * The loudest level of each of `count` equal slices of a take's
+   * [fromSeconds, toSeconds), read from the take the arrangement holds in
+   * memory: what the Clip Editor draws when the take is zoomed past its 256
+   * peaks. Answers `{ ok, peaks }`, or `{ ok: false, reason }`.
+   */
+  sequencerAudioPeaks(filePath, fromSeconds, toSeconds, count) {
+    if (this.state !== 'running') return Promise.resolve({ ok: false, reason: 'engine-not-running' });
+    const requestId = this._nextRequestId('audio-peaks');
+    const generation = this._engineGeneration;
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        if (this._pendingParams.delete(requestId)) resolve({ ok: false, reason: 'timeout' });
+      }, this._parameterRequestTimeoutMs);
+      this._pendingParams.set(requestId, { kind: 'audio-peaks', resolve, reject, timer, generation });
+      Promise.resolve(this.command({ type: 'sequencerAudioPeaks', requestId, filePath, fromSeconds, toSeconds, count }))
+        .then((res) => {
+          if (res?.ok || !this._pendingParams.delete(requestId)) return;
+          clearTimeout(timer);
+          resolve({ ok: false, reason: res?.reason || 'engine-unavailable' });
+        })
+        .catch(() => {
+          if (!this._pendingParams.delete(requestId)) return;
+          clearTimeout(timer);
+          resolve({ ok: false, reason: 'engine-unavailable' });
         });
     });
   }
