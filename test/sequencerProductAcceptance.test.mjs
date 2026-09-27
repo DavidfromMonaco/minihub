@@ -26,7 +26,7 @@ test('Sequencer dynamic layout remains compatible with the strict renderer CSP',
     'timeline geometry must be applied through the CSSOM after rendering');
 });
 
-test('Play, an actionable Record and Stop are the header\'s; the Sequencer keeps its status line and no Piano Roll UI', () => {
+test('Play, an actionable Record and Stop are the header\'s; the Sequencer keeps its status line and no Piano Roll UI', async () => {
   const controllerSource = fs.readFileSync(new URL('../src/renderer/js/core/sequencerController.js', import.meta.url), 'utf8');
   const moduleSource = fs.readFileSync(new URL('../src/renderer/js/modules/sequencer/sequencerModule.js', import.meta.url), 'utf8');
   const headerSource = fs.readFileSync(new URL('../src/renderer/js/ui/header.js', import.meta.url), 'utf8');
@@ -43,7 +43,9 @@ test('Play, an actionable Record and Stop are the header\'s; the Sequencer keeps
   assert.match(controllerSource, /liveBlockReason\(\)/,
     'the transport says why what is played is heard by nothing, not only why a take is blocked');
   assert.match(moduleSource, /data-track-inspector/);
-  assert.match(moduleSource, /const TRACK_HEIGHT = 64;/,
+  // A track is 64 px unless it is the selected one, grown by Alt+wheel (D-068).
+  assert.match(moduleSource, /const TRACK_HEIGHT = TRACK_HEIGHTS\.base;/);
+  assert.equal((await import('../src/renderer/js/core/sequencerModel.js')).TRACK_HEIGHTS.base, 64,
     'a track is a lane with a clip in it, not a five-row form');
   assert.match(headerSource, /recordEl\.disabled = recording;/,
     'missing setup is reported by an actionable Record control instead of a silent grey button');

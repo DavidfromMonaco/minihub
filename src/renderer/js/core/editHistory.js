@@ -56,7 +56,7 @@ export const AUTHORED_KEYS = Object.freeze(
  */
 const SEQUENCER_VIEW_FIELDS = Object.freeze([
   'zoom', 'scrollPpq', 'snap',
-  'selectedClipId', 'selectedClipIds', 'selectionAnchorClipId', 'focusedTrackId'
+  'selectedClipId', 'selectedClipIds', 'selectionAnchorClipId', 'focusedTrackId', 'trackHeights'
 ]);
 
 /**

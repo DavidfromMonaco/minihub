@@ -51,6 +51,18 @@ export const SEQUENCER_LIMITS = Object.freeze({ tracks: 64, clipsPerTrack: 2048,
  */
 export const CONTROL_KINDS = Object.freeze(['cc', 'pitchbend', 'pressure', 'polypressure']);
 
+/**
+ * A track's height, in pixels (D-068): every track is `base` tall, and the
+ * selected one grows to the height it was last given, up to `max`.
+ */
+export const TRACK_HEIGHTS = Object.freeze({ base: 64, max: 480 });
+
+/** A track's height as drawn: its own while it is the selected one. */
+export function trackHeightOf(state, trackId) {
+  if (state?.focusedTrackId !== trackId) return TRACK_HEIGHTS.base;
+  return clampFinite(state?.trackHeights?.[trackId] ?? TRACK_HEIGHTS.base, TRACK_HEIGHTS.base, TRACK_HEIGHTS.max);
+}
+
 /** A track's automation (D-065): lanes, and the points a lane may hold. */
 export const AUTOMATION_LIMITS = Object.freeze({ lanesPerTrack: 64, pointsPerLane: 65536 });
 
@@ -215,7 +227,9 @@ export function defaultSequencerState() {
     selectedClipId: null,
     selectedClipIds: [],
     selectionAnchorClipId: null,
-    focusedTrackId: null
+    focusedTrackId: null,
+    // The height each track was last given while selected (D-068), by id.
+    trackHeights: {}
   };
 }
 
@@ -339,7 +353,10 @@ export function normalizeSequencerState(value) {
     selectedClipIds,
     selectionAnchorClipId: clipIds.has(value?.selectionAnchorClipId)
       ? value.selectionAnchorClipId : selectedClipId,
-    focusedTrackId: trackIds.has(value?.focusedTrackId) ? value.focusedTrackId : null
+    focusedTrackId: trackIds.has(value?.focusedTrackId) ? value.focusedTrackId : null,
+    trackHeights: Object.fromEntries(Object.entries(value?.trackHeights && typeof value.trackHeights === 'object' ? value.trackHeights : {})
+      .filter(([id, height]) => trackIds.has(id) && Number.isFinite(Number(height)) && Number(height) > TRACK_HEIGHTS.base)
+      .map(([id, height]) => [id, Math.round(clampFinite(height, TRACK_HEIGHTS.base, TRACK_HEIGHTS.max))]))
   };
 }
 
@@ -797,6 +814,19 @@ export class SequencerModel {
       lane.points = [...before, ...entry, ...drawn, ...exit, ...after].slice(0, AUTOMATION_LIMITS.pointsPerLane);
     }
     return lane;
+  }
+
+  /**
+   * The height a track keeps for when it is selected (D-068); its base height
+   * forgets it. Answers the height it now has.
+   */
+  setTrackHeight(trackId, height) {
+    if (!this._track(trackId)) return null;
+    const next = Math.round(clampFinite(height, TRACK_HEIGHTS.base, TRACK_HEIGHTS.max));
+    this.state.trackHeights = { ...(this.state.trackHeights || {}) };
+    if (next > TRACK_HEIGHTS.base) this.state.trackHeights[trackId] = next;
+    else delete this.state.trackHeights[trackId];
+    return next;
   }
 
   /** Make clips active or inactive (D-067). Answers how many changed. */

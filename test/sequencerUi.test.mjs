@@ -698,6 +698,32 @@ test('a laned clip has its active key, a click on it silences the clip, and an i
   assert.equal(keys(), 3, 'an inactive clip alone keeps its key, or it could not be heard again');
 });
 
+test('Alt+wheel grows the selected track, which keeps that height for when it is selected again (D-068)', async () => {
+  const { hub } = await runtime();
+  hub.nodes.create('sequencer');
+  hub.modules.register(createSequencerModule(hub));
+  const view = captureContainer();
+  const [first, second] = [hub.sequencer.model.addTrack('audio'), hub.sequencer.model.addTrack('audio')];
+  const take = (name, startPpq) => hub.sequencer.model.addAudioClip(first.id, { name, filePath: `C:/${name}.wav`, startPpq, lengthPpq: 8, durationSeconds: 4, trimEndSeconds: 4 });
+  take('Take 1', 0); take('Take 2', 2);
+  hub.modules.activate('sequencer', view.container);
+  hub.sequencer.focusTrack(first.id);
+  hub.sequencer.setTrackHeight(first.id, 64 + 16 * 6);
+  const row = (id) => view.container.innerHTML.match(new RegExp(`data-track-id="${id}" data-seq-top="([0-9]+)" data-seq-height="([0-9]+)"`)).slice(1).map(Number);
+  assert.deepEqual(row(first.id), [48, 160], 'the selected track is 160 px');
+  assert.deepEqual(row(second.id), [208, 64], 'and the track under it starts below it');
+  assert.match(view.container.innerHTML, /data-seq-top="3\.00" data-seq-height="76\.00" data-lanes="2"[^>]*aria-label="Take 1"/, 'its lanes share its height');
+  hub.sequencer.focusTrack(second.id);
+  assert.deepEqual(row(first.id), [48, 64], 'unselected, it is back to the height of the others');
+  assert.equal(hub.sequencer.model.state.trackHeights[first.id], 160, 'and remembers the one it had');
+  hub.sequencer.focusTrack(first.id);
+  assert.deepEqual(row(first.id), [48, 160], 'selected again, it takes it back');
+  hub.sequencer.setTrackHeight(first.id, 10000);
+  assert.deepEqual(row(first.id), [48, 480], 'up to 480 px');
+  hub.sequencer.setTrackHeight(first.id, 0);
+  assert.equal(hub.sequencer.model.state.trackHeights[first.id], undefined, 'down to the base, which is no height to remember');
+});
+
 test('the shell transport seeks by bars, says where it is, and pauses without stopping a One Ring', async () => {
   const { api, hub } = await runtime();
   hub.nodes.create('sequencer');

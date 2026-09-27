@@ -3697,3 +3697,34 @@ what plays. Saved with the project, one undo step.
 `SequencerEngine::sync`. Tests: `test/recordOverdub.test.mjs`,
 `test/sequencerUi.test.mjs` ("a laned clip has its active key"),
 `testSequencerInactiveClipIsSilent` in the native core tests.
+
+## D-068 — Alt+wheel makes the selected track taller, and it remembers
+
+**Status**: in force · 2026-09-27 · **implemented**, checked by the JS tests;
+not yet seen in the application
+
+**Context** — Layered takes in lanes (D-066) made a 64 px track hold four or
+more clips a few pixels tall each: the author's screenshot showed six takes
+nobody could read. He asked to grow a track with Alt+wheel, which nothing
+used, the track grown being the selected one; and for each track to remember
+its grown height -- back to the others' height when another is selected,
+back to its own when selected again.
+
+**Decision** — `trackHeights` in the Sequencer's state, by track id. Every
+track is 64 px; the selected one is drawn at the height it keeps there, 64
+to 480 px, 16 px a notch of Alt+wheel over the arrangement. Nothing selected,
+Alt+wheel does nothing. A height back at 64 is no height to remember.
+
+- It is the view's, like the zoom: saved with the project, carried over by
+  Undo rather than undone (`SEQUENCER_VIEW_FIELDS`), never sent to the engine.
+- A grown track's lanes share its height; a lane too thin for its picture
+  (under 24 px) shows its clip's name alone, whatever the number of lanes.
+- Everything that counted rows of 64 px -- the canvas, the loop range, the
+  playhead, a track's reveal, the drag preview across tracks, the marquee --
+  reads the rows from `trackLayout`.
+
+**Proof in the code** — `TRACK_HEIGHTS`, `trackHeightOf` and `setTrackHeight`
+in `core/sequencerModel.js`; `SequencerController.setTrackHeight`;
+`trackLayout`, `trackIndexAt` and the Alt branch of the timeline's wheel in
+`modules/sequencer/sequencerModule.js`. Test: `test/sequencerUi.test.mjs`
+("Alt+wheel grows the selected track").

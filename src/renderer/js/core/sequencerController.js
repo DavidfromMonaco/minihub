@@ -1738,6 +1738,13 @@ export class SequencerController {
     if (lane) this.changed();
   }
 
+  /** A track's selected height (D-068): the view's, so no undo step, no engine. */
+  setTrackHeight(trackId, height) {
+    const next = this.model.setTrackHeight(trackId, height);
+    if (next !== null) this.changed({ syncNative: false, invalidateEditors: false });
+    return next;
+  }
+
   /** Make clips active or inactive (D-067): one undo step, republished. */
   setClipsMuted(clipIds, muted) {
     if (!this.model.setClipsMuted(clipIds, muted)) return false;

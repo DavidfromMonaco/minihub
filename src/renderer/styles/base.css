@@ -2317,7 +2317,7 @@ body ::-webkit-scrollbar-corner { background:transparent; }
 .seq-clip.muted .seq-clip-mute .speaker { fill:#ff8b2c; }
 .seq-clip.laned .seq-clip-name { font-size:9px; line-height:10px; }
 .seq-clip.laned .seq-midi-preview, .seq-clip.laned .seq-waveform { top:11px; bottom:1px; }
-.seq-clip.laned:not([data-lanes="2"]) .seq-midi-preview, .seq-clip.laned:not([data-lanes="2"]) .seq-waveform { display:none; }
+.seq-clip.laned[data-compact] .seq-midi-preview, .seq-clip.laned[data-compact] .seq-waveform { display:none; }
 .seq-clip.dragging { z-index:6; opacity:.78; box-shadow:0 8px 20px rgba(0,0,0,.48); transition:none; }
 .seq-clip-name { position:relative; z-index:2; display:block; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; font:600 10px var(--font); pointer-events:none; }
 .seq-clip-resize { position:absolute; z-index:4; top:0; bottom:0; width:8px; cursor:ew-resize; background:rgba(255,255,255,.08); }

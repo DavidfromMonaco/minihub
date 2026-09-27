@@ -33,6 +33,9 @@ asked 2026-09-27 (D-063).
 - Done (D-067), asked the same day: a key in a clip's bottom right corner,
   on laned clips and on any inactive one, makes it active or inactive; the
   clip's right-click too. Not seen in the application yet.
+- Done (D-068), asked the same day after six layered takes proved
+  unreadable: Alt+wheel grows the selected track, which keeps its height for
+  when it is selected again. Not seen in the application yet.
 - Not started: editing the controller moves and the automation points by
   hand.
 

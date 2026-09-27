@@ -1,6 +1,6 @@
 import { escapeHtml } from '../../core/html.js';
 import { attachNavigationBar, navigationBarMarkup } from '../../ui/navigationBar.js';
-import { SEQUENCER_LIMITS, SNAP_STEPS, ZOOM_MAX, ZOOM_MIN, snapPpq, snapStep } from '../../core/sequencerModel.js';
+import { SEQUENCER_LIMITS, SNAP_STEPS, ZOOM_MAX, ZOOM_MIN, snapPpq, snapStep, TRACK_HEIGHTS, trackHeightOf } from '../../core/sequencerModel.js';
 import { FADE_SHAPES, fadeGain, fadePaths, fadeShapeIcon } from '../../core/fades.js';
 import { bindTempoInput } from '../../core/tempoControl.js';
 import { isCanonicalMidiIngress } from '../../core/sequencerController.js';
@@ -36,7 +36,32 @@ import {
  * is three sources for one measurement and one of them already wrong.
  */
 const TRACK_HEADER = 260;
-const TRACK_HEIGHT = 64;
+const TRACK_HEIGHT = TRACK_HEIGHTS.base;
+// How much one notch of Alt+wheel grows or shrinks the selected track (D-068).
+const TRACK_HEIGHT_STEP = 16;
+
+/**
+ * Where each track's row starts, from the top of the canvas, and the total:
+ * the selected track may be taller than the others (D-068). Exported for
+ * the tests.
+ */
+export function trackLayout(state) {
+  const tops = [];
+  let y = HEAD_HEIGHT;
+  for (const track of state.tracks) {
+    tops.push(y);
+    y += trackHeightOf(state, track.id);
+  }
+  return { tops, bottom: state.tracks.length ? y : HEAD_HEIGHT + TRACK_HEIGHT };
+}
+
+/** The index of the track row at `y` on the canvas, -1 above, length below. */
+function trackIndexAt(layout, y) {
+  if (y < HEAD_HEIGHT) return -1;
+  let index = 0;
+  while (index + 1 < layout.tops.length && layout.tops[index + 1] <= y) index += 1;
+  return y >= layout.bottom ? layout.tops.length : index;
+}
 const RULER_HEIGHT = 30;
 
 /** The metronome's two keys: its mode, the key's label, and its tooltip. */
@@ -493,11 +518,13 @@ export function clipLanes(clips) {
 
 // The lane a clip is drawn in, as the attributes that place it: nothing for a
 // clip alone, which keeps the stylesheet's full height.
-function laneAttributes(place) {
+function laneAttributes(place, trackHeight = TRACK_HEIGHT) {
   if (!place || place.lanes < 2) return '';
-  const inner = TRACK_HEIGHT - 6;
+  const inner = trackHeight - 6;
   const height = inner / place.lanes;
-  return ` data-seq-top="${(3 + place.lane * height).toFixed(2)}" data-seq-height="${Math.max(8, height - 1).toFixed(2)}" data-lanes="${place.lanes}"`;
+  // Too thin for its picture, the name alone.
+  const compact = height < 24 ? ' data-compact' : '';
+  return ` data-seq-top="${(3 + place.lane * height).toFixed(2)}" data-seq-height="${Math.max(8, height - 1).toFixed(2)}" data-lanes="${place.lanes}"${compact}`;
 }
 
 /**
@@ -514,14 +541,14 @@ function clipMuteMarkup(clip, laned) {
   return `<span class="seq-clip-mute" data-clip-mute role="switch" aria-checked="${!clip.muted}" title="${title}" aria-label="${title}"><svg viewBox="0 0 16 14" aria-hidden="true"><path class="speaker" d="${speaker}"/>${mark}</svg></span>`;
 }
 
-function clipMarkup(track, clip, zoom, selected, bpm = 120, place = null) {
+function clipMarkup(track, clip, zoom, selected, bpm = 120, place = null, trackHeight = TRACK_HEIGHT) {
   const left = clip.startPpq * zoom;
   const width = Math.max(CLIP_MIN_PX, clip.lengthPpq * zoom);
   const content = clipContent(track, clip, zoom);
   const unavailable = track.type === 'audio' && clip.mediaAvailable === false;
   const title = unavailable ? `${clip.name} — ${clip.mediaError || 'Audio media is unavailable'}` : clip.name;
   const laned = place && place.lanes > 1;
-  return `<button class="seq-clip ${track.type} ${selected ? 'selected' : ''} ${unavailable ? 'unavailable' : ''} ${laned ? 'laned' : ''} ${clip.muted ? 'muted' : ''}" data-clip-id="${clip.id}" data-track-id="${track.id}" data-seq-left="${left}" data-seq-width="${width}"${laneAttributes(place)} title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}">
+  return `<button class="seq-clip ${track.type} ${selected ? 'selected' : ''} ${unavailable ? 'unavailable' : ''} ${laned ? 'laned' : ''} ${clip.muted ? 'muted' : ''}" data-clip-id="${clip.id}" data-track-id="${track.id}" data-seq-left="${left}" data-seq-width="${width}"${laneAttributes(place, trackHeight)} title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}">
     <span class="seq-clip-resize start" data-resize="start" aria-hidden="true"></span><span class="seq-clip-name">${escapeHtml(clip.name)}</span>${unavailable ? '<span class="seq-clip-media-error">Missing media</span>' : content}${track.type === 'audio' && !unavailable ? fadeMarkup(clip, zoom, bpm, width) : ''}${clipMuteMarkup(clip, laned)}<span class="seq-clip-resize end" data-resize="end" aria-hidden="true"></span></button>`;
 }
 
@@ -1125,15 +1152,16 @@ export function createSequencerModule(hub) {
   /** Scroll a track row fully into view, without moving when it already is. */
   function revealTrack(trackId) {
     const scroller = container?.querySelector('[data-timeline-scroll]');
-    const index = controller.model.state.tracks.findIndex((track) => track.id === trackId);
+    const state = controller.model.state;
+    const index = state.tracks.findIndex((track) => track.id === trackId);
     if (!scroller || index < 0) return;
     // The rail floats over the bottom of the scrolling area and `.seq-scroll`
     // reserves that band as padding. Read rather than repeated: a second
     // spelling of 14px here is one that would go stale the day the rail grows.
     const padding = parseFloat(globalThis.getComputedStyle?.(scroller)?.paddingBottom);
     scrollTopPx = revealScrollTop({
-      top: HEAD_HEIGHT + index * TRACK_HEIGHT,
-      height: TRACK_HEIGHT,
+      top: trackLayout(state).tops[index],
+      height: trackHeightOf(state, trackId),
       scrollTop: scrollTopPx,
       viewHeight: (scroller.clientHeight || 0) - (Number.isFinite(padding) ? padding : 0),
       stickyTop: HEAD_HEIGHT
@@ -1179,6 +1207,7 @@ export function createSequencerModule(hub) {
       viewportPpq
     });
     const timelineWidth = endPpq * zoom;
+    const layout = trackLayout(state);
     const visibleStart = Math.max(0, state.scrollPpq - viewportPpq);
     const visibleEnd = state.scrollPpq + viewportPpq * 2;
     drawnWindow = { startPpq: visibleStart, endPpq: visibleEnd, viewportPpq };
@@ -1214,10 +1243,10 @@ export function createSequencerModule(hub) {
       </section>
       <section class="panel seq-arrangement">
         <div class="seq-scroll" data-timeline-scroll>
-          <div class="seq-canvas" data-seq-canvas data-seq-head="${TRACK_HEADER}" data-seq-time-ruler="${TIME_RULER_HEIGHT}" data-seq-bar-ruler="${RULER_HEIGHT}" data-seq-width="${TRACK_HEADER + timelineWidth}" data-seq-height="${HEAD_HEIGHT + Math.max(1, state.tracks.length) * TRACK_HEIGHT}">
+          <div class="seq-canvas" data-seq-canvas data-seq-head="${TRACK_HEADER}" data-seq-time-ruler="${TIME_RULER_HEIGHT}" data-seq-bar-ruler="${RULER_HEIGHT}" data-seq-width="${TRACK_HEADER + timelineWidth}" data-seq-height="${layout.bottom}">
             <div class="seq-corner">TRACKS</div><div class="seq-time-ruler" data-seq-time-scale data-seq-left="${TRACK_HEADER}" data-seq-width="${timelineWidth}">${timeRulerMarkup(endPpq, zoom, controller.tempo, visibleStart, visibleEnd)}</div><div class="seq-ruler" data-seq-left="${TRACK_HEADER}" data-seq-width="${timelineWidth}">${meterSpansMarkup(projectRegions, endPpq, zoom)}${rulerMarkup(endPpq, zoom, projectRegions)}${meterMarksMarkup(state.meter, projectRegions, zoom, visibleStart, visibleEnd, 'the project')}</div>
-            <div class="seq-loop-range ${state.loop.enabled ? 'enabled' : ''}" data-seq-left="${TRACK_HEADER + state.loop.startPpq * zoom}" data-seq-width="${(state.loop.endPpq - state.loop.startPpq) * zoom}" data-seq-height="${HEAD_HEIGHT + Math.max(1, state.tracks.length) * TRACK_HEIGHT}"></div>
-            ${state.tracks.length ? state.tracks.map((track, index) => `<div class="seq-track ${state.focusedTrackId === track.id ? 'focused' : ''}" data-track-id="${track.id}" data-seq-top="${HEAD_HEIGHT + index * TRACK_HEIGHT}" data-seq-height="${TRACK_HEIGHT}">
+            <div class="seq-loop-range ${state.loop.enabled ? 'enabled' : ''}" data-seq-left="${TRACK_HEADER + state.loop.startPpq * zoom}" data-seq-width="${(state.loop.endPpq - state.loop.startPpq) * zoom}" data-seq-height="${layout.bottom}"></div>
+            ${state.tracks.length ? state.tracks.map((track, index) => `<div class="seq-track ${state.focusedTrackId === track.id ? 'focused' : ''}" data-track-id="${track.id}" data-seq-top="${layout.tops[index]}" data-seq-height="${trackHeightOf(state, track.id)}">
               <div class="seq-track-head" data-seq-width="${TRACK_HEADER}">
                 <button class="seq-track-select" data-track-action="select" title="Select ${escapeHtml(track.name)}" aria-label="Select ${escapeHtml(track.name)}" aria-pressed="${state.focusedTrackId === track.id}"></button>
                 <button class="seq-arm ${track.armed ? 'active' : ''}" data-track-action="arm" title="Arm">R</button>
@@ -1229,9 +1258,9 @@ export function createSequencerModule(hub) {
                 <div class="seq-track-level"><input data-track-control="volume" type="range" min="-60" max="6" step="0.1" value="${gainToDb(track.volume)}" aria-label="${escapeHtml(track.name)} level in dB"><output data-track-level-value>${formatGainDb(track.volume)}</output><input class="seq-track-pan" data-track-control="pan" type="range" min="-100" max="100" step="1" value="${Math.round((track.pan || 0) * 100)}" title="Pan (double-click: centre)" aria-label="${escapeHtml(track.name)} pan"><output data-track-pan-value>${formatPan(track.pan)}</output></div>
                 ${routeDots(routeStates(hub, track, sequencerNode.id))}
               </div>
-              <div class="seq-track-lane" data-seq-left="${TRACK_HEADER}" data-seq-width="${timelineWidth}">${laneMeterMarkup(track, controller.model.trackRegions(track), endPpq, zoom, visibleStart, visibleEnd)}${((lanes) => track.clips.filter((clip) => clip.startPpq + clip.lengthPpq >= visibleStart && clip.startPpq <= visibleEnd).map((clip) => clipMarkup(track, clip, zoom, selectedClipIds.has(clip.id), controller.tempo, lanes.get(clip.id))).join(''))(clipLanes(track.clips))}${automationMarkup(track, zoom, timelineWidth)}</div>
+              <div class="seq-track-lane" data-seq-left="${TRACK_HEADER}" data-seq-width="${timelineWidth}">${laneMeterMarkup(track, controller.model.trackRegions(track), endPpq, zoom, visibleStart, visibleEnd)}${((lanes) => track.clips.filter((clip) => clip.startPpq + clip.lengthPpq >= visibleStart && clip.startPpq <= visibleEnd).map((clip) => clipMarkup(track, clip, zoom, selectedClipIds.has(clip.id), controller.tempo, lanes.get(clip.id), trackHeightOf(state, track.id))).join(''))(clipLanes(track.clips))}${automationMarkup(track, zoom, timelineWidth)}</div>
             </div>`).join('') : `<div class="seq-empty" data-seq-top="${HEAD_HEIGHT}">Create a MIDI or audio track to begin.</div>`}
-            <div class="seq-playhead" data-playhead data-seq-left="${TRACK_HEADER + controller.playheadPpq * zoom}" data-seq-height="${HEAD_HEIGHT + Math.max(1, state.tracks.length) * TRACK_HEIGHT}"><span class="seq-playhead-grip" data-playhead-grip title="Drag to move the playhead (Alt: off the grid)"></span></div>
+            <div class="seq-playhead" data-playhead data-seq-left="${TRACK_HEADER + controller.playheadPpq * zoom}" data-seq-height="${layout.bottom}"><span class="seq-playhead-grip" data-playhead-grip title="Drag to move the playhead (Alt: off the grid)"></span></div>
           </div>
         </div>
         ${navigationBarMarkup(`data-seq-head="${TRACK_HEADER}"`)}
@@ -1273,6 +1302,17 @@ export function createSequencerModule(hub) {
     container.querySelector('[data-action="zoom-fit"]')?.addEventListener('click', zoomFit);
     container.querySelector('[data-action="zoom-focus"]')?.addEventListener('click', zoomFocus);
     container.querySelector('[data-timeline-scroll]')?.addEventListener('wheel', (event) => {
+      // Alt+wheel: the selected track taller or shorter (D-068). It keeps the
+      // height for the next time it is selected.
+      if (event.altKey && !(event.ctrlKey || event.metaKey)) {
+        event.preventDefault();
+        const state = controller.model.state;
+        const trackId = state.focusedTrackId;
+        if (!trackId) return;
+        const step = event.deltaY < 0 ? TRACK_HEIGHT_STEP : -TRACK_HEIGHT_STEP;
+        controller.setTrackHeight(trackId, trackHeightOf(state, trackId) + step);
+        return;
+      }
       if (!(event.ctrlKey || event.metaKey)) return;
       event.preventDefault();
       const rect = event.currentTarget.getBoundingClientRect?.() || { left: 0 };
@@ -1840,7 +1880,8 @@ export function createSequencerModule(hub) {
       element.style.width = `${Math.max(CLIP_MIN_PX, found.clip.lengthPpq * zoom)}px`;
       const currentTrackIndex = controller.model.state.tracks.indexOf(found.track);
       const trackDelta = currentTrackIndex - origin.trackIndex;
-      element.style.transform = trackDelta ? `translateY(${trackDelta * TRACK_HEIGHT}px)` : '';
+      const tops = trackLayout(controller.model.state).tops;
+      element.style.transform = trackDelta ? `translateY(${tops[currentTrackIndex] - tops[origin.trackIndex]}px)` : '';
       // A resize changes which part of the source the clip shows -- the start
       // edge moves `sourceOffsetPpq`, the end edge moves `lengthPpq` -- so the
       // marks have to be rebuilt to stay where the music is. A move changes
@@ -1928,8 +1969,8 @@ export function createSequencerModule(hub) {
     const covered = clipsInSpan(controller.model.state.tracks, {
       startPpq: (left - TRACK_HEADER) / zoom,
       endPpq: (left + width - TRACK_HEADER) / zoom,
-      fromTrack: Math.floor((top - HEAD_HEIGHT) / TRACK_HEIGHT),
-      toTrack: Math.floor((top + height - HEAD_HEIGHT) / TRACK_HEIGHT)
+      fromTrack: trackIndexAt(trackLayout(controller.model.state), top),
+      toTrack: trackIndexAt(trackLayout(controller.model.state), top + height)
     });
     marquee.ids = [...new Set([...(marquee.additive ? marquee.baseIds : []), ...covered])];
     // Highlighted live, committed once: a re-render per pixel of the band
