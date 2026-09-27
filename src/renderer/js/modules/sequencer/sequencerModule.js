@@ -1,6 +1,6 @@
 import { escapeHtml } from '../../core/html.js';
 import { attachNavigationBar, navigationBarMarkup } from '../../ui/navigationBar.js';
-import { SEQUENCER_LIMITS, SNAP_STEPS, ZOOM_MAX, ZOOM_MIN, snapPpq, snapStep, TRACK_HEIGHTS, trackHeightOf } from '../../core/sequencerModel.js';
+import { SEQUENCER_LIMITS, SNAP_STEPS, ZOOM_MAX, ZOOM_MIN, snapPpq, snapStep, TRACK_HEIGHTS, trackHeightOf, trackSilenced } from '../../core/sequencerModel.js';
 import { FADE_SHAPES, fadeGain, fadePaths, fadeShapeIcon } from '../../core/fades.js';
 import { bindTempoInput } from '../../core/tempoControl.js';
 import { isCanonicalMidiIngress } from '../../core/sequencerController.js';
@@ -1250,7 +1250,7 @@ export function createSequencerModule(hub) {
           <div class="seq-canvas" data-seq-canvas data-seq-head="${TRACK_HEADER}" data-seq-time-ruler="${TIME_RULER_HEIGHT}" data-seq-bar-ruler="${RULER_HEIGHT}" data-seq-width="${TRACK_HEADER + timelineWidth}" data-seq-height="${layout.bottom}">
             <div class="seq-corner">TRACKS</div><div class="seq-time-ruler" data-seq-time-scale data-seq-left="${TRACK_HEADER}" data-seq-width="${timelineWidth}">${timeRulerMarkup(endPpq, zoom, controller.tempo, visibleStart, visibleEnd)}</div><div class="seq-ruler" data-seq-left="${TRACK_HEADER}" data-seq-width="${timelineWidth}">${meterSpansMarkup(projectRegions, endPpq, zoom)}${rulerMarkup(endPpq, zoom, projectRegions)}${meterMarksMarkup(state.meter, projectRegions, zoom, visibleStart, visibleEnd, 'the project')}</div>
             <div class="seq-loop-range ${state.loop.enabled ? 'enabled' : ''}" data-seq-left="${TRACK_HEADER + state.loop.startPpq * zoom}" data-seq-width="${(state.loop.endPpq - state.loop.startPpq) * zoom}" data-seq-height="${layout.bottom}"></div>
-            ${state.tracks.length ? state.tracks.map((track, index) => `<div class="seq-track ${state.focusedTrackId === track.id ? 'focused' : ''}" data-track-id="${track.id}" data-seq-top="${layout.tops[index]}" data-seq-height="${trackHeightOf(state, track.id)}">
+            ${state.tracks.length ? state.tracks.map((track, index) => `<div class="seq-track ${state.focusedTrackId === track.id ? 'focused' : ''} ${!track.muted && trackSilenced(state.tracks, track) ? 'solo-silenced' : ''}" data-track-id="${track.id}" data-seq-top="${layout.tops[index]}" data-seq-height="${trackHeightOf(state, track.id)}">
               <div class="seq-track-head" data-seq-width="${TRACK_HEADER}">
                 <button class="seq-track-select" data-track-action="select" title="Select ${escapeHtml(track.name)}" aria-label="Select ${escapeHtml(track.name)}" aria-pressed="${state.focusedTrackId === track.id}"></button>
                 <button class="seq-arm ${track.armed ? 'active' : ''}" data-track-action="arm" title="Arm">R</button>
@@ -1258,6 +1258,7 @@ export function createSequencerModule(hub) {
                 <input class="seq-track-name" data-track-control="name" value="${escapeHtml(track.name)}">
                 <button class="seq-track-plugin" data-track-action="plugin" ${trackPlugin(hub, track) ? 'title="Open the plugin this track plays"' : 'disabled title="This track plays no plugin"'} aria-label="Open ${escapeHtml(track.name)}'s plugin">${icon('instrument', 13)}</button>
                 <button class="seq-mute ${track.muted ? 'active' : ''}" data-track-action="mute" title="Mute">M</button>
+                <button class="seq-solo ${track.soloed ? 'active' : ''}" data-track-action="solo" title="Solo: only the soloed tracks play" aria-pressed="${track.soloed === true}">S</button>
                 <button class="seq-track-delete" data-track-action="delete" title="Delete track">×</button>
                 <div class="seq-track-level"><input data-track-control="volume" type="range" min="-60" max="6" step="0.1" value="${gainToDb(track.volume)}" aria-label="${escapeHtml(track.name)} level in dB"><output data-track-level-value>${formatGainDb(track.volume)}</output><input class="seq-track-pan" data-track-control="pan" type="range" min="-100" max="100" step="1" value="${Math.round((track.pan || 0) * 100)}" title="Pan (double-click: centre)" aria-label="${escapeHtml(track.name)} pan"><output data-track-pan-value>${formatPan(track.pan)}</output></div>
                 ${routeDots(routeStates(hub, track, sequencerNode.id))}
@@ -1550,6 +1551,7 @@ export function createSequencerModule(hub) {
       event.stopPropagation(); controller.setTrackMonitored(trackId, !track.monitored);
     });
     element.querySelector('[data-track-action="mute"]')?.addEventListener('click', () => controller.setTrack(trackId, { muted: !track.muted }));
+    element.querySelector('[data-track-action="solo"]')?.addEventListener('click', () => controller.setTrack(trackId, { soloed: !track.soloed }));
     element.querySelector('[data-track-action="plugin"]')?.addEventListener('click', () => {
       const target = trackPlugin(hub, track);
       if (target) openPluginWhenReady(hub, target.nodeId, target.pluginInstanceId);

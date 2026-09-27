@@ -295,6 +295,20 @@ function normalizeClip(clip, type) {
   return base;
 }
 
+/**
+ * Whether a track is heard as silent: muted, or left out by another track's
+ * solo. Solo as every workstation has it -- once one track is soloed, only the
+ * soloed ones play -- and with a mute's meaning (D-054): it silences what the
+ * track plays, not what an armed or monitored track passes. The engine is only
+ * ever told this, never `soloed` itself, so neither the plan nor an export
+ * needed to learn a second kind of silence.
+ */
+export function trackSilenced(tracks, track) {
+  if (!track) return false;
+  if (track.muted === true) return true;
+  return track.soloed !== true && (tracks || []).some((other) => other?.soloed === true);
+}
+
 function normalizeTrack(track, index) {
   const type = track?.type === 'audio' ? 'audio' : 'midi';
   return {
@@ -304,6 +318,7 @@ function normalizeTrack(track, index) {
     armed: track?.armed === true,
     monitored: track?.monitored === true,
     muted: track?.muted === true,
+    soloed: track?.soloed === true,
     volume: clampFinite(finite(track?.volume, 1), 0, 2),
     // Balance, -1 (left) to 1 (right). A project from before pans reads 0,
     // which the engine plays exactly as it played without one.
@@ -558,6 +573,7 @@ export class SequencerModel {
     if ('armed' in changes) track.armed = changes.armed === true;
     if ('monitored' in changes) track.monitored = changes.monitored === true;
     if ('muted' in changes) track.muted = changes.muted === true;
+    if ('soloed' in changes) track.soloed = changes.soloed === true;
     if ('volume' in changes) track.volume = clampFinite(changes.volume, 0, 2);
     if ('pan' in changes) track.pan = clampFinite(finite(changes.pan, 0), -1, 1);
     if ('meter' in changes) track.meter = normalizeMeter(changes.meter);

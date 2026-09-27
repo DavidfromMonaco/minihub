@@ -846,3 +846,33 @@ test('a released note is not replayed into the take', () => {
   assert.equal(recordedNotes(commands).length, 0,
     'a note finished before Record would collapse to zero length against startPpq');
 });
+
+test('solo: once a track is soloed only the soloed tracks play, and the engine hears it as silence', async () => {
+  const { controller, commands } = rig();
+  const drums = controller.model.addTrack('midi');
+  const bass = controller.model.addTrack('midi');
+  const pad = controller.model.addTrack('audio');
+  controller.changed();
+  const controls = () => commands.filter((command) => command.type === 'trackControl');
+
+  controller.setTrack(bass.id, { soloed: true });
+  assert.deepEqual(controls().slice(-3).map(({ trackId, muted }) => [trackId, muted]),
+    [[drums.id, true], [bass.id, false], [pad.id, true]], 'every track is told what it now is');
+
+  controller.setTrack(pad.id, { soloed: true });
+  assert.deepEqual(controls().slice(-3).map(({ muted }) => muted), [true, false, false], 'solos add up');
+
+  // A muted track stays muted, soloed or not: the mute is the stronger word.
+  controller.setTrack(pad.id, { muted: true });
+  assert.equal(controls().at(-1).muted, true);
+
+  controller.syncNative();
+  await new Promise((resolve) => queueMicrotask(resolve));
+  const sent = commands.filter((command) => command.type === 'syncSequencer').at(-1).project.tracks;
+  assert.deepEqual(sent.map((track) => track.muted), [true, false, true], 'a sync, and so an export, carries the same');
+  assert.ok(sent.every((track) => !('soloed' in track)), 'the engine is never asked to know what a solo is');
+
+  controller.setTrack(bass.id, { soloed: false });
+  controller.setTrack(pad.id, { soloed: false, muted: false });
+  assert.deepEqual(controls().slice(-3).map(({ muted }) => muted), [false, false, false], 'no solo left: all play');
+});

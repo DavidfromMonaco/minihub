@@ -186,6 +186,7 @@ export function describeSequencer(hub) {
       inputId: track.inputId || '',
       outputId: track.outputId || '',
       muted: track.muted === true,
+      soloed: track.soloed === true,
       armed: track.armed === true,
       monitored: track.monitored === true,
       volume: track.volume,

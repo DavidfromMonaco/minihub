@@ -81,8 +81,9 @@ const DIAGRAM_TRACK = `<svg class="mn-diagram" viewBox="0 0 760 170" role="img" 
   <rect class="mn-key mn-rec" x="212" y="46" width="28" height="24" rx="4"/><text class="mn-keytext" x="226" y="62" text-anchor="middle">R</text>
   <rect class="mn-key" x="246" y="46" width="28" height="24" rx="4"/><text class="mn-keytext" x="260" y="62" text-anchor="middle">I</text>
   <text class="mn-small" x="284" y="62">Track name</text>
-  <rect class="mn-key" x="474" y="46" width="28" height="24" rx="4"/><text class="mn-keytext" x="488" y="62" text-anchor="middle">♪</text>
-  <rect class="mn-key" x="508" y="46" width="28" height="24" rx="4"/><text class="mn-keytext" x="522" y="62" text-anchor="middle">M</text>
+  <rect class="mn-key" x="440" y="46" width="28" height="24" rx="4"/><text class="mn-keytext" x="454" y="62" text-anchor="middle">♪</text>
+  <rect class="mn-key" x="474" y="46" width="28" height="24" rx="4"/><text class="mn-keytext" x="488" y="62" text-anchor="middle">M</text>
+  <rect class="mn-key" x="508" y="46" width="28" height="24" rx="4"/><text class="mn-keytext" x="522" y="62" text-anchor="middle">S</text>
   <rect class="mn-key" x="542" y="46" width="28" height="24" rx="4"/><text class="mn-keytext" x="556" y="62" text-anchor="middle">×</text>
   <line class="mn-slider" x1="214" y1="110" x2="330" y2="110"/><circle class="mn-knob" cx="300" cy="110" r="7"/>
   <text class="mn-tiny" x="338" y="114">+0.0 dB</text>
@@ -91,8 +92,8 @@ const DIAGRAM_TRACK = `<svg class="mn-diagram" viewBox="0 0 760 170" role="img" 
   <circle class="mn-route" cx="530" cy="110" r="6"/><circle class="mn-route" cx="548" cy="110" r="6"/>
   ${badge(1, 150, 86)}
   ${badge(2, 226, 20)}${badge(3, 260, 20)}${badge(4, 320, 20)}
-  ${badge(5, 488, 20)}${badge(6, 522, 20)}${badge(7, 556, 20)}
-  ${badge(8, 272, 154)}${badge(9, 426, 154)}${badge(10, 539, 154)}
+  ${badge(5, 454, 20)}${badge(6, 488, 20)}${badge(7, 522, 20)}${badge(8, 556, 20)}
+  ${badge(9, 272, 154)}${badge(10, 426, 154)}${badge(11, 539, 154)}
 </svg>
 ${legend(
   `${ui('Select')}: the selected track shows in the toolbar's inspector, and ${k('Alt')}+wheel makes it taller.`,
@@ -101,6 +102,7 @@ ${legend(
   `${ui('Name')}: click it to rename the track.`,
   `${btn('♪')} ${ui('Plugin')}: opens the plugin the track plays.`,
   `${btn('M')} ${ui('Mute')}: mutes the track.`,
+  `${btn('S')} ${ui('Solo')}: once a track is soloed, only the soloed tracks play.`,
   `${btn('×')} ${ui('Delete')}: deletes the track.`,
   `${ui('Level')}: from −60 to +6 dB.`,
   `${ui('Pan')}: double-click it to centre it.`,

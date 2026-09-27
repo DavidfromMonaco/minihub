@@ -1,4 +1,4 @@
-import { SEQUENCER_LIMITS, SequencerModel, defaultSequencerState, initialSequencerState } from './sequencerModel.js';
+import { SEQUENCER_LIMITS, SequencerModel, defaultSequencerState, initialSequencerState, trackSilenced } from './sequencerModel.js';
 import { normalizeTempo } from './tempoControl.js';
 import { AUDIO_INPUT_NODE_ID, SEQUENCER_NODE_ID } from './systemNodes.js';
 import { isControllerNode, controllerName } from './controllerNode.js';
@@ -928,8 +928,10 @@ export class SequencerController {
         ...state,
         // `inputPort` is renderer bookkeeping about which cable the id came
         // from; the engine is handed the resolved id or nothing.
-        tracks: state.tracks.map(({ inputPort, ...track }) => ({
+        tracks: state.tracks.map(({ inputPort, soloed, ...track }) => ({
           ...track,
+          // Solo reaches the engine as the silence it makes (trackSilenced).
+          muted: trackSilenced(state.tracks, { ...track, soloed }),
           inputId: track.type === 'midi'
             ? (incomingMidi.length > 0 && track.inputId === this.hub.midi.selectedInputId ? track.inputId : '')
             : (incomingAudio.has(track.inputId) ? track.inputId : ''),
@@ -1339,7 +1341,7 @@ export class SequencerController {
 
   setTrack(trackId, changes) {
     const keys = Object.keys(changes || {});
-    if (keys.length > 0 && keys.every((key) => key === 'volume' || key === 'muted' || key === 'pan')) {
+    if (keys.length > 0 && keys.every((key) => ['volume', 'muted', 'soloed', 'pan'].includes(key))) {
       return this.setTrackControl(trackId, changes);
     }
     const previous = this.model.state.tracks.find((item) => item.id === trackId);
@@ -1392,7 +1394,11 @@ export class SequencerController {
     if (!track) return null;
     const snapshot = this.model.snapshot();
     this.hub.settings.set(STATE_KEY, snapshot);
-    this.hub.engine.setSequencerTrackControl?.(track.id, track.volume, track.muted, track.pan);
+    // A solo silences or frees every other track: each is told what it now is.
+    const told = 'soloed' in (changes || {}) ? this.model.state.tracks : [track];
+    for (const item of told) {
+      this.hub.engine.setSequencerTrackControl?.(item.id, item.volume, trackSilenced(this.model.state.tracks, item), item.pan);
+    }
     if (render) this.hub.events.emit('sequencer:changed', snapshot);
     return track;
   }

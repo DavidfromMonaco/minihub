@@ -67,6 +67,7 @@ export function sequencerCommands(hub) {
         // keyboard plays is ARM's to say, below.
         action('SELECT', 'Select', () => controller.focusTrack(track.id)),
         toggle('MUTE', 'Mute', (muted) => controller.setTrackControl(track.id, { muted })),
+        toggle('SOLO', 'Solo', (soloed) => controller.setTrackControl(track.id, { soloed })),
         number('VOLUME', 'Volume', 0, 2, (volume) => controller.setTrackControl(track.id, { volume })),
         // Added to the armed tracks rather than replacing them, so a step that
         // arms one track never disarms another a take is running on.
