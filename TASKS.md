@@ -25,12 +25,6 @@ be commanded.
 **Splice's Expression reads 0.85 through `parameters` while the saved plugin
 state holds 1.0** — seen through the agent channel. Unexplained.
 
-**`set-parameter` answers ok for a plugin that is not there** — found
-2026-09-26 while tuning TDR Nova through the agent channel: a request whose
-`pluginId` had lost its backslashes answered `ok: true` and changed nothing.
-The request should refuse a `pluginId` that does not match the instance named
-by `pluginInstanceId`. Not started.
-
 **Massive X moves a parameter by itself, and Learn takes it** — added on the
 author's request, 2026-09-15. In the author's session that morning, for the 36 s
 after its window opened, Massive X reported a parameter moving about 23 times a

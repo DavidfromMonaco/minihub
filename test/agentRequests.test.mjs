@@ -196,6 +196,27 @@ test('removing a plugin that is not there says so instead of reporting success',
     { ok: false, reason: 'plugin-not-found' });
 });
 
+test('set-parameter refuses a plugin that is not the one the instance holds, instead of answering ok', async () => {
+  const hub = rig();
+  const node = (await ask(hub, { kind: 'create-node', typeId: 'vst' })).node;
+  const { plugin } = await ask(hub, { kind: 'add-plugin', nodeId: node.id, pluginId: DEXED.pluginId });
+  const write = (extra) => ask(hub, {
+    kind: 'set-parameter', nodeId: node.id, pluginInstanceId: plugin.instanceId,
+    parameterId: '7', normalizedValue: 0.5, ...extra
+  });
+
+  // The case met on 2026-09-26: the id with its separators gone.
+  const mangled = await write({ pluginId: 'C:Dexed.vst3' });
+  assert.equal(mangled.ok, false);
+  assert.equal(mangled.reason, 'plugin-mismatch');
+  assert.equal((await write({ pluginInstanceId: 'plugin-9', pluginId: DEXED.pluginId })).reason, 'plugin-not-found');
+  assert.deepEqual(hub.engine.parameters, [], 'nothing reached the engine');
+
+  assert.deepEqual(await write({ pluginId: DEXED.pluginId }), { ok: true });
+  assert.deepEqual(await write({}), { ok: true }, 'left out, the pluginId is the instance\'s own');
+  assert.deepEqual(hub.engine.parameters.map((args) => args[2]), [DEXED.pluginId, DEXED.pluginId]);
+});
+
 // ---- the sequencer is handed through, not restated ------------------------------
 
 test('a sequencer request reaches the Clip Editor own handler unchanged', async () => {

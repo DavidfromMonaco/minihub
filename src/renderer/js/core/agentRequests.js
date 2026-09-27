@@ -347,10 +347,23 @@ export async function handleAgentRequest(hub, request = {}) {
   }
 
   if (kind === 'set-parameter') {
+    // The engine takes a write it cannot place and says nothing: a request
+    // whose `pluginId` had lost its backslashes on the way answered ok and
+    // changed nothing. So the plugin is found here first, by the instance the
+    // request names, and a `pluginId` that is not that instance's is refused.
+    // Left out, it is the instance's own.
+    const nodeId = String(request.nodeId || '');
+    const pluginInstanceId = String(request.pluginInstanceId || '');
+    const plugin = hub.nodes?.get?.(nodeId)?.content?.plugins?.find?.((entry) => entry.id === pluginInstanceId);
+    if (!plugin) return failed('plugin-not-found');
+    const pluginId = request.pluginId === undefined ? plugin.pluginId : String(request.pluginId);
+    if (pluginId !== plugin.pluginId) {
+      return failed('plugin-mismatch', `${pluginInstanceId} is ${plugin.pluginId}, not ${pluginId}`);
+    }
     const result = hub.engine.setVstParameter(
-      String(request.nodeId || ''),
-      String(request.pluginInstanceId || ''),
-      String(request.pluginId || ''),
+      nodeId,
+      pluginInstanceId,
+      pluginId,
       String(request.parameterId || ''),
       Number(request.normalizedValue)
     );
