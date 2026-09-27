@@ -251,6 +251,7 @@ void testLearnArmCancelAndAutoDisarm()
 {
     mlh::GestureLearnState state;
     state.reset(2);
+    state.setTimeForTesting(1000);
     state.setArmed(true);
     state.setArmed(false);
     state.gestureChanged(0, true);
@@ -258,7 +259,10 @@ void testLearnArmCancelAndAutoDisarm()
     auto touch = state.consume();
     expect(touch && !touch->capturedByLearn, "cancelled Learn does not capture");
 
+    // A second later: the hand has left the plugin to click Arm, and come back.
+    state.setTimeForTesting(2000);
     state.setArmed(true);
+    state.setTimeForTesting(2600);
     state.valueChanged(0, 0.6f);
     touch = state.consume();
     expect(touch && touch->capturedByLearn, "armed Learn captures next gesture value");
@@ -269,8 +273,10 @@ void testLearnCapturesOnlyPostArmAndFirstDistinctParameter()
 {
     mlh::GestureLearnState state;
     state.reset(3);
+    state.setTimeForTesting(1000);
     state.gestureChanged(0, true);
     state.valueChanged(0, 0.2f); // queued before Learn
+    state.setTimeForTesting(2000);
     state.setArmed(true);
     expect(!state.consume().has_value(), "pre-arm touch is not captured by a later Learn click");
 
@@ -284,6 +290,37 @@ void testLearnCapturesOnlyPostArmAndFirstDistinctParameter()
     expect(touch && touch->parameterIndex == 1, "Learn keeps the first distinct parameter");
     expect(touch && std::abs(touch->normalizedValue - 0.6f) < 0.0001f,
            "Learn reports the latest value of the captured parameter");
+}
+
+void testLearnSetsAsideAParameterMovingByItself()
+{
+    // Massive X, 2026-09-15: for half a minute after its window opened it moved
+    // a parameter inside gestures of its own, 23 times a second. Learn armed in
+    // that stream took it within 50 ms. A parameter moving when Learn is armed
+    // is set aside; the person's gesture on another is the answer.
+    mlh::GestureLearnState state;
+    state.reset(3);
+    state.gestureChanged(2, true);
+    uint32_t now = 5000;
+    const auto stream = [&](int ticks) { for (int i = 0; i < ticks; ++i) { now += 43; state.setTimeForTesting(now); state.valueChanged(2, 0.1f * float(i % 10)); } };
+    stream(10);
+    state.setArmed(true);
+    expect(state.movingAtArm(8) == std::vector<int>({2}), "the parameter moving at the click is named");
+    stream(10);
+    expect(!state.consume().has_value(), "its stream is not taken as the answer");
+    state.gestureChanged(0, true);
+    now += 20; state.setTimeForTesting(now);
+    expect(state.valueChanged(0, 0.7f), "the person's knob is");
+    const auto touch = state.consume();
+    expect(touch && touch->capturedByLearn && touch->parameterIndex == 0, "and Learn takes it");
+
+    // Still for longer than quietMs, then moved again: a new gesture, taken.
+    state.setArmed(true);
+    stream(3);
+    now += mlh::GestureLearnState::quietMs + 100; state.setTimeForTesting(now);
+    expect(state.valueChanged(2, 0.5f), "once it has been still, a new gesture on it counts");
+    const auto later = state.consume();
+    expect(later && later->capturedByLearn && later->parameterIndex == 2, "and can be learned");
 }
 
 void testResetDropsPendingAndArmedState()
@@ -4758,6 +4795,7 @@ int main(int argc, char** argv)
     testLearnArmCancelAndAutoDisarm();
     std::cerr << "[core] learn-capture\n";
     testLearnCapturesOnlyPostArmAndFirstDistinctParameter();
+    testLearnSetsAsideAParameterMovingByItself();
     std::cerr << "[core] reset\n";
     testResetDropsPendingAndArmedState();
     std::cerr << "[core] loopback-listener\n";

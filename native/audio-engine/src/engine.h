@@ -188,7 +188,8 @@ private:
                                  const juce::String& pluginId,
                                  juce::int64 generation,
                                  bool armed,
-                                 const juce::String& reason);
+                                 const juce::String& reason,
+                                 const juce::StringArray& movingByThemselves = {});
     void cancelActiveParameterLearn(const juce::String& reason);
     void parameterLearnEnded(PluginInstance& inst,
                              const juce::String& learnId,

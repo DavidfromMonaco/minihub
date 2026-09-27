@@ -172,6 +172,7 @@ public:
         editorMovedCallback_ = std::move(callback);
     }
 
+    const juce::StringArray& parametersMovingAtArm() const noexcept { return movingAtArm_; }
     bool armParameterLearn(const juce::String& learnId, juce::String& error);
     void cancelParameterLearn(const juce::String& reason);
     bool learnArmed() const { return learnState_.isArmed(); }
@@ -270,6 +271,9 @@ private:
     EditorMovedCallback editorMovedCallback_;
 
     GestureLearnState learnState_;
+    // Named by the last arming: the parameters moving by themselves, which
+    // that Learn will not take (gesture_learn_state.h).
+    juce::StringArray movingAtArm_;
     juce::String activeLearnId_;
     std::set<juce::String> failedParameterIds_;
     std::atomic<uint64_t> stateRevision_ {0};

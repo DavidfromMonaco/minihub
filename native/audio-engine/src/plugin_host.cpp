@@ -2078,6 +2078,9 @@ bool PluginInstance::armParameterLearn(const juce::String& learnId,
     }
     activeLearnId_ = learnId;
     learnState_.setArmed(true);
+    movingAtArm_.clear();
+    for (const int index : learnState_.movingAtArm(8))
+        movingAtArm_.add(plugin_->parameterName(index));
     return true;
 }
 

@@ -20,18 +20,6 @@ the author on 2026-09-17, to be rethought.
 **Splice's Expression reads 0.85 through `parameters` while the saved plugin
 state holds 1.0** — seen through the agent channel. Unexplained.
 
-**Massive X moves a parameter by itself, and Learn takes it** — added on the
-author's request, 2026-09-15. In the author's session that morning, for the 36 s
-after its window opened, Massive X reported a parameter moving about 23 times a
-second with nobody touching it (`vstParameterTouched` in the startup log, at the
-engine's cap of 30 per second), until a change of plugin state stopped it. Two
-Learns armed during that stream ended after 50 ms and 30 ms, most likely on that
-parameter; the third, armed once the stream had stopped, took the author's
-gesture. The engine records a value only inside a gesture
-(`native/audio-engine/src/gesture_learn_state.h`), so Massive X was opening
-gestures of its own. Which parameter it was, and what starts the stream, is
-neither logged nor verified.
-
 **A take's waveform, zoomed in, is an outline** — left from the timelines'
 navigation (2026-09-24): a take draws the engine's 256 peaks for the whole
 file, so zoomed in it is not the signal. Finer peaks for what is on screen

@@ -828,10 +828,19 @@ void Engine::sendParameterLearnState(const juce::String& learnId,
                                      const juce::String& pluginId,
                                      juce::int64 generation,
                                      bool armed,
-                                     const juce::String& reason)
+                                     const juce::String& reason,
+                                     const juce::StringArray& movingByThemselves)
 {
     juce::var out = makeObject();
     setProp(out, "type", "vstParameterLearnState");
+    // Set aside by this Learn: moving when it was armed. In the startup log,
+    // this names the parameter a plugin moves by itself.
+    if (!movingByThemselves.isEmpty())
+    {
+        juce::Array<juce::var> names;
+        for (const auto& name : movingByThemselves) names.add(name);
+        setProp(out, "movingByThemselves", names);
+    }
     setProp(out, "learnId", learnId);
     setProp(out, "chainId", chainId);
     setProp(out, "instanceId", instanceId);
@@ -3388,7 +3397,7 @@ void Engine::cmdSetVstParameterLearn(const juce::var& msg)
     activeParameterLearn_ = std::make_unique<ActiveParameterLearn>(
         ActiveParameterLearn { learnId, chainId, instanceId, pluginId, generation });
     sendParameterLearnState(learnId, chainId, instanceId, pluginId,
-                            generation, true, "armed");
+                            generation, true, "armed", inst->parametersMovingAtArm());
 }
 
 void Engine::cmdShutdown(const juce::var& msg)
