@@ -1234,6 +1234,43 @@ A test reads the mounted markup and checks every picture it names is really on
 disk (`test/homeStartup.test.mjs`): a renamed file would otherwise leave a card
 with a silent hole in it — no error, no log.
 
+### Node pages
+
+A node type's page lives in its own folder under `modules/` and is installed by
+one `registerNodeEditor(typeId, { render, bind, refresh })` call from `app.js`,
+before the instances load ([nodeEditors.js](src/renderer/js/core/nodeEditors.js)).
+`NodeInstanceManager.mount()` knows none of them: it draws what `render` hands
+back (or the generic shell, for a type with no page), deletes the node from
+`#node-delete`, and runs what `bind` returned when the page unmounts
+(invariant 8).
+
+| Folder | Pages |
+|---|---|
+| `modules/vst/` | VST — the plugin chain, the picker, the scan |
+| `modules/arpeggiator/` | Arpeggiator — the control strip and the roll |
+| `modules/nativeAudio/` | Mixer and Morpher, one page for both |
+| `modules/oneRing/` | One Ring |
+| `modules/audioPlayer/` | Audio Player |
+
+The contract, beyond `render` and `bind`:
+
+- **`context.state`** is an empty object at each mount, and the page's own:
+  what one opening remembers that the model does not — a plugin's last engine
+  status, the step under the pointer. `render`, `bind` and `refresh` receive the
+  same one; the next mount gets a new one.
+- **`refresh(container, context)`**, optional, answers an undo or a redo. A
+  page without it is drawn again from `render`; the VST page keeps its status
+  lines and the arpeggiator its roll's scroll by providing one.
+- **`followContentWrites()`** redraws a page when a command or an agent writes
+  its node — at most once a frame, and never under a held pointer.
+- A page's controls write `instance.content` in place, where `engineSync` reads
+  it, then call `manager.persist()` and announce the change the engine needs.
+
+Removing a node whose page is on screen — an undo, an agent's `delete-node` —
+gives the page area to the Patch Bay (`ModuleSystem.fallbackId`). The page's
+own Delete button still opens Home: a caller that chooses where to go is
+obeyed, the fallback only comes a microtask later if nothing did.
+
 ### Deux systèmes visuels
 
 ⚠️ Il en coexiste **deux**, et c'est une dette identifiée :
@@ -1452,7 +1489,8 @@ d'une capture forcée à l'extinction.
 | `graph.js` | graphe de routage, types de ports, détection de cycles |
 | `nodeTypes.js` | registre des types de nœuds |
 | `systemNodes.js` | identifiants des nœuds système |
-| `nodeInstances.js` | instances, identité/ordinal, éditeurs de nœuds ⚠️ 1 143 lignes |
+| `nodeInstances.js` | instances, identité/ordinal, contenu par type, nœud de routage — no page (§10) |
+| `nodeEditors.js` | the node-page registry and its contract (§10) |
 | `nodeGeometry.js`, `graphLayout.js`, `graphViewport.js`, `viewportMath.js`, `grid.js` | géométrie et état visuel du Patch Bay |
 | `engineClient.js` | client du moteur, cache d'état, corrélation des requêtes |
 | `pluginCatalog.js` | one entry per plugin, whichever path the scanner reached it by (D-044) |
@@ -1470,7 +1508,7 @@ d'une capture forcée à l'extinction.
 | `vstParameterDiscovery.js` | découverte des paramètres par nœud |
 | `masterOutput.js` | gain master, normalisation |
 | `sequencerModel.js`, `sequencerController.js` | séquenceur |
-| `arpeggiatorState.js`, `arpeggiatorEditor.js` | arpégiateur |
+| `arpeggiatorState.js` | arpégiateur (its page: `modules/arpeggiator/`) |
 | `oneRingSequence.js`, `oneRingRandom.js`, `oneRingEdits.js` | One Ring's content, its random draws (bit for bit the engine's) and its edits |
 | `oneRingNodes.js`, `oneRingRequests.js`, `oneRingImport.js`, `juceState.js` | One Ring nodes and the engine's runtimes, the agent's requests, the copy from a VST's JUCE state |
 | `projectManager.js`, `projectKeys.js` | cycle de vie et périmètre du projet |
@@ -1483,8 +1521,9 @@ d'une capture forcée à l'extinction.
 ### `src/renderer/js/modules/` — les modules
 
 `home/` (accueil projet), `minilab/` (panneau contrôleur), `routing/` (Patch Bay),
-`audioOutput/` (sortie audio système), `sequencer/` (arrangement), `oneRing/`
-(One Ring's page, §10).
+`audioOutput/` (sortie audio système), `sequencer/` (arrangement), and the node
+pages (§10): `vst/`, `arpeggiator/`, `nativeAudio/` (Mixer and Morpher),
+`oneRing/`, `audioPlayer/`.
 
 ### `src/renderer/js/ui/` et `midi/`
 

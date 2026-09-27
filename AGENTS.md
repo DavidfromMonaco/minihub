@@ -246,8 +246,10 @@ and fill**, not a reason to reach for the mouse.
 - **A `console.log` in the renderer travels to the main process** and then to
   disk. On a periodic event (`masterMeter` at 10 Hz) the log explodes. See
   `src/main/engineEventTrace.js`.
-- **`core/nodeInstances.js` (1,145 lines) and `modules/routing/routingModule.js`
-  (1,496 lines)** are the two files where an innocent change breaks four node
-  types at once. Workstream 4 in the ROADMAP.
+- **`modules/routing/routingModule.js` (2,216 lines)** draws every node type
+  in the Patch Bay: an innocent change there breaks several at once. A node's
+  *page* is the opposite case since 2026-09-27 — each lives in its own folder
+  under `modules/`, and `core/nodeInstances.js` imports none of them (a test
+  says so). A new page is a folder plus one `registerNodeEditor()` in `app.js`.
 - **The native engine survives a renderer reload.** VST chains are append-only
   on the C++ side; `core/chainSync.js` rebuilds them after a restart.

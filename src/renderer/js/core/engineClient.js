@@ -649,8 +649,13 @@ export class EngineClient {
     return this._liveInputCommand({ type: 'midi', chainId, data });
   }
 
-  midiNode(nodeId, data) { return this._liveInputCommand({ type: 'midiNode', nodeId, data }); }
-  syncMidiNetwork(nodes) { return this._renderCommand({ type: 'syncMidiNetwork', nodes }); }
+  midiNode(nodeId, data) {
+    return this._liveInputCommand({ type: 'midiNode', nodeId, data });
+  }
+
+  syncMidiNetwork(nodes) {
+    return this._renderCommand({ type: 'syncMidiNetwork', nodes });
+  }
 
   setChainMidiEnabled(chainId, enabled) {
     return this._renderCommand({ type: 'setChainMidiEnabled', chainId, enabled });

@@ -8,6 +8,7 @@
  * own is an instrument heard while monitoring and missing from the bounce. The
  * sequencer's half is in `sequencer.test.mjs`, beside its rig.
  */
+import './installNodeEditors.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { makeHub } from './helpers.mjs';

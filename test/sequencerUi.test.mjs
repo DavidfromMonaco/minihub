@@ -1,3 +1,4 @@
+import './installNodeEditors.mjs';
 import fs from 'node:fs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';

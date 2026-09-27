@@ -471,6 +471,36 @@ it), and a scaled screen (tested at 150 %, never seen).
 
 ---
 
+### 4. Each node page in its own folder — `master`
+
+Done 2026-09-27. `nodeInstances.js` held the pages of the VST, the
+Arpeggiator, the Mixer and the Morpher inside one `mount()` of some 530 lines:
+nine DOM handlers shared by the four, each opening on `if (type.id !== 'x')
+return;`, so a change to one page was paid for in code the three others ran.
+
+Each now lives in its own folder and is installed from `app.js` by one
+`registerNodeEditor()` call, like One Ring's and the Audio Player's:
+`modules/vst/vstEditor.js`, `modules/arpeggiator/` (the page, and the roll it
+draws, moved out of `core/`), `modules/nativeAudio/nativeAudioEditor.js` (the
+Mixer and the Morpher share one page). `nodeInstances.js` went from 1,488 lines
+to 900: identity, content, persistence, creation and deletion, the routing
+node, and a `mount()` that draws what the registry hands back, deletes the node
+from its Delete button and redraws after an undo. A test fails if it imports a
+page again.
+
+What the editor contract gained (`core/nodeEditors.js`, ARCHITECTURE §10): a
+`state` object fresh at each mount, for what one opening of a page remembers
+that the model does not; an optional `refresh()` for an undo, when a whole
+redraw would lose a scroll position or a status line; `followContentWrites()`,
+the once-a-frame redraw when a command or an agent writes the node, which three
+pages share. The coalescing window of the Mixer's sliders went with them.
+
+**Not moved**: what a type's *content* may hold (`defaultContentFor`,
+`normalizeContentFor`) and what an edit of it announces stay in the registry, a
+branch per type. A new type still adds a line there.
+
+---
+
 ### Outside the numbering
 
 - Snapshots from 24/08 preserved as branches (`snapshot/2026-08-24-*`), then
@@ -497,54 +527,6 @@ they were opened, and any of them can be picked up on its own. Where taking one
 before another actually costs something, the item says what that costs — as a
 description of what happens, so the choice can be made knowingly, never as a
 prerequisite. Nothing here is waiting on permission.
-
-### 4. Split `nodeInstances.js` — the real workstream
-
-**This is no longer what blocks adding a module — measured 2026-09-03.**
-`core/nodeEditors.js` and `core/disposers.js` exist (kept from D-013), and
-**every** shared handler in `mount()` filters on an explicit `type.id`: lines
-693, 853, 1008, 1019, 1043, 1082, 1089. A **new** type therefore passes through
-them without touching them, and its editor fits in its own folder plus one
-`registerNodeEditor()`. The residual cost is two or three branches to add in
-`defaultContentFor()` and in content normalisation.
-
-What remains true, and remains the workstream: **the four editors that predate
-that seam** (VST, Arpeggiator, Mixer, Morpher) still co-own each other's bugs,
-and any change to one is paid for in code shared with the other three.
-
-[nodeInstances.js](src/renderer/js/core/nodeInstances.js) is 1,143 lines and has
-become a god file. Its `_registerModule()` holds a **440-line** `mount()` (lines
-651 to 1090) driving **four different editors** — VST, Arpeggiator, Mixer,
-Morpher — through 26 `type.id === '…'` tests scattered across 9 event handlers,
-each opening with `if (type.id !== 'X') return;`.
-
-Concrete consequence: adding a node type means editing that file in about ten
-places, in code shared with four other types.
-
-**Proposed target:**
-
-```
-core/nodeInstances.js     pure registry: identity, content, persistence,
-                          creation / deletion / duplication
-core/nodeEditors.js       table typeId -> { render, bind }
-modules/vst/…             VST editor (chain, scan, CONTROL bindings)
-modules/arpeggiator/…     arpeggiator editor (already half extracted into
-                          core/arpeggiatorEditor.js)
-modules/nativeAudio/…     Mixer + Morpher editor (they already share rendering)
-```
-
-Sub-tasks:
-
-- extract a `createDisposers()` helper: `mount()` currently registers 9 DOM
-  listeners, mirrored by hand in **three** places (declaration, storage on
-  `module._onX`, removal in `unmount`). Adding a listener means touching all
-  three.
-- lift `NATIVE_VALUE_COALESCE_MS` (declared in the middle of the import block,
-  line 54) and the write batching into the shared helper.
-- document the editor contract in ARCHITECTURE.md once it has settled.
-
-**Expected benefit**: a new node type = a new folder plus one line in the table,
-with no change to the registry.
 
 ### 6. Visual consistency and naming
 
@@ -592,15 +574,20 @@ nothing from `base.css`, so the shell could not follow it down.
 Seen, not read: rendered on a bench page loading the real `base.css`,
 `omni-pearl.css` and `renderArpeggiatorEditor()`, at 1000 x 860.
 
-**Four names for one product**: "MiniLab Hub" (window title, README), "MiniHub"
-(executable, `dist/MiniHub`, the `.minihub` extension, `Documents/MiniHub`),
-`minilab-hub` (npm name, log file), `mlh_` (native prefix). To be unified,
-bearing in mind that the log file name and the `%APPDATA%` directory are paths
-that already exist on the user's machine.
+**Four names for one product — settled.** The window and the header say
+MiniHub since 2026-09-15, and so do the README, the executable, `dist/MiniHub`,
+the `.minihub` extension and `Documents/MiniHub`. What is left is not to be
+unified: `minilab-hub` (the npm name, `%APPDATA%/minilab-hub/`, the log file)
+is a path already on the user's disk, and renaming it loses their settings;
+`mlh_` / `mlh-` is the native build prefix the scripts name. The first line of
+each startup log still reads "MiniLab Hub startup", which nobody sees.
+AGENTS.md §2 holds the table.
 
-**Writing style** — cleanly formatted passages sit next to compressed, near
-unreadable lines: `nodeInstances.js:316-323` and `341-355`, `engineSync.js:35`,
-`engineClient.js:655`. To be smoothed out as those files are visited, without a
+**Writing style** — the compressed passages this item listed are aerated
+(2026-09-27): the Mixer and Morpher content in `nodeInstances.js`, its dynamic
+AUDIO IN rows, `describeAudioNetwork` in `engineSync.js`, two one-line methods
+of `engineClient.js`. Others remain — `arpeggiatorEditor.js` is written that
+way throughout — and are smoothed out as their files are visited, without a
 dedicated cosmetic pass.
 
 ---

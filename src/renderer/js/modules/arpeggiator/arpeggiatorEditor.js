@@ -1,9 +1,9 @@
 import {
   ARP_ROOTS, ARP_SCALES, ARP_MODES, ARP_RATES, ARP_LENGTHS,
   ARP_OFFSET_MIN, ARP_OFFSET_MAX, semitoneOffsetToMidi
-} from './arpeggiatorState.js';
-import { knobFraction, pearlKnobMount, pearlSelect, pearlSwitch, pearlIconButton, syncKnobMount } from '../ui/omniPearl.js';
-import { clamp } from './clamp.js';
+} from '../../core/arpeggiatorState.js';
+import { knobFraction, pearlKnobMount, pearlSelect, pearlSwitch, pearlIconButton, syncKnobMount } from '../../ui/omniPearl.js';
+import { clamp } from '../../core/clamp.js';
 
 const modulo=(value,base)=>((value%base)+base)%base;
 

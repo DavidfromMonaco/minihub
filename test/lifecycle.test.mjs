@@ -1,3 +1,4 @@
+import './installNodeEditors.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { makeHub } from './helpers.mjs';

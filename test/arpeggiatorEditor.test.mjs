@@ -5,8 +5,8 @@ import {
   currentArpeggiatorStep, editedSemitoneOffset, moveCustomNote, removeCustomNote,
   renderArpControlStrip, renderCustomPatternEditor, scaleContainsOffset, setCustomGateDuration,
   setCustomNote, snapSemitoneOffset, velocityFromPointer
-} from '../src/renderer/js/core/arpeggiatorEditor.js';
-import { renderArpeggiatorEditor } from '../src/renderer/js/core/nodeInstances.js';
+} from '../src/renderer/js/modules/arpeggiator/arpeggiatorEditor.js';
+import { renderArpeggiatorEditor } from '../src/renderer/js/modules/arpeggiator/arpeggiatorPanel.js';
 
 function customState(){const state=defaultArpeggiatorContent();state.mode='Custom';state.scale='Natural Minor / Aeolian';state.patternLength=8;return state;}
 

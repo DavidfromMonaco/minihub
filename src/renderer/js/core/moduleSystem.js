@@ -25,6 +25,9 @@ export class ModuleSystem {
     // A module mounted beside the page area rather than in it: the Sequencer
     // above the page in the Hybrid 1 layout (ui/interfaceLayout.js).
     this.docked = null;
+    // The page the page area falls back to when the one on screen is removed
+    // under it (`unregister`). Set by app.js; null leaves the area empty.
+    this.fallbackId = null;
   }
 
   get dockedId() {
@@ -176,8 +179,31 @@ export class ModuleSystem {
     if (module.routingNode && this.hub.network) {
       this.hub.network.removeNode(module.routingNode.id);
     }
-    if (this.activeId === id) this.activeId = null;
+    if (this.activeId === id) {
+      this.activeId = null;
+      this._replaceVanishedPage();
+    }
     this.hub.events.emit('module:unregistered', id);
     return true;
+  }
+
+  /**
+   * The page on screen was removed without anyone choosing where to go next.
+   *
+   * Reported by the author on 2026-09-27: a Ctrl+Z undoing a node's creation,
+   * with its page open below the Sequencer, took the node away and left its
+   * page drawn -- unmounted, answering nothing, for a node that no longer
+   * existed. An agent deleting the node did the same.
+   *
+   * A microtask later, not at once: the page's own Delete button removes the
+   * node and opens Home in the same click, and that choice is the caller's.
+   * Only when nothing else was opened meanwhile does the fallback page come.
+   */
+  _replaceVanishedPage() {
+    queueMicrotask(() => {
+      if (this.activeId !== null || !this.container) return;
+      if (this.fallbackId && this.modules.has(this.fallbackId)) this.activate(this.fallbackId, this.container);
+      else this.container.innerHTML = '';
+    });
   }
 }

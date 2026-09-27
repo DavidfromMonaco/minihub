@@ -29,6 +29,9 @@ import { installAgentBridge } from './core/agentBridge.js';
 import { installBindingsBarHost } from './core/bindingsBarHost.js';
 import { registerOneRingPanel } from './modules/oneRing/oneRingPanel.js';
 import { registerAudioPlayerPanel } from './modules/audioPlayer/audioPlayerPanel.js';
+import { registerVstEditor } from './modules/vst/vstEditor.js';
+import { registerArpeggiatorEditor } from './modules/arpeggiator/arpeggiatorPanel.js';
+import { registerNativeAudioEditors } from './modules/nativeAudio/nativeAudioEditor.js';
 import { bindPearlLists } from './ui/omniPearl.js';
 
 async function main() {
@@ -53,13 +56,19 @@ async function main() {
   // `LOADED_PROFILES` is never empty, so this always registers at least one.
   for (const profile of LOADED_PROFILES) hub.modules.register(createMiniLabModule(hub, profile));
   hub.modules.register(createRoutingModule(hub));
+  // A node page removed while on screen -- an undo, an agent -- gives way to
+  // the Patch Bay, where the node was (moduleSystem.js).
+  hub.modules.fallbackId = 'routing';
   // Native/system Audio Output node + editor (non-deletable, non-copyable).
   hub.modules.register(createAudioOutputModule(hub));
   hub.sequencer.load();
   hub.modules.register(createSequencerModule(hub));
 
-  // A node type with its own folder brings its page (nodeEditors.js). Before
-  // the instances load, so none can open without it.
+  // Every node type with a page brings it from its own folder (nodeEditors.js).
+  // Before the instances load, so none can open without it.
+  registerVstEditor();
+  registerArpeggiatorEditor();
+  registerNativeAudioEditors();
   registerOneRingPanel();
   registerAudioPlayerPanel();
   // Every menu of a faceplate is drawn by the page: the list Chromium opens for

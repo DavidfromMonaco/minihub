@@ -12,6 +12,7 @@
  * at use.** A binding that resolves to nothing is kept, reported
  * `missing-target`, and not routed. Kept is not the same as obeyed.
  */
+import './installNodeEditors.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { makeFullHub } from './helpers.mjs';

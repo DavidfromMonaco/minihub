@@ -1,3 +1,4 @@
+import './installNodeEditors.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHub } from '../src/renderer/js/core/hub.js';

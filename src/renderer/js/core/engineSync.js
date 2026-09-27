@@ -17,19 +17,34 @@ export function describeAudioNetwork(hub) {
   return hub.network.listNodes().filter((node) => supported.has(node.type)).map((node) => {
     const content = hub.nodes?.get(node.id)?.content || {};
     const incoming = hub.network.connectionsTo(node.id);
-    const inputs = node.inputs.filter((p)=>p.type==='audio').flatMap((port)=>incoming.filter((c)=>c.to.portId===port.id)).map((c) => {
-      const state = content.inputs?.find((p) => p.id === c.to.portId);
-      return { portId:c.to.portId, sourceNodeId:c.from.nodeId, sourcePortId:c.from.portId, level:Number.isFinite(state?.level)?state.level:1, muted:state?.muted===true,
-        // A Mixer strip's balance; a Morpher has none to send.
-        ...(node.type==='mixer'?{pan:Number.isFinite(state?.pan)?Math.max(-1,Math.min(1,state.pan)):0}:{}) };
-    });
-    return { id:node.id, nodeType:node.type, inputs,
-      ...(node.type==='mixer'?{masterLevel:content.masterLevel??1}:{}),
+    const inputs = node.inputs
+      .filter((port) => port.type === 'audio')
+      .flatMap((port) => incoming.filter((c) => c.to.portId === port.id))
+      .map((c) => {
+        const state = content.inputs?.find((p) => p.id === c.to.portId);
+        return {
+          portId: c.to.portId,
+          sourceNodeId: c.from.nodeId,
+          sourcePortId: c.from.portId,
+          level: Number.isFinite(state?.level) ? state.level : 1,
+          muted: state?.muted === true,
+          // A Mixer strip's balance; a Morpher has none to send.
+          ...(node.type === 'mixer'
+            ? { pan: Number.isFinite(state?.pan) ? Math.max(-1, Math.min(1, state.pan)) : 0 }
+            : {})
+        };
+      });
+    return {
+      id: node.id,
+      nodeType: node.type,
+      inputs,
+      ...(node.type === 'mixer' ? { masterLevel: content.masterLevel ?? 1 } : {}),
       // A player's level travels as its node's master: a fader, not a shape.
       // Its mute is that master at zero, so it silences this player and
       // nothing it is cabled into (D-054's rule, for a player).
-      ...(node.type==='audio-player'?{masterLevel:content.muted===true?0:(content.level??1)}:{}),
-      ...(node.type==='morpher'?{stepCount:content.stepCount??4,steps:content.steps||[]}:{}) };
+      ...(node.type === 'audio-player' ? { masterLevel: content.muted === true ? 0 : (content.level ?? 1) } : {}),
+      ...(node.type === 'morpher' ? { stepCount: content.stepCount ?? 4, steps: content.steps || [] } : {})
+    };
   });
 }
 

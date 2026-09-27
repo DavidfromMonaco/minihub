@@ -1,3 +1,4 @@
+import './installNodeEditors.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { makeFullHub } from './helpers.mjs';
@@ -314,4 +315,54 @@ test('a node deleted after an edit comes back with the content it had', async ()
   await hub.history.undo();
 
   assert.equal(hub.nodes.get(node.id)?.content?.patternLength, 32);
+});
+
+// ---- the page of a node the undo takes away ------------------------------------
+
+/*
+ * Reported by the author on 2026-09-27: with a node's page open below the
+ * Sequencer, the Ctrl+Z that undid the node's creation took the node away and
+ * left its page on screen, unmounted, for a node that no longer existed.
+ */
+function pageArea(hub) {
+  const container = { innerHTML: '', addEventListener() {}, removeEventListener() {}, querySelector: () => null, querySelectorAll: () => [] };
+  const mounted = [];
+  for (const id of ['routing', 'home']) {
+    hub.modules.register({ id, name: id, mount: () => { mounted.push(id); container.innerHTML = `<p>${id}</p>`; }, unmount() {} });
+  }
+  hub.modules.fallbackId = 'routing';
+  return { container, mounted };
+}
+
+test('undoing the creation of the node on screen brings the Patch Bay back', async () => {
+  const hub = rig();
+  const { container, mounted } = pageArea(hub);
+  hub.modules.activate('routing', container);
+  await tick();
+
+  const node = hub.nodes.create('image');
+  hub.modules.activate(node.id, container);
+  await tick();
+  assert.equal(hub.modules.activeId, node.id);
+
+  await hub.history.undo();
+  await tick();
+  assert.ok(!hub.nodes.get(node.id), 'the undo took the node away');
+  assert.equal(hub.modules.activeId, 'routing', 'and its page gave way to the Patch Bay');
+  assert.equal(container.innerHTML, '<p>routing</p>');
+  assert.deepEqual(mounted, ['routing', 'routing']);
+});
+
+test('the Delete button still opens Home: the caller chose where to go', async () => {
+  const hub = rig();
+  const { container, mounted } = pageArea(hub);
+  const node = hub.nodes.create('image');
+  hub.modules.activate(node.id, container);
+
+  // What the button does, in one click.
+  hub.nodes.delete(node.id);
+  hub.modules.activate('home', container);
+  await tick();
+  assert.equal(hub.modules.activeId, 'home');
+  assert.deepEqual(mounted, ['home'], 'the Patch Bay was not mounted on the way');
 });

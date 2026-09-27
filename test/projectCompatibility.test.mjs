@@ -17,6 +17,7 @@
  * saved before 2026-09-04 actually contain, and it carries what the author's own
  * project does not: control cables and learned bindings.
  */
+import './installNodeEditors.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { makeFullHub } from './helpers.mjs';

@@ -1,12 +1,14 @@
 /**
- * The node editor seam (ROADMAP §4).
+ * The node editor seam.
  *
- * These tests exist so a new node type can be added as its own folder plus one
- * registerNodeEditor() call. What they lock is the contract the next editor
- * relies on: the registry decides the rendering, an unregistered type still
- * falls back to the generic shell, and an editor that binds its own listeners
- * gets its teardown run by unmount() (invariant 8).
+ * These tests exist so a node type's page lives in its own folder and is
+ * installed by one registerNodeEditor() call. What they lock is the contract
+ * every page relies on: the registry decides the rendering, an unregistered
+ * type still falls back to the generic shell, an editor that binds its own
+ * listeners gets its teardown run by unmount() (invariant 8), and the node
+ * registry itself knows no page at all.
  */
+import './installNodeEditors.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHub } from '../src/renderer/js/core/hub.js';
@@ -46,7 +48,7 @@ function makeContainer() {
 
 // ---- Registry contract ------------------------------------------------------
 
-test('the four editors that predate the registry are registered', () => {
+test('the VST, Arpeggiator, Mixer and Morpher pages are installed from their folders', () => {
   for (const typeId of ['vst', 'arpeggiator', 'mixer', 'morpher']) {
     assert.ok(getNodeEditor(typeId), `${typeId} must have a registered editor`);
     assert.equal(typeof getNodeEditor(typeId).render, 'function');
@@ -243,5 +245,75 @@ test('a Mixer page follows a command that writes it, and waits for a held pointe
     write(0.2);
     await flush();
     assert.equal(renders, 3, 'an unmounted editor answers nothing');
+  }
+});
+
+// ---- the registry knows no page ------------------------------------------------
+
+/*
+ * The four oldest pages used to live inside nodeInstances.js and share its
+ * mount(): nine DOM handlers, each opening on `if (type.id !== 'x') return;`,
+ * so a change to one page was paid for in code the three others ran. An import
+ * from `modules/` coming back into the registry is the first step of that.
+ */
+test('nodeInstances.js imports no page', async () => {
+  const { readFileSync } = await import('node:fs');
+  const source = readFileSync(new URL('../src/renderer/js/core/nodeInstances.js', import.meta.url), 'utf8');
+  assert.doesNotMatch(source, /from '\.\.\/modules\//);
+  assert.doesNotMatch(source, /type\.id === '(vst|arpeggiator|mixer|morpher)'/);
+});
+
+test('an editor with refresh() is asked to follow an undo instead of being redrawn', async () => {
+  const hub = createHub(mockApi());
+  hub.engine.init();
+
+  let renders = 0;
+  const refreshed = [];
+  const unregister = registerNodeEditor('image', {
+    render: () => `<p>render ${renders += 1}</p>`,
+    refresh: (container, context) => refreshed.push([container, context.instance.id])
+  });
+
+  try {
+    const node = hub.nodes.create('image');
+    const container = makeContainer();
+    const module = hub.modules.get(node.id);
+    module.mount(container);
+    hub.events.emit('history:applied', { keys: ['nodeInstances'] });
+    assert.equal(renders, 1, 'the page keeps what a redraw would lose -- a scroll, a status line');
+    assert.deepEqual(refreshed, [[container, node.id]]);
+    module.unmount();
+  } finally {
+    unregister();
+  }
+});
+
+test('each mount hands the page a fresh state of its own', async () => {
+  const hub = createHub(mockApi());
+  hub.engine.init();
+
+  const states = [];
+  const unregister = registerNodeEditor('image', {
+    render: ({ state }) => {
+      states.push(state);
+      state.seen = (state.seen || 0) + 1;
+      return '<p>probe</p>';
+    },
+    bind: (_container, { state }) => { assert.equal(state, states.at(-1), 'render and bind share it'); }
+  });
+
+  try {
+    const node = hub.nodes.create('image');
+    const module = hub.modules.get(node.id);
+    const container = makeContainer();
+    module.mount(container);
+    module.unmount();
+    module.mount(container);
+    module.unmount();
+    assert.equal(states.length, 2);
+    assert.notEqual(states[0], states[1], 'what one opening remembered does not leak into the next');
+    assert.equal(states[1].seen, 1);
+  } finally {
+    unregister();
   }
 });
