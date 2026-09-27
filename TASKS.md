@@ -7,13 +7,6 @@ finished, delete its entry**, in the same commit. What was done lives in git and
 
 ## Started, not finished
 
-**The Sequencer's manual, under Help — in the author's test** — asked
-2026-09-27 (D-069).
-- Done: Help > Sequencer Manual (F1) opens every command of the Sequencer,
-  the Clip Editor and the export, with eight diagrams; a test pins the
-  shortcuts it names to the code. Seen rendered in a browser with the real
-  stylesheet; not yet opened in MiniHub.
-
 **Recording over a track that already holds clips — in the author's test** —
 asked 2026-09-27 (D-063).
 - Done: *Record: Overdub | Replace* beside Loop. Overdub writes a MIDI take
