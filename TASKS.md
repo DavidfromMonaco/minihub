@@ -14,9 +14,6 @@ Nothing.
 
 ## Kept for the author, not started
 
-**One Ring creating the node a new generation's track plays** — set aside by
-the author on 2026-09-17, to be rethought.
-
 **Splice's Expression reads 0.85 through `parameters` while the saved plugin
 state holds 1.0** — seen through the agent channel. Unexplained.
 

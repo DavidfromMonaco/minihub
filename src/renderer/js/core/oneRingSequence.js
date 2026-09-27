@@ -54,7 +54,7 @@ import { OneRingRandom, RANDOM_STREAM } from './oneRingRandom.js';
  * A step aimed at `one-ring:writer` WRITEs: the engine turns what the voices
  * played over the last `bars` into a generation, and the renderer writes it
  * into the Sequencer. The engine reads the window and feedback's settings;
- * where a generation goes -- `mode`, `clipId`, `destination` -- and how many
+ * where a generation goes -- `mode`, `clipId`, `destination`, `instrument` -- and how many
  * were written are the renderer's alone, and changing them publishes nothing
  * (`ENGINE_WRITER_FIELDS`).
  */
@@ -225,11 +225,13 @@ export function emptyScene(place) {
 
 /**
  * `clipId` names the clip Replace and Add write into; `destination`, the node a
- * new track plays, or none. `written` counts the generations written, and
- * numbers the next one's track.
+ * new track plays, or none. `instrument`, a plugin id, gives each new track a
+ * node of that plugin of its own instead (asked by the author on 2026-09-27):
+ * one or the other is set, never both. `written` counts the generations
+ * written, and numbers the next one's track.
  */
 export const defaultWriter = () => ({
-  mode: WRITE_MODE.newTrack, clipId: '', destination: '', bars: 4,
+  mode: WRITE_MODE.newTrack, clipId: '', destination: '', instrument: '', bars: 4,
   feedback: false, feedbackMode: CAPTURE_MODE.replace, delayBars: 0, limit: 16, written: 0
 });
 
@@ -466,6 +468,9 @@ function readWriter(raw) {
   if (!Object.values(WRITE_MODE).includes(settings.mode)) fail('writer.mode: new track, replace or add');
   if (!idText(settings.clipId)) fail('writer.clipId: a clip id');
   if (!idText(settings.destination)) fail('writer.destination: a node id');
+  // A plugin id is its file's path, longer than any node's id.
+  if (typeof settings.instrument !== 'string' || settings.instrument.length > 2048) fail('writer.instrument: a plugin id');
+  if (settings.instrument && settings.destination) fail('writer: a destination or an instrument, not both');
   if (!wholeIn(settings.bars, 1, MAX_WRITER_BARS)) fail(`writer.bars: 1 to ${MAX_WRITER_BARS} bars`);
   if (typeof settings.feedback !== 'boolean') fail('writer.feedback: true or false');
   if (!Object.values(CAPTURE_MODE).includes(settings.feedbackMode)) fail('writer.feedbackMode: replace or add');

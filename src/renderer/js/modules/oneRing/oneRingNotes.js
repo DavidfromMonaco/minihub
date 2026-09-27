@@ -223,6 +223,37 @@ const WRITE_MODES = [
   [WRITE_MODE.add, 'Add to clip', 'Each generation joins the notes of the clip chosen']
 ];
 
+// What a new track plays is one menu over two settings: a node already on the
+// Patch Bay, or a plugin a node is made of for each track. A node's id never
+// starts with this, so the menu's value says which it is.
+const INSTRUMENT_CHOICE = 'plugin:';
+
+/** The writer's settings the "Track plays" menu's value stands for. */
+export function trackPlaysChoice(value) {
+  const text = String(value || '');
+  return text.startsWith(INSTRUMENT_CHOICE)
+    ? { destination: '', instrument: text.slice(INSTRUMENT_CHOICE.length) }
+    : { destination: text, instrument: '' };
+}
+
+function trackPlaysSelect(view, newTrack) {
+  const { writer } = view;
+  const instruments = view.instruments ?? [];
+  const destinationKnown = view.destinations.some((node) => node.id === writer.destination);
+  const lost = writer.destination && !destinationKnown ? optionTag(writer.destination, `${writer.destination} (gone)`, true) : '';
+  const destinations = view.destinations.map((node) => optionTag(node.id, node.label, node.id === writer.destination)).join('');
+  const instrumentKnown = instruments.some((plugin) => plugin.pluginId === writer.instrument);
+  const missing = writer.instrument && !instrumentKnown
+    ? optionTag(`${INSTRUMENT_CHOICE}${writer.instrument}`, 'A plugin no longer installed', true) : '';
+  const made = instruments.map((plugin) => optionTag(`${INSTRUMENT_CHOICE}${plugin.pluginId}`,
+    plugin.name, plugin.pluginId === writer.instrument)).join('');
+  const none = optionTag('', '— None: give it one later —', !writer.destination && !writer.instrument);
+  const onPatchBay = destinations || lost ? `<optgroup label="On the Patch Bay">${lost}${destinations}</optgroup>` : '';
+  const newNode = made || missing ? `<optgroup label="A new node for each track">${missing}${made}</optgroup>` : '';
+  return selectBox(`${none}${onPatchBay}${newNode}`,
+    `${act('writer-destination')} data-ring-focus="writer-destination"`, 'What a new track plays', `op-select--wide${newTrack ? '' : ' is-idle'}`);
+}
+
 export function renderWriter(view) {
   const { writer } = view;
   const status = view.status;
@@ -235,11 +266,7 @@ export function renderWriter(view) {
   const clips = view.clips.map((clip) => optionTag(clip.id, clip.label, clip.id === writer.clipId)).join('');
   const clipSelect = selectBox(`${optionTag('', view.clips.length ? '— Choose a MIDI clip —' : 'No MIDI clip in the Sequencer', !writer.clipId)}${gone}${clips}`,
     `${act('writer-clip')} data-ring-focus="writer-clip"`, 'The clip written into', `op-select--wide${newTrack ? ' is-idle' : ''}`);
-  const destinationKnown = view.destinations.some((node) => node.id === writer.destination);
-  const lost = writer.destination && !destinationKnown ? optionTag(writer.destination, `${writer.destination} (gone)`, true) : '';
-  const destinations = view.destinations.map((node) => optionTag(node.id, node.label, node.id === writer.destination)).join('');
-  const destinationSelect = selectBox(`${optionTag('', '— None: give it one later —', !writer.destination)}${lost}${destinations}`,
-    `${act('writer-destination')} data-ring-focus="writer-destination"`, 'What a new track plays', `op-select--wide${newTrack ? '' : ' is-idle'}`);
+  const destinationSelect = trackPlaysSelect(view, newTrack);
   const readout = (label, value, hook) => `<span class="op-legend">${escapeHtml(label)}</span>${pearlLcd({ value, size: 'readout', attrs: `data-ring-live="${hook}"` })}`;
   const next = newTrack ? `The next one: “${view.name} Generation ${writer.written + 1}”` : `${writer.written} written so far`;
   return `<div class="op-panel-head"><span class="op-label accent">Writer</span><span class="op-hint">A channel aimed at One Ring · Writer WRITEs what the voices played over the window; a step at a bar's start is the boundary</span></div>

@@ -416,8 +416,13 @@ export class OneRingNodes {
           ? Math.max(0, msg.transportBeat - lengthPpq) : null;
         const name = `${node.name || 'One Ring'} Generation ${number}`;
         result = sequencer.writeGeneration({
-          mode: 'new-track', name, destination: writer.destination, startPpq: heard, lengthPpq, notes
+          mode: 'new-track', name, destination: writer.destination, instrument: writer.instrument,
+          startPpq: heard, lengthPpq, notes
         });
+        // Written all the same: losing the music to a missing plugin would be worse.
+        if (result?.instrument === 'missing') {
+          this.hub.diagnostics?.log?.(`one-ring: ${msg.nodeId} generation ${number} has no instrument -- the plugin is not installed`);
+        }
       } else {
         result = sequencer.writeGeneration({
           mode: writer.mode === WRITE_MODE.add ? 'add' : 'replace', clipId: writer.clipId, lengthPpq, notes
@@ -440,6 +445,7 @@ export class OneRingNodes {
     }
     record.written += 1;
     record.last = { number, trackId: result.trackId, clipId: result.clipId };
+    if (result.instrument) record.last.instrument = result.instrument;
     // Counted in the content, in the same turn as the clip: one undo step.
     this.hub.nodes.setContent(msg.nodeId, { ...node.content, writer: { ...writer, written: number } });
     this.hub.events.emit('oneRing:written', { nodeId: msg.nodeId, number, ...result });

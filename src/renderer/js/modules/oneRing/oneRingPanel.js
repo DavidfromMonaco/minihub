@@ -11,7 +11,8 @@ import * as edits from '../../core/oneRingEdits.js';
 import {
   KNOBS, TABS, TAB_REGIONS, bodyMarkup, renderPage, renderRegions, shownBank, tabOf
 } from './oneRingFaceplate.js';
-import { liveRulesText } from './oneRingNotes.js';
+import { liveRulesText, trackPlaysChoice } from './oneRingNotes.js';
+import { instrumentPlugins } from '../../core/instrumentTrack.js';
 // The header shows a position too, and one arithmetic writes both.
 import { COMMON_TIME, barBeat, meterBarAt } from '../../core/musicalTime.js';
 
@@ -174,7 +175,8 @@ function viewOf(context) {
     writes: hub.oneRing?.writesOf?.(instance.id) ?? null,
     // Only what a tab shows is looked up.
     clips: tab === 'memory' || tab === 'writer' ? midiClips(hub) : [],
-    destinations: tab === 'writer' ? midiDestinations(hub) : []
+    destinations: tab === 'writer' ? midiDestinations(hub) : [],
+    instruments: tab === 'writer' ? instrumentPlugins(hub) : []
   };
 }
 
@@ -516,7 +518,7 @@ function bind(container, context) {
       hub.oneRing.statusOf(nodeId)?.feedback ? 'FEEDBACK_OFF' : 'FEEDBACK_ON'),
     'write-mode': (arg) => write(setWriterSettings(content(), { mode: Number(arg) })),
     'writer-clip': (_, element) => write(setWriterSettings(content(), { clipId: String(element.value || '') })),
-    'writer-destination': (_, element) => write(setWriterSettings(content(), { destination: String(element.value || '') })),
+    'writer-destination': (_, element) => write(setWriterSettings(content(), trackPlaysChoice(element.value))),
     'writer-feedback': (_, element) => write(setWriterSettings(content(), { feedback: element.checked === true })),
     'writer-feedback-mode': (arg) => write(setWriterSettings(content(), { feedbackMode: Number(arg) })),
     'writer-feedback-mode-toggle': (_, element) => write(setWriterSettings(content(),

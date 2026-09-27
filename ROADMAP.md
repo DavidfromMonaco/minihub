@@ -422,8 +422,9 @@ playing needed it: a Sequencer sync that keeps the routing no longer silences
 every instrument (D-073).
 
 **Left out, and where it went**: One Ring creating the node a new generation's
-track plays — set aside by the author on 2026-09-17, kept in
-[TASKS.md](TASKS.md); what One Ring plays live in an offline export — an audio
+track plays — set aside by the author on 2026-09-17, then settled by him on
+2026-09-27: the Writer's "Track plays" menu offers the installed instruments,
+and a New track gets a node of the one chosen, made for it; what One Ring plays live in an offline export — an audio
 track recording from the start is the author's answer; the demonstration
 project of the plan's step 17, which is the author's to ask for. The Morpher
 stays as it is: whether One Ring takes its place is not decided.

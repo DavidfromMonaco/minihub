@@ -799,6 +799,28 @@ test('WRITER sets where generations go, writes, and turns feedback on and off', 
       feedback: true, feedbackMode: CAPTURE_MODE.add, limit: 7
     });
 
+    // An installed instrument is offered too: a node of it made for each new track.
+    const synth = 'C:/Program Files/Common Files/VST3/Analog Lab V.vst3';
+    api.emitEvent({ type: 'plugins', plugins: [
+      { pluginId: synth, name: 'Analog Lab V', manufacturer: 'Arturia', role: 'instrument' },
+      { pluginId: 'C:/VST3/Room.vst3', name: 'Room', manufacturer: 'Valhalla', role: 'audio-effect' }
+    ] });
+    press('tab', 'memory');
+    press('tab', 'writer');
+    const menu = regions.get('body').paints.at(-1);
+    assert.match(menu, /<optgroup label="A new node for each track"><option value="plugin:C:\/Program Files\/Common Files\/VST3\/Analog Lab V\.vst3">Analog Lab V</);
+    assert.doesNotMatch(menu, /Room/, 'an effect plays no track');
+    change('writer-destination', `plugin:${synth}`);
+    assert.deepEqual([content().writer.destination, content().writer.instrument], ['', synth]);
+    change('writer-destination', arp.id);
+    assert.deepEqual([content().writer.destination, content().writer.instrument], [arp.id, ''], 'one or the other');
+    change('writer-destination', `plugin:${synth}`);
+    api.emitEvent({ type: 'plugins', plugins: [] });
+    hub.engine._setPlugins([]);
+    press('tab', 'memory');
+    press('tab', 'writer');
+    assert.match(regions.get('body').paints.at(-1), /<option value="plugin:[^"]*Analog Lab V\.vst3" selected>A plugin no longer installed</);
+
     press('write');
     press('feedback-live');
     api.emitEvent({

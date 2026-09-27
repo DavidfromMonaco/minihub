@@ -11,6 +11,7 @@ import {
 } from '../src/renderer/js/core/oneRingSequence.js';
 import { SequencerModel, defaultSequencerState } from '../src/renderer/js/core/sequencerModel.js';
 import { makeFullHub } from './helpers.mjs';
+import { createAudioOutputModule } from '../src/renderer/js/modules/audioOutput/audioOutputModule.js';
 
 /**
  * Contract, part two: a WRITE in the engine sends a generation -- what the
@@ -72,7 +73,7 @@ async function rig() {
 test('a new node writes four bars into a track of its own; a sequence saved before the writer opens with it', () => {
   const content = createSequence();
   assert.deepEqual(content.writer, {
-    mode: WRITE_MODE.newTrack, clipId: '', destination: '', bars: 4,
+    mode: WRITE_MODE.newTrack, clipId: '', destination: '', instrument: '', bars: 4,
     feedback: false, feedbackMode: CAPTURE_MODE.replace, delayBars: 0, limit: 16, written: 0
   });
   const saved = createSequence();
@@ -83,7 +84,9 @@ test('a new node writes four bars into a track of its own; a sequence saved befo
     [{ bars: 0 }, /writer\.bars/], [{ bars: 17 }, /writer\.bars/], [{ mode: 3 }, /writer\.mode/],
     [{ limit: 0 }, /writer\.limit/], [{ limit: 1000 }, /writer\.limit/], [{ delayBars: 65 }, /writer\.delayBars/],
     [{ feedback: 1 }, /writer\.feedback/], [{ feedbackMode: 2 }, /writer\.feedbackMode/],
-    [{ clipId: 5 }, /writer\.clipId/], [{ written: -1 }, /writer\.written/]
+    [{ clipId: 5 }, /writer\.clipId/], [{ written: -1 }, /writer\.written/],
+    [{ instrument: 7 }, /writer\.instrument/], [{ instrument: 'x'.repeat(2049) }, /writer\.instrument/],
+    [{ instrument: 'C:/a.vst3', destination: 'vst-001' }, /a destination or an instrument, not both/]
   ]) {
     assert.throws(() => readSequence({ ...createSequence(), writer: { ...defaultWriter(), ...writer } }), message);
   }
@@ -182,6 +185,49 @@ test('a new track plays the node the writer names, cabled from the Sequencer', a
   writeEvent();
   assert.equal(hub.sequencer.model.state.tracks.at(-1).outputId, '', 'the node gone, the generation is written anyway');
   assert.equal(hub.oneRing.writesOf(ring.id).written, 2);
+});
+
+test('a new track can play a node of its own, made of the plugin the writer names, cabled where instruments sound', async () => {
+  const { api, hub, ring, announce, setWriter, writeEvent, content } = await rig();
+  hub.modules.register(createAudioOutputModule(hub));
+  const synth = 'C:/Program Files/Common Files/VST3/Analog Lab V.vst3';
+  api.emitEvent({ type: 'plugins', plugins: [
+    { pluginId: synth, name: 'Analog Lab V', manufacturer: 'Arturia', role: 'instrument' }
+  ] });
+  const arp = hub.nodes.create('arpeggiator');
+  setWriter({ destination: arp.id });
+  setWriter({ destination: '', instrument: synth });
+  announce();
+  const before = hub.nodes.list().filter((node) => node.type === 'vst').length;
+  writeEvent();
+  writeEvent();
+  const vsts = hub.nodes.list().filter((node) => node.type === 'vst');
+  assert.equal(vsts.length, before + 2, 'one node for each generation');
+  const [first, second] = hub.sequencer.model.state.tracks.slice(-2);
+  assert.deepEqual([first.outputId, second.outputId], vsts.slice(-2).map((node) => node.id));
+  for (const node of vsts.slice(-2)) {
+    assert.deepEqual(hub.nodes.get(node.id).content.plugins.map((plugin) => plugin.pluginId), [synth]);
+    assert.ok(hub.network.connectionsFrom('sequencer', 'midi-out').some((cable) => cable.to.nodeId === node.id));
+    assert.equal(hub.network.connectionsFrom(node.id, 'audio-out').length, 1, 'it sounds somewhere');
+  }
+  assert.equal(hub.oneRing.writesOf(ring.id).last.instrument, second.outputId);
+
+  // A full Sequencer refuses the generation before any node is made.
+  while (hub.sequencer.model.state.tracks.length < 64) hub.sequencer.model.addTrack('midi');
+  writeEvent();
+  assert.equal(hub.nodes.list().filter((node) => node.type === 'vst').length, before + 2, 'no orphan node');
+  while (hub.sequencer.model.state.tracks.length > 2) hub.sequencer.model.removeTrack(hub.sequencer.model.state.tracks.at(-1).id);
+
+  // A plugin no longer installed: the notes are written all the same, with no instrument.
+  const logged = [];
+  hub.diagnostics.log = (line) => logged.push(line);
+  api.emitEvent({ type: 'plugins', plugins: [] });
+  hub.engine._setPlugins([]);
+  writeEvent();
+  assert.equal(hub.sequencer.model.state.tracks.at(-1).outputId, '');
+  assert.equal(hub.sequencer.model.state.tracks.at(-1).clips[0].notes.length, 2);
+  assert.match(logged.at(-1), /has no instrument -- the plugin is not installed/);
+  assert.equal(content().writer.written, 3);
 });
 
 test('replace and add write the named clip and no other', async () => {
@@ -321,7 +367,7 @@ test('requests read and set the writer, write, and turn feedback on and off', as
   assert.deepEqual(await ask({ kind: 'writer' }), {
     ok: true,
     writer: {
-      mode: 'new-track', clipId: '', destination: '', bars: 4, feedback: false,
+      mode: 'new-track', clipId: '', destination: '', instrument: '', bars: 4, feedback: false,
       feedbackMode: 'replace', delayBars: 0, limit: 16, written: 0
     },
     engine: { writes: 0, dropped: 0, empty: 0, feedback: false, feedbackStopped: false },
@@ -338,11 +384,11 @@ test('requests read and set the writer, write, and turn feedback on and off', as
   assert.equal(set.ok, true, set.message);
   assert.equal(set.changed, true);
   assert.deepEqual(set.writer, {
-    mode: 'replace', clipId: clip.id, destination: arp.id, bars: 8, feedback: true,
+    mode: 'replace', clipId: clip.id, destination: arp.id, instrument: '', bars: 8, feedback: true,
     feedbackMode: 'add', delayBars: 2, limit: 3, written: 0
   });
   assert.deepEqual(content().writer, {
-    mode: WRITE_MODE.replace, clipId: clip.id, destination: arp.id, bars: 8, feedback: true,
+    mode: WRITE_MODE.replace, clipId: clip.id, destination: arp.id, instrument: '', bars: 8, feedback: true,
     feedbackMode: CAPTURE_MODE.add, delayBars: 2, limit: 3, written: 0
   });
 
@@ -352,6 +398,8 @@ test('requests read and set the writer, write, and turn feedback on and off', as
     [{ clipId: sound.id }, /writer\.clipId: not a MIDI clip/],
     [{ clipId: 'nowhere' }, /writer\.clipId: no clip "nowhere"/],
     [{ destination: 'mixer-404' }, /writer\.destination: no node "mixer-404"/],
+    [{ instrument: 'C:/nowhere.vst3' }, /writer\.instrument: no installed plugin "C:\/nowhere\.vst3"/],
+    [{ instrument: 4 }, /writer\.instrument: a plugin id/],
     [{ bars: 17 }, /writer\.bars: 1 to 16 bars/],
     [{ limit: 0 }, /writer\.limit: 1 to 999/],
     [{ mode: 'overdub' }, /writer\.mode: "new-track", "replace", "add"/],

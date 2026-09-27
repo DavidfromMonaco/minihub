@@ -61,7 +61,8 @@ import {
  * ----------
  * `writer` reads where generations go and what became of them; `set-writer`
  * edits the writer's settings -- a clip it names must be a MIDI clip, a
- * destination a node that takes a track's notes. `write` and `feedback` go to
+ * destination a node that takes a track's notes, an instrument an installed
+ * plugin; naming one of the last two clears the other. `write` and `feedback` go to
  * the runtime, as a step aimed at `one-ring:writer` does: `write` writes what
  * the voices played over the window, now.
  */
@@ -109,7 +110,9 @@ const VALUES = Object.freeze({
     + 'order "as-played" "rising" "falling" "shuffled", density 0-100; a channel aimed at one-ring:voice:1-4 '
     + 'plays notes: PLAY -1..63 (a slot of the material, -1 its own), NOTE 0-255 (a note, in the voice\'s order)',
   writer: '{"mode": "new-track", "replace" or "add"; "clipId": the MIDI clip replace and add write into; '
-    + '"destination": the node a new track plays, or ""; "bars": 1-16, the window a WRITE takes; "feedback": '
+    + '"destination": the node a new track plays, or ""; "instrument": a plugin id (scan-plugins lists them), '
+    + 'each new track then playing a VST node of its own made of that plugin, or ""; destination and instrument '
+    + 'exclude each other, naming one clears the other; "bars": 1-16, the window a WRITE takes; "feedback": '
     + 'true or false; "feedbackMode": "replace" or "add"; "delayBars": 0-64 between two feedbacks; "limit": '
     + '1-999 feedbacks}; a channel aimed at one-ring:writer plays WRITE, FEEDBACK_ON and FEEDBACK_OFF',
   channel: 'channel 1-16, target, command, length 4/8/16/32/64, resolution "1/4" "1/8" "1/16" "1/32", '
@@ -297,6 +300,20 @@ function writerFrom(hub, raw, current, path) {
           refuse(at, `no node ${JSON.stringify(value)} a track can play: a VST, an arpeggiator or a One Ring`);
         }
         next.destination = value;
+        if (value) next.instrument = '';
+        break;
+      }
+      case 'instrument': {
+        if (typeof value !== 'string') refuse(at, 'a plugin id, or ""');
+        let pluginId = value;
+        if (value) {
+          const plugin = hub.engine?.getPlugin?.(value);
+          if (!plugin) refuse(at, `no installed plugin ${JSON.stringify(value)}`);
+          // Kept as the catalogue names it: the other path to the same plugin is the same plugin (D-044).
+          pluginId = plugin.pluginId;
+          next.destination = '';
+        }
+        next.instrument = pluginId;
         break;
       }
       case 'bars':
@@ -495,6 +512,7 @@ function writerAnswer(hub, nodeId, content, status) {
       mode: WRITE_NAMES[writer.mode],
       clipId: writer.clipId,
       destination: writer.destination,
+      instrument: writer.instrument,
       bars: writer.bars,
       feedback: writer.feedback,
       feedbackMode: CAPTURE_NAMES[writer.feedbackMode],

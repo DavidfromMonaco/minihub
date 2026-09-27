@@ -4,6 +4,7 @@ import { AUDIO_INPUT_NODE_ID, SEQUENCER_NODE_ID } from './systemNodes.js';
 import { isControllerNode, controllerName } from './controllerNode.js';
 import { preferenceForPort, resolvePortPreference } from '../midi/portIdentity.js';
 import { midiThruReach } from './midiThru.js';
+import { createInstrument } from './instrumentTrack.js';
 import { barStep, meterBarAt, meterRegionAt, normalizeSignature } from './musicalTime.js';
 
 const STATE_KEY = 'sequencerState';
@@ -1447,7 +1448,13 @@ export class SequencerController {
    * `mode` 'new-track' makes a MIDI track of its own, named `name`, with the
    * generation as its one clip at `startPpq` -- where it was heard; at the
    * playhead when none is given -- and `destination` as its Destination when
-   * one is named and can be cabled. 'replace' and 'add' write into the clip
+   * one is named and can be cabled. `instrument`, a plugin id, gives the track
+   * a VST node of that plugin of its own instead, made the way an instrument
+   * dropped in the arrangement is (`createInstrument`) -- once the track limit
+   * has let the track through, so a refused generation leaves no node behind.
+   * A plugin no longer installed leaves the track without one, and says so in
+   * `instrument: 'missing'`: the notes are written all the same.
+   * 'replace' and 'add' write into the clip
    * `clipId` names, and nowhere else. `notes` are in quarter notes from the
    * generation's start, `lengthPpq` its window.
    *
@@ -1459,7 +1466,7 @@ export class SequencerController {
    * why it could not: a project changing, the track limit, a clip gone or not
    * MIDI.
    */
-  writeGeneration({ mode, name = '', destination = '', clipId = '', startPpq = null, lengthPpq = 4, notes = [] } = {}) {
+  writeGeneration({ mode, name = '', destination = '', instrument = '', clipId = '', startPpq = null, lengthPpq = 4, notes = [] } = {}) {
     if (this.hub.project?._transitionPending || this._projectTransitionState !== 'idle') {
       return { ok: false, reason: 'project-transition', message: 'the project is changing' };
     }
@@ -1472,13 +1479,20 @@ export class SequencerController {
       const track = this.model.addTrack('midi', { name, focus: false });
       const clip = this.model.addMidiClip(track.id, at, lengthPpq, notes, { name, snap: false, select: false });
       let routed = false;
+      let made = null;
+      if (instrument) {
+        made = createInstrument(this.hub, instrument);
+        destination = made?.nodeId || '';
+      }
       if (destination && this.hub.network.getNode(destination)) {
         this.model.updateTrack(track.id, { outputId: destination });
         routed = this.ensureRoute(track);
         if (!routed) this.model.updateTrack(track.id, { outputId: '' });
       }
       this.changed();
-      return { ok: true, trackId: track.id, clipId: clip.id, notes: clip.notes.length, routed };
+      const answer = { ok: true, trackId: track.id, clipId: clip.id, notes: clip.notes.length, routed };
+      if (instrument) answer.instrument = made ? made.nodeId : 'missing';
+      return answer;
     }
     if (mode !== 'replace' && mode !== 'add') return { ok: false, reason: 'invalid-generation', message: `no write mode ${mode}` };
     if (!clipId) return { ok: false, reason: 'no-clip', message: 'the writer names no clip' };

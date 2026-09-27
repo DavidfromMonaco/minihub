@@ -52,6 +52,27 @@ export function audioHomeFor(hub, previousInstrumentId = null) {
 }
 
 /**
+ * A VST node holding the plugin, its AUDIO OUT cabled where the last MIDI
+ * track's instrument sends its own. Returns `{ nodeId, pluginInstanceId }`, or
+ * null when the plugin is not installed. The caller checks the Sequencer has
+ * room for the track first: a node made for a track that is then refused is
+ * an orphan on the Patch Bay.
+ */
+export function createInstrument(hub, pluginId) {
+  if (!hub.engine?.getPlugin?.(pluginId)) return null;
+  const previous = [...(hub.sequencer?.model?.state?.tracks || [])].reverse()
+    .find((track) => track.type === 'midi' && hub.nodes.get(track.outputId)?.type === 'vst');
+  const node = hub.nodes.create('vst');
+  if (!node) return null;
+  const entry = hub.nodes.appendPlugin(node.id, pluginId);
+  const home = audioHomeFor(hub, previous?.outputId || null);
+  if (home) {
+    try { hub.network.connect(node.id, 'audio-out', home.nodeId, home.portId); } catch (_) { /* the node stays, uncabled, as a hand would leave it */ }
+  }
+  return { nodeId: node.id, pluginInstanceId: entry?.id || null };
+}
+
+/**
  * Make the track, its instrument and its cables. Returns
  * `{ track, nodeId, pluginInstanceId }`, or null when the plugin is not
  * installed or the Sequencer is full.
@@ -62,19 +83,12 @@ export function createInstrumentTrack(hub, pluginId) {
   if (!plugin || !sequencer) return null;
   // Checked first: a full Sequencer must not leave an orphan node behind.
   if (sequencer.model.state.tracks.length >= SEQUENCER_LIMITS.tracks) return null;
-  const previous = [...sequencer.model.state.tracks].reverse()
-    .find((track) => track.type === 'midi' && hub.nodes.get(track.outputId)?.type === 'vst');
-  const node = hub.nodes.create('vst');
-  if (!node) return null;
-  const entry = hub.nodes.appendPlugin(node.id, pluginId);
-  const home = audioHomeFor(hub, previous?.outputId || null);
-  if (home) {
-    try { hub.network.connect(node.id, 'audio-out', home.nodeId, home.portId); } catch (_) { /* the node stays, uncabled, as a hand would leave it */ }
-  }
+  const instrument = createInstrument(hub, pluginId);
+  if (!instrument) return null;
   const track = sequencer.addTrack('midi');
-  if (!track) return { track: null, nodeId: node.id, pluginInstanceId: entry?.id || null };
-  sequencer.setTrack(track.id, { name: plugin.name, outputId: node.id });
-  return { track: sequencer.model.state.tracks.find((item) => item.id === track.id) || track, nodeId: node.id, pluginInstanceId: entry?.id || null };
+  if (!track) return { track: null, ...instrument };
+  sequencer.setTrack(track.id, { name: plugin.name, outputId: instrument.nodeId });
+  return { track: sequencer.model.state.tracks.find((item) => item.id === track.id) || track, ...instrument };
 }
 
 /**

@@ -561,7 +561,7 @@ commands take the path above, and it plays notes. Where each part lives:
 | the commands | `CommandBus` | a native source keyed by node id beside the plugin sources: targets published with `setOneRingTargets`, `controlEvents` carrying `nodeId` and `generation`, checked and executed like a plugin's, holds released the same way |
 | MIDI IN | `midiThru.js`, `sequencerModule.js`, `nodeInstances.js` | a MIDI track may name the node as its Destination; a controller cabled to it sends its notes through `engine.midiNode` |
 | MIDI OUT | `describeMidiNetwork` (`engineSync.js`) | the node's destinations — chains and their series, arpeggiators, the hardware output — described as an arpeggiator's are |
-| generations | `SequencerController.writeGeneration` | a new track, or the one clip the writer names; one undo step, the project modified (D-072) |
+| generations | `SequencerController.writeGeneration` | a new track, or the one clip the writer names; one undo step, the project modified (D-072); a new track plays a node the writer names, or a VST node of its own made of the plugin the writer names (`createInstrument`, `instrumentTrack.js`) |
 | from the VST | [oneRingImport.js](src/renderer/js/core/oneRingImport.js), [juceState.js](src/renderer/js/core/juceState.js) | "Copy to One Ring node" on a VST node holding One Ring: its JUCE state read, a node made, the CTRL OUT cables moved |
 
 A One Ring has no CTRL IN: it takes no command, and the STOP a sequence sends to
@@ -965,7 +965,13 @@ focus nor the selection, or the notes of the one clip the writer names,
 replaced (`SequencerModel.replaceMidiNotes`) or added to (`addMidiNotes`) —
 the two operations the Clip Editor's protocol offers too, as `replace-notes`
 and `add-notes`. A named clip gone or not MIDI is refused, never replaced by
-another. Each write is one `changed()`: one undo step, the project modified.
+another. A new track plays the node the writer names, or, when the writer
+names a plugin, a VST node of that plugin made for it the way an instrument
+dropped in the arrangement is (`createInstrument`): its AUDIO OUT cabled where
+the last instrument sounds, and made only once the track limit has let the
+track through, so a refused generation leaves no node behind. A plugin no
+longer installed leaves the track without one; the notes are written all the
+same. Each write is one `changed()`: one undo step, the project modified.
 The sync it causes keeps the routing, so nothing is silenced (§7, *`Chain`*;
 D-073).
 
