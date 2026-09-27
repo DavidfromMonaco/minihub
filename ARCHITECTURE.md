@@ -957,6 +957,15 @@ asks for the screen and one either side at a slice per pixel, once the view
 has been still for 80 ms, and draws it over the 256, which it then shows
 faint.
 
+The Clip Editor draws a take's fades (D-062) over its waveform, on the part
+that plays -- between the trims, since the window shows the whole file -- and
+takes them by the arrangement's hand: `fadeZone`, `fadeRegion` and
+`fadeDragged` live in `core/fades.js` for both, each caller saying how many
+pixels a second is. A gesture previews in the window and reaches the model
+once, on release, as `update-audio` with `fadeIn` or `fadeOut`; main
+checks a fade's four fields (`validFade`). The agent channel sets a fade with
+the same request, handed through `kind: 'sequencer'`.
+
 ### Le contrôleur (renderer)
 
 [sequencerController.js](src/renderer/js/core/sequencerController.js) fait le

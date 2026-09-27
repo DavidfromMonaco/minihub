@@ -6,6 +6,8 @@ import { MIN_NOTE_PPQ, SNAP_STEPS, clampNoteGroupDelta, snapStep } from './core/
 import { COMMON_TIME, asRegions, barBeat, barLabelStride, barLinesIn, meterBarAt, meterSnap, meterSpans, quartersPerBar, quartersPerBeat } from './core/musicalTime.js';
 import { formatSeconds, secondsMarks, secondsStride } from './ui/secondsRuler.js';
 import { installTooltips } from './ui/tooltip.js';
+import { closeContextMenu, openContextMenu } from './ui/contextMenu.js';
+import { FADE_SHAPES, fadeDragged, fadePaths, fadeRegion, fadeShapeIcon, fadeSpans, fadeZone, fitFades } from './core/fades.js';
 
 /** Mirrors AUDITION_MAX_MS in clipEditorWindows.js, which refuses anything
  *  longer on the way in. Asking for what will be refused is a silent click. */
@@ -87,10 +89,21 @@ const navigation = attachNavigationBar({
 // A narrower window shows less of the clip, so the thumb it draws is a lie
 // until something redraws it. Nothing else here listens for a resize.
 // An audio take opened in a window not yet laid out is framed on the first
-// resize that gives it a width.
+// resize that gives it a width. A window widened past the whole take raises
+// the zoom to it: the canvas stretches to the window anyway, and the
+// waveform with it, while the ruler and the fades kept the old scale.
 globalThis.addEventListener('resize', () => {
-  if (current && current.track.type !== 'midi' && !audioView.fitted) render();
-  else navigation.render();
+  if (current && current.track.type !== 'midi') {
+    const floor = clampAudioZoom(audioView.pxPerSecond);
+    if (!audioView.fitted) { render(); return; }
+    if (floor > audioView.pxPerSecond) {
+      audioView = { pxPerSecond: floor, fitted: true };
+      scrollIntent = { left: 0, top: 0 };
+      render();
+      return;
+    }
+  }
+  navigation.render();
 });
 /**
  * A scroll position the NEXT render must adopt instead of the one on screen.
@@ -374,10 +387,149 @@ function audioMarkup(state) {
           <div class="clip-audio-ruler" data-audio-ruler></div>
           <svg class="clip-audio-wave" data-audio-wave viewBox="0 -1 ${wave.count} 2" preserveAspectRatio="none" aria-hidden="true"><path d="${wave.path}"/></svg>
           <svg class="clip-audio-wave clip-audio-wave--detail is-off" data-audio-detail viewBox="0 -1 1 2" preserveAspectRatio="none" aria-hidden="true"><path d=""/></svg>
+          ${clip.mediaAvailable === false ? '' : `<div class="clip-audio-fades" data-audio-fades data-ce-left="${soundStartPx()}" data-ce-width="${soundWidthPx()}">${fadeLayerMarkup()}</div>`}
         </div>
       </div>
       ${navigationBarMarkup()}
     </section>`;
+}
+
+/*
+ * The take's fades (D-062), drawn over the waveform as the arrangement draws
+ * them over a clip, and taken by the same hand (`core/fades.js`): a corner or
+ * a handle at the top for the length, the curve itself to bend it, a
+ * right-click inside one for its shape. The window shows the whole file while
+ * the fades sit on the part that plays, between the trims, so the layer that
+ * holds them spans that part and nothing else.
+ */
+const soundSeconds = () => Math.max(0, (Number(current?.clip?.trimEndSeconds) || 0) - (Number(current?.clip?.trimStartSeconds) || 0));
+const soundStartPx = () => (Number(current?.clip?.trimStartSeconds) || 0) * audioView.pxPerSecond;
+const soundWidthPx = () => soundSeconds() * audioView.pxPerSecond;
+/** The gesture in progress on a fade, if any: `{ zone, key, before, x0, y0, height, pxPerSecond, moved }`. */
+let fadeDrag = null;
+
+function fadeLayerMarkup() {
+  const width = soundWidthPx();
+  const px = fadeSpans(current.clip, audioView.pxPerSecond, width);
+  const part = (direction, fade, length) => {
+    let curve = '';
+    if (length > 0) {
+      const { line, shade } = fadePaths(fade, direction);
+      curve = `<svg class="seq-fade ${direction}" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true" data-ce-left="${direction === 'in' ? 0 : width - length}" data-ce-width="${length}"><path class="seq-fade-shade" d="${shade}"></path><path class="seq-fade-line" d="${line}"></path></svg>`;
+    }
+    return `${curve}<span class="seq-fade-handle ${direction}" data-ce-left="${direction === 'in' ? length : width - length}" aria-hidden="true"></span>`;
+  };
+  return part('in', current.clip.fadeIn, px.in) + part('out', current.clip.fadeOut, px.out);
+}
+
+/** Where the pointer is over the sound, in the layer's pixels. */
+function fadePointer(layer, event) {
+  const rect = layer.getBoundingClientRect?.();
+  if (!rect || !current) return null;
+  return { width: soundWidthPx(), height: rect.height, x: event.clientX - rect.left, y: event.clientY - rect.top };
+}
+
+function bindFades(layer) {
+  // The cursor says what a press would take, before it is pressed.
+  layer.addEventListener('pointermove', (event) => {
+    if (fadeDrag) return;
+    const at = fadePointer(layer, event);
+    const zone = at ? fadeZone(current.clip, audioView.pxPerSecond, at.width, at.height, at.x, at.y) : '';
+    if (zone) layer.dataset.fadeZone = zone;
+    else delete layer.dataset.fadeZone;
+  });
+  layer.addEventListener('pointerleave', () => { if (!fadeDrag) delete layer.dataset.fadeZone; });
+  layer.addEventListener('pointerdown', (event) => {
+    if (event.button !== 0) return;
+    const at = fadePointer(layer, event);
+    const zone = at ? fadeZone(current.clip, audioView.pxPerSecond, at.width, at.height, at.x, at.y) : '';
+    if (!zone) return;
+    event.preventDefault();
+    startFadeDrag(event, layer, zone, at.height);
+  });
+  layer.addEventListener('contextmenu', (event) => {
+    const at = fadePointer(layer, event);
+    const direction = at ? fadeRegion(current.clip, audioView.pxPerSecond, at.width, at.x) : '';
+    if (!direction) return;
+    event.preventDefault();
+    openFadeMenu(event, direction);
+  });
+}
+
+/** Lay fades over the take on screen, fitted as the model fits them, and redraw them. */
+function previewFades(fades) {
+  Object.assign(current.clip, fitFades(fades.fadeIn, fades.fadeOut, soundSeconds()));
+  const layer = root.querySelector('[data-audio-fades]');
+  if (!layer) return;
+  layer.innerHTML = fadeLayerMarkup();
+  applyDynamicStyles();
+}
+
+/**
+ * Drag a fade's length sideways or its curve up and down. Previewed here and
+ * sent once on release -- one undo step per gesture, as in the arrangement --
+ * and put back by Escape, a cancelled pointer or the window losing focus.
+ */
+function startFadeDrag(event, layer, zone, height) {
+  fadeDrag = {
+    zone, key: zone.startsWith('in') ? 'fadeIn' : 'fadeOut',
+    before: { fadeIn: { ...current.clip.fadeIn }, fadeOut: { ...current.clip.fadeOut } },
+    x0: event.clientX, y0: event.clientY, height, pxPerSecond: audioView.pxPerSecond, moved: false
+  };
+  layer.dataset.fadeZone = zone;
+  layer.classList.add('fading');
+  try { layer.setPointerCapture?.(event.pointerId); } catch (_) { /* capture is a nicety */ }
+  document.addEventListener('pointermove', fadeMove);
+  document.addEventListener('pointerup', fadeUp);
+  document.addEventListener('pointercancel', fadeCancel);
+}
+
+function fadeMove(event) {
+  if (!fadeDrag || !current) return;
+  const dx = event.clientX - fadeDrag.x0;
+  const dy = event.clientY - fadeDrag.y0;
+  if (!fadeDrag.moved && Math.abs(dx) < 2 && Math.abs(dy) < 2) return;
+  fadeDrag.moved = true;
+  const { key, before, zone, pxPerSecond, height } = fadeDrag;
+  // Measured from the fades as they were when taken: a fade-out that gave way
+  // to a long fade-in comes back when the hand does.
+  previewFades({ ...before, [key]: { ...before[key], ...fadeDragged(before[key], zone, dx, dy, pxPerSecond, height) } });
+}
+
+function finishFadeDrag(commit) {
+  if (!fadeDrag) return;
+  const { key, before, moved } = fadeDrag;
+  fadeDrag = null;
+  document.removeEventListener('pointermove', fadeMove);
+  document.removeEventListener('pointerup', fadeUp);
+  document.removeEventListener('pointercancel', fadeCancel);
+  root.querySelector('[data-audio-fades]')?.classList.remove('fading');
+  if (!moved || !current) return;
+  if (commit) mutate('update-audio', { [key]: { ...current.clip[key] } });
+  else previewFades(before);
+}
+
+function fadeUp() { finishFadeDrag(true); }
+function fadeCancel() { finishFadeDrag(false); }
+
+/** The fade's menu: Reaper's seven shapes, pictured, then the low-pass sweep. */
+function openFadeMenu(event, direction) {
+  const key = direction === 'in' ? 'fadeIn' : 'fadeOut';
+  const fade = current.clip[key];
+  openContextMenu({
+    x: event.clientX, y: event.clientY,
+    className: 'ctx-fade-menu',
+    items: [
+      ...FADE_SHAPES.map((name, shape) => ({
+        label: name, icon: fadeShapeIcon(shape, direction), checked: fade.shape === shape,
+        // A shape chosen is that shape, as its picture draws it: the bend
+        // given by dragging the curve starts again from straight.
+        action: () => mutate('update-audio', { [key]: { shape, curve: 0 } })
+      })),
+      { separator: true },
+      { label: 'Low pass fade', checked: fade.lowPass === true, action: () => mutate('update-audio', { [key]: { lowPass: !fade.lowPass } }) }
+    ]
+  });
 }
 
 /** The file's length in seconds, never zero: a width is divided by it. */
@@ -614,6 +766,8 @@ function scrollToNotes(scroll) {
 
 function render() {
   if (!current) return;
+  // A menu describes the page it was opened on, and this one is about to go.
+  closeContextMenu();
   const previousScroll = root.querySelector('[data-piano-scroll]');
   if (!scrollIntent && previousScroll) pianoScroll = { left: previousScroll.scrollLeft, top: previousScroll.scrollTop };
   const type = current.track.type;
@@ -771,6 +925,8 @@ function bind() {
       audioView = { ...audioView, fitted: false };
       render();
     });
+    const fades = root.querySelector('[data-audio-fades]');
+    if (fades) bindFades(fades);
     navigation.bind();
     return;
   }
@@ -1180,6 +1336,11 @@ function keyDown(event) {
     Promise.resolve(window.clipEditorAPI?.history?.(intent)).catch(() => {});
     return;
   }
+  if (event.key === 'Escape' && fadeDrag) {
+    event.preventDefault();
+    fadeCancel();
+    return;
+  }
   if (event.target?.closest?.('input,select,textarea')) return;
   if (current?.track.type !== 'midi') return;
   if (event.key === 'Escape' && (lasso || drag)) {
@@ -1224,6 +1385,7 @@ function keyDown(event) {
 document.addEventListener('keydown', keyDown);
 globalThis.addEventListener('blur', pointerCancel);
 globalThis.addEventListener('blur', lassoCancel);
+globalThis.addEventListener('blur', fadeCancel);
 
 const offChanged = globalThis.clipEditorAPI.onChanged(() => {
   if (reloadQueued) return;
@@ -1242,11 +1404,14 @@ function cleanup() {
   reloadFrame = 0; reloadQueued = false;
   finishNoteDrag(false);
   endLasso(false);
+  finishFadeDrag(false);
+  closeContextMenu();
   offChanged?.();
   offTransport?.();
   document.removeEventListener('keydown', keyDown);
   globalThis.removeEventListener('blur', pointerCancel);
   globalThis.removeEventListener('blur', lassoCancel);
+  globalThis.removeEventListener('blur', fadeCancel);
   globalThis.removeEventListener('beforeunload', cleanup);
 }
 

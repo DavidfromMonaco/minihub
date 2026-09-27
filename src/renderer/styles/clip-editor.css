@@ -89,6 +89,11 @@
 .clip-audio-wave.is-covered { visibility:hidden; }
 .clip-audio-wave--detail { justify-self:start; }
 .clip-audio-wave--detail.is-off { display:none; }
+/* The take's fades (D-062), over the part of the file that plays: under the
+   ruler's 20px row, from the trim start (data-ce-left) for the trimmed length
+   (data-ce-width). The curves and handles inside are the arrangement's
+   (.seq-fade, base.css), placed the same way. */
+.clip-audio-fades { position:absolute; top:20px; bottom:0; z-index:2; }
 @media (max-width:820px) {
   .clip-editor-header { grid-template-columns:minmax(130px,1fr) max-content; }
   .clip-editor-status { display:none; }

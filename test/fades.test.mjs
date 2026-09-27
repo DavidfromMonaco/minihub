@@ -1,9 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
+import fs from 'node:fs';
+
 import {
-  DEFAULT_FADE_SHAPE, FADE_SHAPES, fadeGain, fadePaths, fadeShapeGain, fadeShapeIcon, fitFades, lowPassCutoffHz, normalizeFade
+  DEFAULT_FADE_SHAPE, FADE_SHAPES, fadeDragged, fadeGain, fadePaths, fadeRegion, fadeShapeGain, fadeShapeIcon, fadeZone,
+  fitFades, lowPassCutoffHz, normalizeFade
 } from '../src/renderer/js/core/fades.js';
+import { handleAgentRequest } from '../src/renderer/js/core/agentRequests.js';
 import { SequencerModel } from '../src/renderer/js/core/sequencerModel.js';
 import { SequencerController } from '../src/renderer/js/core/sequencerController.js';
 import { fadeRegionAt, fadeZoneAt } from '../src/renderer/js/modules/sequencer/sequencerModule.js';
@@ -93,4 +97,60 @@ test('the hand takes a fade at its top corner, its handle, or its curve', () => 
   assert.equal(at(140, 36), '', 'away from the curve, the clip');
   assert.equal(fadeRegionAt(clip, 20, 120, 160, 150), 'out', 'a right-click inside the fade opens its menu');
   assert.equal(fadeRegionAt(clip, 20, 120, 160, 60), '');
+});
+
+test('the Clip Editor takes a fade by the same hand, measured in seconds of the file', () => {
+  // The same clip drawn at 40 px per second, as the Clip Editor's waveform
+  // may be: the arrangement's answers, from the arrangement's own function.
+  const clip = { fadeIn: { seconds: 0, shape: 0, curve: 0 }, fadeOut: { seconds: 1, shape: 0, curve: 0 } };
+  for (const [x, y] of [[2, 4], [120, 4], [80, 4], [140, 20], [140, 36]]) {
+    assert.equal(fadeZone(clip, 40, 160, 40, x, y), fadeZoneAt(clip, 20, 120, 160, 40, x, y), `at ${x},${y}`);
+  }
+  assert.equal(fadeRegion(clip, 40, 160, 150), 'out');
+  // A drag: 40 px to the right lengthens a fade-in by a second, shortens a
+  // fade-out; a rise of half the height bends the curve up by one.
+  assert.deepEqual(fadeDragged({ seconds: 0.5, curve: 0 }, 'in-length', 40, 0, 40, 100), { seconds: 1.5 });
+  assert.deepEqual(fadeDragged({ seconds: 0.5, curve: 0 }, 'out-length', 40, 0, 40, 100), { seconds: 0 });
+  assert.deepEqual(fadeDragged({ seconds: 1, curve: 0 }, 'in-curve', 0, -25, 40, 100), { curve: 0.5 });
+  assert.deepEqual(fadeDragged({ seconds: 1, curve: 0.5 }, 'out-curve', 0, -300, 40, 100), { curve: 1 }, 'bounded');
+});
+
+test('the Clip Editor\'s audio view draws the fades on the part that plays, and takes them', () => {
+  const source = fs.readFileSync(new URL('../src/renderer/js/clipEditor.js', import.meta.url), 'utf8');
+  const audio = source.slice(source.indexOf('function audioMarkup'), source.indexOf('function render'));
+  assert.ok(audio.includes('data-audio-fades data-ce-left="${soundStartPx()}" data-ce-width="${soundWidthPx()}"'),
+    'the layer spans the trimmed sound, not the whole file');
+  assert.ok(source.includes('fadeZone(current.clip, audioView.pxPerSecond'), 'the hand is the arrangement\'s');
+  assert.ok(source.includes("if (commit) mutate('update-audio', { [key]: { ...current.clip[key] } })"),
+    'a gesture is sent once, on release: one undo step');
+  assert.ok(source.includes("event.key === 'Escape' && fadeDrag"), 'Escape puts the fade back');
+  assert.match(source, /finishFadeDrag\(false\);\s+closeContextMenu\(\);/, 'the window leaves nothing behind');
+  const css = fs.readFileSync(new URL('../src/renderer/styles/base.css', import.meta.url), 'utf8');
+  assert.ok(css.includes('.clip-audio-fades[data-fade-zone$="length"] {'), 'the fade cursor is the arrangement\'s');
+});
+
+test('the agent channel sets a fade through the Clip Editor\'s own request', async () => {
+  const data = { transportBpm: 120 };
+  const hub = {
+    settings: { get: (key) => data[key], set: (key, value) => { data[key] = value; } },
+    network: { connectionsTo: () => [], connectionsFrom: () => [], getNode: () => null },
+    engine: { setTransport: () => {}, syncSequencer: () => {} },
+    events: { emit() {} }, midi: { selectedOutputId: '', getOutput: () => null }, api: {},
+    project: { projectId: 'p', _transitionPending: false }
+  };
+  const controller = new SequencerController(hub);
+  hub.sequencer = controller;
+  const track = controller.model.addTrack('audio');
+  const clip = controller.model.addAudioClip(track.id, { filePath: 'C:/a.wav', lengthPpq: 8, durationSeconds: 4, trimEndSeconds: 4 });
+  const update = (payload, expectedProjectId = 'p') => handleAgentRequest(hub, {
+    kind: 'sequencer', request: { kind: 'update', clipId: clip.id, expectedProjectId, operation: 'update-audio', payload }
+  });
+
+  const answer = await update({ fadeIn: { seconds: 1.5, shape: 5 }, fadeOut: { seconds: 3, lowPass: true } });
+  assert.equal(answer.ok, true);
+  assert.deepEqual(answer.state.clip.fadeIn, { seconds: 1.5, shape: 5, curve: 0, lowPass: false });
+  assert.deepEqual(answer.state.clip.fadeOut, { seconds: 2.5, shape: DEFAULT_FADE_SHAPE, curve: 0, lowPass: true },
+    'fitted as a drag fits it: the fade-out gives way');
+  assert.equal(data.sequencerState.tracks[0].clips[0].fadeIn.seconds, 1.5, 'saved with the arrangement');
+  assert.equal((await update({ fadeIn: { seconds: 0 } }, 'another-project')).reason, 'stale-project');
 });

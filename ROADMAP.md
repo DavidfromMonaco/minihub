@@ -819,8 +819,8 @@ No commitment, no priority — written down so they are not forgotten.
 - Editing by hand what a take keeps besides its notes: a controller lane for
   the CC, pitch bend and pressure in the Clip Editor (D-064), and points drawn
   and dragged on a track's automation lines (D-065).
-- Fades set through the agent channel, and drawn in the Clip Editor's audio
-  view (D-062).
+~~Fades set through the agent channel, and drawn in the Clip Editor's audio
+  view (D-062)~~ — **done 2026-09-27**.
 - One Ring counting in the project's time signature: it still counts
   four-quarter bars (D-059).
 - An MCP wrapper around the agent channel, so an agent calls its requests as

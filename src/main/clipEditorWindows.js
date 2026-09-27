@@ -116,9 +116,22 @@ function validPayload(operation, value) {
   if (operation === 'delete-notes') return validIdList(value.noteIds);
   if (operation === 'update-audio') {
     const keys = Object.keys(value);
-    return keys.length > 0 && keys.every((key) => ['trimStartSeconds', 'trimEndSeconds', 'gain'].includes(key) && finite(value[key]));
+    return keys.length > 0 && keys.every((key) => (key === 'fadeIn' || key === 'fadeOut'
+      ? validFade(value[key])
+      : ['trimStartSeconds', 'trimEndSeconds', 'gain'].includes(key) && finite(value[key])));
   }
   return false;
+}
+
+// A fade given by part (D-062): a drag sends a length or a curve, the menu a
+// shape or the low-pass sweep. The renderer bounds the values (normalizeFade);
+// here only the form is checked, so nothing but those four fields rides along.
+function validFade(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const keys = Object.keys(value);
+  return keys.length > 0 && keys.every((key) => (key === 'lowPass'
+    ? typeof value.lowPass === 'boolean'
+    : ['seconds', 'shape', 'curve'].includes(key) && finite(value[key])));
 }
 
 // The time signature (D-059), in the renderer's `musicalTime.js` bounds. This

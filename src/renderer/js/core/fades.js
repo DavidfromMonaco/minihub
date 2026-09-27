@@ -117,3 +117,67 @@ export function fadeShapeIcon(shape, direction = 'in', points = 16) {
 export function lowPassCutoffHz(gain) {
   return 20 * 1000 ** clamp01(gain);
 }
+
+/*
+ * Where the hand takes a fade, in pixels. One copy for the two places a take
+ * is drawn -- the arrangement's clip, in quarters, and the Clip Editor's
+ * waveform, in seconds -- so a fade is grabbed the same way in both: each
+ * says how many pixels a second is, and measures from where the sound starts.
+ */
+export const FADE_GRAB_PX = 6;
+export const FADE_TOP_PX = 10;
+
+/** Both fades' lengths in pixels, over a sound `width` pixels long. */
+export function fadeSpans(clip, pxPerSecond, width) {
+  const perSecond = Math.max(0, Number(pxPerSecond) || 0);
+  return {
+    in: Math.min(width, (Number(clip?.fadeIn?.seconds) || 0) * perSecond),
+    out: Math.min(width, (Number(clip?.fadeOut?.seconds) || 0) * perSecond)
+  };
+}
+
+/**
+ * What the hand is over, in a sound `width` by `height`: a fade's length
+ * (`in-length`, `out-length`) at the top, where a fade ends or where one can
+ * begin, or its curve (`in-curve`, `out-curve`) within a few pixels of it.
+ */
+export function fadeZone(clip, pxPerSecond, width, height, x, y) {
+  const px = fadeSpans(clip, pxPerSecond, width);
+  const inEnd = px.in;
+  const outStart = width - px.out;
+  if (y <= FADE_TOP_PX) {
+    const toIn = Math.abs(x - inEnd);
+    const toOut = Math.abs(x - outStart);
+    if (Math.min(toIn, toOut) <= FADE_GRAB_PX) return toIn <= toOut ? 'in-length' : 'out-length';
+  }
+  if (px.in > 0 && x >= 0 && x <= inEnd) {
+    const gain = fadeGain(clip.fadeIn.shape, clip.fadeIn.curve, x / inEnd);
+    if (Math.abs(y - (1 - gain) * height) <= FADE_GRAB_PX) return 'in-curve';
+  }
+  if (px.out > 0 && x >= outStart && x <= width) {
+    const gain = fadeGain(clip.fadeOut.shape, clip.fadeOut.curve, (width - x) / px.out);
+    if (Math.abs(y - (1 - gain) * height) <= FADE_GRAB_PX) return 'out-curve';
+  }
+  return '';
+}
+
+/** Which fade `x` is inside, for its menu: `in`, `out`, or none. */
+export function fadeRegion(clip, pxPerSecond, width, x) {
+  const px = fadeSpans(clip, pxPerSecond, width);
+  if (px.in > 0 && x <= px.in) return 'in';
+  if (px.out > 0 && x >= width - px.out) return 'out';
+  return '';
+}
+
+/**
+ * A fade's length or curve after a drag of `dx`, `dy` pixels from where it was
+ * taken: a length follows the hand sideways, toward the middle for either
+ * fade; a curve bends up as the hand rises, a full height from -1 to 1.
+ */
+export function fadeDragged(original, zone, dx, dy, pxPerSecond, height) {
+  if (zone.endsWith('length')) {
+    const secondsPerPx = 1 / Math.max(1e-9, Number(pxPerSecond) || 0);
+    return { seconds: Math.max(0, original.seconds + (zone.startsWith('in') ? dx : -dx) * secondsPerPx) };
+  }
+  return { curve: Math.max(-FADE_CURVE_LIMIT, Math.min(FADE_CURVE_LIMIT, original.curve - (dy / Math.max(1, height)) * 2)) };
+}

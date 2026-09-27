@@ -1,7 +1,7 @@
 import { escapeHtml } from '../../core/html.js';
 import { attachNavigationBar, navigationBarMarkup } from '../../ui/navigationBar.js';
 import { SEQUENCER_LIMITS, SNAP_STEPS, ZOOM_MAX, ZOOM_MIN, snapPpq, snapStep, TRACK_HEIGHTS, trackHeightOf, trackSilenced } from '../../core/sequencerModel.js';
-import { FADE_SHAPES, fadeGain, fadePaths, fadeShapeIcon } from '../../core/fades.js';
+import { FADE_SHAPES, fadeDragged, fadePaths, fadeRegion, fadeShapeIcon, fadeSpans, fadeZone } from '../../core/fades.js';
 import { bindTempoInput } from '../../core/tempoControl.js';
 import { isCanonicalMidiIngress } from '../../core/sequencerController.js';
 import { closeContextMenu, openContextMenu } from '../../ui/contextMenu.js';
@@ -430,15 +430,11 @@ const COMMON_SIGNATURES = ['2/4', '3/4', '4/4', '5/4', '6/4', '7/4', '3/8', '5/8
  * start a fade that is not there yet; a handle is taken again as often as you
  * like; the curve itself is dragged up and down to bend it.
  */
-const FADE_GRAB_PX = 6;
-const FADE_TOP_PX = 10;
+// A clip's pixels per second of its sound: quarters at the zoom, at the tempo.
+const clipPxPerSecond = (zoom, bpm) => ((Number(bpm) || 120) / 60) * zoom;
 
 function fadePixels(clip, zoom, bpm, width) {
-  const perSecond = ((Number(bpm) || 120) / 60) * zoom;
-  return {
-    in: Math.min(width, (Number(clip.fadeIn?.seconds) || 0) * perSecond),
-    out: Math.min(width, (Number(clip.fadeOut?.seconds) || 0) * perSecond)
-  };
+  return fadeSpans(clip, clipPxPerSecond(zoom, bpm), width);
 }
 
 function fadeMarkup(clip, zoom, bpm, width) {
@@ -455,37 +451,14 @@ function fadeMarkup(clip, zoom, bpm, width) {
   return part('in', clip.fadeIn, px.in) + part('out', clip.fadeOut, px.out);
 }
 
-/**
- * What the hand is over, in a clip `width` by `height`: a fade's length
- * (`in-length`, `out-length`) at the top, where a fade ends or where one can
- * begin, or its curve (`in-curve`, `out-curve`) within a few pixels of it.
- */
+/** What the hand is over in a clip `width` by `height` (`core/fades.js`). */
 export function fadeZoneAt(clip, zoom, bpm, width, height, x, y) {
-  const px = fadePixels(clip, zoom, bpm, width);
-  const inEnd = px.in;
-  const outStart = width - px.out;
-  if (y <= FADE_TOP_PX) {
-    const toIn = Math.abs(x - inEnd);
-    const toOut = Math.abs(x - outStart);
-    if (Math.min(toIn, toOut) <= FADE_GRAB_PX) return toIn <= toOut ? 'in-length' : 'out-length';
-  }
-  if (px.in > 0 && x >= 0 && x <= inEnd) {
-    const gain = fadeGain(clip.fadeIn.shape, clip.fadeIn.curve, x / inEnd);
-    if (Math.abs(y - (1 - gain) * height) <= FADE_GRAB_PX) return 'in-curve';
-  }
-  if (px.out > 0 && x >= outStart && x <= width) {
-    const gain = fadeGain(clip.fadeOut.shape, clip.fadeOut.curve, (width - x) / px.out);
-    if (Math.abs(y - (1 - gain) * height) <= FADE_GRAB_PX) return 'out-curve';
-  }
-  return '';
+  return fadeZone(clip, clipPxPerSecond(zoom, bpm), width, height, x, y);
 }
 
 /** Which fade `x` is inside, for its menu: `in`, `out`, or none. */
 export function fadeRegionAt(clip, zoom, bpm, width, x) {
-  const px = fadePixels(clip, zoom, bpm, width);
-  if (px.in > 0 && x <= px.in) return 'in';
-  if (px.out > 0 && x >= width - px.out) return 'out';
-  return '';
+  return fadeRegion(clip, clipPxPerSecond(zoom, bpm), width, x);
 }
 
 /**
@@ -1784,7 +1757,7 @@ export function createSequencerModule(hub) {
     const direction = zone.startsWith('in') ? 'in' : 'out';
     const key = direction === 'in' ? 'fadeIn' : 'fadeOut';
     const original = { ...found.clip[key] };
-    const secondsPerPx = 60 / ((controller.tempo || 120) * Math.max(0.01, controller.model.state.zoom));
+    const pxPerSecond = clipPxPerSecond(Math.max(0.01, controller.model.state.zoom), controller.tempo);
     const height = element.getBoundingClientRect?.().height || 1;
     const x0 = event.clientX;
     const y0 = event.clientY;
@@ -1801,8 +1774,7 @@ export function createSequencerModule(hub) {
       const dy = next.clientY - y0;
       if (!moved && Math.abs(dx) < 2 && Math.abs(dy) < 2) return;
       moved = true;
-      if (zone.endsWith('length')) apply({ seconds: Math.max(0, original.seconds + (direction === 'in' ? dx : -dx) * secondsPerPx) });
-      else apply({ curve: Math.max(-1, Math.min(1, original.curve - (dy / height) * 2)) });
+      apply(fadeDragged(original, zone, dx, dy, pxPerSecond, height));
     };
     const finish = (commit) => {
       document.removeEventListener('pointermove', move);

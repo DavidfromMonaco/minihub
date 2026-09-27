@@ -113,6 +113,15 @@ test('a window cannot address another clip and IPC arguments are bounded', async
   assert.equal(validPayload('add-note', { startPpq: 0, durationPpq: 1, pitch: 60, velocity: 100, channel: 1 }), true);
   assert.equal(validPayload('update-audio', { gain: false }), false);
   assert.equal(validPayload('update-audio', { gain: 0 }), true);
+  // A fade given by part, as the Clip Editor's drag and menu send it (D-062).
+  assert.equal(validPayload('update-audio', { fadeIn: { seconds: 0.5 } }), true);
+  assert.equal(validPayload('update-audio', { fadeOut: { seconds: 1, shape: 5, curve: -0.25, lowPass: true } }), true);
+  assert.equal(validPayload('update-audio', { fadeIn: {} }), false, 'a fade of nothing is not a change');
+  assert.equal(validPayload('update-audio', { fadeIn: { seconds: '1' } }), false);
+  assert.equal(validPayload('update-audio', { fadeIn: { lowPass: 1 } }), false);
+  assert.equal(validPayload('update-audio', { fadeIn: { seconds: 1, filePath: 'C:/x.wav' } }), false,
+    'nothing but a fade\'s own four fields rides along');
+  assert.equal(validPayload('update-audio', { fadeOut: [1] }), false);
   assert.equal(validPayload('delete-notes', { noteIds: [false] }), false);
   assert.equal(validPayload('move-notes', { noteIds: ['note-1'], deltaPpq: 0.25 }), true);
   assert.equal(validPayload('move-notes', { noteIds: ['note-1'], deltaPitch: -12, deltaDurationPpq: 0 }), true);

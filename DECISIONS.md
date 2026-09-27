@@ -3513,8 +3513,15 @@ Left out:
 - **MIDI clips**: a fade there has nothing to fade -- the notes play an
   instrument whose sound the clip does not hold. Reaper draws them on MIDI
   items for the same reason as nowhere else: its items are one kind.
-- **The agent channel** cannot set a fade yet, and the Clip Editor's audio
-  view does not draw them.
+- ~~**The agent channel** cannot set a fade yet, and the Clip Editor's audio
+  view does not draw them.~~ **Both done 2026-09-27.** The Clip Editor draws
+  the fades on the part of the file that plays and takes them by the same
+  gestures -- the handle or corner for the length, the curve to bend it, a
+  right-click for the menu, Escape to put one back -- because the hand is one
+  function in `core/fades.js` that the arrangement calls too. An agent sets a
+  fade with the Clip Editor's own request, `update-audio` with `fadeIn` or
+  `fadeOut` by part, handed through `kind: 'sequencer'`: the protocol
+  already carried it, and a second verb would have been a second vocabulary.
 
 **Consequences**
 
@@ -3529,8 +3536,11 @@ the fade loop in `SequencerEngine::renderAudioForOutput` and `readClipFade` in
 `splitClip` and `resizeClip`; `SequencerController.setClipFade`;
 `fadeMarkup`, `fadeZoneAt`, `startFadeDrag` and `openFadeMenu` in
 `modules/sequencer/sequencerModule.js`; `checked` and `icon` in
-`ui/contextMenu.js`. Tests: `test/fades.test.mjs`, `test/sequencerUi.test.mjs`
-("an audio clip draws its fades"), `testClipFades` in the native core tests.
+`ui/contextMenu.js`; `fadeZone`, `fadeRegion` and `fadeDragged` in
+`core/fades.js`, `fadeLayerMarkup` and `startFadeDrag` in `clipEditor.js`,
+`validFade` in `src/main/clipEditorWindows.js`. Tests: `test/fades.test.mjs`,
+`test/sequencerUi.test.mjs` ("an audio clip draws its fades"),
+`test/clipEditorWindows.test.cjs`, `testClipFades` in the native core tests.
 
 ## D-063 — A take adds to what the track holds, or replaces it
 

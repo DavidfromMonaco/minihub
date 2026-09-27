@@ -2338,12 +2338,14 @@ body ::-webkit-scrollbar-corner { background:transparent; }
 .seq-fade-shade { fill:rgba(8,9,10,.42); }
 .seq-fade-line { fill:none; stroke:#ff4d4d; stroke-width:1.5; vector-effect:non-scaling-stroke; }
 .seq-fade-handle { position:absolute; top:1px; z-index:5; width:7px; height:7px; margin-left:-4px; border:1px solid #f4f4f4; border-radius:50%; background:#1b1c1f; opacity:0; pointer-events:none; }
-.seq-clip.audio:hover .seq-fade-handle, .seq-clip.audio.fading .seq-fade-handle { opacity:1; }
+.seq-clip.audio:hover .seq-fade-handle, .seq-clip.audio.fading .seq-fade-handle,
+.clip-audio-fades:hover .seq-fade-handle, .clip-audio-fades.fading .seq-fade-handle { opacity:1; }
 /* The cursors: a fade's length is dragged sideways, its curve up and down.
-   Over a fade corner the resize edge beneath gives way. */
-.seq-clip.audio[data-fade-zone$="length"], .seq-clip.audio[data-fade-zone$="length"] .seq-clip-resize {
+   Over a fade corner the resize edge beneath gives way. The Clip Editor's
+   waveform takes its fades by the same hand, so it wears the same cursors. */
+.seq-clip.audio[data-fade-zone$="length"], .seq-clip.audio[data-fade-zone$="length"] .seq-clip-resize, .clip-audio-fades[data-fade-zone$="length"] {
   cursor:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24'%3E%3Cpath d='M3 18 C9 18 12 8 21 6' fill='none' stroke='%23000' stroke-width='3.5'/%3E%3Cpath d='M3 18 C9 18 12 8 21 6' fill='none' stroke='%23fff' stroke-width='1.6'/%3E%3Cpath d='M2 12 L6 9 L6 15 Z M22 12 L18 9 L18 15 Z' fill='%23fff' stroke='%23000' stroke-width='.8'/%3E%3C/svg%3E") 12 12, ew-resize; }
-.seq-clip.audio[data-fade-zone$="curve"], .seq-clip.audio[data-fade-zone$="curve"] .seq-clip-resize { cursor:ns-resize; }
+.seq-clip.audio[data-fade-zone$="curve"], .seq-clip.audio[data-fade-zone$="curve"] .seq-clip-resize, .clip-audio-fades[data-fade-zone$="curve"] { cursor:ns-resize; }
 .ctx-fade-menu { min-width:220px; }
 .seq-clip-resize.start { left:0; border-right:1px solid rgba(255,255,255,.2); }
 .seq-clip-resize.end { right:0; border-left:1px solid rgba(255,255,255,.2); }
