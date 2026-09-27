@@ -2,7 +2,7 @@
 
 // One Ring's scheduler: it walks the channels of the current scene on a beat
 // clock and hands each command to a sink. Ported from One Ring 0.4's core
-// (plans/active/one-ring-native.md); the class was `Engine` there, a name this
+// (plans/done/one-ring-native.md); the class was `Engine` there, a name this
 // engine already uses for itself. Its behaviour is the VST's but for what the
 // author's first trial found: `beginCommand`, and a scene recall at rest or
 // cut short by STOP.

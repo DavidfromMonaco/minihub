@@ -1,7 +1,7 @@
 #pragma once
 
 // Part two: what a One Ring node's voices played lately -- the take a WRITE
-// turns into a generation (plans/active/one-ring-native.md, *Part two --
+// turns into a generation (plans/done/one-ring-native.md, *Part two --
 // design*). The audio callback owns it. It keeps the last 1,024 notes, each
 // with where it started and ended on a clock of its own that only moves
 // forward, so a seek or a loop does not fold the window.

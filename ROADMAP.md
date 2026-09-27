@@ -26,10 +26,10 @@ the hardware out of the core — and its Étape A finished on 2026-09-04, so the
 was free for **importing a profile**, finished 2026-09-05 (item 8 below, D-027 to
 D-030).
 
-`plans/active/` holds [one-ring-native.md](plans/active/one-ring-native.md),
-started 2026-09-16 (item 7 below). The bindings bar's plan is finished
-([bindings-bar-docked.md](plans/done/bindings-bar-docked.md), item 9 under
-Done), and the agent channel's sits in `plans/done/` too
+`plans/active/` is empty. One Ring's plan and the bindings bar's are finished
+([one-ring-native.md](plans/done/one-ring-native.md), item 7 under Done;
+[bindings-bar-docked.md](plans/done/bindings-bar-docked.md), item 9), and the
+agent channel's sits in `plans/done/` too
 ([agent-channel.md](plans/done/agent-channel.md)). PLANS.md §2 holds the slot
 for work in progress, not for intentions.
 
@@ -394,6 +394,49 @@ what it did**, and worth reading before the next feature with a shortcut:
 
 ---
 
+### 7. One Ring, made native — in place of the Matrix node — `master`
+
+Decided and started 2026-09-16 by the author, in place of the Matrix node,
+which will not be built; part two asked and built 2026-09-17; documented
+2026-09-27. Plan: [plans/done/one-ring-native.md](plans/done/one-ring-native.md),
+steps 0 to 16 and 18. [DECISIONS.md](DECISIONS.md) D-070 to D-073,
+[INTENT.md](INTENT.md) §8 bis.
+
+One Ring — a control sequencer the author wrote and played as a VST3 — is a node
+of MiniHub, every function of the VST kept: sixteen channels of up to 64 cells,
+probabilities, value ranges and lists, conditions, locks, Follow Actions, a
+seed and MUTATE, scenes, and commands over its CTRL OUT to whatever it is cabled
+to. Its core was ported into the engine unchanged, its clock is the engine's,
+its content is the VST's state made sparse, and a VST node holding One Ring
+copies its sequence into a new node. The scenes grew from four to A1 to D8 on
+the author's ask. The page was redrawn after hardware sequencers — the Korg
+SQ-64, the Roland P-6, the Cre8audio Programm — in the faceplate, which it
+extended.
+
+**Part two: notes.** One Ring captures what reaches its MIDI IN, keeps it as
+material, plays it through four voices that are targets of its own channels —
+so scenes, conditions and the seed shape the notes — and writes what it played
+into the Sequencer's clips, where a generation can become the next one's
+material, bounded in time and number. Built first because a clip written while
+playing needed it: a Sequencer sync that keeps the routing no longer silences
+every instrument (D-073).
+
+**Left out, and where it went**: One Ring creating the node a new generation's
+track plays — set aside by the author on 2026-09-17, kept in
+[TASKS.md](TASKS.md); what One Ring plays live in an offline export — an audio
+track recording from the start is the author's answer; the demonstration
+project of the plan's step 17, which is the author's to ask for. The Morpher
+stays as it is: whether One Ring takes its place is not decided.
+
+**The Matrix's leftovers** — `SPECIFICATION_MATRIX_MINIHUB.md` and
+[plans/done/noeud-matrix.md](plans/done/noeud-matrix.md) stay as reference.
+Of the three mechanisms they found missing, the `ctrl-in` on a node with
+dynamic inputs exists now (the Mixer and the Morpher take commands); the
+post-chain gain stage of a VST node and a dual live/export runtime do not, and
+One Ring needed neither.
+
+---
+
 ### 9. The bindings bar, docked under the plugin window — `master`
 
 Decided 2026-09-04 ([DECISIONS.md](DECISIONS.md) D-021), built 2026-09-12 to
@@ -560,59 +603,6 @@ unreadable lines: `nodeInstances.js:316-323` and `341-355`, `engineSync.js:35`,
 dedicated cosmetic pass.
 
 ---
-
-### 7. One Ring, made native — in place of the Matrix node
-
-**Decided 2026-09-16 by the author**: One Ring, a control sequencer that runs
-today as a VST3 built outside this repository, becomes a function of MiniHub
-itself, and it takes the place the Matrix node held in this item. The Matrix
-node will not be built. Started the same day on his word:
-[plans/active/one-ring-native.md](plans/active/one-ring-native.md) — a native
-scheduler ported from One Ring's own core, the VST's commands path reused, the
-VST's saved state as the format. Whether One Ring also takes the Morpher's
-place, as the Matrix was to, is not decided; the Morpher stays as it is.
-
-**What One Ring is today** — a VST3 that keeps its own channels, steps and
-scenes, runs its own clock, and commands the modules its VST node's CTRL OUT is
-cabled to: an arpeggiator's rate, a mixer's master, a track's mute, the tempo
-and the transport. The path is ARCHITECTURE §6 *Commands from a plugin* and
-[DECISIONS.md](DECISIONS.md) D-042; what it keeps is reached through requests in
-its own vocabulary (D-043). It is in the author's test ([TASKS.md](TASKS.md)).
-
-**Every function stays, the whole look is redone** (the author, 2026-09-16) —
-One Ring's functions are worth keeping, all of them; its look is not. The native
-version gets a new design modelled on hardware sequencers. The author's
-references are the Korg SQ-64, the Roland P-6 and the Cre8audio Programm: dark
-plates, grids of lit pads, rows of knobs, a small screen or a few LEDs. Their
-photographs are not in this public repository; they belong to their makers.
-It is an instrument surface, so it is built in the faceplate (`omni-pearl.css`,
-`ui/omniPearl.js`), which it extends with what a step sequencer needs. A look
-that wanted a different plate would replace the faceplate for the arpeggiator
-too, never sit beside it (D-012, D-037).
-
-**What the Matrix leaves, to be read again when this starts** — all of it was
-written for the Matrix, and none of it is decided for One Ring:
-
-- **D-016** and [INTENT.md](INTENT.md) §8 bis admit automation in the precise
-  form of a Matrix node, one that governs nodes and makes no sound; the DAW
-  automation lane stays refused. The wording names the Matrix;
-- **D-017** gives the Matrix its own musical time at the global tempo, so that a
-  scene stopping the sequencer does not freeze it;
-- **D-018** — one armed Learn in the application, with a named owner — matters
-  only if the native version learns controls;
-- `SPECIFICATION_MATRIX_MINIHUB.md` and
-  [plans/done/noeud-matrix.md](plans/done/noeud-matrix.md) stay as reference,
-  no longer as targets. Three mechanisms they found missing may still be
-  needed: the post-chain gain stage of a VST node (§7.2 — `masterLevel` is only
-  applied on `mixer` nodes), a `ctrl-in` on a node with dynamic inputs (§4.3),
-  and a dual-context live/export runtime (§9.1) — an offline export executes no
-  command today.
-
-**Part two, asked 2026-09-17 by the author** — One Ring as the generative engine
-of a piece: a MIDI IN whose notes it captures, a MIDI OUT it plays through its
-channels and scenes, and generations it writes into the Sequencer's clips, where
-one can feed the next — a loop bounded in time, not a cable cycle. Planned in the
-same plan (*Part two*), not started.
 
 ### 8. The controller platform — A done, D-022's half of B done; the plural refused
 
@@ -820,7 +810,7 @@ No commitment, no priority — written down so they are not forgotten.
   so**, and INTENT §6 is the authority on that list, not this line. Three have
   moved since: **automation** was lifted 2026-09-03 as the Matrix node
   ([INTENT.md](INTENT.md) §8 bis, D-016), which has since given way to One Ring
-  made native (item 7 above), **undo/redo** was lifted
+  made native (item 7, D-070), **undo/redo** was lifted
   2026-09-07 as a bounded edit history (§8 quinquies, D-032, item 13 above), and
   **preset management** was the exception from 2026-09-02 to 2026-09-03 — the
   workstream reached step 8 of 9, was withdrawn, and the refusal is upheld

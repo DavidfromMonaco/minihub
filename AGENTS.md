@@ -128,8 +128,10 @@ scope; here are the technical prohibitions:
   `npm run check` refuses a third stylesheet. See [DECISIONS.md](DECISIONS.md)
   D-012.
 
-  Today only the arpeggiator wears the faceplate; extending it is decided editor
-  by editor, not in bulk. By default, a new module uses `base.css`.
+  Today the arpeggiator and One Ring wear the faceplate (One Ring's page added
+  its section 5: key caps, LEDs, pads, rotary selectors); extending it is
+  decided editor by editor, not in bulk. By default, a new module uses
+  `base.css`.
 
   Trap: `clip-editor.html` is its own window and loads `base.css` plus its own
   `clip-editor.css` — never the faceplate. Any `op-` class landing there would

@@ -527,7 +527,10 @@ déplaçable avec son audio ; ce serait une autre décision, pas un réglage.
 
 ## D-016 — L'automation entre dans le périmètre, sous la forme d'un nœud Matrix
 
-**Statut** : en vigueur · 2026-09-03 · **décidé, pas encore implémenté**
+**Statut** : ~~en vigueur~~ **superseded by D-070** (2026-09-16): the Matrix
+node will not be built; One Ring, made native, takes its place. The lifting of
+the refusal stands, now in One Ring's form ([INTENT.md](INTENT.md) §8 bis).
+· 2026-09-03 · décidé, jamais implémenté
 
 **Contexte** — `automation` figurait dans la liste « hors périmètre par défaut »
 d'[INTENT.md](INTENT.md) §6. Or le §3 du même document désigne « jouer de la
@@ -564,7 +567,10 @@ dans `INTENT.md` §3 contre `INTENT.md` §6 avant ce commit.
 
 ## D-017 — La Matrix compte son propre temps musical, au tempo global
 
-**Statut** : en vigueur · 2026-09-03 · **décidé, pas encore implémenté**
+**Statut** : ~~en vigueur~~ **superseded by D-070** (2026-09-16), which keeps
+its principle — a counter of its own on the one clock, not stopped by the
+transport stopping — and follows the arrangement through a seek where the
+Matrix would not have. · 2026-09-03 · décidé, jamais implémenté
 
 **Contexte** — La spécification demandait deux choses incompatibles. Les scènes,
 fades et rampes devaient être cadencés par la position PPQ du Transport (§9.2),
@@ -623,7 +629,10 @@ indépendant existe déjà : `offlineExportTransport_` dans
 
 ## D-018 — Un seul Learn armé dans l'application, avec un propriétaire nommé
 
-**Statut** : en vigueur · 2026-09-03 · **décidé, pas encore implémenté**
+**Statut** : en vigueur · 2026-09-03 · **décidé, pas encore implémenté**.
+Note of 2026-09-27: the Matrix, its second client, will not be built (D-070),
+and native One Ring learns no controls. The arbiter still stands for the one
+Learn that exists, the bindings bar's (D-021), which was built before it.
 
 **Contexte** — `ControlBindingManager` détient **un** `pendingLearn`, au
 singulier, pour toute l'application, et le moteur natif supersède sa demande
@@ -1833,7 +1842,10 @@ piece of work than this one.
 
 ## D-037 — The faceplate is graphite, and every colour in it is a token
 
-**Status**: in force · 2026-09-12 · **implemented**
+**Status**: in force · 2026-09-12 · **implemented**. Since 2026-09-17 the
+arpeggiator is not the only module wearing it: native One Ring's page does,
+and extends it (D-070). Its content is a backlit instrument too, so nothing
+below is revisited.
 
 **Context** — ROADMAP item 6 carried a cosmetic task with a deadline attached to
 something outside the repository: the arpeggiator is the one module wearing the
@@ -3822,3 +3834,282 @@ table of shortcuts, and eight diagrams drawn as inline SVG.
 in `src/main/appMenu.js`; `help:sequencer-manual` in `core/menuCommands.js`;
 `#manual-root` in `index.html`; `.manual-*` and `.mn-*` in `base.css`. Tests:
 `test/sequencerManual.test.mjs`.
+
+## D-070 — One Ring is a node of MiniHub: its clock is the engine's, its content the VST's state made sparse
+
+**Status**: in force · 2026-09-16 to 2026-09-17 · **implemented**, tried by the
+author in MiniHub. Supersedes D-016 and D-017, which were written for a Matrix
+node that will not be built. Plan:
+[plans/done/one-ring-native.md](plans/done/one-ring-native.md), steps 0 to 9
+and 15.
+
+**Context** — D-016 lifted the refusal of automation in the form of a Matrix
+node: scenes and rules governing the nodes it is cabled to. Before it was
+built, One Ring existed: a VST3 control sequencer written outside this
+repository, sixteen channels of up to 64 cells, four scenes, a seed, MUTATE
+and Follow Actions, commanding MiniHub's modules over a CTRL OUT cable (D-042)
+and programmed by an agent through requests (D-043). It did everything the
+Matrix was specified for, and the author was already playing with it. On
+2026-09-16 he asked for One Ring inside MiniHub, every function kept and the
+look redone after hardware sequencers, in place of the Matrix.
+
+**Decision** — a node type, `one-ring`, of the MIDI family, with CTRL OUT (and
+MIDI IN and MIDI OUT since D-071). Any number of them in a project, added by
+hand; each commands only what its CTRL OUT is cabled to, through the same
+`CommandBus` a plugin's commands take, as a native source beside the plugin
+sources. Four things decided the shape:
+
+- **The core is ported, not rewritten.** One Ring's scheduler, its model, its
+  random draws and its command registry were written for an audio thread and a
+  registry they do not own. They moved into `native/audio-engine/src/one_ring/`
+  with their behaviour unchanged, their tests with them, and the random
+  generator is ported bit for bit into the renderer too, checked on both sides
+  against the same fixed values: MUTATE in the page draws what the VST drew.
+- **The clock is the engine's.** A runtime per node runs in the audio callback,
+  between the Sequencer and the arpeggiators, on the live `Transport`'s tempo —
+  one counter of its own on the one clock, as D-017 wanted for the Matrix.
+  Where it differs from D-017 is where the VST differed: the transport's Play
+  starts it, and while both play a seek or a loop wrap moves it with the
+  arrangement rather than letting it drift. The transport stopping does not
+  stop it — it keeps its own time at the last tempo, so a sequence can stop
+  the arrangement and play on, which is what D-017 was protecting. Its bar is
+  four quarters, whatever the project's signature (D-059).
+- **Which Stop stops it.** Every Stop a person gives — the header, the
+  Sequencer, the Clip Editor, an agent's `stop` — stops the One Ring nodes
+  with the arrangement (`stopOneRings` on `setTransport`). The STOP a sequence
+  sends over a cable does not, and Pause does not (D-048). The author's words,
+  after the first trial: both have to work when used by hand.
+- **The content is the VST's saved state, made sparse.** The VST writes all 4
+  × 16 × 64 cells, about 700 KB; a node's content is copied into every undo
+  step and every settings save. So each channel keeps a `blank` cell and only
+  the cells that differ from it, and a VST state converts to that content and
+  back without loss. A VST node holding One Ring offers "Copy to One Ring node",
+  which reads the plugin's JUCE state, makes the node and moves the CTRL OUT
+  cables to it.
+
+**The scenes grew past the VST's four** (the author, 2026-09-17: "il faudrait
+donner la possibilité de faire A1, A2, A3"). Four letters, eight places each,
+A1 to D8: 32 at most, the engine refusing a 33rd. A scene exists once it is
+chosen or stored into, and the content keeps only those — an empty scene is
+8 KB of content. The list only grows: a scene's index is what a RECALL value
+and a scene command carry, and removing one would move every index after it
+under a running sequence. A VST sequence's scenes A to D open as A1, B1, C1
+and D1, their recalls unchanged.
+
+**What stays refused** — what D-016 refused stays refused: no scripting, no
+model-driven generation. An offline export executes no command and runs no One
+Ring; it plays what the clips hold (D-072 is how what One Ring played becomes
+clips, and an audio track recording from the start is the author's answer for
+the rest).
+
+**Consequences**
+
+- The VST still works in MiniHub, and its path (D-042, D-043) is unchanged.
+- The page wears the faceplate (`omni-pearl.css`), which is no longer the
+  arpeggiator's alone; it extends it with key caps, LEDs, LCD fields, scribble
+  strips, rotary selectors, drag knobs and pads, every colour a token (D-037).
+- A scene the engine reports is written into the content as performance and
+  not sent back: a new plan releases what Legato holds.
+
+**What would justify revisiting** — a sequence that must go on counting through
+a seek (the Matrix's case in D-017): that would be a "follow the arrangement"
+switch on the node, an addition to this entry. Or a project whose One Ring
+scenes outgrow 32, at which point removing a scene needs indices that do not
+move.
+
+**Proof in the code** — `native/audio-engine/src/one_ring/` (`scheduler.*`,
+`model.*`, `generative.*`, `commands.*`, the core; `runtime.*`, the clock in
+`Runtime::process`; `state_json.*`, the content read with its defaults);
+`Engine::processEngine2Block` (the order in the block) and the
+`stopOneRings` flag of `setTransport` in `engine.cpp`;
+`src/renderer/js/core/oneRingSequence.js` (`SCENE_PLACES`, `withCells`,
+`toVstState`, `sequenceFromComponentState`), `oneRingRandom.js`,
+`oneRingNodes.js`, `oneRingImport.js`, `juceState.js`, and the native source in
+`commandBus.js`; `_halt` in `sequencerController.js`. Tests:
+`test/oneRingSequence.test.mjs`, `oneRingRandom.test.mjs`,
+`oneRingNode.test.mjs`, `oneRingImport.test.mjs`, `oneRingScenes.test.mjs`,
+`juceState.test.mjs`; natively `testOneRingRandomAndConditions`,
+`testOneRingMutation`, `testOneRingStateJson`, `testOneRingRuntime`,
+`testOneRingScenes`, `testJuceStateMatchesTheRenderer`.
+
+---
+
+## D-071 — One Ring plays notes as a MIDI processor of the engine
+
+**Status**: in force · 2026-09-17 · **implemented**, plan steps 11, 12 and 16
+
+**Context** — The author's brief of 2026-09-17, after trying the node: One Ring
+as the generative engine of a piece. A short clip gives a few notes; One Ring
+captures them, keeps using them after the clip has ended, varies them, plays an
+instrument with them and writes a new generation back (D-072). All of it inside
+MiniHub, reproducible from a seed, with no outside agent rewriting clips while
+it plays.
+
+**Decision** — One Ring hears and plays notes the way the arpeggiator already
+does: as a processor in the engine's callback, at sample accuracy, never from
+the renderer's timers.
+
+- **MIDI IN** takes a Sequencer track whose Destination is the node — the track
+  pushes its block into the node's scheduled input, as a track aimed at an
+  arpeggiator does — and a controller cabled to it (`engine.midiNode`). A MIDI
+  thru walk (D-039) ends at One Ring.
+- **The material** is kept apart from the rules that transform it: an *origin*
+  (what was captured or loaded from a clip) and a *current generation* (what
+  feedback made of it), each at most 256 notes in 960 ticks to the quarter.
+  Capture counts its own beats, so a loop wrap does not fold notes onto each
+  other; a Note On of velocity 0 is a Note Off; a second Note On on a sounding
+  pitch ends the first there; a note held before the capture began is not
+  taken. Freeze, revert and clear. The material travels on a command of its
+  own, both ways, because a new sequence plan releases what Legato holds.
+- **Voices, inside the sequence** — not a generator beside it. Four voices are
+  new internal targets beside One Ring's channels and scenes, so a channel
+  aimed at a voice plays notes with everything a channel already has: length,
+  rate, repeats, Legato, swing, probability, conditions, locks, Follow Actions,
+  scenes, MUTATE and the seed. `PLAY` replays the material's slots, `NOTE` picks
+  a note in the voice's order, and the rule commands (transpose, octave, root,
+  scale, velocity, gate, density) set a live value. The rules are per scene, so
+  a scene can change the harmony; the scale table is the arpeggiator's, one
+  table for both.
+- **MIDI OUT** reaches chains and their series, arpeggiators and the hardware
+  output. Each note is kept in its voice's registry of sounding notes until its
+  Note Off is sent, at its own sample. Every Note On gets its Note Off on a STOP,
+  a person's Stop, a seek, a loop wrap, a Legato release, a change of MIDI OUT
+  cables and a node removed — which plays on until the callback has ended its
+  notes. At most 32 notes sounding per voice; the rest is refused and counted.
+- **Determinism**: the same seed, material and sequence play the same notes
+  whatever the block size. New random streams come after the VST's four, so a
+  saved seed draws what it drew.
+
+**Refused**
+
+- A generator in the renderer, sending notes through `engine.midi`: a timer's
+  jitter is what D-017 already refused for a clock, and the notes would reach
+  the instrument a timer tick and an IPC round late.
+- Controller changes, pitch bend and aftertouch on MIDI IN or MIDI OUT: notes
+  only. An arpeggiator or another One Ring feeding a One Ring's MIDI IN is not
+  routed, as an arpeggiator feeding an arpeggiator is not.
+- A hidden attenuation: no gain or velocity is lowered by anything the author
+  did not set.
+
+**Consequences** — In the block the order is Sequencer, One Ring,
+arpeggiators, chains; One Ring's commands are carried out on the control
+thread, so running earlier changes nothing for them but their clock. The
+capture, the voices and the take run on fixed capacities, with no lock and no
+allocation (invariant 3). Notes cross the IPC only as control data — a
+material, a generation — never as audio (invariant 1).
+
+**What would justify revisiting** — a sound that needs more than notes (a
+modulation wheel played by a voice), or a chain of processors (an arpeggiator
+fed by One Ring fed by another), either of which asks for a general MIDI
+processor graph rather than a fixed order in the block.
+
+**Proof in the code** — `native/audio-engine/src/one_ring/material.*`,
+`capture.*`, `voices.*`, `scales.h`; `OneRingInputs` in `engine.h` and the
+One Ring outputs of `syncMidiNetwork` in `engine.cpp`; `RECIPIENT_TYPES` in
+`core/midiThru.js`, `oneRingDestinations` in `core/engineSync.js`, the voices
+and material of `core/oneRingSequence.js`. Tests: `test/oneRingMaterial.test.mjs`,
+`oneRingVoices.test.mjs`; natively `testOneRingCapture`, `testOneRingVoices`,
+`testSequencerFeedsOneRing`.
+
+---
+
+## D-072 — A written generation is authored, and reaches only what its writer names
+
+**Status**: in force · 2026-09-17 · **implemented**, plan steps 13 and 16
+
+**Context** — The brief's loop closes through the Sequencer: One Ring writes a
+generation into a clip, and that generation can become its next material. Two
+dangers came with it. A write that lands somewhere other than where the author
+said destroys work; and a loop that feeds itself instantly is a cascade, the
+thing the Patch Bay's cycle refusal (D-005) exists to prevent.
+
+**Decision** — a fifth internal target, `one-ring:writer`. Its `WRITE` takes
+what the voices *played* over the last 1 to 16 bars — what was heard, density
+and panics included — as a generation of at most 256 notes, which the engine
+sends to the renderer (`oneRingWrite`). The renderer writes it through
+`SequencerController.writeGeneration` and the Sequencer's own model: no second
+clip editor, no clip written in the callback.
+
+- **Where**: *New* makes a MIDI track of its own for each generation, named
+  after the node and the generation, the clip placed where it was heard — a
+  track the author can give an instrument of its own (his answer, 2026-09-17).
+  *Replace* and *Add* change the notes of the one clip the writer names; Add
+  skips duplicates. `SequencerModel.replaceMidiNotes` and `addMidiNotes` are the
+  operations the model lacked, added once and offered to the Clip Editor too.
+- **Never a fallback.** A named clip that is gone or not MIDI, a full Sequencer
+  (64 tracks), a project changing: the write is refused, counted and reported
+  with its reason. It never lands on another clip.
+- **Authored** (D-032): a write is one undo step and marks the project
+  modified, as a recording take does. The node counts it in the same turn, so
+  undo takes both back. The same notes written again change nothing and
+  publish nothing, so a loop that has settled is quiet.
+- **Feedback, bounded**: with feedback on, a generation becomes the current
+  generation — replacing it or joining it — no sooner than a delay after the
+  previous one (0 to 64 bars) and no more times than a limit (1 to 999), after
+  which feedback turns itself off and the status says why. The origin is never
+  touched, frozen material takes nothing, and a generation reaches the voices
+  at their next steps, never inside the tick that wrote it. The loop goes
+  through time, memory and clips, never through a cable: the cycle refusal is
+  unchanged.
+- The writer's settings (where generations go, how many were written) live in
+  the node's content and are not sent to the engine: choosing a destination
+  publishes no new plan.
+
+**Refused** — a MIDI OUT cabled into the Sequencer's MIDI IN as a recording
+path (it is not one: the Sequencer's MIDI IN assumes a controller, D-039, and
+RECORD_ON with a keyboard is not writing); One Ring creating the node a new
+track plays (set aside by the author on 2026-09-17, to be rethought — TASKS);
+loading a clip as material from a step of the sequence.
+
+**Consequences** — A clip being played is rewritten one timer tick and one IPC
+round after its step: a note of the new content that starts inside that gap is
+not heard in that pass. Writing while the piece plays is what made D-073
+necessary first.
+
+**What would justify revisiting** — a need to write at the audio grid's
+precision (a generation heard in the same pass it was written), which would
+put clip changes in the callback and the model's authority in question.
+
+**Proof in the code** — `native/audio-engine/src/one_ring/take.*` and the
+writer and feedback of `runtime.cpp`; `SequencerController.writeGeneration`,
+`SequencerModel.replaceMidiNotes` and `addMidiNotes`; the writer in
+`core/oneRingSequence.js` and `core/oneRingNodes.js`. Tests:
+`test/oneRingWriter.test.mjs`; natively `testOneRingWriter`.
+
+---
+
+## D-073 — A Sequencer sync that keeps the routing releases what changed, and panics nothing
+
+**Status**: in force · 2026-09-17 · **implemented**, plan step 10
+
+**Context** — `cmdSyncSequencer` ended in `panicAllMidi()`: All Sound Off on
+every chain and every arpeggiator reset, at every sync. A new plan started with
+empty `activeNotes` and could not give the old plan's notes their Note Off, so
+the panic was the only safe ending. Its cost: a note edited in the Clip Editor
+during playback cut every instrument, and a generation One Ring writes while
+playing (D-072) would have cut the whole piece, its own notes included, at every
+write.
+
+**Decision** — each plan names the plan it was compiled against and what
+becomes of each of its tracks. When every track keeps where it plays, the
+callback takes the old plan's sounding notes over (`adoptLivePlan`): the tracks
+whose clips changed get their Note Offs, and chase their new content as a seek
+does; every other track, every arpeggiator and every chain plays on. A track
+added keeps the routing. A track removed or sent elsewhere, or a change of MIDI
+wiring, panics as before. Two edits landing between two blocks release and
+chase every track — the safe case, not the precise one.
+
+**Consequences** — `sequencerSynced` carries `keptRouting`, and the startup log
+prints it: when a sound is cut, the log says whether a sync did it.
+`reclaimPlans` keeps the plan the callback played last until the callback has
+adopted its successor.
+
+**What would justify revisiting** — a plugin that holds notes the engine does
+not know it holds (an internal arpeggiator, a hold pedal of its own): a Note
+Off to the changed tracks alone would leave it sounding where the old panic
+silenced it.
+
+**Proof in the code** — `SequencerEngine::adoptLivePlan` and `reclaimPlans` in
+`native/audio-engine/src/sequencer.*`; `keptRouting` in `cmdSyncSequencer`
+(`engine.cpp`). Test: `testSyncKeepingRoutingReleasesOnlyWhatChanged`
+(`[core] sync-keeps-routing`), which fails with the carry taken out.

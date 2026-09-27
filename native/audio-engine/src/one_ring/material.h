@@ -1,7 +1,7 @@
 #pragma once
 
 // What a One Ring node plays notes from: the notes it captured, or was given,
-// kept apart from the rules that transform them (plans/active/one-ring-native.md,
+// kept apart from the rules that transform them (plans/done/one-ring-native.md,
 // *Part two -- design*). Fixed capacity, so the audio callback captures into it
 // and plays from it without allocating.
 

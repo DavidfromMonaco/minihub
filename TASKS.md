@@ -10,13 +10,7 @@ built and checked by the tests is done; if something does not work, he says so.
 
 ## Started, not finished
 
-**One Ring, made native** — started 2026-09-16 on the author's word, in place
-of the Matrix node (ROADMAP item 7). The node, its page in tabs, its scenes A1
-to D8 and part two (capture, voices, writer, feedback) are built and were tried
-by the author. Left: the documents (step 18). The demonstration (step 17) is
-the author's to ask for.
-Plan: [plans/active/one-ring-native.md](plans/active/one-ring-native.md).
-
+Nothing.
 
 ## Kept for the author, not started
 

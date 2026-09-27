@@ -217,6 +217,7 @@ dédié :
 | `setVstParameter` | [vstParameterCommand.js](src/main/vstParameterCommand.js) |
 | `setVstParameterLearn` | [vstParameterLearnCommand.js](src/main/vstParameterLearnCommand.js) |
 | `setControlRegistry`, `setControlStatus`, `pluginRequest` | [controlSourceCommand.js](src/main/controlSourceCommand.js) |
+| `syncOneRing`, `setOneRingTargets`, `oneRingCommand`, `removeOneRing`, `setOneRingMaterial` | [oneRingCommand.js](src/main/oneRingCommand.js) |
 | `getVstParameters`, `sequencerQuiesce` | inline dans [main.js](src/main/main.js) |
 
 L'intention : la surface IPC exposée est une liste finie et relisible, pas
@@ -300,6 +301,9 @@ automatiques.
 - paramètres : `vstParameters`, `vstParameterTouched`, `vstParameterLearnState`
 - commands from a plugin (§6, *Commands from a plugin*): `controlEvents` (a
   stream, never logged), `controlRegistryStatus`, `pluginRequestResult`
+- One Ring (§6, *One Ring*): `oneRingSynced`, `oneRingTargetsStatus`,
+  `oneRingCommandResult`, `oneRingRemoved`, `oneRingStatus` (periodic, never
+  logged), `oneRingMaterial`, `oneRingMaterialSet`, `oneRingWrite`
 - transport : `transport`, `metronomeTick`
 - séquenceur : `sequencerMidiRecorded`, `sequencerAudioRecorded`,
   `sequencerAudioInfo`, `sequencerExport`, `sequencerQuiesced`
@@ -385,6 +389,7 @@ nécessaire. La barre latérale, le graphe et la navigation suivent.
 | `mixer` | Audio | audio ×N (dynamique), control | audio | niveaux, mutes, master |
 | `morpher` | Audio | audio ×N (dynamique), control | audio | niveaux, pas de morphing |
 | `arpeggiator` | MIDI | midi, control | midi | motif, gamme, mode, rythme |
+| `one-ring` | MIDI | midi | control, midi | a sequence (the VST's state made sparse), its material and its writer (§6, *One Ring*) |
 | `sequencer` | MIDI | midi, audio, control | midi, audio | *(modèle séparé)* |
 | `audio-input` | Audio | — | audio | — |
 | `audio-player` | Audio | — | audio | a file's path, loop, level (§7, *`AudioPlayer`*) |
@@ -467,8 +472,8 @@ VST; the rest is the Patch Bay's business.
 The series is answered by **one walk**,
 [midiThru.js](src/renderer/js/core/midiThru.js) `midiThruReach(network,
 nodeId)`: breadth-first along MIDI OUT cables, each node once, through VSTs
-only. An arpeggiator and a `midi-output` node end it; the Sequencer is never in
-it. Three consumers deliver on that one answer, which is the point of it being
+only. An arpeggiator, a One Ring and a `midi-output` node end it; the
+Sequencer is never in it. Three consumers deliver on that one answer, which is the point of it being
 one:
 
 | Consumer | How it delivers |
@@ -542,6 +547,27 @@ is an answer, not a failure of the channel. A plugin that changes what it will
 save announces it (`restartComponent`), MiniHub captures its state, and the
 project is marked modified like any edit.
 
+### One Ring — a native command source, and a MIDI processor
+
+A One Ring node ([DECISIONS.md](DECISIONS.md) D-070 to D-072) is One Ring's
+sequencer made a node: its runtime runs in the engine (§7, *One Ring*), its
+commands take the path above, and it plays notes. Where each part lives:
+
+| Part | Where | What |
+|---|---|---|
+| the content | [oneRingSequence.js](src/renderer/js/core/oneRingSequence.js) | the sequence as the VST saved it, each channel's cells kept sparse against a `blank`; scenes A1 to D8 (`SCENE_PLACES`); the material, the voices' rules per scene, the writer's settings; read with the engine's own defaults, so both sides refuse the same states |
+| the page's edits | [oneRingEdits.js](src/renderer/js/core/oneRingEdits.js) | what each control does to the sequence, as pure functions — the page and the agent's requests (`oneRingRequests.js`) call the same ones |
+| the engine's copy | [oneRingNodes.js](src/renderer/js/core/oneRingNodes.js) (`hub.oneRing`) | sends a node's sequence when it changes, one in flight per node; every one again when an engine starts; the material apart from it; takes back the scene played (as performance), the material captured (as an edit) and each generation to write |
+| the commands | `CommandBus` | a native source keyed by node id beside the plugin sources: targets published with `setOneRingTargets`, `controlEvents` carrying `nodeId` and `generation`, checked and executed like a plugin's, holds released the same way |
+| MIDI IN | `midiThru.js`, `sequencerModule.js`, `nodeInstances.js` | a MIDI track may name the node as its Destination; a controller cabled to it sends its notes through `engine.midiNode` |
+| MIDI OUT | `describeMidiNetwork` (`engineSync.js`) | the node's destinations — chains and their series, arpeggiators, the hardware output — described as an arpeggiator's are |
+| generations | `SequencerController.writeGeneration` | a new track, or the one clip the writer names; one undo step, the project modified (D-072) |
+| from the VST | [oneRingImport.js](src/renderer/js/core/oneRingImport.js), [juceState.js](src/renderer/js/core/juceState.js) | "Copy to One Ring node" on a VST node holding One Ring: its JUCE state read, a node made, the CTRL OUT cables moved |
+
+A One Ring has no CTRL IN: it takes no command, and the STOP a sequence sends to
+the Sequencer does not stop it. Every Stop a person gives does
+(`stopOneRings`), Pause does not (D-048).
+
 ### Synchronisation vers le moteur
 
 [engineSync.js](src/renderer/js/core/engineSync.js) traduit le graphe en plan
@@ -584,9 +610,11 @@ de Steinberg, LAME pour l'encodage MP3.
                                    │ callback temps réel
         ┌──────────────────────────┼──────────────────────────┐
         ▼                          ▼                          ▼
-  MidiExecutionPlan       AudioExecutionPlan            SequencerEngine
-  (arpégiateurs,          (ordre topologique,           (arrangement,
-   destinations)           délais PDC, mix)              enregistrement, export)
+  SequencerEngine ──► One Ring ──► MidiExecutionPlan    AudioExecutionPlan
+  (arrangement,       runtimes     (arpégiateurs,       (ordre topologique,
+   enregistrement,    (one per     destinations)         délais PDC, mix)
+   export)             node)
+        order in a block: Sequencer, One Ring, arpeggiators, chains
                                    │
                                    ▼
                             MasterOutput  ──► sortie physique
@@ -672,7 +700,7 @@ selector (`setPlayScope`, D-053) can take the players out of the transport
 
 ### `MidiExecutionPlan` — arpégiateurs et destinations
 
-[midi_graph.h](native/audio-engine/src/midi_graph.h). `ArpeggiatorRuntime`
+[midi_network.h](native/audio-engine/src/midi_network.h). `ArpeggiatorRuntime`
 implémente les modes (Up, Down, Up/Down, As Played, Random, Custom), la
 quantification sur gamme, les liaisons (`tie`) et les silences (`rest`). Le
 motif custom fait jusqu'à 32 pas.
@@ -685,6 +713,43 @@ next block): held and sounding notes are kept and nothing is panicked. Only a
 change of nodes or cables compiles a new plan, and its panic silences every
 chain, a pad played by a Sequencer track included. The startup log shows which
 path was taken: `engine:event midiNetworkSynced nodes=N rebuilt=true|false`.
+
+### One Ring — a runtime per node
+
+[one_ring/runtime.h](native/audio-engine/src/one_ring/runtime.h). One Ring's
+core — `scheduler`, `model`, `generative`, `commands` — was ported from the VST
+with its behaviour unchanged, into `native/audio-engine/src/one_ring/`,
+namespace `mlh::one_ring` (D-070). A `Runtime` does what the VST's processor
+did around it, with the live `Transport` where the VST had a host playhead:
+
+- **The clock**: one beat counter per node, advanced at the transport's tempo.
+  The transport's Play starts it; while both play, a seek or a loop wrap moves
+  it with the arrangement; the transport stopping does not stop it, a STOP of
+  its own does — which every Stop a person gives sends (`stopOneRings` on
+  `setTransport`). A command from outside the sequence begins a tick of its own
+  (`Scheduler::beginCommand`), so the per-tick guards against a sequence
+  recalling itself in a loop do not refuse a second press at rest.
+- **Where it runs**: `Engine::processEngine2Block` runs the Sequencer, then
+  every One Ring of the published `OneRingSet`, then the arpeggiators, then the
+  chains. A MIDI track aimed at a One Ring pushes its block into the runtime's
+  scheduled input (`OneRingInputs`), as one aimed at an arpeggiator does.
+- **Notes** (D-071): `capture.*` takes what reaches MIDI IN, on its own count of
+  beats; `material.*` holds the origin and the current generation, 256 notes
+  each; `voices.*` renders the four voices block by block, each note at the
+  sample nearest its beat, and keeps each sounding note until its Note Off;
+  `take.*` keeps the last 1,024 notes the voices played, for a `WRITE`.
+- **Out**: commands as `controlEvents`, drained by the timer; notes straight to
+  the chains, the arpeggiators' inputs and the hardware output that
+  `syncMidiNetwork` handed it — only when they change, the old destinations
+  given their Note Offs first; generations as `oneRingWrite`; a status on any
+  change and every 100 ms while playing.
+- **A node removed** plays on, out of the set, until the callback has ended its
+  notes (`drainingOneRings_`); a panic makes it forget them, a seek releases
+  them.
+
+The engine takes at most 32 scenes per sequence; a plan of 32 worked scenes is
+about 4.3 MB and takes about 70 ms to read, which is why the renderer keeps one
+sequence in flight per node.
 
 ### `MasterOutput` — gain et mesure
 
@@ -764,6 +829,20 @@ une fois par seconde et par chaîne par le minuteur de diagnostic.
 
 `MetronomeTickQueue` (capacité 64) est une file à capacité fixe, sans verrou,
 sans allocation, sans IPC ni travail UI côté producteur temps réel.
+
+### One Ring's plans and queues
+
+A One Ring runtime is fed and read by three threads, and the callback never
+waits for either of the others ([runtime.h](native/audio-engine/src/one_ring/runtime.h)).
+A new sequence is an immutable plan swapped at a block boundary, behind a
+readers count; the set of runtimes the callback walks (`OneRingSet`) is
+published the same way, and a retired one is freed by the message thread once
+no block reads it. Commands, live notes and material go in, and commands,
+generations and material come out, through single-producer single-consumer
+queues of fixed capacity: a full queue refuses the item and counts it. The
+status is a three-slot latest-value exchange (`Latest`), because a queue nobody
+drains keeps its oldest entries — the VST's first status, read after a quiet
+minute, described a sequence that had since started.
 
 ### Reading the arrangement from a realtime thread
 
@@ -878,6 +957,17 @@ An audio track that is armed or monitored passes what reaches its Input on to
 its Destination, transport running or not, and in an export too
 ([DECISIONS.md](DECISIONS.md) D-052). Its Input is a node cabled straight into
 the Sequencer's AUDIO IN; nothing else reaches it.
+
+**A generation One Ring wrote** comes in through `writeGeneration`
+([DECISIONS.md](DECISIONS.md) D-072): a MIDI track of its own with the
+generation as its one clip, placed where it was heard and taking neither the
+focus nor the selection, or the notes of the one clip the writer names,
+replaced (`SequencerModel.replaceMidiNotes`) or added to (`addMidiNotes`) —
+the two operations the Clip Editor's protocol offers too, as `replace-notes`
+and `add-notes`. A named clip gone or not MIDI is refused, never replaced by
+another. Each write is one `changed()`: one undo step, the project modified.
+The sync it causes keeps the routing, so nothing is silenced (§7, *`Chain`*;
+D-073).
 
 Il gère aussi le chien de garde d'export (`EXPORT_STALL_TIMEOUT_MS` = 60 s) :
 seule une **progression réelle du nombre de trames** compte comme activité, car
@@ -1116,14 +1206,28 @@ with a silent hole in it — no error, no log.
 
 ⚠️ Il en coexiste **deux**, et c'est une dette identifiée :
 
-- `base.css` (1 938 lignes) — le langage historique : `.panel`, `.btn`, `.pill`,
-  utilisé par 9 fichiers ;
-- `omni-pearl.css` (1 027 lignes) — le langage « Omni Pearl » : contrôles au
-  rendu matériel construits autour de **vrais** éléments de formulaire, utilisé
-  par le seul arpégiateur. `clip-editor.html` ne le charge même pas. Façade
-  graphite depuis le 2026-09-12 ([DECISIONS.md](DECISIONS.md) D-037) : elle
-  ressemble à la machine qu'elle dessine, et toutes ses couleurs sont des
-  tokens.
+- `base.css` (2 446 lignes) — le langage historique : `.panel`, `.btn`, `.pill` ;
+- `omni-pearl.css` (2 561 lignes) — le langage « Omni Pearl » : contrôles au
+  rendu matériel construits autour de **vrais** éléments de formulaire, porté
+  par l'arpégiateur et, since 2026-09-17, by One Ring's page. `clip-editor.html`
+  ne le charge même pas. Façade graphite depuis le 2026-09-12
+  ([DECISIONS.md](DECISIONS.md) D-037) : elle ressemble à la machine qu'elle
+  dessine, et toutes ses couleurs sont des tokens. One Ring extended it with a
+  section 5 — key caps, LEDs, LCD fields, scribble strips, rotary selectors,
+  drag knobs and pads, built by `ui/omniPearl.js` — and with lists it draws
+  itself (`bindPearlLists`): the list a native `<select>` opens is a window
+  Chromium paints after the operating system's theme, white on Windows, which
+  neither `color-scheme` nor `nativeTheme` reached in Electron 43.
+
+**One Ring's page** ([modules/oneRing/](src/renderer/js/modules/oneRing/)) is
+a deck — transport, display, scenes — above four tabs: SEQUENCE (the channels,
+the 64 cells as pads, the cell and its Follow Actions), MEMORY (capture and
+material), VOICES (the four voices' rules) and WRITER (where generations go,
+and feedback). `oneRingFaceplate.js` draws the sequence, `oneRingNotes.js` the
+three other tabs, `oneRingParts.js` their shared pieces, `oneRingPanel.js`
+binds them. The page is five regions, each redrawn only when its markup
+changes; the status never redraws, it lights the display, LEDs and playheads
+in place.
 
 Voir [ROADMAP.md](ROADMAP.md), point 6.
 
@@ -1335,6 +1439,8 @@ d'une capture forcée à l'extinction.
 | `masterOutput.js` | gain master, normalisation |
 | `sequencerModel.js`, `sequencerController.js` | séquenceur |
 | `arpeggiatorState.js`, `arpeggiatorEditor.js` | arpégiateur |
+| `oneRingSequence.js`, `oneRingRandom.js`, `oneRingEdits.js` | One Ring's content, its random draws (bit for bit the engine's) and its edits |
+| `oneRingNodes.js`, `oneRingRequests.js`, `oneRingImport.js`, `juceState.js` | One Ring nodes and the engine's runtimes, the agent's requests, the copy from a VST's JUCE state |
 | `projectManager.js`, `projectKeys.js` | cycle de vie et périmètre du projet |
 | `settingsStore.js` | réglages côté renderer |
 | `hardwareConfig.js` | restauration des préférences audio |
@@ -1345,7 +1451,8 @@ d'une capture forcée à l'extinction.
 ### `src/renderer/js/modules/` — les modules
 
 `home/` (accueil projet), `minilab/` (panneau contrôleur), `routing/` (Patch Bay),
-`audioOutput/` (sortie audio système), `sequencer/` (arrangement).
+`audioOutput/` (sortie audio système), `sequencer/` (arrangement), `oneRing/`
+(One Ring's page, §10).
 
 ### `src/renderer/js/ui/` et `midi/`
 
@@ -1384,7 +1491,9 @@ persisted in projects.
 | `control_source.h` | the interfaces a plugin that commands MiniHub exposes, and the one that takes an agent's requests — an ABI shared with binaries built elsewhere |
 | `vst3_audio_buffer_bridge.{h,cpp}` | pont de tampons VST3 |
 | `vst3_scanner.{h,cpp}`, `scanner_main.cpp` | scan VST3 en processus séparé |
-| `midi_graph.{h,cpp}` | arpégiateurs, destinations |
+| `midi_network.{h,cpp}` | arpégiateurs, destinations |
+| `scales.h` | the scales, one table for the arpeggiator and One Ring |
+| `one_ring/` | One Ring: the core ported from the VST (`scheduler`, `model`, `generative`, `commands`), `state_json`, `runtime`, and part two's `capture`, `material`, `voices`, `take` |
 | `midi_output.{h,cpp}` | sortie MIDI physique |
 | `sequencer.{h,cpp}` | arrangement, enregistrement, export |
 | `master_output.{h,cpp}` | gain et mesure master |

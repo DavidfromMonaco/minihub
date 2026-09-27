@@ -2,7 +2,7 @@
 
 // One Ring's sequence: scenes of 16 channels of up to 64 cells, their checks,
 // and MUTATE. Ported from One Ring 0.4's core with its behaviour unchanged
-// (plans/active/one-ring-native.md).
+// (plans/done/one-ring-native.md).
 
 #include "generative.h"
 #include "material.h"

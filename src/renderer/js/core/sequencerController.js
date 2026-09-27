@@ -1430,7 +1430,7 @@ export class SequencerController {
   }
 
   /**
-   * A generation a One Ring node wrote (plans/active/one-ring-native.md, part
+   * A generation a One Ring node wrote (plans/done/one-ring-native.md, part
    * two), written where its writer says.
    *
    * `mode` 'new-track' makes a MIDI track of its own, named `name`, with the

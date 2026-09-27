@@ -1,7 +1,7 @@
 #pragma once
 
 // Part two: the notes a One Ring node plays from its material
-// (plans/active/one-ring-native.md, *Part two -- design*). Four voices, each
+// (plans/done/one-ring-native.md, *Part two -- design*). Four voices, each
 // with rules; a channel of the sequence aimed at a voice plays notes through it,
 // so a note is placed by everything a channel already does. The audio callback
 // owns all of it, on fixed capacities.

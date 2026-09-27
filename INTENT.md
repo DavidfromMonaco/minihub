@@ -147,9 +147,10 @@ MiniHub configuration** — a VST chain plus an arpeggiator plus MiniLab binding
 recallable in another project. No plugin will ever do that, and it leaves the
 machine at no point.
 
-## 8 bis. Refusal lifted: automation, in the form of a Matrix node
+## 8 bis. Refusal lifted: automation, in the form of a One Ring node
 
-**Status: settled 2026-09-03. In scope.**
+**Status: settled 2026-09-03, for a Matrix node; since 2026-09-16 in the form of
+One Ring, made native. In scope.**
 
 `automation` sat in §6 from the start. The refusal is lifted, for a reason that
 was already written elsewhere in this document: §3 names **"play generative music
@@ -158,27 +159,41 @@ change state on its own over time is not playing generative music — it is play
 a loop. The refusal had therefore contradicted §3 from the beginning; what was
 missing was noticing it.
 
-What is lifted is **precisely bounded**, and not a word more:
+It was first lifted for a Matrix node, specified and never built. One Ring — a
+control sequencer the author wrote and played as a VST3 — already did what the
+Matrix was for, and became a node of MiniHub in its place
+([DECISIONS.md](DECISIONS.md) D-070). What is lifted is **precisely bounded**:
 
-- a **Matrix** node, one per project, added by hand, governing the nodes it is
-  **actually wired to** by a `control` link;
-- scenes, target states, ramps and output rules with a reproducible seed.
+- **One Ring** nodes, added by hand, each commanding the nodes it is **actually
+  wired to** by a `control` link;
+- channels, steps, scenes, conditions, Follow Actions and mutations, all
+  reproducible from a seed;
+- **notes**, since 2026-09-17: a One Ring captures what reaches its MIDI IN,
+  varies it through its channels and scenes, plays instruments from its MIDI
+  OUT (D-071), and writes its generations into the Sequencer's clips, where one
+  can become the material of the next — a loop bounded in time and in number,
+  never a cable cycle (D-072). What it writes is authored music, a clip like
+  any other, not a curve.
 
-What **stays** out of scope, and what the Matrix must never become:
+What **stays** out of scope, and what One Ring must never become:
 
-- no **automation lane** in the sequencer — no line, no point, no curve drawn on
-  the arrangement. That is the DAW automation of §6, and it stays refused;
 - no scripting language (§6, "not an extensible platform");
 - no model-driven or online generation (§7);
-- no second DAW inside the application.
+- no second DAW inside the application, and no second clip editor: One Ring
+  writes through the Sequencer's own model.
 
-The difference fits in one sentence: the Matrix **governs nodes**, it does not
-**draw curves over time**. A request that slides it towards the second form
-reopens the refusal in §6; it does not extend this lifting.
+One thing moved beside it since, and is not One Ring's: a knob bound to a
+plugin parameter is **recorded** as a line on its track (D-065), on the
+author's request of 2026-09-27. Drawing such a line point by point is not
+built.
 
-Target specification: `SPECIFICATION_MATRIX_MINIHUB.md`. Decisions:
-[DECISIONS.md](DECISIONS.md) D-016 (the lifting), D-017 (the clock), D-018 (the
-shared Learn).
+The difference fits in one sentence: One Ring **governs nodes and plays notes**,
+it does not **draw curves over time**.
+
+Decisions: [DECISIONS.md](DECISIONS.md) D-070 (the node, its clock and its
+content), D-071 (notes), D-072 (generations written into clips); D-016 and
+D-017, written for the Matrix, are superseded. The Matrix's specification,
+`SPECIFICATION_MATRIX_MINIHUB.md`, stays as reference only.
 
 ## 8 ter. Refusal lifted: a controller is data, and that data is shared
 
@@ -359,9 +374,9 @@ What **stays** refused, and what this lifting must never be read as permitting:
   not measurements, and `masterMeter` already crosses the IPC ten times a
   second. Nothing in this workstream returns one, and that is where the
   question was left, not how it was answered;
-- **the Matrix stays deterministic by seed.** An agent that edits its scenes is
-  authoring, as a person is. A Matrix that calls a model while it runs is what
-  §8 bis refused, and that stays refused;
+- **One Ring stays deterministic by seed.** An agent that edits its scenes is
+  authoring, as a person is. A One Ring that calls a model while it runs is
+  what §8 bis refused, and that stays refused;
 - **no second bus, and no second vocabulary.** An operation an agent can ask
   for is one the interface can already perform. A command that exists only for
   an agent is a public API by another route.

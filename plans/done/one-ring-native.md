@@ -16,15 +16,15 @@ Part two: asked by the author on 2026-09-17, in a brief written with Codex
 after trying the node ("tout fonctionne bien, mais je voudrais des fonctions
 en plus") — One Ring as the generative engine of a piece. The author's
 instruction for that day: check that it is possible and prepare it, no code.
-**Status** — **in progress, 2026-09-17.** Steps 0 to 8 done: the page works,
-the author says. Part two (steps 10 to 17) designed and planned; the author
-answered its three questions the same day and asked for every change that can
-be made while away ("fais toutes les modifications que tu peux, je reviens
-check dans quelques heures"): steps 9, 11, 12 and 13 are done, each checked
-and committed, and step 10 is built and waits to be heard. The author's second
-round, the same day: the page of part two is written without a still first
-(step 14 waived), scenes grow to A1 to D8 (step 15, new), and One Ring creating
-nodes is set aside.
+**Status** — **done, 2026-09-27.** Steps 0 to 16 were built between
+2026-09-16 and 2026-09-17, each checked and committed, and the node and its page
+were tried by the author ("tout fonctionne bien"). Step 18, the documents, was
+written 2026-09-27: DECISIONS D-070 to D-073 (D-016 and D-017 superseded, D-018
+and D-037 annotated), INTENT §8 bis naming One Ring, ARCHITECTURE §4 to §10 and
+§12, AGENTS.md §6, ROADMAP item 7 under Done. What part two designed now lives
+there; this file keeps the log. **Left, and not this plan's**: the
+demonstration of step 17, which is the author's to ask for; One Ring creating
+the node a new generation's track plays, set aside by the author (TASKS.md).
 
 ## Context
 
@@ -269,8 +269,9 @@ Part two leaves out:
 
 ## Part two — design
 
-Written 2026-09-17 from the code, before any of it is built. It moves into
-ARCHITECTURE and DECISIONS at step 18; until then this is where it lives.
+Written 2026-09-17 from the code, before any of it is built. Moved into
+ARCHITECTURE (§6 *One Ring*, §7 *One Ring*, §8, §9) and DECISIONS (D-071 to
+D-073) at step 18, 2026-09-27; what follows is the design as it was planned.
 
 **The node** — MIDI IN and MIDI OUT beside CTRL OUT. MIDI IN takes a Sequencer
 track that names the node as its Destination, and a controller cabled to it.
@@ -593,7 +594,7 @@ built:
 sequence that plays no note, and brings its own requests and tests; the page
 comes last (step 16; the author waived the still of step 14).
 
-- [ ] 10. A Sequencer sync that keeps the routing stops panicking
+- [x] 10. A Sequencer sync that keeps the routing stops panicking
       (*Part two — design*): sounding notes kept per track across plans, a Note
       Off and a chase for the tracks whose clips changed, the rest left
       sounding; a routing change panics as today.
@@ -615,7 +616,8 @@ comes last (step 16; the author waived the still of step 14).
       `mlh_realtime_output_tests` (2535); `npm test` (1183), `npm run check`,
       `npm run sync:dist`. The real engine over stdio: a first arrangement,
       then a note changed while playing and a track added (kept), then a track
-      sent elsewhere (not kept), no error. **Not heard yet by the author.**
+      sent elsewhere (not kept), no error. Ticked 2026-09-27: built and checked
+      is done, and nothing waits on the author's ear (TASKS.md).
 - [x] 11. MIDI IN and the material: the node's MIDI IN and MIDI OUT ports; One
       Ring as a track's Destination, the end of a MIDI thru walk, an input for
       a cabled controller; its destinations described and handed to the
@@ -831,13 +833,14 @@ comes last (step 16; the author waived the still of step 14).
       now, a knob stands apart from a list behind a separator, the writer's
       window sits with the keys it belongs to, and a voice's lists keep a
       width their words fit in. **Not seen by the author since the fix.**
-- [ ] 17. The demonstration, with the author: a project made for it (a short
+- [ ] 17. **The author's to ask for** (TASKS.md, 2026-09-27), not left open
+      in this plan. The demonstration, with the author: a project made for it (a short
       source clip and no arrangement, a One Ring, an instrument, a track for
       the generations, an audio track recording from the start) and the
       brief's eight points, each seen or heard; the export holds the take.
       Check: the eight points written in the log, each with how it was seen,
       and what was not
-- [ ] 18. Documents: a DECISIONS entry (where the clock runs, why the content
+- [x] 18. Documents: a DECISIONS entry (where the clock runs, why the content
       is the VST's state made sparse and how its scenes grew past the VST's
       four, which Stop stops it), D-016 to D-018 and
       INTENT §8 bis naming One Ring, ARCHITECTURE §5, §6, §7, §10 and §12,
@@ -849,6 +852,19 @@ comes last (step 16; the author waived the still of step 14).
       INTENT §8 bis's wording, now that One Ring plays notes. ROADMAP item 7
       to Done, the TASKS entry removed, this plan to `done/`.
       Check: every command under *Done when*
+      Done 2026-09-27: D-070 (the node: its clock, its content, its scenes,
+      which Stop stops it), D-071 (notes, as an engine processor), D-072 (a
+      generation is authored and reaches only what its writer names), D-073
+      (a sync that keeps the routing); D-016 and D-017 marked superseded,
+      D-018 and D-037 annotated; INTENT §8 bis rewritten around One Ring;
+      ARCHITECTURE §4 (commands and events), §5 (the node type), §6 (*One
+      Ring*), §7 (*One Ring — a runtime per node*, the block's order), §8
+      (*One Ring's plans and queues*), §9 (writing a generation), §10 (the
+      faceplate and the page), §12 (the files); AGENTS.md §6; ROADMAP item 7
+      under Done; the code's comments pointing at this plan follow it to
+      `done/`. `npm test`, `npm run check`, `npm run sync:dist`,
+      `npm run build:native` 0 errors 0 warnings and the four binaries —
+      green 2026-09-27.
 
 ## Fallback point
 

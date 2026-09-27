@@ -2,7 +2,7 @@
 
 // One Ring's command vocabulary: what a target accepts and how a value is
 // checked against it. Ported from One Ring 0.4's core with its behaviour
-// unchanged (plans/active/one-ring-native.md); the VST it came from still
+// unchanged (plans/done/one-ring-native.md); the VST it came from still
 // builds from its own copy.
 
 #include <cstdint>

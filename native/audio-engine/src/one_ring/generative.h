@@ -1,7 +1,7 @@
 #pragma once
 
 // One Ring's random draws, step conditions and value sources. Ported from One
-// Ring 0.4's core with its behaviour unchanged (plans/active/one-ring-native.md).
+// Ring 0.4's core with its behaviour unchanged (plans/done/one-ring-native.md).
 
 #include "commands.h"
 
