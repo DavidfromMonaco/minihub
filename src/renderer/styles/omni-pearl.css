@@ -20,6 +20,15 @@
  * them light, and each one would have stayed white on the new plate. They are
  * tokens now; the rule is that a colour appearing below this block is a bug.
  *
+ * DARKER STILL, 2026-09-27
+ * ------------------------
+ * The author asked for the whole faceplate darker: every grey token below was
+ * taken down by 28 % at once -- plates, surfaces, borders, knobs, keys, pads,
+ * faders. Left alone: the text, the orange, the LEDs, the lit and white keys,
+ * the displays (already black) and the translucent lights and shadows. The
+ * plate stays lighter than the shell's #0e0f11, which is what keeps a device
+ * reading as a device on the desk (D-037).
+ *
  * The name stayed. `omni-pearl` is a class, a file, two `npm run check` rules
  * and every `op-` prefix in the library, and a rename buys a word.
  *
@@ -42,20 +51,20 @@
 
 .omni-pearl {
   /* --- surfaces ---------------------------------------------------------- */
-  --op-bg: #313337;
-  --op-surface: #34363b;
-  --op-surface-2: #2c2e32;
-  --op-surface-raised: linear-gradient(180deg, #41444a 0%, #383a40 100%);
-  --op-surface-metal: linear-gradient(180deg, #44474d 0%, #3a3d42 52%, #34363b 100%);
+  --op-bg: #232528;
+  --op-surface: #25272a;
+  --op-surface-2: #202124;
+  --op-surface-raised: linear-gradient(180deg, #2f3135 0%, #282a2e 100%);
+  --op-surface-metal: linear-gradient(180deg, #313337 0%, #2a2c30 52%, #25272a 100%);
   /* A row of a drawn list, under the pointer or under the keys. */
-  --op-row-hover: #4c5057;
-  --op-recess: linear-gradient(180deg, #232529 0%, #282a2e 12%, #2a2c31 100%);
-  --op-well: #2a2c31;
-  --op-plate: linear-gradient(180deg, #3b3d42 0%, var(--op-bg) 100%);
+  --op-row-hover: #373a3f;
+  --op-recess: linear-gradient(180deg, #191b1e 0%, #1d1e21 12%, #1e2023 100%);
+  --op-well: #1e2023;
+  --op-plate: linear-gradient(180deg, #2a2c30 0%, var(--op-bg) 100%);
 
   /* --- borders ----------------------------------------------------------- */
-  --op-border: #45484e;
-  --op-border-strong: #52565d;
+  --op-border: #323438;
+  --op-border-strong: #3b3e43;
   --op-hairline: rgba(255, 255, 255, 0.07);
   --op-grid-line: rgba(255, 255, 255, 0.055);
   --op-grid-line-strong: rgba(255, 255, 255, 0.13);
@@ -96,30 +105,30 @@
      light falling on it, and a cap that catches it again. */
   --op-knob-grad:
     radial-gradient(circle at 50% 14%, rgba(255, 255, 255, 0.22) 0%, rgba(255, 255, 255, 0) 62%),
-    conic-gradient(from 210deg, #565960, #3d4046 24%, #565960 48%, #3b3e44 74%, #565960);
+    conic-gradient(from 210deg, #3e4045, #2c2e32 24%, #3e4045 48%, #2a2d31 74%, #3e4045);
   --op-knob-shadow:
     0 2px 4px rgba(0, 0, 0, 0.45),
     inset 0 1px 0 rgba(255, 255, 255, 0.12),
     inset 0 -2px 3px rgba(0, 0, 0, 0.3);
-  --op-knob-cap: radial-gradient(circle at 50% 22%, #4d5057 0%, #44474d 55%, #383b41 100%);
+  --op-knob-cap: radial-gradient(circle at 50% 22%, #373a3f 0%, #313337 55%, #282a2f 100%);
   --op-knob-cap-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08), 0 1px 2px rgba(0, 0, 0, 0.35);
   --op-thumb: radial-gradient(circle at 50% 25%, #f2f3f5, #d8dade);
   --op-thumb-shadow: 0 1px 3px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.8);
-  --op-rail: linear-gradient(180deg, #3f4248 0%, #34373c 100%);
+  --op-rail: linear-gradient(180deg, #2d3034 0%, #25282b 100%);
   --op-rail-current: linear-gradient(180deg, #4a3a28 0%, #5d4526 100%);
   --op-gloss: rgba(255, 255, 255, 0.28);
   --op-cap-light: rgba(255, 255, 255, 0.55);
   --op-handle: rgba(255, 255, 255, 0.001);
   --op-handle-hover: rgba(255, 255, 255, 0.42);
-  --op-scroll-thumb-hover: #666b73;
+  --op-scroll-thumb-hover: #494d53;
 
   /* --- key bed ------------------------------------------------------------ */
   /* The one place the plate is allowed to be white. A piano roll whose keys are
      both dark greys is a grid with note names down the side. */
-  --op-key-white: linear-gradient(90deg, #3c3f45 0%, #383b41 70%, #313439 100%);
+  --op-key-white: linear-gradient(90deg, #2b2d32 0%, #282a2f 70%, #232529 100%);
   --op-key-white-cap: linear-gradient(180deg, #e9eaec, #cfd2d6);
-  --op-key-black: linear-gradient(90deg, #313438 0%, #2d3034 70%, #282b2f 100%);
-  --op-key-black-cap: linear-gradient(180deg, #1a1c1f, #0f1113);
+  --op-key-black: linear-gradient(90deg, #232528 0%, #202325 70%, #1d1f22 100%);
+  --op-key-black-cap: linear-gradient(180deg, #131416, #0f1113);
   --op-row-black: rgba(0, 0, 0, 0.3);
   /* NEUTRAL, AND THAT IS THE POINT. Chromatic puts every row in scale, so this
      covers the entire roll: any hue here is not an accent, it is the colour of
@@ -127,12 +136,12 @@
      stain over the whole pattern. In scale is a lift of light, out of scale is
      the plate, and the orange stays on the things that are actually lit. */
   --op-row-scale: rgba(255, 255, 255, 0.035);
-  --op-axis: linear-gradient(90deg, #3a3d42 0%, #34373c 100%);
+  --op-axis: linear-gradient(90deg, #2a2c30 0%, #25282b 100%);
   --op-step-current: rgba(255, 139, 44, 0.16);
 
   /* --- sequencer hardware (section 5) ------------------------------------- */
   /* The glass strip across the top of an SQ-64, and the display behind it. */
-  --op-glass: linear-gradient(180deg, #1e2023 0%, #17181b 58%, #131416 100%);
+  --op-glass: linear-gradient(180deg, #161719 0%, #111113 58%, #131416 100%);
   --op-glass-sheen: linear-gradient(180deg, rgba(255, 255, 255, 0.045) 0%, rgba(255, 255, 255, 0) 42%);
   --op-glass-edge: #0e0f11;
   --op-glass-bevel: inset 0 1px 0 rgba(255, 255, 255, 0.05);
@@ -140,14 +149,14 @@
   --op-display-inset: inset 0 2px 8px rgba(0, 0, 0, 0.9), 0 0 0 1px rgba(255, 255, 255, 0.04);
   --op-display-text: #e6ecf0;
   --op-display-dim: #5b636b;
-  --op-display-dot: #1c1e21;
+  --op-display-dot: #141618;
   --op-display-glow: 0 0 7px rgba(230, 236, 240, 0.3);
   --op-display-accent-glow: 0 0 8px rgba(255, 139, 44, 0.55);
   /* Rubber key caps, lit orange like the accent or white like a Programm pad. */
-  --op-keycap: linear-gradient(180deg, #46494f 0%, #3b3e44 55%, #34373c 100%);
-  --op-keycap-edge: #53575e;
-  --op-keycap-shadow: 0 2px 0 #18191b, 0 4px 8px rgba(0, 0, 0, 0.5);
-  --op-keycap-shadow-pressed: 0 1px 0 #18191b, 0 2px 4px rgba(0, 0, 0, 0.45);
+  --op-keycap: linear-gradient(180deg, #323539 0%, #2a2d31 55%, #25282b 100%);
+  --op-keycap-edge: #3c3f44;
+  --op-keycap-shadow: 0 2px 0 #111213, 0 4px 8px rgba(0, 0, 0, 0.5);
+  --op-keycap-shadow-pressed: 0 1px 0 #111213, 0 2px 4px rgba(0, 0, 0, 0.45);
   --op-keycap-bevel: inset 0 1px 0 rgba(255, 255, 255, 0.13);
   --op-keycap-lit: linear-gradient(180deg, #ffb877 0%, #ff8f33 50%, #ee7815 100%);
   --op-keycap-lit-glow: 0 0 16px rgba(255, 139, 44, 0.5), 0 0 3px rgba(255, 139, 44, 0.9);
@@ -155,7 +164,7 @@
   --op-keycap-white-glow: 0 0 14px rgba(255, 255, 255, 0.28);
   --op-keycap-white-text: #17191c;
   --op-keycap-pending: rgba(255, 139, 44, 0.85);
-  --op-led-off: #26282c;
+  --op-led-off: #1b1d20;
   --op-led-inset: inset 0 1px 1px rgba(0, 0, 0, 0.6);
   --op-led-on: radial-gradient(circle at 40% 35%, #ffd2a8 0%, #ff8b2c 45%, #d9690d 100%);
   --op-led-glow: 0 0 7px rgba(255, 139, 44, 0.85);
@@ -163,33 +172,33 @@
   --op-led-error-glow: 0 0 7px rgba(255, 107, 94, 0.8);
   /* LCD fields and the scribble strips that name a channel's target. */
   --op-lcd: #0b0c0e;
-  --op-lcd-edge: #2a2c30;
+  --op-lcd-edge: #1e2023;
   --op-lcd-inset: inset 0 1px 4px rgba(0, 0, 0, 0.8);
   --op-lcd-text: #d8dde2;
   --op-lcd-empty: #4d535a;
   /* Pads: one per cell. The bar is the cell, lit over its probability. */
-  --op-pad: linear-gradient(180deg, #3b3e44 0%, #313338 100%);
-  --op-pad-shadow: 0 2px 0 #151618, 0 3px 6px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.1);
-  --op-pad-lit: linear-gradient(180deg, #62666e 0%, #4d5057 100%);
-  --op-pad-lit-shadow: 0 2px 0 #151618, 0 0 18px rgba(255, 255, 255, 0.16), inset 0 0 12px rgba(255, 255, 255, 0.12);
-  --op-pad-recess: linear-gradient(180deg, #262729 0%, #232427 100%);
+  --op-pad: linear-gradient(180deg, #2a2d31 0%, #232528 100%);
+  --op-pad-shadow: 0 2px 0 #0f1011, 0 3px 6px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  --op-pad-lit: linear-gradient(180deg, #47494f 0%, #373a3f 100%);
+  --op-pad-lit-shadow: 0 2px 0 #0f1011, 0 0 18px rgba(255, 255, 255, 0.16), inset 0 0 12px rgba(255, 255, 255, 0.12);
+  --op-pad-recess: linear-gradient(180deg, #1b1c1e 0%, #191a1c 100%);
   --op-pad-recess-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.6);
-  --op-pad-edge: #1a1b1d;
-  --op-pad-edge-out: #1d1e20;
-  --op-pad-num-out: #3c4046;
+  --op-pad-edge: #131315;
+  --op-pad-edge-out: #151617;
+  --op-pad-num-out: #2b2e32;
   --op-pad-ring: #f4f5f6;
-  --op-bar-off: #4a4d54;
+  --op-bar-off: #35373c;
   --op-bar-on: #ff8b2c;
   --op-bar-on-bright: #ffc38e;
   --op-bar-glow: drop-shadow(0 0 3px rgba(255, 139, 44, 0.9));
   /* A channel's whole sequence, drawn small beside its name. */
-  --op-mini-off: #4a4e56;
-  --op-mini-out: #1c1d20;
+  --op-mini-off: #35383e;
+  --op-mini-out: #141517;
   --op-mini-on: #c96d24;
   --op-mini-head: #fff3e8;
   /* The material's roll: a dark well, bars and beats as faint rules, C rows lifted. */
   --op-roll-bg: #0f1012;
-  --op-roll-edge: #26282c;
+  --op-roll-edge: #1b1d20;
   --op-roll-bar: rgba(255, 255, 255, 0.16);
   --op-roll-beat: rgba(255, 255, 255, 0.06);
   --op-roll-c: rgba(255, 255, 255, 0.035);
@@ -199,17 +208,17 @@
   /* --- console and rack (section 6) --------------------------------------- */
   /* A fader runs in a black slot; its cap is a moulded grip with a white line
      across it, the line that reads the level off the scale beside it. */
-  --op-fader-slot: linear-gradient(90deg, #0c0d0f 0%, #16171a 50%, #0c0d0f 100%);
-  --op-fader-cap: linear-gradient(180deg, #62666d 0%, #4a4d54 30%, #3a3d42 46%, #2a2c30 50%, #3a3d42 54%, #45484e 100%);
-  --op-fader-cap-edge: #1c1d20;
+  --op-fader-slot: linear-gradient(90deg, #0c0d0f 0%, #101113 50%, #0c0d0f 100%);
+  --op-fader-cap: linear-gradient(180deg, #47494e 0%, #35373c 30%, #2a2c30 46%, #1e2023 50%, #2a2c30 54%, #323438 100%);
+  --op-fader-cap-edge: #141517;
   --op-fader-cap-shadow: 0 3px 5px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.18);
   --op-fader-line: #eceef1;
   --op-scale-tick: rgba(255, 255, 255, 0.13);
   --op-scale-unity: rgba(255, 139, 44, 0.75);
   /* The screws holding a rack unit, and the master strip's darker plate. */
-  --op-screw: radial-gradient(circle at 38% 34%, #7a7e86 0%, #4b4e55 55%, #2c2e32 100%);
+  --op-screw: radial-gradient(circle at 38% 34%, #585b60 0%, #36383d 55%, #202124 100%);
   --op-screw-shadow: 0 1px 1px rgba(0, 0, 0, 0.5);
-  --op-master-plate: linear-gradient(180deg, #2f3135 0%, #292b2f 100%);
+  --op-master-plate: linear-gradient(180deg, #222326 0%, #1e1f22 100%);
 
   /* --- geometry ---------------------------------------------------------- */
   --op-radius-lg: 16px;

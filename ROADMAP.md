@@ -517,6 +517,10 @@ the shell, which is what let it turn **graphite** on its own on 2026-09-12
 (D-037): twenty-nine light literals had to become tokens first, and the sheet's
 header now says a colour below the token block is a bug.
 
+**Darker again the same day**, at the author's request: every grey token of
+the faceplate down by 28 %, text, accent, LEDs and displays untouched, the plate
+still lighter than the shell.
+
 **Every node page with controls now wears it.** The arpeggiator first, One
 Ring's page second (2026-09-17, with the sequencer hardware of section 5), and on
 2026-09-27, at the author's request — to match One Ring's dark
