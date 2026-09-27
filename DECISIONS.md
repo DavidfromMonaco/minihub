@@ -2121,7 +2121,10 @@ native `[core] loopback-listener`.
 
 ## D-042 — A plugin commands the modules it is cabled to, and what it commands is played, not authored
 
-**Status**: in force · 2026-09-15 · **implemented**, in the author's test
+**Status**: in force · 2026-09-15 · **implemented**, in the author's test.
+Note of 2026-09-27: the Arpeggiator's, Mixer's and Morpher's pages now redraw
+when a command writes them (`nodes:contentWritten`, once a frame and not under
+a held pointer); the consequence below saying they do not is history.
 
 **Context** — One Ring is a VST3 control sequencer written outside this
 repository: sixteen channels of steps, probability, conditions, scenes, follow

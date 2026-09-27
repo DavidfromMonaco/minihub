@@ -188,3 +188,60 @@ test('an editor whose node the undo deleted does not try to redraw it', async ()
     unregister();
   }
 });
+
+// ---- a command writing the node under an open editor --------------------------
+
+/*
+ * D-042 left it written down: "The Arpeggiator's, Mixer's and Morpher's pages
+ * do not redraw when a command changes them; the sound does." A plugin, a One
+ * Ring or an agent moved a Mixer's master and the page went on showing the
+ * old one. The page follows now -- once a frame, and never under a held
+ * pointer, where a repaint would replace the slider being dragged.
+ */
+test('a Mixer page follows a command that writes it, and waits for a held pointer', async () => {
+  const { installDom } = await import('./domShim.mjs');
+  installDom();
+  const flush = () => new Promise((resolve) => setImmediate(resolve));
+  const hub = createHub(mockApi());
+  hub.engine.init();
+
+  // The Mixer's own editor, counted where every repaint lands.
+  let renders = 0;
+  {
+    const node = hub.nodes.create('mixer');
+    const listeners = [];
+    const container = {
+      querySelector: () => null, querySelectorAll: () => [],
+      set innerHTML(_value) { renders += 1; }, get innerHTML() { return ''; },
+      addEventListener: (type, fn) => listeners.push({ type, fn }),
+      removeEventListener: (type, fn) => {
+        const at = listeners.findIndex((entry) => entry.type === type && entry.fn === fn);
+        if (at >= 0) listeners.splice(at, 1);
+      }
+    };
+    const module = hub.modules.get(node.id);
+    module.mount(container);
+    assert.equal(renders, 1);
+
+    const write = (masterLevel) => hub.nodes.setContent(node.id, { ...hub.nodes.get(node.id).content, masterLevel });
+    write(0.5);
+    write(0.4);
+    await flush();
+    assert.equal(renders, 2, 'two writes in one frame are one repaint');
+
+    for (const { type, fn } of [...listeners]) if (type === 'pointerdown') fn({ target: { closest: () => null } });
+    write(0.3);
+    await flush();
+    assert.equal(renders, 2, 'not under a held pointer');
+    for (const fn of globalThis.document._listeners.pointerup || []) fn({});
+    await flush();
+    assert.equal(renders, 3, 'the release lets it through');
+
+    module.unmount();
+    assert.equal(listeners.length, 0, 'and the page leaves nothing on the shared container');
+    assert.equal(globalThis.document._listeners.pointerup?.size ?? 0, 0, 'nor on the document');
+    write(0.2);
+    await flush();
+    assert.equal(renders, 3, 'an unmounted editor answers nothing');
+  }
+});

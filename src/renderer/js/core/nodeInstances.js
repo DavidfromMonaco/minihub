@@ -875,6 +875,9 @@ export class NodeInstanceManager {
     } else if (bindingsMoved) {
       this.hub.events.emit('control:bindingsChanged', { nodeId: instance.id });
     }
+    // For an open page: what it shows was written by someone else -- a
+    // command, an agent -- and not by its own controls.
+    this.hub.events.emit('nodes:contentWritten', { nodeId: instance.id });
     return true;
   }
 
@@ -1058,7 +1061,7 @@ export class NodeInstanceManager {
          * of jumping to the top of the keyboard is barely better than one that
          * does not come back at all.
          */
-        subs.push(hub.events.on('history:applied', () => {
+        function refreshFromModel() {
           if (!manager.instances.has(instance.id)) return; // deleted by this very undo
           if (type.id === 'arpeggiator') {
             syncArpControlStrip(container, instance.content);
@@ -1070,7 +1073,50 @@ export class NodeInstanceManager {
             return;
           }
           paintEditor(false);
-        }));
+        }
+        subs.push(hub.events.on('history:applied', refreshFromModel));
+
+        /**
+         * A command from a plugin's or a One Ring's CTRL OUT (nodeCommands.js),
+         * or an agent's `set-node-content`, wrote this node: the sound followed
+         * and the page did not (D-042 left it so). Now it follows, once a frame
+         * at most -- a sequence may send a command every sixteenth -- and not
+         * while a pointer is held on the page, so a slider being dragged is not
+         * replaced under the hand; the repaint waits for the release.
+         */
+        if (['arpeggiator', 'mixer', 'morpher'].includes(type.id)) {
+          let queued = false;
+          let waiting = false;
+          let held = false;
+          const repaint = () => {
+            queued = false;
+            if (held) { waiting = true; return; }
+            refreshFromModel();
+          };
+          const queue = () => {
+            if (queued) return;
+            queued = true;
+            if (typeof globalThis.requestAnimationFrame === 'function') globalThis.requestAnimationFrame(repaint);
+            else repaint();
+          };
+          const press = () => { held = true; };
+          const release = () => {
+            if (!held) return;
+            held = false;
+            if (waiting) { waiting = false; queue(); }
+          };
+          container.addEventListener('pointerdown', press);
+          document.addEventListener('pointerup', release);
+          document.addEventListener('pointercancel', release);
+          subs.push(() => {
+            container.removeEventListener('pointerdown', press);
+            document.removeEventListener('pointerup', release);
+            document.removeEventListener('pointercancel', release);
+          });
+          subs.push(hub.events.on('nodes:contentWritten', ({ nodeId } = {}) => {
+            if (nodeId === instance.id) queue();
+          }));
+        }
 
         if (type.id === 'vst') {
           // Live engine status for this chain.
