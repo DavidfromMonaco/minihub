@@ -16,7 +16,7 @@ export const ARP_OFFSET_MIN = -127;
 export const ARP_OFFSET_MAX = 127;
 export function defaultArpeggiatorContent() {
   return { root:0, scale:'Chromatic', mode:'Up', rate:'1/16', patternLength:8, randomSeed:0x5eed1234,
-    customPatternVersion:ARP_PATTERN_VERSION, snapToScale:false,
+    customPatternVersion:ARP_PATTERN_VERSION, snapToScale:false, enabled:true, hold:false,
     customPattern:Array.from({length:32},(_,i)=>({semitoneOffset:i%7,velocity:100,gate:0.8,rest:false,tie:false})) };
 }
 
@@ -45,7 +45,9 @@ export function normalizeArpeggiatorContent(value) {
     mode:ARP_MODES.includes(v.mode)?v.mode:'Up',rate:ARP_RATES.includes(v.rate)?v.rate:'1/16',
     patternLength:ARP_LENGTHS.includes(v.patternLength)?v.patternLength:8,
     randomSeed:Number.isSafeInteger(v.randomSeed)?(v.randomSeed>>>0):base.randomSeed,
-    customPatternVersion:ARP_PATTERN_VERSION,snapToScale:v.snapToScale===true,customPattern:pattern};
+    customPatternVersion:ARP_PATTERN_VERSION,snapToScale:v.snapToScale===true,
+    // A pattern saved before these two existed plays as it did: on, no hold.
+    enabled:v.enabled!==false,hold:v.hold===true,customPattern:pattern};
 }
 
 export function degreeToMidi(root, scaleName, degree, octave=0, baseOctave=4) {

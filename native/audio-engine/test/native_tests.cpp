@@ -1265,6 +1265,52 @@ void testArpeggiatorTakesValuesWhilePlaying()
     expect(released,"Stop still releases what the arpeggiator played after taking values");
 }
 
+void testArpeggiatorHoldAndOff()
+{
+    // HOLD keeps the notes after their keys are let go, and the next key pressed
+    // with none down starts a new set. OFF passes the notes on as they are
+    // played, transport stopped or not, and turning it on again ends them.
+    mlh::ArpConfig config;config.mode=0;config.rate=2;config.patternLength=8;config.hold=true;
+    mlh::ArpeggiatorRuntime arp(config);mlh::Chain target("vst-hold");target.setMidiEnabled(true);
+    std::vector<mlh::MidiDestination> outputs{{mlh::MidiDestinationKind::chain,&target}};
+    mlh::Transport transport;transport.setSampleRate(48000);transport.beginBlock();
+    const auto pull=[&](int samples){juce::MidiBuffer midi;target.pullMidi(midi,samples);std::vector<juce::MidiMessage> out;for(const auto& e:midi)out.push_back(e.getMessage());return out;};
+
+    arp.pushInput(juce::MidiMessage::noteOn(1,60,(juce::uint8)100));
+    arp.pushInput(juce::MidiMessage::noteOn(1,64,(juce::uint8)100));
+    arp.pushInput(juce::MidiMessage::noteOff(1,60));
+    arp.pushInput(juce::MidiMessage::noteOff(1,64));
+    arp.process(512,transport,outputs);
+    expect(arp.heldCountForTesting()==2&&arp.physicalCountForTesting()==0,"hold keeps C and E after both keys are let go");
+    arp.pushInput(juce::MidiMessage::noteOn(1,67,(juce::uint8)100));arp.process(512,transport,outputs);
+    expect(arp.heldCountForTesting()==1&&arp.holdsNoteForTesting(67),"a key pressed with none down starts a new set");
+    arp.pushInput(juce::MidiMessage::noteOn(1,71,(juce::uint8)100));arp.process(512,transport,outputs);
+    expect(arp.heldCountForTesting()==2&&arp.holdsNoteForTesting(67)&&arp.holdsNoteForTesting(71),"a key pressed while another is down joins the set");
+    arp.pushInput(juce::MidiMessage::noteOff(1,67));arp.process(512,transport,outputs);
+    auto released=config;released.hold=false;arp.setConfig(released);arp.process(512,transport,outputs);
+    expect(arp.heldCountForTesting()==1&&arp.holdsNoteForTesting(71),"hold let go keeps only the key still down");
+    pull(4096);
+
+    // OFF: the transport is stopped, and the notes still pass, at their sample.
+    auto off=released;off.enabled=false;arp.setConfig(off);
+    arp.pushInput(juce::MidiMessage::noteOn(1,72,(juce::uint8)90));arp.process(512,transport,outputs);
+    auto passed=pull(512);
+    expect(passed.size()==1&&passed[0].isNoteOn()&&passed[0].getNoteNumber()==72&&passed[0].getVelocity()==90,"off, a key passes through as played, transport stopped");
+    juce::MidiBuffer scheduled;scheduled.addEvent(juce::MidiMessage::noteOn(1,74,(juce::uint8)80),300);
+    arp.process(512,transport,outputs,nullptr,0,48000,&scheduled);
+    juce::MidiBuffer fromTrack;target.pullMidi(fromTrack,512);int trackSample=-1;for(const auto& e:fromTrack)if(e.getMessage().isNoteOn())trackSample=e.samplePosition;
+    expect(trackSample==300,"a track's note passes at its own sample");
+    transport.setPlaying(true);transport.beginBlock();
+    arp.process(6000,transport,outputs);
+    expect(pull(6000).empty(),"off, the arpeggiator plays no step of its own while the transport runs");
+    // On again: what passed through is ended, then the arpeggio takes over.
+    arp.setConfig(released);arp.process(6000,transport,outputs);
+    const auto after=pull(6000);
+    int endedPassed=0;bool arpeggiated=false;for(const auto& m:after){if(m.isNoteOff()&&(m.getNoteNumber()==72||m.getNoteNumber()==74))++endedPassed;arpeggiated|=m.isNoteOn();}
+    expect(endedPassed==2,"on again, the notes that passed through get their Note Off");
+    expect(arpeggiated,"and the arpeggiator plays the keys still held");
+}
+
 void testSeekReleasesWithoutSilencing()
 {
     // One Ring's SEEK 0 at the end of its cycle, or a click on the ruler while
@@ -4764,6 +4810,8 @@ int main(int argc, char** argv)
     testSequencerClipsSilenced();
     std::cerr << "[core] arp-values-while-playing\n";
     testArpeggiatorTakesValuesWhilePlaying();
+    std::cerr << "[core] arp-hold-and-off\n";
+    testArpeggiatorHoldAndOff();
     std::cerr << "[core] seek-releases\n";
     testSeekReleasesWithoutSilencing();
     std::cerr << "[core] sync-keeps-routing\n";

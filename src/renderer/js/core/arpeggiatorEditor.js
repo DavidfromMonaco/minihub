@@ -137,6 +137,10 @@ export function renderArpControlStrip(content) {
       ${pearlKnobMount({options:ARP_LENGTHS,value:content.patternLength,attrs:'data-arp-control="patternLength"',ariaLabel:'Steps',valueBox:String(content.patternLength),small:true})}</div>
     <div class="op-strip-cell op-strip-cell--end"><span class="op-label">Snap to Scale</span>
       ${pearlSwitch({checked:content.snapToScale,attrs:'data-arp-control="snapToScale"',ariaLabel:'Snap to Scale'})}</div>
+    <div class="op-strip-cell op-strip-cell--center"><span class="op-label">HOLD</span>
+      ${pearlSwitch({checked:content.hold===true,attrs:'data-arp-control="hold"',ariaLabel:'Hold: the notes stay after their keys are let go'})}</div>
+    <div class="op-strip-cell op-strip-cell--center"><span class="op-label">ON</span>
+      ${pearlSwitch({checked:content.enabled!==false,attrs:'data-arp-control="enabled"',ariaLabel:'Arpeggiator on; off, the notes pass through as played'})}</div>
   </div>`;
 }
 
@@ -155,6 +159,16 @@ export function syncArpControlStrip(container, content) {
     {fraction:knobFraction(ARP_RATES.indexOf(content.rate),ARP_RATES.length),display:content.rate});
   syncKnobMount(container.querySelector('[data-arp-mount="steps"]'),
     {fraction:knobFraction(ARP_LENGTHS.indexOf(content.patternLength),ARP_LENGTHS.length),display:String(content.patternLength)});
+  // The lists and switches too, for a value a command set (D-042): setting what
+  // a control already shows changes nothing under the hand driving it.
+  for (const control of ['root','scale','mode','rate','patternLength']) {
+    const element=container.querySelector(`[data-arp-control="${control}"]`);
+    if (element && element.value !== String(content[control])) element.value=String(content[control]);
+  }
+  for (const [control,on] of [['snapToScale',content.snapToScale===true],['hold',content.hold===true],['enabled',content.enabled!==false]]) {
+    const element=container.querySelector(`[data-arp-control="${control}"]`);
+    if (element) element.checked=on;
+  }
   return true;
 }
 

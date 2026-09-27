@@ -11,7 +11,7 @@ import {
  * switch, a slider -- written through the same `setContent` the agent channel
  * uses, so the engine is told by the republish `engineSync` performs and nothing
  * here speaks to it directly. A command does not invent behaviour a node lacks:
- * the arpeggiator has no hold and no on/off, so it is offered neither.
+ * the arpeggiator's ON and HOLD were offered only once its page had them.
  *
  * Each `execute` reads the node again when it runs. The command list is compiled
  * once per change, and a closure over the content of that moment would write an
@@ -47,6 +47,8 @@ function arpeggiatorCommands(hub, nodeId) {
     choice('SCALE', 'Scale', Object.keys(ARP_SCALES), (scale) => write({ scale })),
     choice('STEPS', 'Steps', ARP_LENGTHS, (patternLength) => write({ patternLength })),
     toggle('SNAP', 'Snap to Scale', (snapToScale) => write({ snapToScale })),
+    toggle('ON', 'Arpeggiator on', (enabled) => write({ enabled })),
+    toggle('HOLD', 'Hold', (hold) => write({ hold })),
     integer('SEED', 'Random seed', 0, SEED_MAX, (randomSeed) => write({ randomSeed }))
   ];
   for (let index = 0; index < ARP_STEP_COUNT; index += 1) {

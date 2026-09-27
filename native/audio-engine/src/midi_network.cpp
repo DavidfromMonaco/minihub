@@ -14,17 +14,46 @@ void ArpeggiatorRuntime::setConfig(const ArpConfig& c) noexcept {configSlots_[co
 void ArpeggiatorRuntime::adoptPendingConfig() noexcept {if(!(configMiddle_.load(std::memory_order_acquire)&4u))return;configFront_=(uint8_t)(configMiddle_.exchange(configFront_,std::memory_order_acq_rel)&3u);const ArpConfig& next=configSlots_[configFront_];
  // Another rate counts steps on another grid: wait for its next step, as a new
  // runtime would, rather than firing between two.
- if(next.rate!=config_.rate)lastStep_=std::numeric_limits<int64_t>::min();if(next.randomSeed!=config_.randomSeed)random_=next.randomSeed;config_=next;}
-void ArpeggiatorRuntime::applyInput(const juce::MidiMessage& m) noexcept {if(m.isNoteOn()){int note=m.getNoteNumber();auto it=std::find(held_.begin(),held_.begin()+heldCount_,note);if(it==held_.begin()+heldCount_&&heldCount_<128)held_[(size_t)heldCount_++]=note;}else if(m.isNoteOff()){int note=m.getNoteNumber();auto it=std::find(held_.begin(),held_.begin()+heldCount_,note);if(it!=held_.begin()+heldCount_){std::move(it+1,held_.begin()+heldCount_,it);--heldCount_;}}}
+ if(next.rate!=config_.rate)lastStep_=std::numeric_limits<int64_t>::min();if(next.randomSeed!=config_.randomSeed)random_=next.randomSeed;
+ // Hold let go: the set becomes the keys still down. Off and on again: what the
+ // other side left sounding is ended once the block's output is open.
+ if(config_.hold&&!next.hold){held_=physical_;heldCount_=physicalCount_;}
+ if(config_.enabled&&!next.enabled)turnedOff_=true;else if(!config_.enabled&&next.enabled)turnedOn_=true;
+ config_=next;}
+namespace {
+bool addNote(std::array<int,128>& notes,int& count,int note) noexcept {if(std::find(notes.begin(),notes.begin()+count,note)!=notes.begin()+count||count>=128)return false;notes[(size_t)count++]=note;return true;}
+void removeNote(std::array<int,128>& notes,int& count,int note) noexcept {auto it=std::find(notes.begin(),notes.begin()+count,note);if(it!=notes.begin()+count){std::move(it+1,notes.begin()+count,it);--count;}}
+}
+void ArpeggiatorRuntime::applyInput(const juce::MidiMessage& m) noexcept {
+ if(m.isNoteOn()){const int note=m.getNoteNumber();
+  // With Hold, the first key pressed after every key was let go starts a new
+  // set, as on a hardware arpeggiator's latch.
+  if(config_.hold&&physicalCount_==0)heldCount_=0;
+  addNote(physical_,physicalCount_,note);addNote(held_,heldCount_,note);}
+ else if(m.isNoteOff()){const int note=m.getNoteNumber();removeNote(physical_,physicalCount_,note);if(!config_.hold)removeNote(held_,heldCount_,note);}}
+void ArpeggiatorRuntime::passThrough(const juce::MidiMessage& m,int sample) noexcept {
+ if(m.isNoteOn()){passed_[(size_t)std::clamp(m.getChannel()-1,0,15)][(size_t)m.getNoteNumber()]=true;emit(m,sample);}
+ else if(m.isNoteOff()){auto& on=passed_[(size_t)std::clamp(m.getChannel()-1,0,15)][(size_t)m.getNoteNumber()];if(on){on=false;emit(m,sample);}}
+ else emit(m,sample);}
+void ArpeggiatorRuntime::endPassedNotes(int sample) noexcept {for(int channel=0;channel<16;++channel)for(int note=0;note<128;++note)if(passed_[(size_t)channel][(size_t)note]){passed_[(size_t)channel][(size_t)note]=false;emit(juce::MidiMessage::noteOff(channel+1,note),sample);}}
 int ArpeggiatorRuntime::quantize(int note) const noexcept {return quantizeToScale(note,config_.root,config_.scale);}
 int ArpeggiatorRuntime::presetNote(int64_t step) noexcept {if(!heldCount_)return -1;std::array<int,128> notes=held_;if(config_.mode!=3)std::sort(notes.begin(),notes.begin()+heldCount_);int i=(int)(step%std::max(1,config_.patternLength));if(config_.mode==1)i=heldCount_-1-(i%heldCount_);else if(config_.mode==2){int span=std::max(1,heldCount_*2-2),p=i%span;i=p<heldCount_?p:span-p;}else if(config_.mode==4){random_=random_*1664525u+1013904223u;i=(int)(random_%((uint32_t)heldCount_));}else i%=heldCount_;return quantize(notes[(size_t)i]);}
 void ArpeggiatorRuntime::emit(const juce::MidiMessage& m,int sample) noexcept {output_.addEvent(m,std::max(0,sample));}
 void ArpeggiatorRuntime::flush(const std::vector<MidiDestination>& dest,MidiOutputSink* hardware,double startMs,double sampleRate) noexcept {if(output_.isEmpty())return;bool hardwareUsed=false;for(const auto& d:dest){if(d.kind==MidiDestinationKind::physicalOutput)hardwareUsed=true;else if(d.chain)d.chain->pushMidi(output_,d.blockEpoch);}if(hardwareUsed&&hardware)hardware->sendBlock(output_,startMs,sampleRate);}
-void ArpeggiatorRuntime::panic(const std::vector<MidiDestination>& dest,MidiOutputSink* hardware) noexcept {output_.clear();bool hardwareUsed=false;for(auto& a:active_)if(a.on){emit(juce::MidiMessage::noteOff(a.channel,a.note),0);a.on=false;}for(int channel=1;channel<=16;++channel){emit(juce::MidiMessage::allNotesOff(channel),0);emit(juce::MidiMessage::allSoundOff(channel),0);}for(const auto& d:dest){if(d.kind==MidiDestinationKind::physicalOutput)hardwareUsed=true;else if(d.chain){d.chain->panic();d.chain->pushMidi(output_,d.chain->midiEpoch());}}if(hardwareUsed&&hardware)hardware->panic();}
+void ArpeggiatorRuntime::panic(const std::vector<MidiDestination>& dest,MidiOutputSink* hardware) noexcept {output_.clear();for(auto& channel:passed_)channel.fill(false);bool hardwareUsed=false;for(auto& a:active_)if(a.on){emit(juce::MidiMessage::noteOff(a.channel,a.note),0);a.on=false;}for(int channel=1;channel<=16;++channel){emit(juce::MidiMessage::allNotesOff(channel),0);emit(juce::MidiMessage::allSoundOff(channel),0);}for(const auto& d:dest){if(d.kind==MidiDestinationKind::physicalOutput)hardwareUsed=true;else if(d.chain){d.chain->panic();d.chain->pushMidi(output_,d.chain->midiEpoch());}}if(hardwareUsed&&hardware)hardware->panic();}
 void ArpeggiatorRuntime::process(int samples,Transport& t,std::vector<MidiDestination>& dest,MidiOutputSink* hardware,double startMs,double sampleRate,const juce::MidiBuffer* scheduledInput) noexcept {
  adoptPendingConfig();for(auto& d:dest)if(d.chain)d.blockEpoch=d.chain->midiEpoch();
- output_.clear();const int available=fifo_.getNumReady();for(int k=0;k<available;++k){int a,b,c,d;fifo_.prepareToRead(1,a,b,c,d);if(b+d==0)break;auto&e=input_[(size_t)(b?a:c)];applyInput(juce::MidiMessage(e.bytes,e.size,0));fifo_.finishedRead(1);}
- if(!t.processingPlaying()||!t.playing()){if(wasPlaying_)panic(dest,hardware);wasPlaying_=false;releasePending_=false;lastStep_=std::numeric_limits<int64_t>::min();return;} wasPlaying_=true;
+ output_.clear();
+ if(turnedOff_){turnedOff_=false;for(auto&a:active_)if(a.on){emit(juce::MidiMessage::noteOff(a.channel,a.note),0);a.on=false;}lastStep_=std::numeric_limits<int64_t>::min();}
+ if(turnedOn_){turnedOn_=false;endPassedNotes(0);lastStep_=std::numeric_limits<int64_t>::min();}
+ const int available=fifo_.getNumReady();for(int k=0;k<available;++k){int a,b,c,d;fifo_.prepareToRead(1,a,b,c,d);if(b+d==0)break;auto&e=input_[(size_t)(b?a:c)];const juce::MidiMessage message(e.bytes,e.size,0);applyInput(message);if(!config_.enabled)passThrough(message,0);fifo_.finishedRead(1);}
+ if(!config_.enabled){
+  // Off: what a track sends passes at its own sample, whether or not the
+  // transport runs -- an arpeggiator turned off is a cable.
+  if(scheduledInput)for(const auto event:*scheduledInput){const auto message=event.getMessage();applyInput(message);passThrough(message,std::clamp(event.samplePosition,0,std::max(0,samples-1)));}
+  wasPlaying_=t.processingPlaying()&&t.playing();releasePending_=false;lastStep_=std::numeric_limits<int64_t>::min();
+  flush(dest,hardware,startMs,sampleRate);return;}
+ if(!t.processingPlaying()||!t.playing()){if(wasPlaying_)panic(dest,hardware);else flush(dest,hardware,startMs,sampleRate);wasPlaying_=false;releasePending_=false;lastStep_=std::numeric_limits<int64_t>::min();return;} wasPlaying_=true;
  const double delta=t.quarterNotesPerSample(),dur=stepQuarterNotes(config_.rate);if(samples<=0||delta<=0)return;
  if(releasePending_){releasePending_=false;for(auto&a:active_)if(a.on){emit(juce::MidiMessage::noteOff(a.channel,a.note),0);a.on=false;}lastStep_=std::numeric_limits<int64_t>::min();}
  // Scheduled input is merged into the per-sample loop below rather than applied

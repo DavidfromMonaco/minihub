@@ -18,6 +18,10 @@ struct ArpStep { int semitoneOffset=0, velocity=100; float gate=.8f; bool rest=f
 struct ArpConfig {
     int root=0, scale=0, mode=0, rate=2, patternLength=8; uint32_t randomSeed=0x5eed1234u;
     std::array<ArpStep,32> steps{};
+    // Off, the notes pass through as they are played, transport running or not,
+    // as a hardware arpeggiator's ARP OFF does. Hold keeps the notes after their
+    // keys are let go; the next key pressed with none held starts a new set.
+    bool enabled=true, hold=false;
 };
 struct MidiNetworkNodeSpec { std::string id, kind; ArpConfig arp; std::vector<std::string> destinations; };
 struct MidiNetworkSpec { std::vector<MidiNetworkNodeSpec> nodes; };
@@ -47,6 +51,7 @@ public:
     static int semitoneOffsetToMidi(int root, int semitoneOffset, int baseOctave=4) noexcept;
     static double stepQuarterNotes(int rate) noexcept;
     int heldCountForTesting() const noexcept { return heldCount_; }
+    int physicalCountForTesting() const noexcept { return physicalCount_; }
     bool holdsNoteForTesting(int note) const noexcept {
         return std::find(held_.begin(), held_.begin() + heldCount_, note) != held_.begin() + heldCount_;
     }
@@ -54,6 +59,10 @@ private:
     struct Input { uint8_t bytes[3]{}; int size=0; };
     struct Active { int note=0, channel=1; double endPpq=0; bool on=false; };
     void applyInput(const juce::MidiMessage&) noexcept;
+    // Off: a message passes on at its own sample, and a Note On is remembered
+    // until its Note Off, so turning the arpeggiator on again ends it.
+    void passThrough(const juce::MidiMessage&, int sample) noexcept;
+    void endPassedNotes(int sample) noexcept;
     void emit(const juce::MidiMessage&, int sample) noexcept;
     void flush(const std::vector<MidiDestination>&, MidiOutputSink*,
                double callbackStartMs, double sampleRate) noexcept;
@@ -62,6 +71,10 @@ private:
     void adoptPendingConfig() noexcept;
     ArpConfig config_; juce::AbstractFifo fifo_{256}; std::array<Input,256> input_{};
     std::array<int,128> held_{}; int heldCount_=0; std::array<Active,64> active_{};
+    // The keys actually down, apart from `held_`, the set the arpeggiator plays:
+    // with Hold they differ, and turning Hold off keeps only the keys still down.
+    std::array<int,128> physical_{}; int physicalCount_=0;
+    std::array<std::array<bool,128>,16> passed_{}; bool turnedOff_=false, turnedOn_=false;
     int64_t lastStep_=std::numeric_limits<int64_t>::min(); bool wasPlaying_=false, releasePending_=false; uint32_t random_=0;
     juce::MidiBuffer output_;
     // Three slots and one index exchanged atomically: the writer never waits,

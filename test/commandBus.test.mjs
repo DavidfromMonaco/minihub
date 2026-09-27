@@ -236,8 +236,12 @@ test('a command reaches the module through its cable, and a pulled cable stops t
 
   assert.equal(send(arp.id, 'RATE', VALUE_TYPE.integer, 3).reason, 'wrong-type');
   assert.equal(send(arp.id, 'RATE', VALUE_TYPE.choice, 9).reason, 'invalid-value');
-  assert.equal(send(arp.id, 'HOLD').reason, 'unknown-command', 'the arpeggiator has no hold, and none is invented');
-  assert.match(statuses().at(-1), /^HOLD: /, "the refusal is shown in the plugin's window");
+  assert.equal(send(arp.id, 'LATCH').reason, 'unknown-command', 'a command the arpeggiator does not have is not invented');
+  assert.match(statuses().at(-1), /^LATCH: /, "the refusal is shown in the plugin's window");
+  // HOLD and ON came with the page's switches (D-042 held them back until then).
+  assert.equal(send(arp.id, 'HOLD', VALUE_TYPE.boolean, 1).ok, true);
+  assert.equal(send(arp.id, 'ON', VALUE_TYPE.boolean, 0).ok, true);
+  assert.deepEqual([hub.nodes.get(arp.id).content.hold, hub.nodes.get(arp.id).content.enabled], [true, false]);
 
   hub.network.disconnect(ring.id, 'ctrl-out', arp.id, 'ctrl-in');
   assert.equal(send(arp.id, 'RATE', VALUE_TYPE.choice, 0).reason, 'target-not-connected');

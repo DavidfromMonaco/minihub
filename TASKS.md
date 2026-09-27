@@ -17,11 +17,6 @@ Nothing.
 **One Ring creating the node a new generation's track plays** — set aside by
 the author on 2026-09-17, to be rethought.
 
-**What a plugin's commands cannot reach yet** — the author's to decide
-(D-042): a Sequencer track solo and an arpeggiator on/off or hold do not exist
-to be commanded. Being built 2026-09-27 on the author's "décide des meilleures
-options". (The pages that did not redraw after a command now do.)
-
 **Splice's Expression reads 0.85 through `parameters` while the saved plugin
 state holds 1.0** — seen through the agent channel. Unexplained.
 

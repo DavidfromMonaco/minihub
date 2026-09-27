@@ -2124,7 +2124,11 @@ native `[core] loopback-listener`.
 **Status**: in force · 2026-09-15 · **implemented**, in the author's test.
 Note of 2026-09-27: the Arpeggiator's, Mixer's and Morpher's pages now redraw
 when a command writes them (`nodes:contentWritten`, once a frame and not under
-a held pointer); the consequence below saying they do not is history.
+a held pointer), and what was "not offered, because the modules do not have
+them" now exists and is offered: a Sequencer track's SOLO, the arpeggiator's
+ON (off, the notes pass through as played) and HOLD (a new set starts when a
+key is pressed with none down). The two consequences below saying otherwise
+are history.
 
 **Context** — One Ring is a VST3 control sequencer written outside this
 repository: sixteen channels of steps, probability, conditions, scenes, follow

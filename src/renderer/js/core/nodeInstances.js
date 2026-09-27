@@ -1303,7 +1303,7 @@ export class NodeInstanceManager {
             const control=e.target.dataset.arpControl;
             if (control) {
               if (e.target.tagName === 'SELECT' && e.type !== 'change') return;
-              const value=control==='snapToScale'?e.target.checked
+              const value=['snapToScale','hold','enabled'].includes(control)?e.target.checked
                 :(control==='root'||control==='patternLength'?Number(e.target.value):e.target.value);
               if (instance.content[control] === value) return;
               instance.content[control]=value;
