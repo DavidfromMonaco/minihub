@@ -7,8 +7,8 @@ contextBridge.exposeInMainWorld('clipEditorAPI', {
   update: (clipId, expectedProjectId, operation, payload) => ipcRenderer.invoke(
     'clip-editor:update', clipId, expectedProjectId, operation, payload
   ),
-  transport: (clipId, expectedProjectId, action) => ipcRenderer.invoke(
-    'clip-editor:transport', clipId, expectedProjectId, action
+  transport: (clipId, expectedProjectId, action, payload = null) => ipcRenderer.invoke(
+    'clip-editor:transport', clipId, expectedProjectId, action, payload
   ),
   audition: (clipId, expectedProjectId, payload) => ipcRenderer.invoke(
     'clip-editor:audition', clipId, expectedProjectId, payload

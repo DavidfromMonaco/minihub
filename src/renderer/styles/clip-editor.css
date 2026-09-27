@@ -28,7 +28,16 @@
 /* Under the grid, not under the keyboard: the thumb is a picture of the grid. */
 .clip-piano-shell > .nav-bar { padding-left:calc(var(--ce-keys,80px) + 4px); }
 .clip-piano-canvas { position:relative; min-width:100%; background:#0e0f11; }
-.clip-piano-keys { position:sticky; left:0; top:0; z-index:5; background:#141517; border-right:1px solid #3a3c42; }
+.clip-piano-keys { position:sticky; left:0; z-index:5; background:#141517; border-right:1px solid #3a3c42; }
+/* The bar ruler: the first row of the canvas, held at the top while the rows
+   scroll under it, its corner held at the left over the keyboard. The rows and
+   the grid start under it (the grid's data-ce-top). */
+.clip-piano-ruler { position:sticky; top:0; z-index:6; box-sizing:border-box; background:#17181b; border-bottom:1px solid #3a3c42; }
+.clip-ruler-corner { position:sticky; left:0; z-index:2; display:block; box-sizing:border-box; height:100%; padding:5px 6px 0; background:#141517; border-right:1px solid #3a3c42; color:#6f7177; font:9px var(--mono); text-transform:uppercase; letter-spacing:.08em; text-align:right; }
+.clip-ruler-marks { position:absolute; top:0; height:100%; overflow:hidden; cursor:pointer; }
+/* The grid's own lines, as ticks along the ruler's lower edge. */
+.clip-ruler-marks .clip-meter-span { top:12px; height:auto; bottom:0; }
+.clip-ruler-bar { position:absolute; top:0; bottom:0; padding:4px 0 0 4px; border-left:1px solid rgba(255,255,255,.35); color:#c9c7c1; font:10px var(--mono); white-space:nowrap; pointer-events:none; }
 /* The gutter width and the row height come from --ce-keys / --ce-row, set on
    .clip-piano-canvas from the one place that owns the zoom. They used to be
    80px and 18px spelled here as well as in JavaScript. */

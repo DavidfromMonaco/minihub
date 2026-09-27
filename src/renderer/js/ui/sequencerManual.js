@@ -349,6 +349,7 @@ export const MANUAL_SECTIONS = Object.freeze([
     id: 'editor', title: 'Clip Editor',
     html: `<p>Double-click a clip, or choose ${ui('Open in Clip Editor')}: it opens in its own window, a piano roll for MIDI and a waveform view for audio. Its transport returns to the start, and plays or stops the Sequencer.</p>
       <table class="mn-table"><tbody>
+        <tr><td>Press the bar ruler</td><td>Places the playhead there, on the ${ui('Snap')} grid; with ${k('Alt')}, off it. The ruler numbers the track's bars, and the transport shows where the playhead is as bar.beat.</td></tr>
         <tr><td>Double-click the grid</td><td>A new note, one ${ui('Snap')} step long, velocity 100.</td></tr>
         <tr><td>Click a note</td><td>Selects it and lets you hear it; with ${k('Ctrl')}, adds it to the selection. Click a key of the keyboard to hear that pitch.</td></tr>
         <tr><td>Drag a note · its edge</td><td>Moves the selection in time and pitch · changes that note's length.</td></tr>

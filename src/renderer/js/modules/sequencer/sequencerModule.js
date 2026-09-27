@@ -13,7 +13,7 @@ import { createInstrumentTrack, instrumentPlugins, openPluginWhenReady, trackPlu
 import { icon } from '../../ui/icons.js';
 import {
   COMMON_TIME, SIGNATURE_DENOMINATORS, SIGNATURE_NUMERATOR_MAX, formatSignature, loopBars, loopRangeFromBars,
-  asRegions, meterBarAt, meterBarPpq, meterRegionAt, meterSnap, meterSpans, normalizeSignature, quartersPerBar,
+  asRegions, barLabelStride, meterBarAt, meterBarPpq, meterRegionAt, meterSnap, meterSpans, normalizeSignature, quartersPerBar,
   quartersPerBeat
 } from '../../core/musicalTime.js';
 
@@ -809,9 +809,7 @@ export function timelinePpqAt(clientX, originX, zoom, snap, free = false, meter 
 }
 
 export function rulerStride(bars, zoom, barPpq = 4) {
-  const barPx = Math.max(0.01, (Number(barPpq) > 0 ? Number(barPpq) : 4) * (Number(zoom) || 0));
-  const wanted = Math.max(RULER_MIN_MARK_PX / barPx, Math.max(1, Number(bars) || 1) / 512, 1);
-  return 2 ** Math.ceil(Math.log2(wanted));
+  return barLabelStride(bars, zoom, barPpq, RULER_MIN_MARK_PX);
 }
 
 /**

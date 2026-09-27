@@ -3,7 +3,7 @@ import { attachNavigationBar, navigationBarMarkup } from './ui/navigationBar.js'
 import { historyIntent, isTextEditingTarget } from './ui/historyKeys.js';
 import { notesInBox, selectNoteIds } from './core/clipEditorSelection.js';
 import { MIN_NOTE_PPQ, SNAP_STEPS, clampNoteGroupDelta, snapStep } from './core/sequencerModel.js';
-import { COMMON_TIME, asRegions, meterBarAt, meterSnap, meterSpans, quartersPerBar, quartersPerBeat } from './core/musicalTime.js';
+import { COMMON_TIME, asRegions, barBeat, barLabelStride, barLinesIn, meterBarAt, meterSnap, meterSpans, quartersPerBar, quartersPerBeat } from './core/musicalTime.js';
 import { formatSeconds, secondsMarks, secondsStride } from './ui/secondsRuler.js';
 import { installTooltips } from './ui/tooltip.js';
 
@@ -24,6 +24,10 @@ const AUDITION_MAX_MS = 4000;
  */
 const ZOOM = Object.freeze({ minWidth: 8, maxWidth: 480, minHeight: 6, maxHeight: 40 });
 const KEY_WIDTH = 80;
+/** The bar ruler over the grid, held at the top while the keyboard scrolls. */
+const RULER_HEIGHT = 20;
+/** Bar labels closer than this are thinned, as the arrangement's are. */
+const RULER_MIN_LABEL_PX = 28;
 let view = { ppqWidth: 120, noteHeight: 18, fitted: false };
 /**
  * An audio take's zoom, in pixels per second of the file.
@@ -122,6 +126,28 @@ function meterGridMarkup(clip) {
     const bar = quartersPerBar(signature) * view.ppqWidth;
     return `<div class="clip-meter-span" data-ce-left="${(fromPpq - from) * view.ppqWidth}" data-ce-width="${(toPpq - fromPpq) * view.ppqWidth}" data-ce-beat="${beat}" data-ce-bar="${bar}" data-ce-phase="${(fromPpq - startPpq) * view.ppqWidth}"></div>`;
   }).join('');
+}
+
+/**
+ * The bar ruler over the piano roll: the track's bar numbers where each bar
+ * begins inside the clip, and the grid's own lines as ticks under them.
+ *
+ * The grid named nothing: with a clip open there was no saying which bar was
+ * on screen, where the arrangement had its ruler (the author, 2026-09-18).
+ * Numbered in the TRACK's bars (D-060), counted in the song, so bar 9 here is
+ * bar 9 of the arrangement's ruler for that track.
+ */
+function rulerMarkup(clip) {
+  const from = Number(clip.startPpq) || 0;
+  // The bar holding the clip's start is labelled only if it begins there.
+  const lines = barLinesIn(trackMeter(), from, from + (Number(clip.lengthPpq) || 0));
+  const shortest = Math.min(...lines.map((line) => line.lengthPpq), quartersPerBar(COMMON_TIME));
+  const stride = barLabelStride(lines.length, view.ppqWidth, shortest, RULER_MIN_LABEL_PX);
+  const labels = lines
+    .filter((line) => (line.bar - 1) % stride === 0)
+    .map((line) => `<span class="clip-ruler-bar" data-ce-left="${(line.startPpq - from) * view.ppqWidth}">${line.bar}</span>`)
+    .join('');
+  return `${meterGridMarkup(clip)}${labels}`;
 }
 
 function applyDynamicStyles() {
@@ -256,9 +282,13 @@ function midiMarkup(state) {
     </section>
     <section class="clip-piano-shell" aria-label="Piano Roll">
       <div class="clip-piano-scroll" data-piano-scroll>
-        <div class="clip-piano-canvas" data-ce-width="${KEY_WIDTH + gridWidth}" data-ce-height="${gridHeight}" data-ce-row="${view.noteHeight}" data-ce-keys="${KEY_WIDTH}">
+        <div class="clip-piano-canvas" data-ce-width="${KEY_WIDTH + gridWidth}" data-ce-height="${RULER_HEIGHT + gridHeight}" data-ce-row="${view.noteHeight}" data-ce-keys="${KEY_WIDTH}">
+          <div class="clip-piano-ruler" data-ce-width="${KEY_WIDTH + gridWidth}" data-ce-height="${RULER_HEIGHT}">
+            <span class="clip-ruler-corner" data-ce-width="${KEY_WIDTH}" title="The track's bars">Bar</span>
+            <div class="clip-ruler-marks" data-clip-ruler data-ce-left="${KEY_WIDTH}" data-ce-width="${gridWidth}" title="Press to place the playhead (Alt: off the grid)">${rulerMarkup(clip)}</div>
+          </div>
           <div class="clip-piano-keys" data-ce-width="${KEY_WIDTH}" data-ce-height="${gridHeight}">${pianoKeys()}</div>
-          <div class="clip-piano-grid" data-piano-grid data-ce-left="${KEY_WIDTH}" data-ce-width="${gridWidth}" data-ce-height="${gridHeight}">${meterGridMarkup(clip)}${playheadMarkup()}${noteMarkup(clip)}</div>
+          <div class="clip-piano-grid" data-piano-grid data-ce-left="${KEY_WIDTH}" data-ce-top="${RULER_HEIGHT}" data-ce-width="${gridWidth}" data-ce-height="${gridHeight}">${meterGridMarkup(clip)}${playheadMarkup()}${noteMarkup(clip)}</div>
         </div>
       </div>
       ${navigationBarMarkup(`data-ce-keys="${KEY_WIDTH}"`)}
@@ -270,7 +300,7 @@ function transportMarkup() {
     <button class="btn clip-transport-return" data-transport-action="return-start" title="Return to Start" aria-label="Return to Start">|&lt;</button>
     <button class="btn clip-transport-play" data-transport-action="play" aria-pressed="${transport.playing}">Play</button>
     <button class="btn clip-transport-stop" data-transport-action="stop">Stop</button>
-    <output class="clip-transport-position" data-transport-position>${Number(transport.ppqPosition).toFixed(2)} PPQ</output>
+    <output class="clip-transport-position" data-transport-position title="The playhead, as bar.beat in the track's bars">${escapeHtml(positionText())}</output>
   </div>`;
 }
 
@@ -295,7 +325,7 @@ function applyTransportState(next = {}) {
   const stop = root.querySelector('[data-transport-action="stop"]');
   if (stop) stop.disabled = !transport.playing && !transport.recording;
   const position = root.querySelector('[data-transport-position]');
-  if (position) position.textContent = `${transport.ppqPosition.toFixed(2)} PPQ`;
+  if (position) position.textContent = positionText();
   const playhead = root.querySelector('[data-clip-playhead]');
   if (playhead && current) {
     const localPpq = transport.ppqPosition - current.clip.startPpq;
@@ -303,6 +333,12 @@ function applyTransportState(next = {}) {
     playhead.hidden = !visible;
     if (visible) playhead.style.left = `${localPpq * view.ppqWidth}px`;
   }
+}
+
+/** Where the playhead is, as `bar.beat` in the clip's track's bars. A raw
+ *  quarter count ("37.50 PPQ") was what this said, which nobody reads. */
+function positionText() {
+  return barBeat(transport.ppqPosition, trackMeter());
 }
 
 function audioMarkup(state) {
@@ -470,7 +506,8 @@ function scrollToNotes(scroll) {
     ? (Math.max(...pitches) + Math.min(...pitches)) / 2
     : 60;
   scroll.scrollLeft = 0;
-  scroll.scrollTop = Math.max(0, (127 - middle) * view.noteHeight - (scroll.clientHeight || 0) / 2);
+  // The ruler holds the top RULER_HEIGHT of the view; the rows share the rest.
+  scroll.scrollTop = Math.max(0, (127 - middle) * view.noteHeight - ((scroll.clientHeight || 0) - RULER_HEIGHT) / 2);
 }
 
 function render() {
@@ -492,7 +529,7 @@ function render() {
   // The measurement needs the element in the document, hence the second pass.
   if (!view.fitted) {
     view.fitted = true;
-    const fitted = fitZoom(scroll.clientWidth, scroll.clientHeight);
+    const fitted = fitZoom(scroll.clientWidth, scroll.clientHeight - RULER_HEIGHT);
     if (fitted && (fitted.ppqWidth !== view.ppqWidth || fitted.noteHeight !== view.noteHeight)) {
       view = { ...fitted, fitted: true };
       scrollIntent = 'notes';
@@ -589,11 +626,11 @@ async function requestAudition(payload) {
   return result?.ok === true;
 }
 
-async function requestTransport(action) {
+async function requestTransport(action, payload = null) {
   if (!current || disposed) return false;
   let result;
   try {
-    result = await globalThis.clipEditorAPI.transport(clipId, current.projectId, action);
+    result = await globalThis.clipEditorAPI.transport(clipId, current.projectId, action, payload);
   } catch (error) {
     if (!disposed) {
       console.error(`[clip-editor] ${action} transport IPC failed`, error);
@@ -729,6 +766,16 @@ function bind() {
       document.addEventListener('pointercancel', pointerCancel, { once: true });
     });
   });
+  // The ruler places the playhead, on the Snap grid unless Alt is held, as
+  // the arrangement's rulers do.
+  root.querySelector('[data-clip-ruler]')?.addEventListener('pointerdown', (event) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    const rect = event.currentTarget.getBoundingClientRect();
+    const local = Math.max(0, (event.clientX - rect.left) / view.ppqWidth);
+    const within = Math.min(Number(current.clip.lengthPpq) || 0, event.altKey ? local : snap(local));
+    requestTransport('seek', { ppq: clipStart() + within });
+  });
   root.querySelector('[data-piano-grid]')?.addEventListener('dblclick', (event) => {
     if (event.target.closest('[data-note-id]')) return;
     const rect = event.currentTarget.getBoundingClientRect();
@@ -789,11 +836,12 @@ function applyZoom(next, anchor = null) {
   // The keys occupy the first KEY_WIDTH of the canvas, sticky or not, so a
   // grid position is the canvas x minus that.
   const ppq = ((scroll?.scrollLeft || 0) + offsetX - KEY_WIDTH) / before.ppqWidth;
-  const row = ((scroll?.scrollTop || 0) + offsetY) / before.noteHeight;
+  // And the ruler the first RULER_HEIGHT, above the rows.
+  const row = ((scroll?.scrollTop || 0) + offsetY - RULER_HEIGHT) / before.noteHeight;
   view = { ...zoomed, fitted: true };
   scrollIntent = {
     left: Math.max(0, ppq * view.ppqWidth + KEY_WIDTH - offsetX),
-    top: Math.max(0, row * view.noteHeight - offsetY)
+    top: Math.max(0, row * view.noteHeight + RULER_HEIGHT - offsetY)
   };
   render();
   return true;

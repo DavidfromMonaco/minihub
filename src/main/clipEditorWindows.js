@@ -31,7 +31,18 @@ function validAudition(value) {
     && (!finite(value.durationMs) || value.durationMs <= 0 || value.durationMs > AUDITION_MAX_MS)) return false;
   return true;
 }
-const TRANSPORT_ACTIONS = new Set(['return-start', 'play', 'stop']);
+const TRANSPORT_ACTIONS = new Set(['return-start', 'play', 'stop', 'seek']);
+/** The furthest a seek from the Clip Editor's ruler may ask for: the Sequencer's
+ *  own longest arrangement, 2048 clips of 4096 bars, is far inside it. */
+const MAX_SEEK_PPQ = 1e7;
+
+/** `seek` carries where to, and only `seek` carries anything. */
+function validTransportPayload(action, payload) {
+  if (action !== 'seek') return payload === null || payload === undefined;
+  return !!payload && typeof payload === 'object' && !Array.isArray(payload)
+    && Object.keys(payload).length === 1 && Number.isFinite(payload.ppq)
+    && payload.ppq >= 0 && payload.ppq <= MAX_SEEK_PPQ;
+}
 const HISTORY_DIRECTIONS = new Set(['undo', 'redo']);
 // Kept identical to QUANTIZE_GRIDS in core/sequencerModel.js. The process
 // boundary is why this is a second list -- main is CommonJS, the model is an
@@ -197,11 +208,11 @@ class ClipEditorWindows {
           || !OPERATIONS.has(operation) || !validPayload(operation, payload)) return { ok: false, reason: 'invalid-request' };
       return this._requestCanonical(editor, 'update', operation, payload, expectedProjectId);
     });
-    this.ipcMain.handle('clip-editor:transport', (event, clipId, expectedProjectId, action) => {
+    this.ipcMain.handle('clip-editor:transport', (event, clipId, expectedProjectId, action, payload = null) => {
       const editor = this._editorForSender(event);
       if (!editor || editor.clipId !== clipId || !PROJECT_ID.test(String(expectedProjectId || ''))
-          || !TRANSPORT_ACTIONS.has(action)) return { ok: false, reason: 'invalid-request' };
-      return this._requestCanonical(editor, 'transport', action, null, expectedProjectId);
+          || !TRANSPORT_ACTIONS.has(action) || !validTransportPayload(action, payload)) return { ok: false, reason: 'invalid-request' };
+      return this._requestCanonical(editor, 'transport', action, action === 'seek' ? { ppq: payload.ppq } : null, expectedProjectId);
     });
     this.ipcMain.handle('clip-editor:audition', (event, clipId, expectedProjectId, payload) => {
       const editor = this._editorForSender(event);

@@ -242,6 +242,25 @@ test('Clip Editor transport actions proxy to the canonical renderer and native s
   assert.equal(validTransportState({ ppqPosition: 0, playing: 'yes' }), false);
 });
 
+test('a seek from the Clip Editor ruler carries where to, and nothing else carries anything', async () => {
+  const { handlers, mainWindow, mainEvent } = rig();
+  await handlers.get('clip-editor:open')(mainEvent, 'clip-midi-1');
+  const editorEvent = { sender: FakeWindow.instances[0].webContents };
+  const ask = (action, payload) => handlers.get('clip-editor:transport')(editorEvent, 'clip-midi-1', 'project-1', action, payload);
+
+  const pending = ask('seek', { ppq: 12.5 });
+  const request = mainWindow.webContents.sent.at(-1);
+  assert.deepEqual([request.payload.operation, request.payload.payload], ['seek', { ppq: 12.5 }]);
+  handlers.get('clip-editor:respond')(mainEvent, { requestId: request.payload.requestId, ok: true });
+  assert.equal((await pending).ok, true);
+
+  for (const payload of [null, {}, { ppq: -1 }, { ppq: Infinity }, { ppq: '4' }, { ppq: 4, extra: 1 }, [4]]) {
+    assert.deepEqual(await ask('seek', payload), { ok: false, reason: 'invalid-request' }, JSON.stringify(payload));
+  }
+  assert.deepEqual(await ask('play', { ppq: 4 }), { ok: false, reason: 'invalid-request' },
+    'play takes no payload: a field an action does not read is refused, not ignored');
+});
+
 test('sequential open/close cycles replace WebContents IDs and cannot consume stale responses', async () => {
   const { manager, handlers, mainWindow, mainEvent } = rig();
   manager.bind();

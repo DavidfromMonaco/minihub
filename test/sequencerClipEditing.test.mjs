@@ -289,8 +289,8 @@ test('Clip Editor transport commands control and reflect the one Sequencer/nativ
   const clip = controller.model.addMidiClip(track.id, 0, 8, [
     { pitch: 60, startPpq: 0, durationPpq: 1, velocity: 100, channel: 1 }
   ]);
-  const request = (operation) => controller.handleClipEditorRequest({
-    kind: 'transport', clipId: clip.id, expectedProjectId: hub.project.projectId, operation
+  const request = (operation, payload = null) => controller.handleClipEditorRequest({
+    kind: 'transport', clipId: clip.id, expectedProjectId: hub.project.projectId, operation, payload
   });
 
   assert.equal(request('play').ok, true);
@@ -310,6 +310,15 @@ test('Clip Editor transport commands control and reflect the one Sequencer/nativ
   assert.deepEqual(published.at(-1), {
     ppqPosition: 0, playing: false, recording: false, bpm: 120
   });
+
+  // The ruler over the piano roll: a seek, to a position in the song.
+  const sought = request('seek', { ppq: 6.5 });
+  assert.equal(sought.transport.ppqPosition, 6.5);
+  assert.deepEqual(commands.at(-1), { type: 'transport', seekPpq: 6.5 });
+  controller.recording = true;
+  assert.equal(request('seek', { ppq: 2 }).reason, 'recording', 'a take is not ended by a slip on the ruler');
+  controller.recording = false;
+  assert.equal(controller.playheadPpq, 6.5);
 });
 
 test('very short audio edits retain one live, saved, native, and End length invariant', () => {

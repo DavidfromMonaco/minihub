@@ -855,7 +855,12 @@ export class SequencerController {
       }
       if (!this.model._clip(clipId)) return { ok: false, reason: 'clip-not-found' };
       if (request.operation === 'return-start') this.goToStart();
-      else if (request.operation === 'play') this.playTransport();
+      else if (request.operation === 'seek' && Number.isFinite(request.payload?.ppq)) {
+        // A seek ends a take, and a slip of the hand on a ruler must not
+        // (the arrangement's own rulers refuse it for the same reason).
+        if (this.recording || this.preCounting) return { ok: false, reason: 'recording' };
+        this.seek(request.payload.ppq);
+      } else if (request.operation === 'play') this.playTransport();
       else if (request.operation === 'stop') this.stopTransport();
       else return { ok: false, reason: 'unsupported-request' };
       const transport = this.editorTransportState();

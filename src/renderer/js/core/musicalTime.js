@@ -107,6 +107,38 @@ export function barStart(quarters, signature = COMMON_TIME) {
 }
 
 /**
+ * The bars that BEGIN between two positions, in the track's bars, as
+ * `{ startPpq, lengthPpq, bar, signature }`: a bar the window starts inside
+ * is not one of them. What a ruler over part of a song labels.
+ */
+export function barLinesIn(regions, fromPpq, toPpq, limit = 4096) {
+  const from = Math.max(0, Number(fromPpq) || 0);
+  const to = Number(toPpq) || 0;
+  const lines = [];
+  let at = meterBarAt(regions, from);
+  if (at.startPpq < from - EPSILON) at = meterBarAt(regions, at.startPpq + at.lengthPpq);
+  while (at.startPpq < to - EPSILON && lines.length < limit) {
+    lines.push(at);
+    at = meterBarAt(regions, at.startPpq + at.lengthPpq);
+  }
+  return lines;
+}
+
+/**
+ * How many bars one label of a bar ruler covers: a power of two, so the labels
+ * fall on 1, 3, 5... or 1, 5, 9..., never a count that reads as random.
+ *
+ * Two floors: labels at least `minMarkPx` apart, so each can be read, and no
+ * more than 512 of them over `bars`, so an hour-long arrangement never emits
+ * ten thousand. The Sequencer's bar ruler and the Clip Editor's both use it.
+ */
+export function barLabelStride(bars, pxPerQuarter, barPpq = 4, minMarkPx = 54) {
+  const barPx = Math.max(0.01, (Number(barPpq) > 0 ? Number(barPpq) : 4) * (Number(pxPerQuarter) || 0));
+  const wanted = Math.max(minMarkPx / barPx, Math.max(1, Number(bars) || 1) / 512, 1);
+  return 2 ** Math.ceil(Math.log2(wanted));
+}
+
+/**
  * A position written as `bar.beat`, both counted from one, the beat being the
  * signature's own -- an eighth in 6/8, as every workstation counts it.
  *

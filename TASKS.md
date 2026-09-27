@@ -37,12 +37,6 @@ gesture. The engine records a value only inside a gesture
 gestures of its own. Which parameter it was, and what starts the stream, is
 neither logged nor verified.
 
-**The Clip Editor has no rulers** — asked by the author on 2026-09-18. The piano
-grid draws its beat lines (`--ce-beat` in `src/renderer/js/clipEditor.js`) and
-nothing names them: no bar ruler along the top, no position in time, where the
-Sequencer has both (`rulerStride` in `modules/sequencer/sequencerModule.js`).
-With a clip open there is no way to say which bar is on screen. Not started.
-
 **A take's waveform, zoomed in, is an outline** — left from the timelines'
 navigation (2026-09-24): a take draws the engine's 256 peaks for the whole
 file, so zoomed in it is not the signal. Finer peaks for what is on screen

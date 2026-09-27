@@ -153,7 +153,7 @@ test('the Clip Editor window accepts a signature from the main window, and only 
 
 // ---- a signature per track, changing along it (D-060) ----------------------
 
-import { meterBarAt, meterBarPpq, meterRegions, meterSnap, normalizeMeter } from '../src/renderer/js/core/musicalTime.js';
+import { barLabelStride, barLinesIn, meterBarAt, meterBarPpq, meterRegions, meterSnap, normalizeMeter } from '../src/renderer/js/core/musicalTime.js';
 
 test('a track counts its own bars: the project\'s until its first change, then its own', () => {
   const regions = meterRegions([{ bar: 3, numerator: 7, denominator: 8 }, { bar: 5, numerator: 4, denominator: 4 }]);
@@ -286,4 +286,21 @@ test('the Clip Editor is given its track\'s bars, in arrangement quarters', () =
   const state = controller.clipEditorState(clip.id);
   assert.deepEqual(state.meter.map((region) => [region.startPpq, `${region.signature.numerator}/${region.signature.denominator}`]),
     [[0, '4/4'], [4, '7/8']]);
+});
+
+test("a ruler over part of a song labels the bars that begin in it, in the track's bars", () => {
+  // 4/4 for two bars, then 7/8 from bar 3 (quarter 8), then 4/4 from bar 5 (quarter 15).
+  const regions = meterRegions([{ bar: 3, numerator: 7, denominator: 8 }, { bar: 5, numerator: 4, denominator: 4 }]);
+  const lines = (from, to) => barLinesIn(regions, from, to).map((line) => [line.bar, line.startPpq]);
+  assert.deepEqual(lines(8, 19), [[3, 8], [4, 11.5], [5, 15]], 'bars three and four are 7/8, bar five 4/4 again');
+  assert.deepEqual(lines(9, 12), [[4, 11.5]], 'a clip starting inside bar three does not claim it');
+  assert.deepEqual(lines(4, 4), [], 'a window of no length has no bar');
+  assert.equal(barLinesIn(meterRegions([]), 0, 1e6).length, 4096, 'and a runaway window stops');
+});
+
+test('bar labels thin out by powers of two, never closer than asked', () => {
+  assert.equal(barLabelStride(8, 30, 4, 28), 1, 'a 120 px bar: every bar');
+  assert.equal(barLabelStride(8, 5, 4, 28), 2, 'a 20 px bar: every other one');
+  assert.equal(barLabelStride(8, 2, 4, 28), 4, 'an 8 px bar: one in four');
+  assert.equal(barLabelStride(8, 2, 4), 8, "the arrangement's own floor, 54 px, is the default");
 });
