@@ -1530,8 +1530,6 @@ minimal, `helpers.mjs` un Hub factice.
 
 `sync-dist.mjs` promeut `src/` + le moteur natif Release dans `dist/MiniHub` et
 écrit `runtime-provenance.json`. `launch-dist.mjs` lance la version packagée.
-Les `runtime-*-gauntlet.mjs` sont des harnais de vérification ponctuels pilotant
-l'application réelle par CDP.
 
 ---
 

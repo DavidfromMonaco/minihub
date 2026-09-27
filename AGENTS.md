@@ -236,10 +236,6 @@ never a script. The bounds are [INTENT.md](INTENT.md) §8 sexies.
 If something you need is missing from the vocabulary, **that is a gap to report
 and fill**, not a reason to reach for the mouse.
 
-`scripts/runtime-*-gauntlet.mjs` are one-off harnesses that drive the real
-application over CDP; they belong to closed investigations and are **not** part
-of the definition of "done". See ROADMAP.
-
 ## 9. Traps that cost an hour
 
 - **The renderer is not reloaded by `npm start`** until `sync:dist` has run: you

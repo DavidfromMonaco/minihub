@@ -825,8 +825,10 @@ No commitment, no priority — written down so they are not forgotten.
   four-quarter bars (D-059).
 - An MCP wrapper around the agent channel, so an agent calls its requests as
   tools.
-- The ten `runtime-*-gauntlet.mjs` scripts are one-off harnesses tied to closed
-  investigations. To be grouped under `scripts/gauntlets/` or removed once their
-  use is confirmed obsolete.
+~~The ten `runtime-*-gauntlet.mjs` scripts, one-off harnesses tied to closed
+  investigations~~ — **removed 2026-09-27**: they drove the application's
+  internals over CDP for investigations long closed; the native test binaries
+  cover what they checked, the agent channel is how the running application is
+  driven now, and git keeps them.
 ~~Fix the four `C4996` deprecation warnings in `midi_network.cpp`~~ — **done
   2026-09-05**, its own commit and the four native binaries, 3,954 checks.
