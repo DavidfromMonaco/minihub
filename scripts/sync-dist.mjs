@@ -16,7 +16,11 @@
  *   - copies the app icon assets (`build/`) into `resources/app/build/` so the
  *     renderer/main process can reference them at runtime, and
  *   - stamps the custom `.ico` onto the executable's embedded icon resource via
- *     `rcedit`, so the exe, taskbar and file-explorer icon stop using Electron.
+ *     `rcedit`, so the exe, taskbar and file-explorer icon stop using Electron,
+ *   - and stamps its version resource the same way. Left as Electron's, it
+ *     says "Electron" for the product and the description and "GitHub, Inc."
+ *     for the company, and Windows shows that name wherever it names a
+ *     process: Task Manager, the volume mixer, a firewall prompt.
  *
  * Executable refresh strategy
  * ---------------------------
@@ -217,10 +221,26 @@ if (!sourceExe) {
     fs.copyFileSync(sourceExe, tempPath);
     console.log(`copied fresh exe (${sourceExe === pristineExe ? 'pristine electron' : 'existing'}) -> ${tempPath}`);
 
-    // 2b. Stamp the MiniHub icon onto the fresh copy.
+    // 2b. Stamp the MiniHub icon and version resource onto the fresh copy.
+    // The version is the app's, as electron-builder stamps it; the company is
+    // the copyright holder the LICENSE names.
     const { rcedit } = await import('rcedit');
-    await rcedit(tempPath, { icon: iconPath });
-    console.log(`stamped ${iconPath} onto ${tempPath}`);
+    const appVersion = JSON.parse(fs.readFileSync(path.join(repo, 'package.json'), 'utf8')).version;
+    const holder = /Copyright \(c\) (\d{4}) (.+)/i.exec(fs.readFileSync(path.join(repo, 'LICENSE'), 'utf8'));
+    await rcedit(tempPath, {
+      icon: iconPath,
+      'product-version': appVersion,
+      'file-version': appVersion,
+      'version-string': {
+        ProductName: 'MiniHub',
+        FileDescription: 'MiniHub',
+        CompanyName: holder ? holder[2].trim() : '',
+        LegalCopyright: holder ? `Copyright (c) ${holder[1]} ${holder[2].trim()}` : '',
+        InternalName: 'MiniHub',
+        OriginalFilename: exeName
+      }
+    });
+    console.log(`stamped ${iconPath} and MiniHub ${appVersion} onto ${tempPath}`);
 
     // 2c. Stamp succeeded - atomically promote the fresh exe over the old one.
     fs.rmSync(exePath, { force: true });

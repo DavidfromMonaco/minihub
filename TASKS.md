@@ -37,12 +37,6 @@ gesture. The engine records a value only inside a gesture
 gestures of its own. Which parameter it was, and what starts the stream, is
 neither logged nor verified.
 
-**MiniHub.exe still names itself Electron** — raised 2026-09-15, the author's to
-decide. The executable's version resource says "Electron" for the product and
-the file description, "GitHub, Inc." for the company: `scripts/sync-dist.mjs`
-stamps only the icon onto it with `rcedit`. Windows likely shows that name, in
-Task Manager for one — not verified.
-
 **The Clip Editor has no rulers** — asked by the author on 2026-09-18. The piano
 grid draws its beat lines (`--ce-beat` in `src/renderer/js/clipEditor.js`) and
 nothing names them: no bar ruler along the top, no position in time, where the
