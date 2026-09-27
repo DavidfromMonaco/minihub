@@ -500,6 +500,20 @@ function laneAttributes(place) {
   return ` data-seq-top="${(3 + place.lane * height).toFixed(2)}" data-seq-height="${Math.max(8, height - 1).toFixed(2)}" data-lanes="${place.lanes}"`;
 }
 
+/**
+ * The key that makes a clip active or inactive (D-067), in its bottom right
+ * corner -- the top corners are the fades'. On every clip laid in lanes, where
+ * a take is chosen among others, and on any inactive clip, so one moved out
+ * of its lanes can still be heard again.
+ */
+function clipMuteMarkup(clip, laned) {
+  if (!laned && !clip.muted) return '';
+  const speaker = 'M2 5h3l4-3v10l-4-3H2z';
+  const mark = clip.muted ? '<path d="M11 5l3 4M14 5l-3 4"/>' : '<path d="M11 4.5a3.5 3.5 0 0 1 0 5"/>';
+  const title = clip.muted ? 'Inactive: click to hear this clip again' : 'Active: click to silence this clip';
+  return `<span class="seq-clip-mute" data-clip-mute role="switch" aria-checked="${!clip.muted}" title="${title}" aria-label="${title}"><svg viewBox="0 0 16 14" aria-hidden="true"><path class="speaker" d="${speaker}"/>${mark}</svg></span>`;
+}
+
 function clipMarkup(track, clip, zoom, selected, bpm = 120, place = null) {
   const left = clip.startPpq * zoom;
   const width = Math.max(CLIP_MIN_PX, clip.lengthPpq * zoom);
@@ -507,8 +521,8 @@ function clipMarkup(track, clip, zoom, selected, bpm = 120, place = null) {
   const unavailable = track.type === 'audio' && clip.mediaAvailable === false;
   const title = unavailable ? `${clip.name} — ${clip.mediaError || 'Audio media is unavailable'}` : clip.name;
   const laned = place && place.lanes > 1;
-  return `<button class="seq-clip ${track.type} ${selected ? 'selected' : ''} ${unavailable ? 'unavailable' : ''} ${laned ? 'laned' : ''}" data-clip-id="${clip.id}" data-track-id="${track.id}" data-seq-left="${left}" data-seq-width="${width}"${laneAttributes(place)} title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}">
-    <span class="seq-clip-resize start" data-resize="start" aria-hidden="true"></span><span class="seq-clip-name">${escapeHtml(clip.name)}</span>${unavailable ? '<span class="seq-clip-media-error">Missing media</span>' : content}${track.type === 'audio' && !unavailable ? fadeMarkup(clip, zoom, bpm, width) : ''}<span class="seq-clip-resize end" data-resize="end" aria-hidden="true"></span></button>`;
+  return `<button class="seq-clip ${track.type} ${selected ? 'selected' : ''} ${unavailable ? 'unavailable' : ''} ${laned ? 'laned' : ''} ${clip.muted ? 'muted' : ''}" data-clip-id="${clip.id}" data-track-id="${track.id}" data-seq-left="${left}" data-seq-width="${width}"${laneAttributes(place)} title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}">
+    <span class="seq-clip-resize start" data-resize="start" aria-hidden="true"></span><span class="seq-clip-name">${escapeHtml(clip.name)}</span>${unavailable ? '<span class="seq-clip-media-error">Missing media</span>' : content}${track.type === 'audio' && !unavailable ? fadeMarkup(clip, zoom, bpm, width) : ''}${clipMuteMarkup(clip, laned)}<span class="seq-clip-resize end" data-resize="end" aria-hidden="true"></span></button>`;
 }
 
 function trackSources(hub, track) {
@@ -1579,6 +1593,16 @@ export function createSequencerModule(hub) {
   }
 
   function bindClip(element) {
+    // The active key is its own: a press on it neither drags, resizes nor
+    // fades the clip, and a click on it does not select it.
+    const muteKey = element.querySelector('[data-clip-mute]');
+    muteKey?.addEventListener('pointerdown', (event) => { event.stopPropagation(); event.preventDefault(); });
+    muteKey?.addEventListener('dblclick', (event) => { event.stopPropagation(); event.preventDefault(); });
+    muteKey?.addEventListener('click', (event) => {
+      event.stopPropagation(); event.preventDefault();
+      const clip = controller.model._clip(element.dataset.clipId)?.clip;
+      if (clip) controller.setClipsMuted([clip.id], !clip.muted);
+    });
     element.addEventListener('click', (event) => {
       event.stopPropagation();
       if (suppressSelectionClickId === element.dataset.clipId) {
@@ -1988,6 +2012,12 @@ export function createSequencerModule(hub) {
         { label: 'Cut', hint: 'Ctrl+X', action: () => controller.cutSelectedClips() },
         { label: 'Copy', hint: 'Ctrl+C', action: () => controller.copySelectedClips() },
         { label: 'Duplicate', hint: 'Ctrl+D', action: () => controller.duplicateSelectedClips() },
+        { separator: true },
+        ...((allMuted) => [{
+          label: `${allMuted ? 'Activate' : 'Deactivate'} ${many ? `${ids.length} clips` : 'clip'}`,
+          hint: allMuted ? 'heard again' : 'kept, not heard',
+          action: () => controller.setClipsMuted(ids, !allMuted)
+        }])(ids.every((id) => model._clip(id)?.clip.muted)),
         { separator: true },
         { label: `Quantize to ${snap}`, disabled: !midi, action: () => controller.quantizeClips(ids, { grid: snap, strength: 100 }) },
         { separator: true },

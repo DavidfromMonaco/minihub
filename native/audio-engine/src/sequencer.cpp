@@ -287,7 +287,11 @@ bool SequencerEngine::sync(const juce::var& project,
         if (clips) for (const auto& clipValue : *clips) {
             const double clipStart=boundedPpq(clipValue["startPpq"]),clipLength=std::max(0.03125,boundedPpq(clipValue["lengthPpq"],4));
             track.clips.push_back({clipValue["id"].toString().toStdString(),track.type,clipStart,clipLength,true});
+            // An inactive clip (D-067) plays nothing, here or in an export. An
+            // audio one is still read, so the renderer keeps its picture.
+            const bool inactive=clipValue["muted"].isBool()&&(bool)clipValue["muted"];
             if (track.type=="midi") {
+                if(inactive){track.clips.pop_back();continue;}
                 const double sourceOffset=boundedPpq(clipValue["sourceOffsetPpq"]);
                 const double sourceEnd=sourceOffset+clipLength;
                 const auto* notes=clipValue["notes"].getArray();if(!notes)continue;
@@ -332,6 +336,7 @@ bool SequencerEngine::sync(const juce::var& project,
                 clip.fadeIn=readClipFade(clipValue["fadeIn"]);clip.fadeOut=readClipFade(clipValue["fadeOut"]);
                 juce::var info=makeObject();setProp(info,"type","sequencerAudioInfo");setProp(info,"clipId",clipId);setProp(info,"available",true);setProp(info,"durationSeconds",duration);setProp(info,"bpm",120.0);
                 juce::Array<juce::var> peaks;for(const auto peak:asset->peaks)peaks.add(peak);setProp(info,"peaks",peaks);audioInfo.add(info);
+                if(inactive){track.clips.pop_back();continue;}
                 track.audio.push_back(std::move(clip));
             }
         }

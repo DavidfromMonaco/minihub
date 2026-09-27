@@ -3660,3 +3660,40 @@ resized and faded as before.
 `modules/sequencer/sequencerModule.js`; `.seq-clip.laned` in `base.css`.
 Tests: `test/recordOverdub.test.mjs`, `test/sequencerUi.test.mjs` ("a take
 recorded over another is drawn in its own lane").
+
+## D-067 — A clip is active or inactive, from a key on the clip
+
+**Status**: in force · 2026-09-27 · **implemented**, checked by the JS and
+native tests; not yet seen in the application
+
+**Context** — Layered takes all sound (D-066), which is what an overdub is
+for; but a take recorded to replace a weaker one has to be kept and not
+heard. The author asked for a button on the clips when there are two or more
+of them, saying active or inactive -- in the bottom corners, the top ones
+being the fades'.
+
+**Decision** — A clip has `muted`, Reaper's item mute. An inactive clip is
+drawn greyed and dashed, kept where it is, editable, and plays nothing: the
+engine leaves it out of the plan, so an export leaves it out too.
+
+- **The key** is in the clip's bottom right corner, beside the resize edge:
+  a speaker, crossed and orange when the clip is inactive. It is on every
+  clip laid in lanes, as asked, and also on any inactive clip, even alone:
+  otherwise a take made inactive and then moved out of its lanes would be
+  silent with nothing to hear it again by.
+- A press on the key neither drags, resizes nor fades the clip, and a click
+  on it does not select it.
+- The clip's right-click has *Deactivate clip* / *Activate clip*, for the
+  whole selection.
+
+**Consequences** — An inactive audio clip is still read by the engine, so
+its picture and its missing-media state stay right; it is only left out of
+what plays. Saved with the project, one undo step.
+
+**Proof in the code** — `muted` in `normalizeClip` and `setClipsMuted` in
+`core/sequencerModel.js`; `SequencerController.setClipsMuted`;
+`clipMuteMarkup` and the key's listeners in `bindClip`, in
+`modules/sequencer/sequencerModule.js`; the `inactive` clip in
+`SequencerEngine::sync`. Tests: `test/recordOverdub.test.mjs`,
+`test/sequencerUi.test.mjs` ("a laned clip has its active key"),
+`testSequencerInactiveClipIsSilent` in the native core tests.

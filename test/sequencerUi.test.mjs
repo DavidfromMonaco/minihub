@@ -673,8 +673,29 @@ test('a take recorded over another is drawn in its own lane, a clip alone keeps 
   const markup = view.container.innerHTML;
   assert.match(markup, /aria-label="Alone"/);
   assert.doesNotMatch(markup, /data-seq-left="0" data-seq-width="\d+" data-seq-top/, 'the clip alone is not laned');
-  assert.match(markup, /class="seq-clip audio[^"]*laned"[^>]*data-seq-top="3\.00" data-seq-height="28\.00" data-lanes="2"[^>]*aria-label="First"/, 'the first take in the upper half');
+  assert.match(markup, /class="seq-clip audio[^"]*laned[^"]*"[^>]*data-seq-top="3\.00" data-seq-height="28\.00" data-lanes="2"[^>]*aria-label="First"/, 'the first take in the upper half');
   assert.match(markup, /data-seq-top="32\.00" data-seq-height="28\.00" data-lanes="2"[^>]*aria-label="Over"/, 'the one recorded over it below');
+});
+
+test('a laned clip has its active key, a click on it silences the clip, and an inactive clip keeps it (D-067)', async () => {
+  const { hub } = await runtime();
+  hub.nodes.create('sequencer');
+  hub.modules.register(createSequencerModule(hub));
+  const view = captureContainer();
+  const track = hub.sequencer.model.addTrack('midi');
+  const alone = hub.sequencer.model.addMidiClip(track.id, 0, 4, [], { name: 'Alone' });
+  const first = hub.sequencer.model.addMidiClip(track.id, 16, 8, [], { name: 'First' });
+  hub.sequencer.model.addMidiClip(track.id, 20, 8, [], { name: 'Over' });
+  hub.modules.activate('sequencer', view.container);
+  const keys = () => (view.container.innerHTML.match(/data-clip-mute/g) || []).length;
+  assert.equal(keys(), 2, 'the two layered takes have the key, the clip alone does not');
+  assert.equal(hub.sequencer.setClipsMuted([first.id], true), true);
+  assert.equal(first.muted, true);
+  assert.match(view.container.innerHTML, /class="seq-clip midi[^"]*muted"[^>]*aria-label="First"/, 'drawn inactive');
+  assert.match(view.container.innerHTML, /role="switch" aria-checked="false" title="Inactive: click to hear this clip again"/);
+  hub.sequencer.setClipsMuted([first.id], false);
+  hub.sequencer.setClipsMuted([alone.id], true);
+  assert.equal(keys(), 3, 'an inactive clip alone keeps its key, or it could not be heard again');
 });
 
 test('the shell transport seeks by bars, says where it is, and pauses without stopping a One Ring', async () => {

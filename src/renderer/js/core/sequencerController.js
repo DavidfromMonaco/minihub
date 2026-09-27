@@ -1738,6 +1738,13 @@ export class SequencerController {
     if (lane) this.changed();
   }
 
+  /** Make clips active or inactive (D-067): one undo step, republished. */
+  setClipsMuted(clipIds, muted) {
+    if (!this.model.setClipsMuted(clipIds, muted)) return false;
+    this.changed();
+    return true;
+  }
+
   /** Take one parameter's automation off a track. */
   removeAutomationLane(trackId, laneId) {
     if (!this.model.removeAutomationLane(trackId, laneId)) return false;

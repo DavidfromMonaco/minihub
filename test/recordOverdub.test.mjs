@@ -277,3 +277,18 @@ test('clips that overlap share their track in lanes, a clip alone keeps it whole
   ], 'a lane is taken again once the clip in it has ended');
   assert.deepEqual(lanes.get('later'), { lane: 0, lanes: 1 }, 'touching the end of a group is not overlapping it');
 });
+
+// D-067: a clip active or inactive.
+
+test('a clip is made inactive and active again, saved as such, and a copy keeps it', () => {
+  const model = new SequencerModel();
+  const track = model.addTrack('audio');
+  const clip = model.addAudioClip(track.id, { filePath: 'C:/a.wav', lengthPpq: 8, durationSeconds: 4, trimEndSeconds: 4 });
+  assert.equal(clip.muted, false);
+  assert.equal(model.setClipsMuted([clip.id], true), 1);
+  assert.equal(model.setClipsMuted([clip.id], true), 0, 'nothing to change');
+  assert.equal(model.snapshot().tracks[0].clips[0].muted, true, 'saved');
+  const [, tail] = model.splitClip(clip.id, 4, { bpm: 120 });
+  assert.equal(tail.muted, true, 'both halves of a cut stay inactive');
+});
+

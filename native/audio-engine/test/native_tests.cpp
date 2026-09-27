@@ -975,6 +975,20 @@ juce::var automationLane(const char* nodeId,const char* instanceId,const juce::S
     mlh::setProp(lane,"points",list);return lane;
 }
 
+void testSequencerInactiveClipIsSilent()
+{
+    // An inactive clip (D-067) is kept by the arrangement and plays nothing.
+    mlh::SequencerEngine sequencer;sequencer.prepare(48000,512);mlh::Chain destination("vst-001");destination.setMidiEnabled(true);
+    juce::Array<juce::var> tracks;tracks.add(midiTrack("track-midi","vst-001"));
+    auto& clip=tracks.getReference(0)["clips"].getArray()->getReference(0);
+    juce::Array<juce::var> info;std::string error;
+    const auto onsIn=[&](bool muted){mlh::setProp(clip,"muted",muted);expect(sequencer.sync(makeSequencerProject(tracks),[&](const std::string&id){return id=="vst-001"?&destination:nullptr;},48000,512,info,error),"the arrangement compiles");
+        mlh::Transport transport;transport.setSampleRate(48000);transport.setPlaying(true);transport.beginBlock();sequencer.processMidi(512,transport);juce::MidiBuffer midi;destination.pullMidi(midi,512);
+        int ons=0;for(const auto& item:midi)if(item.getMessage().isNoteOn())++ons;sequencer.panic();destination.pullMidi(midi,512);return ons;};
+    expect(onsIn(false)==1,"an active clip plays its note");
+    expect(onsIn(true)==0,"an inactive clip plays nothing");
+}
+
 void testSequencerAutomationRecording()
 {
     // A knob bound to a plugin parameter, turned during a take (D-065), is kept
@@ -4736,6 +4750,7 @@ int main(int argc, char** argv)
     testSequencerLoopTakeFoldsOntoTheLoop();
     testSequencerClipControls();
     testSequencerAutomationRecording();
+    testSequencerInactiveClipIsSilent();
     std::cerr << "[core] sequencer-plan-readers\n";
     testSequencerPlanReadersKeepTheirPlans();
     std::cerr << "[core] sequencer-midi-stress\n";

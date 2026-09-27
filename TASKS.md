@@ -29,8 +29,12 @@ asked 2026-09-27 (D-063).
   right-click takes a lane off. No hand-drawn points yet.
 - Done (D-066): clips that overlap on a track are drawn in lanes, every
   lane still sounding; a clip alone keeps the whole height.
+- The author tried D-063 to D-066 on 2026-09-27: "tout fonctionne bien".
+- Done (D-067), asked the same day: a key in a clip's bottom right corner,
+  on laned clips and on any inactive one, makes it active or inactive; the
+  clip's right-click too. Not seen in the application yet.
 - Not started: editing the controller moves and the automation points by
-  hand; choosing which layered take sounds.
+  hand.
 
 **Fades on audio clips, as in Reaper — in the author's test** — asked
 2026-09-26 (D-062).

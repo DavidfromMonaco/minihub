@@ -254,7 +254,10 @@ function normalizeClip(clip, type) {
     name: String(clip?.name || (type === 'midi' ? 'MIDI Clip' : 'Audio Clip')).slice(0, 160),
     startPpq,
     lengthPpq,
-    gain: clampFinite(finite(clip?.gain, 1), 0, 2)
+    gain: clampFinite(finite(clip?.gain, 1), 0, 2),
+    // Inactive (D-067): drawn and kept where it is, and heard nowhere -- the
+    // take among layered ones that is not the one wanted.
+    muted: clip?.muted === true
   };
   if (type === 'midi') {
     base.sourceOffsetPpq = clampFinite(clip?.sourceOffsetPpq, 0, Math.max(0, finite(clip?.sourceLengthPpq, lengthPpq) - lengthPpq));
@@ -794,6 +797,18 @@ export class SequencerModel {
       lane.points = [...before, ...entry, ...drawn, ...exit, ...after].slice(0, AUTOMATION_LIMITS.pointsPerLane);
     }
     return lane;
+  }
+
+  /** Make clips active or inactive (D-067). Answers how many changed. */
+  setClipsMuted(clipIds, muted) {
+    let changed = 0;
+    for (const id of new Set(Array.isArray(clipIds) ? clipIds : [])) {
+      const found = this._clip(id);
+      if (!found || found.clip.muted === (muted === true)) continue;
+      found.clip.muted = muted === true;
+      changed += 1;
+    }
+    return changed;
   }
 
   /** Take a lane off its track: the parameter is the hand's again. */
