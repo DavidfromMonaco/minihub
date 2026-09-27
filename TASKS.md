@@ -55,8 +55,3 @@ running and a rubber band at the same time. Not reproduced in the application.
 navigation (2026-09-24): a take draws the engine's 256 peaks for the whole
 file, so zoomed in it is not the signal. Finer peaks for what is on screen
 need native work. Not started.
-
-**A cable into the controller's MIDI In is dropped in silence** — found
-2026-09-18 while building templates: when no MIDI output is selected on the
-controller's page, `midiManager.send` answers `false` and nothing says so.
-Reported to the author, not acted on.

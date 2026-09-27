@@ -68,3 +68,28 @@ export function controllerName(network) {
   const sources = (network?.listNodes?.() ?? []).filter(isControllerNode);
   return sources.length === 1 ? (sources[0].name ?? null) : null;
 }
+
+/**
+ * A hardware node whose MIDI In is cabled while MiniHub has no MIDI output to
+ * send through, or null.
+ *
+ * What reaches that jack is handed to `midi.send`, which drops it when no
+ * output is chosen on the controller's page, or when the one chosen has gone.
+ * The Patch Bay accepts the cable all the same, so without this the only sign
+ * was silence. Which output to use is not guessed: a keyboard's own USB port
+ * and its DIN socket lead to different instruments.
+ */
+export function silentHardwareInput(network, midi) {
+  const outputId = midi?.selectedOutputId ?? null;
+  if (outputId && midi?.getOutput?.(outputId)) return null;
+  return (network?.listNodes?.() ?? []).find((node) => node?.type === 'midi-output'
+    && (network.connectionsTo?.(node.id, 'midi-in')?.length ?? 0) > 0) ?? null;
+}
+
+/** What a controller's page says under its MIDI Output field: '' unless THIS
+ *  node's MIDI In is cabled with nowhere to send it. */
+export function controllerOutputNote(network, midi, nodeId) {
+  if (!silentHardwareInput(network, midi)) return '';
+  if ((network?.connectionsTo?.(nodeId, 'midi-in')?.length ?? 0) === 0) return '';
+  return 'A cable reaches MIDI In, and no output is chosen: what it carries is dropped. Choose where it goes.';
+}

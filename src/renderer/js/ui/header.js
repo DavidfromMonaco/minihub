@@ -1,5 +1,5 @@
 import { bindTempoInput } from '../core/tempoControl.js';
-import { controllerName } from '../core/controllerNode.js';
+import { controllerName, silentHardwareInput } from '../core/controllerNode.js';
 import { barBeat, normalizeSignature } from '../core/musicalTime.js';
 import { installExportPanel } from './exportPanel.js';
 
@@ -264,9 +264,19 @@ export function buildHeader(hub, statusEl) {
     }
     // A narrow window cuts the pill short; the tooltip keeps the whole sentence.
     statusEl.title = statusEl.textContent;
+    // A cable into a keyboard's MIDI In with nowhere to send it: said here,
+    // on every page, since the cable was plugged on another.
+    const silent = hub.midi.state === 'unavailable' ? null : silentHardwareInput(hub.network, hub.midi);
+    if (silent) {
+      statusEl.textContent = `${statusEl.textContent} · MIDI In goes nowhere`;
+      statusEl.className = 'device-status warn';
+      statusEl.title = `A cable reaches ${silent.name}'s MIDI In, and no MIDI output is chosen on its page: what the cable carries is dropped.`;
+    }
   };
 
   hub.events.on('midi:ports', update);
   hub.events.on('midi:state', update);
+  hub.events.on('midi:output', update);
+  hub.events.on('network:change', update);
   update();
 }

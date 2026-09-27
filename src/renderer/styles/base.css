@@ -424,7 +424,8 @@ body:has(.manual-root:not(.hidden)) .app-header { -webkit-app-region: no-drag; }
   content: ""; flex: 0 0 auto; width: 6px; height: 6px; border-radius: 50%; background: var(--text-faint);
 }
 .device-status.ok::before, .engine-status.ok::before { background: var(--ok); }
-.engine-status.warn::before { background: var(--warn); }
+.engine-status.warn::before, .device-status.warn::before { background: var(--warn); }
+.device-status.warn { color: var(--warn); }
 .engine-status.danger { color: var(--danger); }
 .engine-status.danger::before { background: var(--danger); }
 .audio-device-status { font: 10.5px var(--mono); color: var(--text-faint); overflow: hidden; text-overflow: ellipsis; min-width: 0; }
@@ -982,6 +983,8 @@ body:has(.manual-root:not(.hidden)) .app-header { -webkit-app-region: no-drag; }
   min-width: 64px;
   text-align: right;
 }
+.output-note { color: var(--warn); }
+.output-note[hidden] { display: none; }
 .offset-hint {
   font-size: 11px;
   color: var(--text-faint);

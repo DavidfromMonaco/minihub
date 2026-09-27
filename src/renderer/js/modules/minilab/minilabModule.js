@@ -5,6 +5,7 @@ import { controllerProfileSectionHtml, bindControllerProfileSection } from '../.
 import { escapeHtml } from '../../core/html.js';
 import { LOADED_PROFILE } from '../../midi/loadedProfile.js';
 import { CONTROLLER_NODE_IDS } from '../../core/systemNodes.js';
+import { controllerOutputNote } from '../../core/controllerNode.js';
 
 const MONITOR_MAX = 120;
 
@@ -76,6 +77,7 @@ export function createMiniLabModule(hub, profile = LOADED_PROFILE) {
             <div class="field mt-12">
               <label for="ml-output">MIDI Output</label>
               <select id="ml-output" class="select"></select>
+              <p id="ml-output-note" class="offset-hint output-note mt-10" hidden></p>
             </div>
             <div class="row mt-14">
               <button id="ml-connect" class="btn primary">Connect</button>
@@ -142,6 +144,7 @@ export function createMiniLabModule(hub, profile = LOADED_PROFILE) {
       status: container.querySelector('#ml-status'),
       input: container.querySelector('#ml-input'),
       output: container.querySelector('#ml-output'),
+      outputNote: container.querySelector('#ml-output-note'),
       connect: container.querySelector('#ml-connect'),
       disconnect: container.querySelector('#ml-disconnect'),
       name: container.querySelector('#ml-name'),
@@ -189,6 +192,12 @@ export function createMiniLabModule(hub, profile = LOADED_PROFILE) {
 
     fillSelect(els.input, inputs, hub.midi.selectedInputId, unavailableLabel);
     fillSelect(els.output, outputs, hub.midi.selectedOutputId, '— No output —');
+    // This keyboard's MIDI In is cabled and there is nowhere to send it.
+    if (els.outputNote) {
+      const note = controllerOutputNote(hub.network, hub.midi, NODE_ID);
+      els.outputNote.hidden = !note;
+      els.outputNote.textContent = note;
+    }
 
     const connected = hub.midi.selectedInputId !== null;
     els.connect.disabled = connected;
@@ -376,6 +385,8 @@ export function createMiniLabModule(hub, profile = LOADED_PROFILE) {
     refreshProfiles();
     subs.push(
       hub.events.on('midi:ports', refreshPorts),
+      hub.events.on('midi:output', refreshPorts),
+      hub.events.on('network:change', refreshPorts),
       hub.events.on('midi:message', onMessage),
       hub.events.on('midi:offset', refreshTiming)
     );

@@ -18,7 +18,7 @@ import assert from 'node:assert/strict';
 
 import { makeHub } from './helpers.mjs';
 import { installDom, makeEl } from './domShim.mjs';
-import { controllerName } from '../src/renderer/js/core/controllerNode.js';
+import { controllerName, controllerOutputNote } from '../src/renderer/js/core/controllerNode.js';
 import { LOADED_PROFILE } from '../src/renderer/js/midi/loadedProfile.js';
 
 installDom();
@@ -116,6 +116,52 @@ test('the shipped profile is what the header ends up saying', () => {
   assert.equal(fixture.statusEl.textContent, `${LOADED_PROFILE.device.model} connected`);
   assert.equal(module.navEntry.label, LOADED_PROFILE.device.model,
     'the sidebar entry and the Patch Bay card are the same device');
+});
+
+test('a cable into the keyboard\'s MIDI In with no MIDI output chosen is said, not dropped in silence', () => {
+  const fixture = headerFixture();
+  const outputs = new Map([['out-1', { id: 'out-1', name: 'Vega 49 DIN' }]]);
+  Object.assign(fixture.hub.midi, { selectedOutputId: null, getOutput: (id) => outputs.get(id) });
+  fixture.hub.network.addNode(controller('Vega 49'));
+  fixture.hub.network.addNode({
+    id: 'arp-1', name: 'Arpeggiator 1', type: 'arpeggiator',
+    inputs: [{ id: 'midi-in', type: 'midi' }], outputs: [{ id: 'midi-out', type: 'midi' }]
+  });
+  fixture.build();
+  assert.equal(fixture.statusEl.textContent, 'Vega 49 connected', 'nothing cabled, nothing to say');
+
+  fixture.hub.network.connect('arp-1', 'midi-out', 'some-controller', 'midi-in');
+  assert.equal(fixture.statusEl.textContent, 'Vega 49 connected · MIDI In goes nowhere');
+  assert.equal(fixture.statusEl.className, 'device-status warn');
+  assert.match(fixture.statusEl.title, /no MIDI output is chosen/);
+
+  fixture.hub.midi.selectedOutputId = 'out-1';
+  fixture.hub.events.emit('midi:output', outputs.get('out-1'));
+  assert.equal(fixture.statusEl.textContent, 'Vega 49 connected');
+
+  // An output chosen and then unplugged is no output.
+  outputs.delete('out-1');
+  fixture.hub.events.emit('midi:output', { id: null, name: '', reason: 'output-disconnected' });
+  assert.equal(fixture.statusEl.className, 'device-status warn');
+});
+
+test('the controller page says it under its MIDI Output field, for its own MIDI In only', () => {
+  const hub = makeHub();
+  const midi = { selectedOutputId: null, getOutput: () => null };
+  hub.network.addNode(controller('Vega 49', 'vega-49'));
+  hub.network.addNode(controller('Solaris 61', 'solaris-61'));
+  hub.network.addNode({
+    id: 'arp-1', name: 'Arpeggiator 1', type: 'arpeggiator',
+    inputs: [{ id: 'midi-in', type: 'midi' }], outputs: [{ id: 'midi-out', type: 'midi' }]
+  });
+  assert.equal(controllerOutputNote(hub.network, midi, 'vega-49'), '', 'no cable, no note');
+
+  hub.network.connect('arp-1', 'midi-out', 'vega-49', 'midi-in');
+  assert.match(controllerOutputNote(hub.network, midi, 'vega-49'), /no output is chosen/);
+  assert.equal(controllerOutputNote(hub.network, midi, 'solaris-61'), '', 'the other keyboard has no cable in');
+
+  const chosen = { selectedOutputId: 'out-1', getOutput: (id) => (id === 'out-1' ? { id } : null) };
+  assert.equal(controllerOutputNote(hub.network, chosen, 'vega-49'), '');
 });
 
 // ---- the history, made visible ---------------------------------------------
