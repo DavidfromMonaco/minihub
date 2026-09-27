@@ -19,78 +19,104 @@ const k = (...keys) => keys.map((key) => `<kbd>${key}</kbd>`).join('+');
 
 // ---------------------------------------------------------------- diagrams
 
-/** A labelled callout: a dot on the thing, a line, the words. */
-const callout = (x, y, tx, ty, text, anchor = 'start') =>
-  `<circle class="mn-dot" cx="${x}" cy="${y}" r="3"/><line class="mn-lead" x1="${x}" y1="${y}" x2="${tx}" y2="${ty}"/>` +
-  `<text class="mn-note" x="${tx + (anchor === 'end' ? -4 : 4)}" y="${ty + 4}" text-anchor="${anchor}">${text}</text>`;
+/**
+ * A numbered badge on the thing it names. The words go in a numbered list
+ * under the drawing: lines from a dot to a label crossed each other and the
+ * controls they pointed at, and nobody could read which was which (the
+ * author, 2026-09-27).
+ */
+const badge = (n, x, y) =>
+  `<circle class="mn-badge" cx="${x}" cy="${y}" r="9"/><text class="mn-badge-text" x="${x}" y="${y + 3.5}" text-anchor="middle">${n}</text>`;
 
-const DIAGRAM_SCREEN = `<svg class="mn-diagram" viewBox="0 0 760 330" role="img" aria-label="The Sequencer's screen">
-  <rect class="mn-frame" x="10" y="10" width="740" height="34" rx="4"/>
-  <text class="mn-title" x="22" y="32">Header — transport, tempo, signature, Plays, Export</text>
-  <rect class="mn-frame" x="10" y="52" width="740" height="46" rx="4"/>
-  <text class="mn-title" x="22" y="72">Toolbar — tracks, metronome, Snap, Zoom, Loop, Record mode</text>
-  <text class="mn-small" x="22" y="89">Track inspector: the selected track's Input and Destination · status line</text>
-  <rect class="mn-frame" x="10" y="106" width="180" height="26" rx="3"/>
-  <text class="mn-small" x="20" y="123">TRACKS</text>
-  <rect class="mn-ruler" x="190" y="106" width="560" height="12"/>
-  <text class="mn-tiny" x="196" y="115">0:00   clock ruler</text>
-  <rect class="mn-ruler" x="190" y="118" width="560" height="14"/>
-  <text class="mn-tiny" x="196" y="129">1        2        3     bar ruler</text>
-  <rect class="mn-head" x="10" y="132" width="180" height="56"/>
-  <rect class="mn-head" x="10" y="188" width="180" height="56"/>
-  <rect class="mn-head" x="10" y="244" width="180" height="56"/>
-  <text class="mn-small" x="22" y="164">track head</text>
-  <rect class="mn-lane" x="190" y="132" width="560" height="168"/>
-  <rect class="mn-clip-midi" x="240" y="138" width="150" height="44" rx="3"/>
-  <rect class="mn-clip-audio" x="420" y="194" width="210" height="44" rx="3"/>
-  <line class="mn-playhead" x1="330" y1="106" x2="330" y2="300"/>
-  <rect class="mn-frame" x="190" y="306" width="560" height="16" rx="8"/>
-  <rect class="mn-thumb" x="230" y="309" width="200" height="10" rx="5"/>
-  ${callout(330, 108, 360, 100, 'playhead — drag its head, or press a ruler')}
-  ${callout(300, 160, 420, 160, 'a MIDI clip')}
-  ${callout(520, 216, 640, 262, 'an audio clip', 'start')}
-  ${callout(330, 314, 460, 290, 'navigation bar')}
-</svg>`;
+/** The words for a drawing's badges, in their order. */
+const legend = (...items) => `<ol class="mn-keys">${items.map((item) => `<li>${item}</li>`).join('')}</ol>`;
 
-const DIAGRAM_TRACK = `<svg class="mn-diagram" viewBox="0 0 760 150" role="img" aria-label="A track's head">
-  <rect class="mn-head" x="20" y="20" width="330" height="80" rx="4"/>
-  <rect class="mn-key" x="28" y="28" width="16" height="64" rx="3"/>
-  <rect class="mn-key mn-rec" x="52" y="28" width="22" height="20" rx="3"/><text class="mn-keytext" x="63" y="42" text-anchor="middle">R</text>
-  <rect class="mn-key" x="78" y="28" width="22" height="20" rx="3"/><text class="mn-keytext" x="89" y="42" text-anchor="middle">I</text>
-  <text class="mn-small" x="108" y="43">Track name</text>
-  <rect class="mn-key" x="250" y="28" width="22" height="20" rx="3"/><text class="mn-keytext" x="261" y="42" text-anchor="middle">♪</text>
-  <rect class="mn-key" x="276" y="28" width="22" height="20" rx="3"/><text class="mn-keytext" x="287" y="42" text-anchor="middle">M</text>
-  <rect class="mn-key" x="302" y="28" width="22" height="20" rx="3"/><text class="mn-keytext" x="313" y="42" text-anchor="middle">×</text>
-  <line class="mn-slider" x1="52" y1="78" x2="140" y2="78"/><circle class="mn-knob" cx="120" cy="78" r="6"/>
-  <text class="mn-tiny" x="146" y="82">+0.0 dB</text>
-  <line class="mn-slider" x1="192" y1="78" x2="240" y2="78"/><circle class="mn-knob" cx="216" cy="78" r="6"/>
-  <text class="mn-tiny" x="248" y="82">C</text>
-  <circle class="mn-route" cx="300" cy="78" r="5"/><circle class="mn-route" cx="314" cy="78" r="5"/>
-  ${callout(36, 60, 400, 22, 'select the track (Alt+wheel then grows it)')}
-  ${callout(63, 38, 400, 40, 'R — arm for recording (Ctrl/Shift-click: arm several)')}
-  ${callout(89, 38, 400, 58, 'I — monitor: hear what is played in, without recording')}
-  ${callout(261, 38, 400, 76, '♪ open the plugin the track plays · M mute · × delete')}
-  ${callout(96, 78, 400, 94, 'level, −60 to +6 dB · pan (double-click: centre)')}
-  ${callout(307, 78, 400, 112, 'IN / OUT route dots — hover for what is wrong')}
-  <text class="mn-small" x="20" y="130">Right-click the head: its time signature from the bar under the playhead, and its automation lanes to remove.</text>
-</svg>`;
+const DIAGRAM_SCREEN = `<svg class="mn-diagram" viewBox="0 0 760 316" role="img" aria-label="The Sequencer's screen">
+  <rect class="mn-frame" x="10" y="10" width="740" height="30" rx="4"/>
+  <text class="mn-title" x="40" y="30">Header</text>
+  <rect class="mn-frame" x="10" y="48" width="740" height="40" rx="4"/>
+  <text class="mn-title" x="40" y="66">Toolbar</text>
+  <text class="mn-tiny" x="40" y="80">Track inspector · status line</text>
+  <rect class="mn-frame" x="10" y="96" width="180" height="26" rx="3"/>
+  <rect class="mn-ruler" x="190" y="96" width="560" height="12"/>
+  <rect class="mn-ruler" x="190" y="108" width="560" height="14"/>
+  <rect class="mn-head" x="10" y="122" width="180" height="56"/>
+  <rect class="mn-head" x="10" y="178" width="180" height="56"/>
+  <rect class="mn-head" x="10" y="234" width="180" height="56"/>
+  <rect class="mn-lane" x="190" y="122" width="560" height="168"/>
+  <rect class="mn-clip-midi" x="240" y="128" width="150" height="44" rx="3"/>
+  <rect class="mn-clip-audio" x="440" y="184" width="210" height="44" rx="3"/>
+  <line class="mn-playhead" x1="330" y1="96" x2="330" y2="290"/>
+  <rect class="mn-frame" x="190" y="296" width="560" height="14" rx="7"/>
+  <rect class="mn-thumb" x="230" y="298" width="200" height="10" rx="5"/>
+  ${badge(1, 24, 25)}${badge(2, 24, 68)}${badge(3, 100, 150)}${badge(4, 720, 109)}
+  ${badge(5, 344, 250)}${badge(6, 315, 150)}${badge(7, 545, 206)}${badge(8, 450, 303)}
+</svg>
+${legend(
+  '<b>Header</b> — transport, tempo, time signature, Plays, Export.',
+  '<b>Toolbar</b> — new tracks, metronome, Snap, Zoom, Loop, Record mode; the selected track’s Input and Destination; the status line, which says what is missing.',
+  '<b>Track heads</b> — one per track.',
+  '<b>Rulers</b> — time above, bars below. Press either to place the playhead.',
+  '<b>Playhead</b> — drag its head to move it.',
+  'A <b>MIDI clip</b>.',
+  'An <b>audio clip</b>.',
+  '<b>Navigation bar</b> — travel and zoom along the timeline.'
+)}`;
+
+const DIAGRAM_TRACK = `<svg class="mn-diagram" viewBox="0 0 760 170" role="img" aria-label="A track's head">
+  <rect class="mn-head" x="170" y="34" width="420" height="104" rx="5"/>
+  <rect class="mn-key" x="180" y="44" width="20" height="84" rx="4"/>
+  <rect class="mn-key mn-rec" x="212" y="46" width="28" height="24" rx="4"/><text class="mn-keytext" x="226" y="62" text-anchor="middle">R</text>
+  <rect class="mn-key" x="246" y="46" width="28" height="24" rx="4"/><text class="mn-keytext" x="260" y="62" text-anchor="middle">I</text>
+  <text class="mn-small" x="284" y="62">Track name</text>
+  <rect class="mn-key" x="474" y="46" width="28" height="24" rx="4"/><text class="mn-keytext" x="488" y="62" text-anchor="middle">♪</text>
+  <rect class="mn-key" x="508" y="46" width="28" height="24" rx="4"/><text class="mn-keytext" x="522" y="62" text-anchor="middle">M</text>
+  <rect class="mn-key" x="542" y="46" width="28" height="24" rx="4"/><text class="mn-keytext" x="556" y="62" text-anchor="middle">×</text>
+  <line class="mn-slider" x1="214" y1="110" x2="330" y2="110"/><circle class="mn-knob" cx="300" cy="110" r="7"/>
+  <text class="mn-tiny" x="338" y="114">+0.0 dB</text>
+  <line class="mn-slider" x1="396" y1="110" x2="456" y2="110"/><circle class="mn-knob" cx="426" cy="110" r="7"/>
+  <text class="mn-tiny" x="464" y="114">C</text>
+  <circle class="mn-route" cx="530" cy="110" r="6"/><circle class="mn-route" cx="548" cy="110" r="6"/>
+  ${badge(1, 150, 86)}
+  ${badge(2, 226, 20)}${badge(3, 260, 20)}${badge(4, 320, 20)}
+  ${badge(5, 488, 20)}${badge(6, 522, 20)}${badge(7, 556, 20)}
+  ${badge(8, 272, 154)}${badge(9, 426, 154)}${badge(10, 539, 154)}
+</svg>
+${legend(
+  `<b>Select</b> the track. The selected one shows in the toolbar’s inspector, and ${k('Alt')}+wheel makes it taller.`,
+  `<b>R</b> — arm it for recording. ${k('Ctrl')}- or ${k('Shift')}-click to arm several.`,
+  '<b>I</b> — monitor: hear what is played into it, without recording.',
+  'Its <b>name</b>: click to rename it.',
+  'Open the <b>plugin</b> the track plays.',
+  '<b>M</b> — mute.',
+  '<b>×</b> — delete the track.',
+  '<b>Level</b>, −60 to +6 dB.',
+  '<b>Pan</b>. Double-click: centre.',
+  '<b>Route dots</b>, IN and OUT: green when routed. Hover one to read what is wrong.'
+)}
+<p>Right-click the head: the track’s time signature from the bar under the playhead, and its automation lanes, to remove.</p>`;
 
 const DIAGRAM_CLIP = `<svg class="mn-diagram" viewBox="0 0 760 170" role="img" aria-label="An audio clip">
-  <rect class="mn-clip-audio" x="40" y="30" width="420" height="90" rx="4"/>
-  <rect class="mn-edge" x="40" y="30" width="8" height="90"/>
-  <rect class="mn-edge" x="452" y="30" width="8" height="90"/>
-  <text class="mn-small mn-on-clip" x="54" y="46">Audio 1 Take</text>
-  <path class="mn-fade" d="M48 118 Q 70 40 110 32 L48 32 Z"/>
-  <path class="mn-fade" d="M380 32 Q 420 40 452 118 L452 32 Z"/>
-  <path class="mn-wave" d="M60 80 L80 70 L100 90 L120 64 L140 96 L160 72 L180 88 L200 60 L220 100 L240 70 L260 90 L280 66 L300 94 L320 74 L340 86 L360 70 L380 90 L400 76 L420 84 L440 78"/>
-  <rect class="mn-speaker" x="424" y="102" width="16" height="13" rx="2"/>
-  ${callout(110, 32, 520, 24, 'top corners: fade in / fade out — drag sideways')}
-  ${callout(78, 70, 520, 48, 'inside a fade: drag up or down to bend its curve')}
-  ${callout(44, 100, 520, 72, 'left and right edges: resize (the end lands on the grid)')}
-  ${callout(432, 108, 520, 96, 'bottom right: active / inactive (layered clips only)')}
-  ${callout(250, 118, 520, 120, 'body: drag to move — to another track too')}
-  <text class="mn-small" x="40" y="156">Double-click a clip to open it in the Clip Editor. Right-click it for its menu; right-click inside a fade for the fade's.</text>
-</svg>`;
+  <rect class="mn-clip-audio" x="170" y="40" width="420" height="90" rx="4"/>
+  <rect class="mn-edge" x="170" y="40" width="8" height="90"/>
+  <rect class="mn-edge" x="582" y="40" width="8" height="90"/>
+  <text class="mn-small mn-on-clip" x="250" y="56">Audio 1 Take</text>
+  <path class="mn-fade" d="M178 128 Q 200 50 240 42 L178 42 Z"/>
+  <path class="mn-fade" d="M510 42 Q 550 50 582 128 L582 42 Z"/>
+  <path class="mn-wave" d="M190 90 L210 80 L230 100 L250 74 L270 106 L290 82 L310 98 L330 70 L350 110 L370 80 L390 100 L410 76 L430 104 L450 84 L470 96 L490 80 L510 100 L530 86 L550 94 L570 88"/>
+  <rect class="mn-speaker" x="554" y="112" width="16" height="13" rx="2"/>
+  ${badge(1, 178, 22)}${badge(2, 582, 22)}${badge(3, 214, 100)}
+  ${badge(4, 150, 85)}${badge(5, 610, 85)}${badge(6, 562, 150)}${badge(7, 380, 150)}
+</svg>
+${legend(
+  '<b>Fade in</b>: from the top left corner, drag sideways. Its handle stays where it ends, to drag again.',
+  '<b>Fade out</b>: the same, from the top right corner.',
+  'Inside a fade, near its curve: drag <b>up or down</b> to bend it. Right-click inside a fade for its shapes.',
+  '<b>Left edge</b>: drag to resize from the start.',
+  '<b>Right edge</b>: drag to resize from the end, which lands on the grid.',
+  '<b>Active / inactive</b> — on clips laid in lanes, and on any inactive clip.',
+  'The <b>body</b>: drag to move the selection, to another track too. Double-click opens the Clip Editor; right-click, the clip’s menu.'
+)}`;
 
 const DIAGRAM_OVERDUB = `<svg class="mn-diagram" viewBox="0 0 760 210" role="img" aria-label="Overdub and Replace">
   <text class="mn-title" x="20" y="22">Before the take</text>
@@ -145,8 +171,9 @@ const DIAGRAM_LANES = `<svg class="mn-diagram" viewBox="0 0 760 190" role="img" 
   <rect class="mn-speaker" x="476" y="52" width="16" height="12" rx="2"/>
   <rect class="mn-speaker" x="536" y="100" width="16" height="12" rx="2"/>
   <rect class="mn-speaker mn-speaker-off" x="596" y="148" width="16" height="12" rx="2"/>
-  ${callout(604, 154, 650, 120, 'click: active / inactive')}
-</svg>`;
+  ${badge(1, 650, 154)}
+</svg>
+${legend('The <b>speaker</b>: click it to make the take active or inactive.')}`;
 
 const DIAGRAM_AUTOMATION = `<svg class="mn-diagram" viewBox="0 0 760 200" role="img" aria-label="Automation: Touch and Latch">
   <text class="mn-title" x="20" y="22">A lane before the take</text>

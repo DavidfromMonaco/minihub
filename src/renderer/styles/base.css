@@ -2398,7 +2398,6 @@ body ::-webkit-scrollbar-corner { background:transparent; }
 .mn-diagram .mn-title { font-size:12px; font-weight:600; fill:#e8e9ec; }
 .mn-diagram .mn-small { font-size:11px; }
 .mn-diagram .mn-tiny { font-size:9px; fill:#8d8f94; }
-.mn-diagram .mn-note { font-size:11px; fill:#ffb271; }
 .mn-diagram .mn-chiptext { font-size:9.5px; font-weight:700; fill:#121315; }
 .mn-diagram .mn-keytext { font-size:10px; font-weight:600; fill:#e8e9ec; }
 .mn-diagram .mn-on-clip { fill:#fff; font-weight:600; }
@@ -2412,8 +2411,6 @@ body ::-webkit-scrollbar-corner { background:transparent; }
 .mn-clip-audio { fill:#1e6556; stroke:rgba(255,255,255,.25); }
 .mn-clip-off { fill:#2a2b30; stroke:rgba(255,255,255,.3); stroke-dasharray:4 3; }
 .mn-playhead { stroke:#ef4444; stroke-width:1.5; }
-.mn-dot { fill:#ff8b2c; }
-.mn-lead { stroke:#ff8b2c; stroke-width:1; opacity:.7; }
 .mn-key { fill:#121315; stroke:#3a3c42; }
 .mn-rec { fill:#c44747; }
 .mn-slider { stroke:#3a3c42; stroke-width:4; stroke-linecap:round; }
@@ -2438,3 +2435,10 @@ body ::-webkit-scrollbar-corner { background:transparent; }
 .mn-axis { stroke:#2e3035; }
 .mn-bar { stroke:#6b6e74; }
 .mn-chip { fill:#ff8b2c; }
+/* A drawing's numbered badges, and the list that says what each one is. */
+.mn-badge { fill:#ff8b2c; stroke:#0e0f11; stroke-width:2; }
+.mn-diagram .mn-badge-text { font-size:10.5px; font-weight:700; fill:#121315; }
+.mn-keys { max-width:860px; margin:-4px 0 14px; padding-left:26px; columns:2; column-gap:32px; color:var(--text-dim); }
+.mn-keys li { margin:0 0 6px; break-inside:avoid; }
+.mn-keys li::marker { color:var(--accent); font-weight:700; }
+.mn-keys b { color:var(--text); }
