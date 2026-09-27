@@ -149,7 +149,13 @@ export function outsideDrawnWindow(scrollPpq, { startPpq = 0, endPpq = 0, viewpo
   // A window of no width has drawn nothing, so everything is outside it.
   if (!(endPpq > startPpq)) return true;
   const margin = Math.max(0, viewportPpq) * 0.25;
-  return scrollPpq < startPpq + margin || scrollPpq + viewportPpq > endPpq - margin;
+  // A window drawn from the very start has nothing more to draw before it.
+  // Without this, at the start of the timeline -- where a project opens --
+  // every scroll event repainted the page, the vertical ones too: the
+  // repaint replaced the scrolling element under the wheel, and the tracks
+  // would not scroll (the author, 2026-09-27).
+  const beforeStart = startPpq > 0 && scrollPpq < startPpq + margin;
+  return beforeStart || scrollPpq + viewportPpq > endPpq - margin;
 }
 
 /**
@@ -1325,12 +1331,19 @@ export function createSequencerModule(hub) {
       const range = loopRangeFromBars(container.querySelector('[data-control="loop-start"]').value, container.querySelector('[data-control="loop-end"]').value, controller.model.state.loop, controller.projectRegions());
       controller.model.setLoop({ enabled: container.querySelector('[data-control="loop-enabled"]').checked, ...range }); controller.changed();
     });
+    // The last horizontal position this scroller reported: scrolling the
+    // tracks up or down draws nothing new, only a move along the timeline can
+    // leave the drawn window.
+    let leftSeen = null;
     container.querySelector('[data-timeline-scroll]')?.addEventListener('scroll', (event) => {
       scrollTopPx = event.currentTarget.scrollTop || 0;
-      const next = event.currentTarget.scrollLeft / controller.model.state.zoom;
+      const left = event.currentTarget.scrollLeft;
+      const moved = left !== leftSeen;
+      leftSeen = left;
+      const next = left / controller.model.state.zoom;
       controller.model.state.scrollPpq = next;
       renderNavigation();
-      if (!scrollRenderQueued && outsideDrawnWindow(next, drawnWindow)) {
+      if (moved && !scrollRenderQueued && outsideDrawnWindow(next, drawnWindow)) {
         scrollRenderQueued = true;
         requestAnimationFrame(render); // layout virtualization only; native transport remains the musical clock
       }

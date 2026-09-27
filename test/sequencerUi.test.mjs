@@ -1094,6 +1094,8 @@ test('the lanes are repainted before the view runs off the clips that are drawn'
   assert.equal(outsideDrawnWindow(55, drawn), true, 'and so does going back past the left one');
   assert.equal(outsideDrawnWindow(4000, drawn), true, 'a jump far out is outside, not forgotten');
   assert.equal(outsideDrawnWindow(0, {}), true, 'an unpublished window always repaints');
+  assert.equal(outsideDrawnWindow(0, { startPpq: 0, endPpq: 60, viewportPpq: 20 }), false,
+    'at the start of the timeline, a window drawn from the start is not left behind: nothing lies before it');
 });
 
 test('a track row is brought into view without dragging the arrangement around', async () => {
@@ -1257,6 +1259,25 @@ test('the arrangement replaces the native horizontal scrollbar rather than keepi
     'the faceplate declares its own in its own sheet, and `body ` scoping is what lets it win (D-012)');
   assert.doesNotMatch(css, /^::-webkit-scrollbar/m,
     'nothing here is declared unscoped, which would beat nothing but reach everything');
+});
+
+test('scrolling the tracks up and down never repaints the page under the wheel', async () => {
+  // At the start of the timeline, where a project opens, every scroll event
+  // used to repaint: the repaint replaced the scrolling element, and the
+  // wheel's scroll died after a few pixels -- the tracks "would not scroll".
+  const { hub } = await runtime();
+  hub.nodes.create('sequencer');
+  for (let i = 0; i < 12; i += 1) hub.sequencer.model.addTrack('midi');
+  hub.modules.register(createSequencerModule(hub));
+  const view = captureContainer();
+  hub.modules.activate('sequencer', view.container);
+  const scroller = view.scroller();
+  for (const top of [40, 120, 300]) {
+    scroller.scrollTop = top;
+    fire(scroller, 'scroll', {});
+    await flush();
+  }
+  assert.equal(view.scroller(), scroller, 'the same scrolling element, still under the wheel');
 });
 
 test('a drag on the navigation bar survives the repaint it triggers', async () => {
