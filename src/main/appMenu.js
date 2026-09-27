@@ -58,12 +58,20 @@ const LAYOUT_ITEMS = Object.freeze([
 ]);
 
 /**
+ * Help: the Sequencer's manual, drawn by the page (ui/sequencerManual.js).
+ * F1, the key every Windows application opens its help with.
+ */
+const HELP_ITEMS = Object.freeze([
+  { command: 'help:sequencer-manual', label: '&Sequencer Manual', accelerator: 'F1' }
+]);
+
+/**
  * The commands this menu can send, in menu order. The renderer keeps the other
  * half of the pair (`core/menuCommands.js`); a test compares the two lists,
  * because a command nobody answers is a menu entry that does nothing at all.
  */
 const MENU_COMMANDS = Object.freeze(
-  [...PROJECT_ITEMS, ...EDIT_ITEMS, ...LAYOUT_ITEMS].filter((item) => item.command).map((item) => item.command)
+  [...PROJECT_ITEMS, ...EDIT_ITEMS, ...LAYOUT_ITEMS, ...HELP_ITEMS].filter((item) => item.command).map((item) => item.command)
 );
 
 const CHANNEL = 'menu:command';
@@ -81,7 +89,7 @@ const CHANNEL = 'menu:command';
  */
 const DESCRIBE_CHANNEL = 'menu:describe';
 const INVOKE_CHANNEL = 'menu:invoke';
-const MENU_NAMES = Object.freeze(['file', 'edit', 'view']);
+const MENU_NAMES = Object.freeze(['file', 'edit', 'view', 'help']);
 
 /**
  * The View menu's entries. Electron gives a role its label and its keystroke;
@@ -116,6 +124,10 @@ function appMenuTemplate(send) {
       submenu: [...commandItems(LAYOUT_ITEMS), { type: 'separator' }, ...VIEW_ITEMS.map((item) => (item.separator
         ? { type: 'separator' }
         : { role: item.role, label: item.label }))]
+    },
+    {
+      label: '&Help',
+      submenu: commandItems(HELP_ITEMS)
     }
   ];
 }

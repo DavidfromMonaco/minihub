@@ -80,7 +80,7 @@ test('the drawn menus are described from the native template, entry for entry', 
   const described = mainMenu.describeAppMenu();
   const template = mainMenu.appMenuTemplate(() => {});
   assert.deepEqual(described.map((menu) => menu.id), mainMenu.MENU_NAMES);
-  assert.deepEqual(described.map((menu) => menu.label), ['File', 'Edit', 'View'], 'without the access-key ampersand');
+  assert.deepEqual(described.map((menu) => menu.label), ['File', 'Edit', 'View', 'Help'], 'without the access-key ampersand');
   described.forEach((menu, m) => {
     assert.equal(menu.items.length, template[m].submenu.length, `${menu.id}: one entry per native item`);
     menu.items.forEach((item, i) => {

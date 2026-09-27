@@ -3728,3 +3728,35 @@ in `core/sequencerModel.js`; `SequencerController.setTrackHeight`;
 `trackLayout`, `trackIndexAt` and the Alt branch of the timeline's wheel in
 `modules/sequencer/sequencerModule.js`. Test: `test/sequencerUi.test.mjs`
 ("Alt+wheel grows the selected track").
+
+## D-069 — The Sequencer's manual is in the application, under Help
+
+**Status**: in force · 2026-09-27 · **implemented**, checked by the JS tests
+and seen rendered; not yet opened in the application by the author
+
+**Context** — The author asked for a manual of the Sequencer's commands,
+with diagrams where needed, reached from the menu bar at the top of MiniHub.
+
+**Decision** — A fourth menu, **Help**, with **Sequencer Manual** (F1, the
+key Windows applications open their help with; Alt+H opens the menu). It
+opens a panel over the window: contents on the left, the manual on the
+right, Esc or × to close. Fifteen sections, from the screen at a glance to a
+table of shortcuts, and eight diagrams drawn as inline SVG.
+
+- **In the application, not on the site**: it describes the build it ships
+  in. A manual on the web would describe whichever version the web was last
+  updated for.
+- **In English**, as the whole application is (D-019).
+- **No device named** in it: the shell never names a controller
+  (`npm run check`); the transport keys are "your controller's".
+- **It takes the keyboard while open**: a capture listener, installed
+  before the page's own keys, keeps Space from starting the transport and
+  the arrows and Delete from reaching the clips; they scroll the manual.
+- **When a command changes, the manual changes with it.** A test holds a
+  list of claims the manual makes against the code that answers them -- a
+  shortcut promised and not answered fails the suite.
+
+**Proof in the code** — `src/renderer/js/ui/sequencerManual.js`; `HELP_ITEMS`
+in `src/main/appMenu.js`; `help:sequencer-manual` in `core/menuCommands.js`;
+`#manual-root` in `index.html`; `.manual-*` and `.mn-*` in `base.css`. Tests:
+`test/sequencerManual.test.mjs`.

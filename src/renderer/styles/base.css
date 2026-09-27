@@ -147,7 +147,8 @@ body {
    reaching them. While one is open, the header is not a handle. */
 body:has(.modal-root:not(.hidden)) .app-header,
 body:has(.ctx-menu) .app-header,
-body:has(.export-panel) .app-header { -webkit-app-region: no-drag; }
+body:has(.export-panel) .app-header,
+body:has(.manual-root:not(.hidden)) .app-header { -webkit-app-region: no-drag; }
 /* Windows' caption buttons are laid over this. `env(titlebar-area-*)` says
    where they begin when the overlay is on; 138 px is their width otherwise. */
 .caption-space {
@@ -2367,3 +2368,73 @@ body ::-webkit-scrollbar-corner { background:transparent; }
 .seq-editor { min-height:120px; overflow:hidden; }
 .seq-audio-detail { position:relative; height:90px; margin-top:14px; border:1px solid var(--border); border-radius:5px; background:#15201e; overflow:hidden; }
 @media (max-width:1000px) { .seq-tools label:nth-last-of-type(n+5){display:none}.seq-track-head{grid-template-columns:24px 24px minmax(0,1fr) 20px 24px 20px}.seq-track-level{grid-template-columns:minmax(0,1fr) 36px 34px 22px}.seq-track-level output{font-size:8.5px} }
+
+/* ---------- The Sequencer's manual (Help > Sequencer Manual, F1) ---------- */
+.manual-root { position:fixed; inset:0; z-index:120; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,.55); }
+.manual-root.hidden { display:none; }
+.manual { display:flex; flex-direction:column; width:min(1180px, 94vw); height:90vh; background:var(--bg-panel); border:1px solid var(--border-strong); border-radius:var(--radius); box-shadow:0 18px 60px rgba(0,0,0,.6); overflow:hidden; }
+.manual-head { display:flex; align-items:center; justify-content:space-between; padding:12px 16px; border-bottom:1px solid var(--border); }
+.manual-head h2 { margin:0; font-size:15px; }
+.manual-close { font-size:18px; line-height:1; }
+.manual-body { flex:1 1 auto; display:grid; grid-template-columns:220px minmax(0,1fr); min-height:0; }
+.manual-toc { display:flex; flex-direction:column; gap:2px; padding:12px 8px; border-right:1px solid var(--border); overflow-y:auto; background:#141518; }
+.manual-toc button { padding:7px 10px; border:0; border-radius:5px; background:transparent; color:var(--text-dim); font:500 12.5px var(--font); text-align:left; cursor:pointer; }
+.manual-toc button:hover, .manual-toc button:focus-visible { background:#1f2024; color:var(--text); outline:0; }
+.manual-content { overflow-y:auto; padding:8px 28px 40px; outline:0; color:var(--text); font-size:13px; line-height:1.6; }
+.manual-content section { padding-top:18px; border-bottom:1px solid var(--border); padding-bottom:18px; }
+.manual-content section:last-child { border-bottom:0; }
+.manual-content h2 { margin:0 0 10px; font-size:17px; color:var(--accent); }
+.manual-content h3 { margin:18px 0 6px; font-size:13.5px; }
+.manual-content p, .manual-content ul, .manual-content ol { max-width:860px; margin:8px 0; }
+.manual-content a[data-goto] { color:var(--accent); cursor:pointer; text-decoration:underline; }
+.manual-content kbd { display:inline-block; min-width:16px; padding:0 5px; border:1px solid #3a3c42; border-bottom-width:2px; border-radius:4px; background:#1f2024; color:var(--text); font:600 11px var(--mono); line-height:18px; text-align:center; }
+.mn-table { border-collapse:collapse; margin:10px 0; max-width:900px; width:100%; }
+.mn-table td { padding:6px 10px; border-top:1px solid var(--border); vertical-align:top; }
+.mn-table td:first-child { width:30%; color:var(--text); font-weight:600; white-space:nowrap; }
+.mn-table td:last-child { color:var(--text-dim); }
+.mn-steps li { margin:4px 0; }
+.mn-diagram { display:block; width:100%; max-width:860px; height:auto; margin:14px 0; background:#0e0f11; border:1px solid var(--border); border-radius:6px; }
+.mn-diagram text { font-family:var(--font); fill:#c9cbd0; }
+.mn-diagram .mn-title { font-size:12px; font-weight:600; fill:#e8e9ec; }
+.mn-diagram .mn-small { font-size:11px; }
+.mn-diagram .mn-tiny { font-size:9px; fill:#8d8f94; }
+.mn-diagram .mn-note { font-size:11px; fill:#ffb271; }
+.mn-diagram .mn-chiptext { font-size:9.5px; font-weight:700; fill:#121315; }
+.mn-diagram .mn-keytext { font-size:10px; font-weight:600; fill:#e8e9ec; }
+.mn-diagram .mn-on-clip { fill:#fff; font-weight:600; }
+.mn-diagram .mn-off-text { fill:#8d8f94; }
+.mn-frame { fill:#17181b; stroke:#2e3035; }
+.mn-ruler { fill:#131416; stroke:#2e3035; }
+.mn-head { fill:#17181b; stroke:#2e3035; }
+.mn-lane { fill:#0f1012; stroke:#232428; }
+.mn-thumb { fill:#45484e; }
+.mn-clip-midi { fill:#4a3782; stroke:rgba(255,255,255,.25); }
+.mn-clip-audio { fill:#1e6556; stroke:rgba(255,255,255,.25); }
+.mn-clip-off { fill:#2a2b30; stroke:rgba(255,255,255,.3); stroke-dasharray:4 3; }
+.mn-playhead { stroke:#ef4444; stroke-width:1.5; }
+.mn-dot { fill:#ff8b2c; }
+.mn-lead { stroke:#ff8b2c; stroke-width:1; opacity:.7; }
+.mn-key { fill:#121315; stroke:#3a3c42; }
+.mn-rec { fill:#c44747; }
+.mn-slider { stroke:#3a3c42; stroke-width:4; stroke-linecap:round; }
+.mn-knob { fill:#ff8b2c; }
+.mn-route { fill:#3ecf7e; }
+.mn-edge { fill:rgba(255,255,255,.12); }
+.mn-fade { fill:rgba(0,0,0,.35); stroke:#ef6a5b; stroke-width:1.2; }
+.mn-wave { fill:none; stroke:rgba(220,255,245,.7); stroke-width:1.2; }
+.mn-speaker { fill:rgba(0,0,0,.55); stroke:#fff; stroke-width:.8; }
+.mn-speaker-off { stroke:#ff8b2c; }
+.mn-note-old { fill:rgba(255,255,255,.75); }
+.mn-note-new { fill:#ffd166; }
+.mn-take { fill:rgba(255,139,44,.14); stroke:rgba(255,139,44,.5); stroke-dasharray:3 3; }
+.mn-legend-old { fill:rgba(255,255,255,.75); }
+.mn-legend-new { fill:#ffd166; }
+.mn-legend-take { fill:rgba(255,139,44,.5); }
+.mn-loop { fill:rgba(255,139,44,.22); stroke:rgba(255,139,44,.6); }
+.mn-pass1, .mn-legend-p1 { fill:#ffffff; }
+.mn-pass2, .mn-legend-p2 { fill:#7fdaa5; }
+.mn-pass3, .mn-legend-p3 { fill:#ffd166; }
+.mn-auto { fill:none; stroke:#ffd166; stroke-width:1.6; }
+.mn-axis { stroke:#2e3035; }
+.mn-bar { stroke:#6b6e74; }
+.mn-chip { fill:#ff8b2c; }

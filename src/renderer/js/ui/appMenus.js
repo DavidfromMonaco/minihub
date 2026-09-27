@@ -10,8 +10,8 @@ import { openContextMenu } from './contextMenu.js';
  *
  * It behaves as a menu bar does on Windows: a click opens a menu under its
  * button and a second click on the same button closes it; while one is open,
- * moving over another button opens that one; Alt+F, Alt+E and Alt+V open them
- * from the keyboard.
+ * moving over another button opens that one; Alt+F, Alt+E, Alt+V and Alt+H
+ * open them from the keyboard.
  */
 
 // A press on the open menu's own button closes it (the menu hears the press
@@ -68,7 +68,7 @@ export function installAppMenus({ api = globalThis.window?.hubAPI, root = global
   };
   const onKey = (event) => {
     if (!event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
-    const id = { f: 'file', e: 'edit', v: 'view' }[String(event.key).toLowerCase()];
+    const id = { f: 'file', e: 'edit', v: 'view', h: 'help' }[String(event.key).toLowerCase()];
     if (!id || !byId(id)) return;
     event.preventDefault?.();
     open(id);

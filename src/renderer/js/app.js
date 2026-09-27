@@ -5,6 +5,7 @@ import { buildStatusBar } from './ui/statusBar.js';
 import { installAppMenus } from './ui/appMenus.js';
 import { installTooltips } from './ui/tooltip.js';
 import { buildSettingsModal } from './ui/settingsModal.js';
+import { installSequencerManual } from './ui/sequencerManual.js';
 import { createHomeModule } from './modules/home/homeModule.js';
 import { createMiniLabModule } from './modules/minilab/minilabModule.js';
 import { LOADED_PROFILES } from './midi/loadedProfile.js';
@@ -105,6 +106,9 @@ async function main() {
   installAppMenus();
   installTooltips();
   buildSettingsModal(hub, modalRoot, settingsButton);
+  // Help > Sequencer Manual (F1). Installed before the page's own keys: while
+  // it is open it takes the keyboard first, and nothing behind it hears a key.
+  hub.manual = installSequencerManual();
   // File > New / Open / Save. The shell shows the project name only.
   bindMenuCommands(hub);
   // Native audio engine client + network sync. Initialized BEFORE any module is

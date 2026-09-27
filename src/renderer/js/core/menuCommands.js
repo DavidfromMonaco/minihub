@@ -22,7 +22,8 @@ const ACTIONS = new Map([
   ['edit:undo', (hub) => hub.history?.undo()],
   ['edit:redo', (hub) => hub.history?.redo()],
   ['view:layout-original', (hub) => hub.layout?.set('original')],
-  ['view:layout-hybrid-1', (hub) => hub.layout?.set('hybrid-1')]
+  ['view:layout-hybrid-1', (hub) => hub.layout?.set('hybrid-1')],
+  ['help:sequencer-manual', (hub) => hub.manual?.open()]
 ]);
 
 /** The commands answered here, in the order the menu lists them. */
