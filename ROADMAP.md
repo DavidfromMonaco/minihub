@@ -824,8 +824,10 @@ No commitment, no priority — written down so they are not forgotten.
 ~~One Ring counting in the project's time signature~~ — **done 2026-09-27**
   (D-074): Next bar, captures, generations and feedback delays count the
   project's bars.
-- An MCP wrapper around the agent channel, so an agent calls its requests as
-  tools.
+~~An MCP wrapper around the agent channel, so an agent calls its requests as
+  tools~~ — **done 2026-09-27**, outside the repository like the command-line
+  client: `../minihub-agent/minihub-mcp.mjs`, Node built-ins only, one tool
+  per request kind, read from that folder's AGENTS.md.
 ~~The ten `runtime-*-gauntlet.mjs` scripts, one-off harnesses tied to closed
   investigations~~ — **removed 2026-09-27**: they drove the application's
   internals over CDP for investigations long closed; the native test binaries

@@ -219,6 +219,9 @@ node ../minihub-agent/minihub.mjs ping
 node ../minihub-agent/minihub.mjs describe
 ```
 
+An MCP client calls the same requests as tools through
+`../minihub-agent/minihub-mcp.mjs`, which that folder's AGENTS.md explains.
+
 `../minihub-agent/AGENTS.md` holds the whole vocabulary and is the file to read
 before using it. The short version: `describe` to read the state, then typed
 requests for everything else — nodes, cables, plugins, parameters, tracks,
