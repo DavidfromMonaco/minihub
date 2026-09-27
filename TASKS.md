@@ -14,12 +14,5 @@ Nothing.
 
 ## Kept for the author, not started
 
-**Splice's Expression reads 0.85 through `parameters` while the saved plugin
-state holds 1.0** — seen through the agent channel. Narrowed on 2026-09-27,
-not explained: Expression is linear (0.85 displays 85%), the saved state
-holds it as `i_expression` in Splice's own XML and follows the parameter, and
-with no instrument loaded 1.0 saved comes back 1.0 after a reload. So the gap
-needs an instrument loaded; the likely cause is the instrument, loading after
-the state, setting its own Expression. Checking it takes a project with a
-Splice instrument in it, or loading one — both the author's to allow.
+Nothing.
 
