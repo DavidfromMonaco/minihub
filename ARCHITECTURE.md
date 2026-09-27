@@ -253,6 +253,27 @@ CommonJS et ne peut pas importer le validateur, qui est un module ES que la règ
 juge — et la conséquence est meilleure que la contrainte, puisqu'un fichier
 refusé n'atteint jamais le dossier des profils.
 
+#### The bindings bar — a second window drawn by the first
+
+Each open plugin editor has a bindings bar docked under it (§10, *The bindings
+bar*; [DECISIONS.md](DECISIONS.md) D-021). The bar is a window of its own with
+its own preload, [bindingsBarPreload.js](src/main/bindingsBarPreload.js)
+(`window.bindingsBarAPI`), and it owns nothing: the bindings, the armed Learn
+and the cables live in the main renderer. So the main renderer draws every
+bar, and main only carries and checks
+([bindingsBarWindows.js](src/main/bindingsBarWindows.js)):
+
+| Channel | From → to | What |
+|---|---|---|
+| `bindings-bar:wanted` | main → main renderer | a bar's page is loaded and listening: draw it |
+| `bindings-bar:render` | main renderer → main → bar | the bar's markup, drawn by `renderControlBindings()` |
+| `bindings-bar:values` | main renderer → main → bar | where each bound knob stands, apart from the markup so a drag is never redrawn under the mouse |
+| `bindings-bar:list` | main renderer → main | which bars are open, after a reload |
+| `bindings-bar:ready`, `bindings-bar:action` | bar → main (→ main renderer) | the page is listening; a click, as a typed action (`validAction`) addressed by the bar that sent it, never by a node it names |
+
+The engine reports each editor frame's geometry as `editorBounds`, periodic
+during a drag and therefore kept out of the startup log with `masterMeter`.
+
 
 ### Processus principal ↔ moteur natif
 
@@ -274,7 +295,8 @@ automatiques.
 - cycle de vie : `hello`, `status`, `error`
 - périphériques : `devices`, `deviceState`, `midiOutputState`
 - plugins : `plugins`, `chainChanged`, `instanceStatus`, `editorStatus`,
-  `pluginState`, `pluginStateCaptureComplete`
+  `editorBounds` (the frame's visible edge, periodic), `pluginState`,
+  `pluginStateCaptureComplete`
 - paramètres : `vstParameters`, `vstParameterTouched`, `vstParameterLearnState`
 - commands from a plugin (§6, *Commands from a plugin*): `controlEvents` (a
   stream, never logged), `controlRegistryStatus`, `pluginRequestResult`
@@ -945,6 +967,25 @@ the Patch Bay answer the same keys, so each asks `paneHasKeys` first: the half
 pressed last has them. The layout and the bar's share are application
 settings, not project keys.
 
+**The bindings bar** ([DECISIONS.md](DECISIONS.md) D-021). A knob is learned
+from under the plugin's own window, not from a page of the shell: the VST
+node's page has no bindings panel since 2026-09-15. Main opens one frameless,
+non-focusable window per open plugin editor and places it from the engine's
+`editorBounds` (`placeBar`): under the frame when the screen has room, else a
+column beside it, over the plugin only when neither side has 300 px. The page,
+[bindings-bar.html](src/renderer/bindings-bar.html) with
+[bindingsBar.js](src/renderer/js/bindingsBar.js), shows markup and reports
+clicks. What it shows is drawn in the main renderer by
+[bindingsBarHost.js](src/renderer/js/core/bindingsBarHost.js) with
+`renderControlBindings()` ([controlBindingsPanel.js](src/renderer/js/core/controlBindingsPanel.js)),
+and each click is carried out by
+[controlBindingActions.js](src/renderer/js/core/controlBindingActions.js):
+the bar holds no binding rule of its own, so D-018's refactor, when it comes,
+touches one call site more rather than a second implementation. The strip is
+styled in `base.css`; the controller faceplates inside it are the shell's
+`miniLabControlSurface`, not the `omni-pearl` faceplate. Taller than wide, the
+page lays itself out as a column (`@media (orientation: portrait)`).
+
 `#content` est **partagé** par tous les modules. C'est la raison pour laquelle
 `unmount()` doit retirer ses écouteurs : un gestionnaire laissé sur `#content`
 réagit aux clics des autres pages. Ce bug a réellement existé — cliquer sur une
@@ -1250,7 +1291,8 @@ d'une capture forcée à l'extinction.
 | `preload.js` | `contextBridge` → `window.hubAPI` |
 | `engine.js` | superviseur du processus natif (`EngineProcess`) |
 | `engineCommandPolicy.js` | liste blanche des commandes moteur |
-| `audioDeviceCommand.js`, `vstParameterCommand.js`, `vstParameterLearnCommand.js`, `controlSourceCommand.js` | validateurs IPC purs |
+| `audioDeviceCommand.js`, `vstParameterCommand.js`, `vstParameterLearnCommand.js`, `controlSourceCommand.js`, `oneRingCommand.js` | validateurs IPC purs |
+| `bindingsBarWindows.js`, `bindingsBarPreload.js` | the bindings bar under each plugin editor: placing it, carrying its markup and its clicks (D-021) |
 | `settings.js` | préférences applicatives, écriture atomique |
 | `recentDirectories.js` | dernier dossier retenu par sélecteur, et son report |
 | `projectFiles.js` | lecture/écriture validée des `.minihub` |
@@ -1283,6 +1325,8 @@ d'une capture forcée à l'extinction.
 | `chainSync.js` | reconstruction des chaînes VST après (re)démarrage moteur |
 | `midiRouting.js`, `controlRouting.js` | injection MIDI et CONTROL dans le graphe |
 | `controlBindings.js` | mappages MiniLab → paramètres VST3, Learn |
+| `controlBindingsPanel.js`, `controlBindingActions.js` | `renderControlBindings()`, and what a click in it does |
+| `bindingsBarHost.js`, `controlValues.js` | each bindings bar drawn from here; where a bound knob stands |
 | `commandBus.js` | commands a plugin sends over CTRL OUT: sources, publication, dispatch, holds |
 | `commandRegistry.js` | command descriptors, their checks, value decoding |
 | `nodeCommands.js`, `sequencerCommands.js` | what the Arpeggiator, Mixer, Morpher, VST and Sequencer accept |
@@ -1306,7 +1350,8 @@ d'une capture forcée à l'extinction.
 ### `src/renderer/js/ui/` et `midi/`
 
 `sidebar.js`, `header.js`, `settingsModal.js`, `icons.js`,
-`miniLabControlSurface.js`, `omniPearl.js`, `contextMenu.js` — et côté MIDI
+`miniLabControlSurface.js`, `surfaceLayout.js` (split out so the bindings bar's
+page loads no profile), `omniPearl.js`, `contextMenu.js` — et côté MIDI
 `midiManager.js`,
 `parseMidi.js`, `controllerProfile.js`, `portRoles.js`, `decodeControl.js`,
 `minilab.js`, `minilabControls.js`, plus `profiles/` (one JSON file per

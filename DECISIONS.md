@@ -769,7 +769,9 @@ let code in through it.
 
 ## D-021 — The bindings bar docks under the plugin window, and stays HTML
 
-**Status**: in force · 2026-09-04 · **decided, not implemented**
+**Status**: in force · 2026-09-04 · **implemented** 2026-09-15 (steps 1 to 7 of
+[plans/done/bindings-bar-docked.md](plans/done/bindings-bar-docked.md)), built
+before D-018 on the author's instruction — see *Settled while building*
 
 **Context** — Learning a knob today costs two windows and a head movement. The
 MiniLab surface, the Learn button and the binding list live in MiniHub; the
@@ -836,6 +838,59 @@ that is itself always-on-top, behaviour across monitors at different DPI, what
 happens when the editor is minimised, and what the bar does when the plugin
 window sits at the very bottom of the screen.
 
+**Settled while building** — the questions this entry left open, and three it
+did not see:
+
+- **Where the bar goes.** Under the frame when the work area has room for it
+  there. Otherwise a column beside the frame and as tall as it — on the right,
+  or on the left where the room is — 456 DIPs wide and down to 300, the
+  faceplate scaled to fit. Over the bottom of the plugin only when neither side
+  has 300. The first rule, "stop at the bottom of the screen and ride over the
+  plugin", put the bar over Analog Lab V's keyboard on a 1080 px screen and
+  took every click the author aimed at it. The page reads its layout from its
+  own window (taller than wide is a column), so no message says which one is on.
+- **Stacking.** Directly above its own frame (`moveAbove`), never always-on-top.
+  A window put over the plugin covers the bar too; the frame raised again takes
+  the bar with it. A plugin that makes its own root window topmost would leave
+  the bar under it: not met, not handled.
+- **Minimised.** Hidden with the frame, shown and restacked with it. A
+  minimised frame reports (-32000, -32000), and the report says so rather than
+  letting the bar be pulled back onto the screen.
+- **DPI.** The engine reports the frame's *visible* edge (DWM's extended frame
+  bounds, not `GetWindowRect`, which includes invisible borders) in physical
+  pixels; main converts with `screen.screenToDipRect`. Tested at 150 %, never
+  seen on a scaled screen.
+- **Focus.** The bar is not focusable. A click in it never takes the keyboard
+  from the plugin, so arming Learn there never flicks the frame inactive; and
+  Learn no longer brings MiniHub forward after a capture (D-040). Keyboard
+  shortcuts, `Ctrl+Z` included, do not reach the bar.
+- **The bar takes no click outside what it draws** (`thickFrame: false`):
+  Electron otherwise keeps 8 invisible pixels of border round a frameless
+  window, and in a column those pixels lie over the plugin's edge.
+- **A second window is a second JavaScript world.** The bindings, the armed
+  Learn and the cables live in the main window's renderer, so the bar cannot
+  call `renderControlBindings()` itself. The main renderer draws each bar with
+  that function and main carries the markup across; a click comes back as a
+  typed action (`select`, `learn`, `cancel`, `clear`, a range, `turn`,
+  `open-controller`),
+  checked in main and addressed by the bar that sent it, and carried out by
+  `controlBindingActions.js` — the only binding logic that exists is still the
+  one that existed. That is also what makes D-018 cost one call site more, not
+  a second implementation.
+- **Learn plugs its own cable** (the author, 2026-09-14): a capture with no
+  CONTROL cable in the Patch Bay plugs the one the binding needs, in the same
+  history step, and Clear unplugs it. A binding whose cable was pulled out by
+  hand is kept and drawn `unplugged`. The network stays the only routing
+  (invariant 2); what changed is who plugs the cable.
+- **Bound knobs move** in the bar under the mouse, through `route()`, and follow
+  the plugin's own knob and the keyboard back (`controlValues.js`, a
+  `bindings-bar:values` channel apart from the markup, so a redraw never
+  replaces the element under a dragging mouse).
+- **Removing a plugin frees its knobs**: with the panel gone, a binding on an
+  instance id that will never be given out again would have nowhere to be seen
+  or cleared. A plugin that failed to load keeps its bindings; they work again
+  the day it loads.
+
 **What would justify revisiting it** — A plugin whose window cannot be tracked
 reliably, or a stacking behaviour that makes the bar flicker or steal focus during
 ordinary use. Either would mean docking cannot be made to feel like one window,
@@ -843,11 +898,18 @@ and the answer would then be the host strip of option A, not a worse dock.
 
 **Proof in the code** — `native/audio-engine/src/plugin_host.cpp`
 (`EditorWindow::open()`, the `CreateWindowExW` frame and its `STATIC` content
-child), `native/audio-engine/src/engine.cpp` (the `editorStatus` payload:
-`width` and `height`, no position), `src/main/engineCommandPolicy.js` (the
-allow-list a new command has to enter), and
-`src/renderer/js/core/nodeInstances.js` (`renderControlBindings()`, the interface
-being reused rather than rebuilt).
+child, and the frame's geometry read on `WM_WINDOWPOSCHANGED`),
+`native/audio-engine/src/engine.cpp` (`editorBounds`),
+`src/main/bindingsBarWindows.js` (`placeBar`, `besideFrame`, one bar per open
+editor) and `bindingsBarPreload.js`, `src/renderer/bindings-bar.html` and
+`js/bindingsBar.js` (the page, which draws and reports and decides nothing),
+`src/renderer/js/core/bindingsBarHost.js` (each bar drawn by the main renderer),
+`core/controlBindingsPanel.js` (`renderControlBindings()`, moved there from
+`nodeInstances.js` byte for byte), `core/controlBindingActions.js` and
+`core/controlValues.js`. Tests: `test/bindingsBarWindows.test.cjs`,
+`test/bindingsBarHost.test.mjs` (only the bar host imports the panel, and
+`hub.control.armLearn(` is written once), `test/controlRouting.test.mjs` (the
+VST node's page has no panel).
 
 ---
 

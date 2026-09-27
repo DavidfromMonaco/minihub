@@ -17,11 +17,6 @@ by the author. Left: the documents (step 18). The demonstration (step 17) is
 the author's to ask for.
 Plan: [plans/active/one-ring-native.md](plans/active/one-ring-native.md).
 
-**Learning a knob in one window: the bindings bar docked under the plugin
-editor** — built and used by the author. Left: the documents, step 8 of the
-plan, on standby since 2026-09-16 to free the slot for One Ring.
-Plan: [plans/done/bindings-bar-docked.md](plans/done/bindings-bar-docked.md).
-
 
 ## Kept for the author, not started
 

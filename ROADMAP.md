@@ -27,10 +27,9 @@ was free for **importing a profile**, finished 2026-09-05 (item 8 below, D-027 t
 D-030).
 
 `plans/active/` holds [one-ring-native.md](plans/active/one-ring-native.md),
-started 2026-09-16 (item 7 below). The bindings bar's plan went to `plans/done/`
-on standby the same day with only its documents left
-([bindings-bar-docked.md](plans/done/bindings-bar-docked.md)), and the agent
-channel's sits there too while the author tests it
+started 2026-09-16 (item 7 below). The bindings bar's plan is finished
+([bindings-bar-docked.md](plans/done/bindings-bar-docked.md), item 9 under
+Done), and the agent channel's sits in `plans/done/` too
 ([agent-channel.md](plans/done/agent-channel.md)). PLANS.md §2 holds the slot
 for work in progress, not for intentions.
 
@@ -392,6 +391,39 @@ what it did**, and worth reading before the next feature with a shortcut:
 - the history restored the model and no node editor redrew, so undo was
   invisible everywhere but the canvas — and invisible is indistinguishable from
   broken.
+
+---
+
+### 9. The bindings bar, docked under the plugin window — `master`
+
+Decided 2026-09-04 ([DECISIONS.md](DECISIONS.md) D-021), built 2026-09-12 to
+2026-09-15, documented 2026-09-27. Plan:
+[plans/done/bindings-bar-docked.md](plans/done/bindings-bar-docked.md), 8 of 8
+steps.
+
+A knob is learned in one place: a frameless window carrying the bindings
+interface, docked under the plugin editor and moving with it — beside it when
+the screen leaves no room under it. The VST node's page lost its bindings panel
+on 2026-09-15 (`0b92113`, the point of no return): the bar is the only way to a
+binding. Along the way, on the author's asks, Learn stopped needing a cable in
+the Patch Bay (the capture plugs it), a bound knob in the bar moves its
+parameter under the mouse and follows it back, and removing a plugin frees the
+knobs bound to it.
+
+**Built before D-018, and that is a decision.** D-021 said "after or with D-018,
+never before"; the author asked for it first (2026-09-12). The cost was named
+and kept small: `renderControlBindings()` was moved, not rewritten, into
+`core/controlBindingsPanel.js`, and a click in the bar is carried out by the
+one `controlBindingActions.js` — no binding rule lives in the bar's own code,
+so D-018 later touches one more call site, not a second implementation.
+
+**What the native half had to learn** — the frame's *visible* edge (DWM's
+extended frame bounds), in physical pixels, with its minimised and restacked
+states, and no report lost to the 60 Hz throttle. `editorBounds` is its own
+periodic message, kept out of the startup log.
+
+**Not met**: a plugin whose own window is always-on-top (the bar would sit under
+it), and a scaled screen (tested at 150 %, never seen).
 
 ---
 
@@ -773,58 +805,6 @@ while `profile` stays the word of the format: renaming it for real would touch
 **Device cards land in C** — spec §5.4. One page per device: photo, history,
 specifications, connectors, keybed, and a blueprint generated from the profile
 rather than drawn by hand. Written by the author, after the rest.
-
-### 9. The bindings bar, docked under the plugin window — built, not yet the only way
-
-Decided 2026-09-04 ([DECISIONS.md](DECISIONS.md) D-021), started 2026-09-12,
-resumed 2026-09-14.
-Plan: [plans/done/bindings-bar-docked.md](plans/done/bindings-bar-docked.md),
-**7 of 8 steps**, on standby since 2026-09-16 with its documents left.
-
-Learning a knob costs two windows today, and the plugin editor usually covers
-what you were reading. A frameless Electron window carrying the existing
-bindings interface docks under the plugin editor and moves with it. It
-**replaces** the panel rather than duplicating it: afterwards
-`renderControlBindings()` is gone from the VST node's editor and bindings are
-reached from the plugin window only.
-
-**The native half is done** — D-021 called it "one piece of native work, and it
-is small", and it was. The engine now emits `editorBounds`: the editor frame's
-outer rect, on open, on move and on resize, throttled to 60 Hz in the window
-proc with `WM_EXITSIZEMOVE` forcing an exact final report. Three things the code
-decided that the decision had left open:
-
-- **the rect is the OUTER frame and needed its own four numbers.**
-  `editorStatus.width/height` are the *client* area, the size handed to the VST3
-  view, so docking against them would be off by the borders and title bar;
-- **it is its own message type.** Opening an editor is rare and worth a log
-  line; moving it fires every frame of a drag. `editorBounds` therefore joins
-  `PERIODIC_EVENTS` beside `masterMeter` — the trap AGENTS §9 describes, arrived
-  at on purpose this time;
-- **`Ipc::send` writes to stdout under a lock**, so an unthrottled report would
-  put a synchronous write on the thread drawing the plugin, once per frame.
-
-**The bar exists** (2026-09-14) — one frameless window under each open plugin
-editor, placed by main from the engine's reports
-(`src/main/bindingsBarWindows.js`) and drawn by the main renderer with the same
-`renderControlBindings()` (`core/bindingsBarHost.js`). Docking it for real took a
-second native pass: the rect is the frame's visible edge in physical pixels now,
-with its minimised state, its restacking, and no report lost to the throttle.
-The plan's log has the detail.
-
-**What is left** — the author learning knobs from the bar on his own plugins,
-then the removal of the panel from the VST node's editor (the point of no
-return, step 7), and the documents.
-
-**Built before D-018, and that is a decision.** D-021 says "after or with D-018,
-never before" — that decision refactors `ControlBindingManager`, which this
-window drives. Taken on 2026-09-12 anyway, with the cost named: the window is a
-new *host* for an interface that already exists, so as long as it MOVES
-`renderControlBindings()` instead of reimplementing it, D-018 later touches the
-same `armLearn()` it would have touched anyway plus one call site. Any binding
-rule appearing in the new window's own code is the plan going wrong.
-
----
 
 ---
 
