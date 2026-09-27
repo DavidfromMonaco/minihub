@@ -1281,6 +1281,7 @@ export function createSequencerModule(hub) {
       scroller.scrollTop = scrollTopPx;
     }
     renderNavigation();
+    drawMarquee();
   }
 
   function bind() {
@@ -1343,6 +1344,7 @@ export function createSequencerModule(hub) {
       const next = left / controller.model.state.zoom;
       controller.model.state.scrollPpq = next;
       renderNavigation();
+      drawMarquee();
       if (moved && !scrollRenderQueued && outsideDrawnWindow(next, drawnWindow)) {
         scrollRenderQueued = true;
         requestAnimationFrame(render); // layout virtualization only; native transport remains the musical clock
@@ -1946,13 +1948,22 @@ export function createSequencerModule(hub) {
    * three pixels, so a plain click still clears the selection and a
    * double-click still creates a clip -- the two gestures that already lived
    * on this element.
+   *
+   * Its anchor is a point of the TIMELINE, not of the screen: playback's
+   * follow-scroll moves the arrangement under a band being drawn,
+   * and repaints the canvas when it leaves the drawn window. So the canvas is
+   * looked up at each draw, never kept, and the band is drawn again after a
+   * repaint and after a scroll, not only when the pointer moves -- the way a
+   * workstation's band stays pinned to where it began while the view runs on.
    */
   function startMarquee(event) {
     const canvas = container?.querySelector('[data-seq-canvas]');
     const rect = canvas?.getBoundingClientRect?.();
     if (!rect) return;
     marquee = {
-      canvas, rect, x0: event.clientX, y0: event.clientY, element: null, active: false,
+      x0: event.clientX, y0: event.clientY,
+      anchorX: event.clientX - rect.left, anchorY: event.clientY - rect.top,
+      x: event.clientX, y: event.clientY, element: null, active: false,
       additive: event.ctrlKey || event.metaKey || event.shiftKey,
       baseIds: controller.model.selectedClipIds(), ids: []
     };
@@ -1963,18 +1974,30 @@ export function createSequencerModule(hub) {
 
   function marqueeMove(event) {
     if (!marquee) return;
+    marquee.x = event.clientX;
+    marquee.y = event.clientY;
     if (!marquee.active) {
       if (Math.abs(event.clientX - marquee.x0) < 3 && Math.abs(event.clientY - marquee.y0) < 3) return;
       marquee.active = true;
       marquee.element = document.createElement('div');
       marquee.element.setAttribute('class', 'seq-marquee');
-      marquee.canvas.appendChild(marquee.element);
     }
+    drawMarquee();
+  }
+
+  function drawMarquee() {
+    if (!marquee?.active) return;
+    const canvas = container?.querySelector('[data-seq-canvas]');
+    const rect = canvas?.getBoundingClientRect?.();
+    if (!rect) return;
+    if (marquee.element.parentNode !== canvas) canvas.appendChild(marquee.element);
     const zoom = controller.model.state.zoom;
-    const left = Math.min(marquee.x0, event.clientX) - marquee.rect.left;
-    const top = Math.min(marquee.y0, event.clientY) - marquee.rect.top;
-    const width = Math.abs(event.clientX - marquee.x0);
-    const height = Math.abs(event.clientY - marquee.y0);
+    const x = marquee.x - rect.left;
+    const y = marquee.y - rect.top;
+    const left = Math.min(marquee.anchorX, x);
+    const top = Math.min(marquee.anchorY, y);
+    const width = Math.abs(x - marquee.anchorX);
+    const height = Math.abs(y - marquee.anchorY);
     marquee.element.style.left = `${left}px`;
     marquee.element.style.top = `${top}px`;
     marquee.element.style.width = `${width}px`;

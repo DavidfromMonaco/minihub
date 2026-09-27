@@ -46,8 +46,13 @@ async function runtime(initialSettings = {}) {
   return { api, hub };
 }
 
-function captureContainer() {
+function captureContainer({ lanes = false } = {}) {
   const container = makeEl('div');
+  // With `lanes`, the canvas and each track's lane too, for the gestures that
+  // start on empty lane space. Off by default: every other test here ran
+  // without them, and binding every track is work they do not need.
+  let canvas = null;
+  const tracks = [];
   const actions = new Map();
   const controls = new Map();
   const clips = [];
@@ -139,6 +144,30 @@ function captureContainer() {
         metronomeLight = makeEl('span');
         metronomeLight.dataset.metronomeLight = '';
       }
+      canvas = null;
+      tracks.length = 0;
+      if (lanes) {
+        // Rebuilt, like the scroller, and placed where the scroller puts it:
+        // the canvas scrolls with the timeline, so its left edge on screen is
+        // minus the scroll.
+        const ownScroller = scroller;
+        canvas = makeEl('div');
+        canvas.dataset.seqCanvas = '';
+        canvas.getBoundingClientRect = () => ({
+          left: -ownScroller.scrollLeft, top: -ownScroller.scrollTop, width: 6000, height: 600,
+          right: 6000 - ownScroller.scrollLeft, bottom: 600 - ownScroller.scrollTop
+        });
+        for (const match of markup.matchAll(/<div class="seq-track [^"]*" data-track-id="([^"]+)"/g)) {
+          const track = makeEl('div');
+          track.dataset.trackId = match[1];
+          const lane = makeEl('div');
+          lane.querySelectorAll = () => [];
+          track.querySelector = (selector) => (selector === '.seq-track-lane' ? lane : null);
+          track.querySelectorAll = () => [];
+          track.lane = lane;
+          tracks.push(track);
+        }
+      }
       for (const match of markup.matchAll(/<button class="seq-clip[^>]*data-clip-id="([^"]+)"[^>]*data-track-id="([^"]+)"/g)) {
         const clip = makeEl('button');
         clip.setAttribute('class', 'seq-clip');
@@ -159,10 +188,16 @@ function captureContainer() {
     if (selector === '[data-nav-track]') return navTrack;
     if (selector === '[data-nav-thumb]') return navThumbEl;
     if (selector === '[data-seq-time-scale]') return timeRuler;
+    if (selector === '[data-seq-canvas]') return canvas;
     return null;
   };
-  container.querySelectorAll = (selector) => selector === '.seq-clip' ? clips : [];
+  container.querySelectorAll = (selector) => {
+    if (selector === '.seq-clip') return clips;
+    if (selector === '.seq-track') return tracks;
+    return [];
+  };
   return {
+    canvas: () => canvas, tracks: () => tracks,
     container, markup: () => markup, action: (name) => actions.get(name),
     control: (name) => controls.get(name), light: () => metronomeLight, clips: () => clips,
     scroller: () => scroller, timeRuler: () => timeRuler, navTrack: () => navTrack, navThumb: () => navThumbEl
@@ -1225,6 +1260,49 @@ test('a rubber band over the lanes selects in musical coordinates, and a click s
   assert.deepEqual(clipsInSpan(tracks, { startPpq: 0, endPpq: 99, fromTrack: 5, toTrack: 9 }), [],
     'and a band below the last track finds nothing rather than throwing');
   assert.deepEqual(clipsInSpan(undefined, {}), []);
+});
+
+test('a rubber band drawn while the view follows the playhead stays pinned to the timeline, across a repaint', async () => {
+  const { hub } = await runtime();
+  hub.nodes.create('sequencer');
+  const track = hub.sequencer.model.addTrack('midi');
+  const near = hub.sequencer.addMidiClip(track.id, 0, 4);
+  const far = hub.sequencer.addMidiClip(track.id, 40, 4);
+  hub.modules.register(createSequencerModule(hub));
+  const view = captureContainer({ lanes: true });
+  hub.modules.activate('sequencer', view.container);
+  const state = hub.sequencer.model.state;
+  const zoom = state.zoom;
+  const lane = view.tracks()[0]?.lane;
+  const first = view.canvas();
+  assert.ok(lane && first, 'the lane and the canvas are drawn');
+
+  // Pressed on empty lane after the first clip, dragged a little to the right.
+  const x0 = 260 + 6 * zoom;
+  fire(lane, 'pointerdown', { button: 0, clientX: x0, clientY: 60, target: lane });
+  fire(globalThis.document, 'pointermove', { clientX: x0 + 40, clientY: 70 });
+  const band = first.children.find((child) => child.getAttribute?.('class') === 'seq-marquee');
+  assert.ok(band, 'the band is drawn on the canvas');
+
+  // Playback's follow-scroll: the view jumps far along, leaves the drawn
+  // window, and the module repaints -- while the pointer does not move.
+  const stale = view.scroller();
+  stale.scrollLeft = 30 * zoom;
+  fire(stale, 'scroll', {});
+  await flush();
+  const fresh = view.canvas();
+  assert.notEqual(fresh, first, 'the repaint replaced the canvas');
+  assert.equal(band.parentNode, fresh, 'the band moved to the new canvas, without waiting for the pointer');
+  assert.equal(band.style.left, `${x0}px`, 'its anchor is where it began on the timeline, not on the screen');
+  assert.equal(band.style.width, `${30 * zoom + 40}px`, 'and it reaches the pointer across what scrolled by');
+
+  // Now over the far clip: the band covers everything from its anchor to it.
+  fire(globalThis.document, 'pointermove', { clientX: 260 + 12 * zoom, clientY: 70 });
+  fire(globalThis.document, 'pointerup', {});
+  assert.deepEqual(hub.sequencer.model.selectedClipIds(), [far.id],
+    'the far clip, which the band reached by the scroll, and not the one before its anchor');
+  assert.ok(!hub.sequencer.model.selectedClipIds().includes(near.id));
+  assert.equal(band.parentNode, null, 'and the band is gone');
 });
 
 test('a clip draws its notes in pixels, so resizing it cannot stretch them', async () => {

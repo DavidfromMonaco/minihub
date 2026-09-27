@@ -43,14 +43,6 @@ nothing names them: no bar ruler along the top, no position in time, where the
 Sequencer has both (`rulerStride` in `modules/sequencer/sequencerModule.js`).
 With a clip open there is no way to say which bar is on screen. Not started.
 
-**The rubber band does not survive a repaint** — found on 2026-09-18 while
-fixing the rail and the middle-button pan, which had the same defect and are
-fixed. `startMarquee` in `modules/sequencer/sequencerModule.js` captures the
-canvas, its rectangle and the band element; a repaint replaces all three, and
-the band is left drawing on a detached node. It takes a repaint DURING the
-drag, which only playback's follow-scroll can cause, so it needs the transport
-running and a rubber band at the same time. Not reproduced in the application.
-
 **A take's waveform, zoomed in, is an outline** — left from the timelines'
 navigation (2026-09-24): a take draws the engine's 256 peaks for the whole
 file, so zoomed in it is not the signal. Finer peaks for what is on screen
