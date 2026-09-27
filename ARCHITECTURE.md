@@ -1273,12 +1273,14 @@ obeyed, the fallback only comes a microtask later if nothing did.
 
 ### Deux systèmes visuels
 
-⚠️ Il en coexiste **deux**, et c'est une dette identifiée :
+Two coexist, **deliberately** ([DECISIONS.md](DECISIONS.md) D-012: the shell and one faceplate, each for its whole subtree):
 
-- `base.css` (2 446 lignes) — le langage historique : `.panel`, `.btn`, `.pill` ;
-- `omni-pearl.css` (2 561 lignes) — le langage « Omni Pearl » : contrôles au
+- `base.css` — le langage historique : `.panel`, `.btn`, `.pill` ;
+- `omni-pearl.css` — le langage « Omni Pearl » : contrôles au
   rendu matériel construits autour de **vrais** éléments de formulaire, porté
-  par l'arpégiateur et, since 2026-09-17, by One Ring's page. `clip-editor.html`
+  par l'arpégiateur, since 2026-09-17 by One Ring's page, and since 2026-09-27
+  by the Mixer's, the Morpher's and the VST node's (section 6: faders, channel
+  strips, rack units). `clip-editor.html`
   ne le charge même pas. Façade graphite depuis le 2026-09-12
   ([DECISIONS.md](DECISIONS.md) D-037) : elle ressemble à la machine qu'elle
   dessine, et toutes ses couleurs sont des tokens. One Ring extended it with a

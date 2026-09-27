@@ -30,6 +30,8 @@
  *   4. arpeggiator piano roll + velocity lane built on the primitives
  *   5. sequencer hardware (key caps, LEDs, LCDs, pads, selectors) and the
  *      One Ring page built on them
+ *   6. console and rack: faders and channel strips for the Mixer and the
+ *      Morpher, rack units for the VST node's chain
  *
  * CSP note: `style-src 'self'` - no inline styles anywhere. Anything that must
  * vary per value is expressed through SVG geometry attributes (percentages,
@@ -157,6 +159,8 @@
   --op-led-inset: inset 0 1px 1px rgba(0, 0, 0, 0.6);
   --op-led-on: radial-gradient(circle at 40% 35%, #ffd2a8 0%, #ff8b2c 45%, #d9690d 100%);
   --op-led-glow: 0 0 7px rgba(255, 139, 44, 0.85);
+  --op-led-error: radial-gradient(circle at 40% 35%, #ffc2bb 0%, #ff6b5e 45%, #c9443a 100%);
+  --op-led-error-glow: 0 0 7px rgba(255, 107, 94, 0.8);
   /* LCD fields and the scribble strips that name a channel's target. */
   --op-lcd: #0b0c0e;
   --op-lcd-edge: #2a2c30;
@@ -191,6 +195,21 @@
   --op-roll-c: rgba(255, 255, 255, 0.035);
   --op-roll-note: #ff8b2c;
   --op-roll-note-edge: #ffc38e;
+
+  /* --- console and rack (section 6) --------------------------------------- */
+  /* A fader runs in a black slot; its cap is a moulded grip with a white line
+     across it, the line that reads the level off the scale beside it. */
+  --op-fader-slot: linear-gradient(90deg, #0c0d0f 0%, #16171a 50%, #0c0d0f 100%);
+  --op-fader-cap: linear-gradient(180deg, #62666d 0%, #4a4d54 30%, #3a3d42 46%, #2a2c30 50%, #3a3d42 54%, #45484e 100%);
+  --op-fader-cap-edge: #1c1d20;
+  --op-fader-cap-shadow: 0 3px 5px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  --op-fader-line: #eceef1;
+  --op-scale-tick: rgba(255, 255, 255, 0.13);
+  --op-scale-unity: rgba(255, 139, 44, 0.75);
+  /* The screws holding a rack unit, and the master strip's darker plate. */
+  --op-screw: radial-gradient(circle at 38% 34%, #7a7e86 0%, #4b4e55 55%, #2c2e32 100%);
+  --op-screw-shadow: 0 1px 1px rgba(0, 0, 0, 0.5);
+  --op-master-plate: linear-gradient(180deg, #2f3135 0%, #292b2f 100%);
 
   /* --- geometry ---------------------------------------------------------- */
   --op-radius-lg: 16px;
@@ -2563,4 +2582,364 @@ input.op-lcd:disabled {
   .op-module-title {
     font-size: 17px;
   }
+}
+
+/* ========================= 6. console and rack ============================ */
+/* The Mixer's and the Morpher's page is a console: one strip per AUDIO IN, a
+   master strip after them. The VST node's page is a rack: one unit per plugin,
+   in the order the signal crosses them. Both after One Ring's page, which the
+   author asked them to match (2026-09-27). */
+
+/* ---------- fader: a real range input, stood up ----------
+   `input.op-fader` under `.omni-pearl`, to outrank the sheet's own rule for a
+   range (section 4), which lays one down 130 px wide. */
+.op-fader-well {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  width: 46px;
+  height: 172px;
+}
+
+.op-fader-well--sm {
+  width: 30px;
+  height: 96px;
+}
+
+/* The scale: ticks down both sides of the slot, and unity gain -- level 1 of
+   2, halfway up -- in the accent. Inset by half a cap, the cap's travel. */
+.op-fader-scale {
+  position: absolute;
+  inset: 9px 3px;
+  background:
+    linear-gradient(90deg, var(--op-scale-unity) 0 8px, transparent 8px calc(100% - 8px), var(--op-scale-unity) calc(100% - 8px)) 0 50% / 100% 1px no-repeat,
+    repeating-linear-gradient(180deg, var(--op-scale-tick) 0 1px, transparent 1px 10%) 0 0 / 6px 100% no-repeat,
+    repeating-linear-gradient(180deg, var(--op-scale-tick) 0 1px, transparent 1px 10%) 100% 0 / 6px 100% no-repeat;
+  pointer-events: none;
+}
+
+.omni-pearl input.op-fader {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  cursor: ns-resize;
+  writing-mode: vertical-lr;
+  direction: rtl;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.omni-pearl input.op-fader:focus {
+  outline: none;
+}
+
+.omni-pearl input.op-fader::-webkit-slider-runnable-track {
+  width: 6px;
+  border-radius: 3px;
+  background: var(--op-fader-slot);
+  box-shadow: var(--op-inset-1), 0 0 0 1px var(--op-hairline);
+}
+
+.omni-pearl input.op-fader::-webkit-slider-thumb {
+  width: 30px;
+  height: 18px;
+  margin-left: -12px;
+  border: 1px solid var(--op-fader-cap-edge);
+  border-radius: 4px;
+  background:
+    linear-gradient(var(--op-fader-line), var(--op-fader-line)) 50% 50% / 70% 2px no-repeat,
+    var(--op-fader-cap);
+  box-shadow: var(--op-fader-cap-shadow);
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.omni-pearl input.op-fader:focus-visible::-webkit-slider-thumb {
+  box-shadow: var(--op-ring), var(--op-fader-cap-shadow);
+}
+
+.omni-pearl input.op-fader--sm::-webkit-slider-runnable-track {
+  width: 4px;
+}
+
+.omni-pearl input.op-fader--sm::-webkit-slider-thumb {
+  width: 22px;
+  height: 12px;
+  margin-left: -9px;
+}
+
+/* ---------- channel strips ---------- */
+.op-console-strips {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  padding: 12px;
+  overflow-x: auto;
+}
+
+.op-channel {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  width: 96px;
+  padding: 10px 8px 12px;
+  border: 1px solid var(--op-border);
+  border-radius: var(--op-radius-sm);
+  background: var(--op-surface-metal);
+  box-shadow: var(--op-shadow-1), var(--op-bevel);
+}
+
+.op-channel-num {
+  display: flex;
+  align-items: center;
+  height: 18px;
+  color: var(--op-text-dim);
+  font-family: "Geist Mono", "Cascadia Code", Consolas, "Roboto Mono", monospace;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+
+.op-channel .op-scribble {
+  justify-content: center;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.op-channel .op-lcd--sm {
+  justify-content: center;
+  width: 100%;
+}
+
+.op-channel .op-keycap {
+  width: 100%;
+}
+
+.op-channel-pan {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+}
+
+/* After the inputs, set apart: the master is what they all go through. */
+.op-channel--master {
+  justify-content: flex-start;
+  margin-left: 10px;
+  border-color: var(--op-border-strong);
+  background: var(--op-master-plate);
+}
+
+.op-channel--master .op-fader-well {
+  flex: 1 1 auto;
+  min-height: 172px;
+}
+
+/* Where an input has its MUTE key: the master's readout stays on the line of
+   theirs. */
+.op-channel-foot {
+  flex: 0 0 auto;
+  height: 26px;
+}
+
+/* ---------- the Morpher's steps ---------- */
+.op-morph {
+  display: flex;
+  align-items: flex-start;
+  gap: 18px;
+  padding: 10px 14px 14px;
+}
+
+.op-morph-count {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.op-morph-steps {
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.op-morph-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: 36px;
+  padding: 7px 0;
+  border: 1px solid var(--op-border);
+  border-radius: 6px;
+  background: var(--op-surface-2);
+  box-shadow: var(--op-inset-1);
+}
+
+.op-morph-step.active {
+  border-color: var(--op-orange-line);
+}
+
+.op-morph-step.active .op-legend {
+  color: var(--op-orange);
+}
+
+/* ---------- rack ---------- */
+.op-rack-engine {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-right: 10px;
+}
+
+.op-led.is-error {
+  background: var(--op-led-error);
+  box-shadow: var(--op-led-error-glow);
+}
+
+/* Loading: lit, and blinking until the engine says how it went. */
+.op-led.is-busy {
+  background: var(--op-led-on);
+  box-shadow: var(--op-led-glow);
+  animation: op-led-busy 0.9s steps(2, jump-none) infinite;
+}
+
+@keyframes op-led-busy {
+  50% {
+    background: var(--op-led-off);
+    box-shadow: var(--op-led-inset);
+  }
+}
+
+.op-rack-units {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+}
+
+.op-rack-unit {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 54px;
+  padding: 8px 26px;
+  border: 1px solid var(--op-border);
+  border-radius: var(--op-radius-sm);
+  background: var(--op-surface-metal);
+  box-shadow: var(--op-shadow-1), var(--op-bevel);
+}
+
+/* The two screws of a rack ear. */
+.op-rack-unit::before,
+.op-rack-unit::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  width: 7px;
+  height: 7px;
+  margin-top: -3.5px;
+  border-radius: 50%;
+  background: var(--op-screw);
+  box-shadow: var(--op-screw-shadow);
+}
+
+.op-rack-unit::before {
+  left: 9px;
+}
+
+.op-rack-unit::after {
+  right: 9px;
+}
+
+.op-rack-slot {
+  flex: 0 0 auto;
+  width: 22px;
+  color: var(--op-text-faint);
+  font-family: "Geist Mono", "Cascadia Code", Consolas, "Roboto Mono", monospace;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.op-rack-name {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.op-rack-title {
+  overflow: hidden;
+  color: var(--op-text);
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.op-rack-unit.is-bypassed .op-rack-title {
+  color: var(--op-text-faint);
+}
+
+.op-rack-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.op-rack-note {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--op-text-dim);
+  font-size: 11px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* The keys keep their line; the name and the note give way. */
+.op-rack-keys {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 5px;
+}
+
+.op-rack-empty {
+  display: flex;
+  justify-content: center;
+  padding: 22px;
+  border: 1px dashed var(--op-border-strong);
+  border-radius: var(--op-radius-sm);
+}
+
+.op-rack-foot {
+  padding: 12px 14px 14px;
+  border-top: 1px solid var(--op-hairline);
+}
+
+.op-rack-add {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.op-rack-add--note {
+  margin-top: 10px;
+}
+
+.op-rack-pick {
+  flex: 0 1 380px;
+  min-width: 220px;
 }

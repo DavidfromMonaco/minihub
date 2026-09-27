@@ -7,7 +7,7 @@ Counter-intuitive choices: [DECISIONS.md](DECISIONS.md). Long workstreams:
 [PLANS.md](PLANS.md).
 
 **Current state** — branch `master`.
-902 JS tests green, 15 `npm run check` rules green, 3,963 native checks green
+1,516 JS tests green, 15 `npm run check` rules green, 3,963 native checks green
 across the four test binaries, a Release build with **0 errors and 0 warnings**,
 `dist/` synchronised with the sources.
 
@@ -20,8 +20,8 @@ whole build log rather than its tail, which is what let those warnings hide
 behind a cached object file in the first place.
 
 The goal of this whole pass is **consolidation before new modules are added**.
-Items 1 to 3 removed the structural obstacles; item 4 is what is left before
-adding a module becomes mechanical. Item 8 answered a different question — taking
+Items 1 to 3 removed the structural obstacles, and item 4 (2026-09-27) made
+adding a node page mechanical: a folder and one line in `app.js`. Item 8 answered a different question — taking
 the hardware out of the core — and its Étape A finished on 2026-09-04, so the slot
 was free for **importing a profile**, finished 2026-09-05 (item 8 below, D-027 to
 D-030).
@@ -501,6 +501,69 @@ branch per type. A new type still adds a line there.
 
 ---
 
+### 6. Visual consistency and naming — `master`
+
+Done 2026-09-27, except the writing style, which is smoothed out as files are
+visited and has no end.
+
+**Two design systems, deliberately** ([DECISIONS.md](DECISIONS.md) D-012):
+`base.css` dresses the **shell** — header, sidebar, Patch Bay, modals — and
+`omni-pearl.css` is a **device faceplate** for the instrument surfaces placed
+inside it. Containment, not layering: a module picks one vocabulary for its
+whole subtree, the shell is never given a faceplate, there is at most one
+faceplate, and `npm run check` holds two of those rules (`faceplate scope`,
+`one faceplate`). The faceplate owns its whole palette and consumes nothing from
+the shell, which is what let it turn **graphite** on its own on 2026-09-12
+(D-037): twenty-nine light literals had to become tokens first, and the sheet's
+header now says a colour below the token block is a bug.
+
+**Every node page with controls now wears it.** The arpeggiator first, One
+Ring's page second (2026-09-17, with the sequencer hardware of section 5), and on
+2026-09-27, at the author's request — to match One Ring's dark
+Pearl — the Mixer, the Morpher and the VST node, in a section 6 of their own:
+
+- the **Mixer** and the **Morpher** are a console: one strip per AUDIO IN — what
+  it hears on a scribble strip, by the node's name rather than its id, a pan
+  knob turned by dragging up and down, a fader standing up, its level read out,
+  a MUTE key that lights — and the Mixer's master as a darker strip after them.
+  The Morpher's steps are small faders under a rotary selector, the one playing
+  lit. Changing the number of steps now redraws them; it did not before;
+- the **VST** node is a rack: one unit per plugin, in the order the signal
+  crosses them, its LED lit by what the engine said (blinking while it loads,
+  red when it failed, with why, even when it failed before the page opened),
+  and its keys. The plugin picker keeps its own list, with its families and
+  folded brands; the faceplate's generic list stays out of its way.
+
+`bindDragKnobs()` (ui/omniPearl.js) is the drag knob any page can use; One
+Ring's page keeps its older one, which also writes on a timer while it drags.
+The shell's rules for the old pages (`.plugin-card`, `.mixer-*`,
+`.morph-steps`…) are gone from `base.css`. The Mixer's type named an icon,
+`sliders`, that the icon set did not have, so its sidebar entry showed the
+fallback: it has one now.
+
+Seen, not read: the three pages rendered on a bench page loading the real
+`base.css`, `omni-pearl.css` and the modules on a live hub, at 1280 x 860, and
+driven by pointer — mute, fader, pan drag and double-click, the step selector,
+bypass, add, the picker opening one list. Not seen in MiniHub's own window.
+
+**Four names for one product — settled.** The window and the header say
+MiniHub since 2026-09-15, and so do the README, the executable, `dist/MiniHub`,
+the `.minihub` extension and `Documents/MiniHub`. What is left is not to be
+unified: `minilab-hub` (the npm name, `%APPDATA%/minilab-hub/`, the log file)
+is a path already on the user's disk, and renaming it loses their settings;
+`mlh_` / `mlh-` is the native build prefix the scripts name. The first line of
+each startup log still reads "MiniLab Hub startup", which nobody sees.
+AGENTS.md §2 holds the table.
+
+**Writing style** — the compressed passages this item listed are aerated
+(2026-09-27): the Mixer and Morpher content in `nodeInstances.js`, its dynamic
+AUDIO IN rows, `describeAudioNetwork` in `engineSync.js`, two one-line methods
+of `engineClient.js`. Others remain — `arpeggiatorEditor.js` is written that
+way throughout — and are smoothed out as their files are visited, without a
+dedicated cosmetic pass.
+
+---
+
 ### Outside the numbering
 
 - Snapshots from 24/08 preserved as branches (`snapshot/2026-08-24-*`), then
@@ -527,70 +590,6 @@ they were opened, and any of them can be picked up on its own. Where taking one
 before another actually costs something, the item says what that costs — as a
 description of what happens, so the choice can be made knowingly, never as a
 prerequisite. Nothing here is waiting on permission.
-
-### 6. Visual consistency and naming
-
-**Two design systems coexist, and that is deliberate.** `base.css` (1,634
-lines, `.panel`/`.btn` vocabulary) dresses the **shell**: header, sidebar,
-Patch Bay, modals. `omni-pearl.css` (1,027 lines, `op-*` vocabulary) is a
-**device-faceplate** language, meant for instrument surfaces placed inside that
-shell. Both are dark since 2026-09-12 (D-037) and they are still not rivals: the
-faceplate owns its own complete token set and consumes nothing from the shell,
-which is exactly what let it change colour on its own. Its header documents it: a module opts in by putting the `omni-pearl`
-class on its root, and "nothing leaks outside that subtree".
-
-Measured 2026-09-02: `op-` is used by **three** files only — `ui/omniPearl.js`
-(the library, 18 classes), `core/arpeggiatorEditor.js` (23) and
-`core/nodeInstances.js` (7, to mount the arpeggiator shell). So this is not an
-unfinished migration but a **started system**: one module out of N wears the
-faceplate meant for them all.
-
-**Settled 2026-09-02** ([DECISIONS.md](DECISIONS.md) D-012): containment, not
-layering — a module picks one vocabulary for its whole subtree, the shell is
-never given a faceplate, there is at most one faceplate, and by default a new
-module uses `base.css`. Two of those rules are mechanical (`npm run check`:
-`faceplate scope`, `one faceplate`).
-
-So **no mandatory work remains** here. Extending the faceplate to the other node
-editors (Mixer, Morpher, VST) is still possible, editor by editor, and is a
-matter of taste: the `ui/omniPearl.js` library is generic and explicitly allows
-for it.
-
-~~**The arpeggiator's colours are to be redone**~~ — **done 2026-09-12**, and the
-direction was the author's: the plate is **graphite**, like the MiniLab 3 it
-draws. [DECISIONS.md](DECISIONS.md) D-037. A dark faceplate in a dark shell is
-not camouflage as long as the plate is lighter than the shell and keeps its
-bezel; what makes it read as an instrument is that the roll finally has white
-keys and black keys, which is the one place the plate is allowed to be white.
-
-What the flip cost, and it was the whole job: the sheet's own header claimed
-every colour was a token, and **twenty-nine were not**. All of them were light
-literals scattered through sections 2 to 4 — knob milling, key caps, the sticky
-step rail, the note gloss — and each would have stayed cream on the new plate.
-They are tokens now, and the header says a colour appearing below the token
-block is a bug. D-012 is what made the rest a token edit: the sheet consumes
-nothing from `base.css`, so the shell could not follow it down.
-
-Seen, not read: rendered on a bench page loading the real `base.css`,
-`omni-pearl.css` and `renderArpeggiatorEditor()`, at 1000 x 860.
-
-**Four names for one product — settled.** The window and the header say
-MiniHub since 2026-09-15, and so do the README, the executable, `dist/MiniHub`,
-the `.minihub` extension and `Documents/MiniHub`. What is left is not to be
-unified: `minilab-hub` (the npm name, `%APPDATA%/minilab-hub/`, the log file)
-is a path already on the user's disk, and renaming it loses their settings;
-`mlh_` / `mlh-` is the native build prefix the scripts name. The first line of
-each startup log still reads "MiniLab Hub startup", which nobody sees.
-AGENTS.md §2 holds the table.
-
-**Writing style** — the compressed passages this item listed are aerated
-(2026-09-27): the Mixer and Morpher content in `nodeInstances.js`, its dynamic
-AUDIO IN rows, `describeAudioNetwork` in `engineSync.js`, two one-line methods
-of `engineClient.js`. Others remain — `arpeggiatorEditor.js` is written that
-way throughout — and are smoothed out as their files are visited, without a
-dedicated cosmetic pass.
-
----
 
 ### 8. The controller platform — A done, D-022's half of B done; the plural refused
 

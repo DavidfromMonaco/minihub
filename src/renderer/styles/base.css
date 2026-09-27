@@ -306,16 +306,8 @@ body:has(.manual-root:not(.hidden)) .app-header { -webkit-app-region: no-drag; }
 @media (max-width: 1000px) { .app-menus { display: none; } }
 
 
-.mixer-pan { width:90px; vertical-align:middle; }
-/* The values beside a Mixer strip's sliders, readable at a glance. */
-.mixer-value { display:inline-block; margin-left:6px; color:var(--text); font:11px var(--mono); text-align:right; vertical-align:middle; }
-.mixer-level-value { width:58px; }
-.mixer-pan-value { width:34px; }
-.morph-steps { display:grid; grid-template-columns:repeat(8,minmax(44px,1fr)); gap:6px; margin-top:12px; }
-.morph-steps label { padding:5px; border:1px solid var(--border); border-radius:5px; text-align:center; }
-.morph-steps label.active { border-color:var(--accent-morpher); background:rgba(244,114,182,.12); }
-/* Arpeggiator surfaces live in styles/omni-pearl.css (Omni Pearl theme). */
-.morph-steps input { width:100%; }
+/* The Arpeggiator's, Mixer's, Morpher's, VST's and One Ring's pages wear the
+   faceplate: styles/omni-pearl.css. */
 
 /* --- Audio Player node: a file, its overview in the colour of the audio
    cable it feeds, and a player's controls. --- */
@@ -1166,59 +1158,6 @@ body:has(.manual-root:not(.hidden)) .app-header { -webkit-app-region: no-drag; }
 .pill.family-media { color: var(--family-media); border-color: color-mix(in srgb, var(--family-media) 40%, transparent); }
 .pill[class*="family-"]::before { display: none; }
 
-/* --- VST plugin chain / role cards --- */
-.empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 8px;
-}
-
-.plugin-card {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 10px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--bg-raised);
-}
-.plugin-card + .plugin-card {
-  margin-top: 8px;
-}
-.plugin-role-dot {
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  background: var(--text-faint);
-  flex: 0 0 auto;
-}
-.plugin-card.role-instrument .plugin-role-dot { background: var(--vst-role-instrument); }
-.plugin-card.role-audio-effect .plugin-role-dot { background: var(--vst-role-audio-effect); }
-.plugin-card.role-midi-effect .plugin-role-dot { background: var(--vst-role-midi-effect); }
-.plugin-card.role-utility .plugin-role-dot { background: var(--vst-role-utility); }
-.plugin-card.role-unknown .plugin-role-dot { background: var(--vst-role-unknown); }
-
-.plugin-name {
-  font-weight: 600;
-}
-.plugin-role-badge {
-  font-size: 10px;
-  padding: 1px 6px;
-  border-radius: 999px;
-  border: 1px solid var(--border);
-  color: var(--text-dim);
-}
-.plugin-card.role-instrument .plugin-role-badge { color: var(--vst-role-instrument); border-color: rgba(245, 196, 81, 0.4); }
-.plugin-card.role-audio-effect .plugin-role-badge { color: var(--vst-role-audio-effect); border-color: rgba(239, 106, 91, 0.4); }
-.plugin-card.role-midi-effect .plugin-role-badge { color: var(--vst-role-midi-effect); border-color: rgba(167, 139, 250, 0.4); }
-.plugin-card.role-utility .plugin-role-badge { color: var(--vst-role-utility); border-color: rgba(72, 184, 204, 0.4); }
-.plugin-card.role-unknown .plugin-role-badge { color: var(--vst-role-unknown); border-color: rgba(148, 163, 184, 0.4); }
-
-.plugin-action {
-  margin-left: auto;
-}
-
 /* The canvas grid: dots at the crossings would be the mockup's, but a pattern
    of lines is what zooms without shimmering. Kept as lines, drawn fainter. */
 .grid-line {
@@ -1481,42 +1420,6 @@ body:has(.manual-root:not(.hidden)) .app-header { -webkit-app-region: no-drag; }
 }
 .ctx-caret {
   color: var(--text-faint);
-}
-
-/* --- VST plugin chain status + actions --- */
-.plugin-actions {
-  margin-left: auto;
-  display: flex;
-  gap: 6px;
-  align-items: center;
-}
-.plugin-card .plugin-action {
-  margin-left: 0;
-}
-.plugin-status {
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  padding: 1px 6px;
-  border-radius: 999px;
-  border: 1px solid var(--border);
-  color: var(--text-dim);
-}
-.plugin-status.status-ready { color: #4ade82; border-color: rgba(74, 222, 128, 0.35); }
-.plugin-status.status-loading { color: var(--vst-role-instrument); border-color: rgba(245, 196, 81, 0.4); }
-.plugin-status.status-error { color: #ef6a5b; border-color: rgba(239, 106, 91, 0.4); }
-.plugin-status.status-bypassed { color: var(--text-faint); border-color: var(--border); }
-.plugin-status.status-pending { color: var(--text-faint); border-color: var(--border); }
-
-/* Feedback from the native plugin editor (opened / closed / why it failed). */
-.plugin-editor-note {
-  font-size: 11px;
-  color: var(--text-faint);
-  margin-left: 8px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 220px;
 }
 
 /* --- Audio Output module --- */

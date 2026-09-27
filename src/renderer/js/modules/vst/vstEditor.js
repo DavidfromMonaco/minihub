@@ -3,9 +3,15 @@ import { escapeHtml } from '../../core/html.js';
 import { getVstRole, groupPluginsByFamily } from '../../core/vstChain.js';
 import { copyOneRingToNode, isOneRingPlugin } from '../../core/oneRingImport.js';
 import { bindPluginMenu, closePluginMenu } from '../../ui/pluginMenu.js';
+import { icon } from '../../ui/icons.js';
+import { pearlKeycap, pearlLegend } from '../../ui/omniPearl.js';
 
 /**
  * The VST node's page: its plugin chain, the plugin picker and the scan.
+ *
+ * It wears the faceplate, as One Ring does (the author, 2026-09-27): the chain
+ * is a rack, one unit per plugin in the order the signal crosses them, each
+ * with the LED its engine status lights and its keys.
  *
  * WHAT THE PAGE REMEMBERS WHILE IT IS OPEN
  * ----------------------------------------
@@ -23,52 +29,75 @@ const engineDown = (hub) => hub.engine.state === 'error' || hub.engine.state ===
 function viewOf({ instance, hub, state }) {
   if (!state.statuses) {
     state.statuses = new Map(); // plugin instance id -> loading|ready|error
+    state.notes = new Map(); // plugin instance id -> last editor feedback line
     for (const plugin of instance.content?.plugins || []) {
       const status = hub.engine.getInstanceStatus(instance.id, plugin.id);
       if (status) state.statuses.set(plugin.id, status);
+      // A plugin that failed before the page opened says why, as one that
+      // fails while it is open does.
+      if (status === 'error') {
+        state.notes.set(plugin.id, hub.engine.getInstanceError(instance.id, plugin.id) || 'Plugin failed to load');
+      }
     }
-    state.notes = new Map(); // plugin instance id -> last editor feedback line
     state.scan = { error: '' };
   }
   return state;
 }
 
+/** What a unit's LED and legend say, from what the engine said last. */
+const STATUS_LOOK = {
+  ready: { led: 'is-on', legend: 'on' },
+  loading: { led: 'is-busy', legend: '' },
+  error: { led: 'is-error', legend: 'error' },
+  bypassed: { led: '', legend: '' },
+  pending: { led: '', legend: '' }
+};
+
 /**
- * A plugin card shows RUNTIME state, not the persisted model.
+ * A rack unit shows RUNTIME state, not the persisted model.
  *
  * `status` is what the native engine last reported for this instance. When the
- * engine has never mentioned it there is no live plugin behind the card, and
+ * engine has never mentioned it there is no live plugin behind the unit, and
  * saying "ready" was an outright lie: it made "Open Plugin" look available
  * during the whole startup window and produced "Unknown instance" when clicked.
  */
-function renderPluginCard(plugin, status, editorNote) {
+function renderPluginCard(plugin, index, status, editorNote) {
   const role = getVstRole(plugin.role);
   const st = plugin.bypassed ? 'bypassed' : (status || 'pending');
-  const note = editorNote ? `<span class="plugin-editor-note">${escapeHtml(editorNote)}</span>` : '';
+  const look = STATUS_LOOK[st] || STATUS_LOOK.pending;
+  const note = editorNote ? `<span class="op-rack-note">${escapeHtml(editorNote)}</span>` : '';
+  const key = (label, action, extra = {}) => pearlKeycap({ label, size: 'sm word', attrs: `data-action="${action}"`, ...extra });
+  const oneRing = isOneRingPlugin(plugin)
+    ? key('Copy to One Ring', 'one-ring', { title: "Copy its sequence into a new One Ring node, and move this node's CTRL OUT cables there" })
+    : '';
   return `
-    <div class="plugin-card role-${role.id}" data-plugin-id="${escapeHtml(plugin.id)}">
-      <span class="plugin-role-dot"></span>
-      <span class="plugin-name">${escapeHtml(plugin.name)}</span>
-      <span class="plugin-role-badge">${role.badge}</span>
-      <span class="plugin-status status-${st}">${st}</span>
-      ${note}
-      <span class="plugin-actions">
-        <button class="btn btn-sm plugin-action" data-action="open" title="Open native plugin editor">Open Plugin</button>
-        <button class="btn btn-sm plugin-action" data-action="bypass">${plugin.bypassed ? 'Unbypass' : 'Bypass'}</button>
-        <button class="btn btn-sm plugin-action" data-action="up" title="Move up">↑</button>
-        <button class="btn btn-sm plugin-action" data-action="down" title="Move down">↓</button>
-        <button class="btn btn-sm plugin-action" data-action="remove">Remove</button>
-        ${isOneRingPlugin(plugin) ? '<button class="btn btn-sm plugin-action" data-action="one-ring" title="Copy its sequence into a new One Ring node, and move this node\'s CTRL OUT cables there">Copy to One Ring node</button>' : ''}
+    <div class="op-rack-unit plugin-card role-${role.id}${plugin.bypassed ? ' is-bypassed' : ''}" data-plugin-id="${escapeHtml(plugin.id)}">
+      <span class="op-rack-slot">${String(index + 1).padStart(2, '0')}</span>
+      <span class="op-led ${look.led}" aria-hidden="true"></span>
+      <span class="op-rack-name">
+        <span class="op-rack-title">${escapeHtml(plugin.name)}</span>
+        <span class="op-rack-meta">${pearlLegend(role.label)}<span class="plugin-status status-${st}">${pearlLegend(st, { state: look.legend })}</span>${note}</span>
+      </span>
+      <span class="op-rack-keys">
+        ${key('Open', 'open', { title: 'Open native plugin editor' })}
+        ${key('Bypass', 'bypass', {
+          state: plugin.bypassed ? 'lit' : '', pressed: plugin.bypassed === true,
+          title: plugin.bypassed ? 'Bypassed: click to hear it again' : 'Let the signal through this plugin untouched'
+        })}
+        ${key('↑', 'up', { title: 'Move up' })}
+        ${key('↓', 'down', { title: 'Move down' })}
+        ${key('Remove', 'remove')}
+        ${oneRing}
       </span>
     </div>`;
 }
 
 function renderChain(plugins, statuses, notes) {
   if (!plugins || plugins.length === 0) {
-    return `<div class="empty-state"><p class="muted m-0">No plugins loaded</p></div>`;
+    return `<div class="op-rack-empty">${pearlLegend('No plugins loaded')}</div>`;
   }
   return plugins
-    .map((p) => renderPluginCard(p, statuses.get(p.id), notes.get(p.id)))
+    .map((p, index) => renderPluginCard(p, index, statuses.get(p.id), notes.get(p.id)))
     .join('');
 }
 
@@ -85,15 +114,17 @@ function renderAddVst(hub, scan = {}, picked = '') {
   const plugins = hub.engine.plugins;
   const scanning = hub.engine.scanning === true;
   const scanNote = scanning
-    ? '<span class="muted ml-6">Scanning VST3 folders… this takes a minute.</span>'
-    : (scan.error ? `<span class="danger-text ml-6">${escapeHtml(scan.error)}</span>` : '');
-  const scanButton = (label, extraClass = '') =>
-    `<button id="vst-scan" class="btn btn-sm ${extraClass}" ${scanning ? 'disabled' : ''} title="Scan the VST3 folders again">${scanning ? 'Scanning…' : label}</button>`;
+    ? pearlLegend('Scanning VST3 folders… this takes a minute', { state: 'on' })
+    : (scan.error ? `<span class="op-legend is-error">${escapeHtml(scan.error)}</span>` : '');
+  const scanButton = (label, state = '') => pearlKeycap({
+    label: scanning ? 'Scanning…' : label, size: 'word', state: scanning ? 'pending' : state, disabled: scanning,
+    title: 'Scan the VST3 folders again', attrs: 'id="vst-scan"'
+  });
   if (plugins.length === 0) {
     return `
-      <div class="row mt-10">
-        ${scanButton('Scan for VST3', 'primary')}
-        ${scanning ? scanNote : '<span class="muted ml-6">No VST3 plugins discovered yet</span>'}
+      <div class="op-rack-add">
+        ${scanButton('Scan for VST3', 'lit')}
+        ${scanning ? scanNote : pearlLegend('No VST3 plugins discovered yet')}
       </div>`;
   }
   const groups = groupPluginsByFamily(plugins);
@@ -109,41 +140,42 @@ function renderAddVst(hub, scan = {}, picked = '') {
   // rendered only in the empty state, so a catalog that had gone stale or
   // incomplete could never be refreshed from the UI.
   return `
-    <div class="row mt-10">
-      <select id="vst-pick" class="select select-sm plugin-pick" aria-haspopup="menu">
-        ${optionsHtml}
-      </select>
-      <button id="vst-add" class="btn btn-sm primary">+ Add VST</button>
-      <span class="spacer"></span>
-      <span class="muted" id="vst-catalog-count">${plugins.length} plugin${plugins.length === 1 ? '' : 's'}</span>
+    <div class="op-rack-add">
+      <span class="op-select op-select--wide op-rack-pick">
+        <select id="vst-pick" class="op-select-native plugin-pick" aria-label="Plugin to add" aria-haspopup="menu">
+          ${optionsHtml}
+        </select>
+        <span class="op-select-chevron"></span>
+      </span>
+      ${pearlKeycap({ label: '+ Add VST', size: 'word', state: 'lit', attrs: 'id="vst-add"' })}
+      <span class="op-spacer"></span>
+      <span class="op-legend" id="vst-catalog-count">${plugins.length} plugin${plugins.length === 1 ? '' : 's'}</span>
       ${scanButton('Rescan')}
     </div>
-    ${scanNote ? `<div class="row mt-6">${scanNote}</div>` : ''}`;
+    ${scanNote ? `<div class="op-rack-add op-rack-add--note">${scanNote}</div>` : ''}`;
+}
+
+/** The engine's state, as a lit LED and its legend. */
+function engineStatus(hub) {
+  const down = engineDown(hub);
+  return `<span class="op-led ${down ? 'is-error' : 'is-on'}"></span>${pearlLegend(down ? 'Engine unavailable' : 'Engine ready', { state: down ? 'error' : '' })}`;
 }
 
 function render(context) {
-  const { instance, hub } = context;
+  const { instance, type, hub } = context;
   const view = viewOf(context);
   const plugins = Array.isArray(instance.content?.plugins) ? instance.content.plugins : [];
-  const down = engineDown(hub);
-  return `
-    <div class="panel">
-      <div class="row">
-        <h1 class="page-title">${escapeHtml(instance.name)}</h1>
-        <span class="spacer"></span>
-        <span class="pill accent-vst family-plugin">VST</span>
-        <span id="vst-engine-status" class="pill ${down ? 'off' : 'ok'}">${down ? 'Engine unavailable' : 'Engine ready'}</span>
-      </div>
-      <div class="panel mt-16">
-        <h2 class="panel-title">Plugin Chain</h2>
-        <div id="vst-chain">${renderChain(plugins, view.statuses, view.notes)}</div>
-        <div id="vst-add-section">${renderAddVst(hub)}</div>
-      </div>
-      <div class="row mt-16">
-        <span class="spacer"></span>
-        <button id="node-delete" class="btn danger">Delete Node</button>
-      </div>
-    </div>`;
+  return `<div class="omni-pearl op-module op-rack" data-vst-editor>
+    <div class="op-module-header"><span class="op-module-glyph">${icon(type?.icon || 'chip', 22)}</span>
+      <h1 class="op-module-title">${escapeHtml(instance.name)}</h1><span class="op-spacer"></span>
+      <span id="vst-engine-status" class="op-rack-engine">${engineStatus(hub)}</span>
+      <button type="button" id="node-delete" class="op-btn op-btn--danger">Delete Node</button></div>
+    <section class="op-panel" aria-label="Plugin chain">
+      <div class="op-panel-head"><span class="op-label accent">Plugin chain</span><span class="op-hint">In the order the signal crosses them, top to bottom</span></div>
+      <div id="vst-chain" class="op-rack-units">${renderChain(plugins, view.statuses, view.notes)}</div>
+      <div id="vst-add-section" class="op-rack-foot">${renderAddVst(hub, view.scan)}</div>
+    </section>
+  </div>`;
 }
 
 function rerenderChain(container, context) {
@@ -213,11 +245,8 @@ function bind(container, context) {
       rerenderAddSection();
     }),
     hub.events.on('engine:state', () => {
-      const pill = container.querySelector('#vst-engine-status');
-      if (!pill) return;
-      const down = engineDown(hub);
-      pill.textContent = down ? 'Engine unavailable' : 'Engine ready';
-      pill.className = 'pill ' + (down ? 'off' : 'ok');
+      const status = container.querySelector('#vst-engine-status');
+      if (status) status.innerHTML = engineStatus(hub);
     })
   ];
 
@@ -241,7 +270,8 @@ function bind(container, context) {
     const card = e.target.closest('.plugin-card');
     if (!card) return;
     const id = card.dataset.pluginId;
-    const action = e.target.dataset.action;
+    // A key's label or LED may be what was clicked.
+    const action = (e.target.closest?.('[data-action]') || e.target).dataset.action;
     const chain = manager.getChain(instance.id);
     if (!chain) return;
     const idx = chain.plugins.findIndex((x) => x.id === id);

@@ -251,6 +251,97 @@ export function syncDragKnob(knob, { value, min, max, bipolar = false, text = ''
   return true;
 }
 
+/** Pixels of vertical drag that take a drag knob from its minimum to its maximum. */
+const DRAG_TRAVEL_PX = 200;
+/** Shift held: this many times finer. */
+const DRAG_FINE_FACTOR = 4;
+const DRAG_KEY_STEPS = { ArrowUp: 1, ArrowRight: 1, ArrowDown: -1, ArrowLeft: -1, PageUp: 10, PageDown: -10 };
+
+/**
+ * Make every drag knob under `root` turn: dragged up and down, Shift for fine,
+ * or by the arrow keys, Page Up / Down, Home and End. It reads its range from
+ * the knob's own `aria-valuemin` / `aria-valuemax` and moves in whole units.
+ *
+ * `onValue(knob, value, final)` is called at every new value, with `final`
+ * true when the gesture ends -- a key, or the pointer let go -- so a page can
+ * hear a drag as it moves and write it once. Drawing the knob at its new value
+ * is the page's (`syncDragKnob`): only the page knows its text and its sign.
+ *
+ * One Ring's page has its own, older, which also writes on a timer while a
+ * drag lasts. Returns what removes it all.
+ */
+export function bindDragKnobs(root, { onValue } = {}) {
+  if (!root?.addEventListener) return () => {};
+  let drag = null;
+  const knobAt = (target) => {
+    const knob = target?.closest?.('.op-dragknob');
+    return knob && root.contains?.(knob) !== false ? knob : null;
+  };
+  const rangeOf = (knob) => ({
+    min: Number(knob.getAttribute('aria-valuemin')),
+    max: Number(knob.getAttribute('aria-valuemax')),
+    value: Number(knob.getAttribute('aria-valuenow'))
+  });
+  const bounded = (knob, value) => {
+    const { min, max } = rangeOf(knob);
+    return Math.min(max, Math.max(min, Math.round(value)));
+  };
+
+  const onPointerDown = (event) => {
+    if ((event.button ?? 0) !== 0) return;
+    const knob = knobAt(event.target);
+    if (!knob) return;
+    event.preventDefault?.();
+    knob.focus?.({ preventScroll: true });
+    const { value } = rangeOf(knob);
+    drag = { knob, pointerId: event.pointerId, startY: event.clientY, start: value, value };
+    knob.classList.add('is-dragging');
+    try { knob.setPointerCapture?.(event.pointerId); } catch (_) { /* the drag works without capture */ }
+  };
+
+  const onPointerMove = (event) => {
+    if (!drag || event.pointerId !== drag.pointerId) return;
+    const { min, max } = rangeOf(drag.knob);
+    const travel = (drag.startY - event.clientY) / (event.shiftKey ? DRAG_TRAVEL_PX * DRAG_FINE_FACTOR : DRAG_TRAVEL_PX);
+    const next = bounded(drag.knob, drag.start + travel * (max - min));
+    if (next === drag.value) return;
+    drag.value = next;
+    onValue?.(drag.knob, next, false);
+  };
+
+  const onPointerUp = (event) => {
+    if (!drag || (event && event.pointerId !== drag.pointerId)) return;
+    const ended = drag;
+    drag = null;
+    ended.knob.classList.remove('is-dragging');
+    if (ended.value !== ended.start) onValue?.(ended.knob, ended.value, true);
+  };
+
+  const onKeyDown = (event) => {
+    const knob = knobAt(event.target);
+    if (!knob) return;
+    const { min, max, value } = rangeOf(knob);
+    let next = null;
+    if (DRAG_KEY_STEPS[event.key] !== undefined) next = value + DRAG_KEY_STEPS[event.key];
+    else if (event.key === 'Home') next = min;
+    else if (event.key === 'End') next = max;
+    if (next === null) return;
+    event.preventDefault?.();
+    next = bounded(knob, next);
+    if (next !== value) onValue?.(knob, next, true);
+  };
+
+  const listeners = [
+    ['pointerdown', onPointerDown], ['pointermove', onPointerMove], ['pointerup', onPointerUp],
+    ['pointercancel', onPointerUp], ['lostpointercapture', onPointerUp], ['keydown', onKeyDown]
+  ];
+  for (const [type, listener] of listeners) root.addEventListener(type, listener);
+  return () => {
+    for (const [type, listener] of listeners) root.removeEventListener(type, listener);
+    drag = null;
+  };
+}
+
 /**
  * Update a rendered knob in place (arc, pointer, printed value).
  *
@@ -297,6 +388,9 @@ export function bindPearlLists(root) {
   const selectAt = (target) => {
     const select = target?.closest?.('select');
     if (!select || !select.closest('.omni-pearl')) return null;
+    // The plugin picker opens a list of its own, with its families and its
+    // folded brands (ui/pluginMenu.js); two lists would open at once.
+    if (select.classList?.contains('plugin-pick')) return null;
     return root.contains?.(select) === false ? null : select;
   };
   const anchorOf = (select) => select.closest('.op-select, .op-selector, .op-knob-mount');

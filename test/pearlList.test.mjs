@@ -197,3 +197,13 @@ test('a press elsewhere closes it, and unbinding leaves nothing listening', () =
   assert.equal(press(select), false, 'and the press goes back to the browser');
   assert.equal([...root.listeners.values()].every((items) => items.length === 0), true);
 });
+
+test('the plugin picker keeps its own list: the faceplate opens none over it', () => {
+  // ui/pluginMenu.js draws the picker's list, with its families and its folded
+  // brands. The VST page wears the faceplate since 2026-09-27, and a second
+  // list opening under the first is what a press on the picker would give.
+  const { select, press, list } = rig();
+  select.className = 'op-select-native plugin-pick';
+  assert.equal(press(select), false, 'the press is left to the plugin menu');
+  assert.equal(list(), null);
+});

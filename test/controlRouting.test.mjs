@@ -701,7 +701,7 @@ test('the VST node editor draws no Learn panel and arms nothing', async () => {
     }
   };
   hub.modules.get(node.id).mount(container);
-  assert.match(container.innerHTML, /Plugin Chain/, 'the page still draws its chain');
+  assert.match(container.innerHTML, /Plugin chain/, 'the page still draws its chain');
   assert.doesNotMatch(container.innerHTML, /Control Bindings/);
   assert.doesNotMatch(container.innerHTML, /data-minilab-surface/, 'no faceplate');
   assert.doesNotMatch(container.innerHTML, /data-control-action/, 'no Learn toolbar');

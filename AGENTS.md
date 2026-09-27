@@ -128,10 +128,11 @@ scope; here are the technical prohibitions:
   `npm run check` refuses a third stylesheet. See [DECISIONS.md](DECISIONS.md)
   D-012.
 
-  Today the arpeggiator and One Ring wear the faceplate (One Ring's page added
-  its section 5: key caps, LEDs, pads, rotary selectors); extending it is
-  decided editor by editor, not in bulk. By default, a new module uses
-  `base.css`.
+  Today every node page with controls wears the faceplate: the arpeggiator,
+  One Ring (its section 5: key caps, LEDs, pads, rotary selectors), and since
+  2026-09-27 the Mixer, the Morpher and the VST node (section 6: faders,
+  channel strips, rack units). Extending it is decided page by page, not in
+  bulk. By default, a new module uses `base.css`.
 
   Trap: `clip-editor.html` is its own window and loads `base.css` plus its own
   `clip-editor.css` — never the faceplate. Any `op-` class landing there would
@@ -148,7 +149,7 @@ scope; here are the technical prohibitions:
 
 ```bash
 npm install              # Electron + rcedit
-npm test                 # 1374 JS tests, node:test runner, ~10 s
+npm test                 # 1516 JS tests, node:test runner, ~10 s
 npm run check            # 15 rules (Node stdlib + the profile validator, ~1 s)
 npm run build:native     # native Release build (CMake + MSBuild)
 npm run build:native:tests
