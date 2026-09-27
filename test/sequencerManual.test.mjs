@@ -16,12 +16,20 @@ test('every section has its own id, and every link in the manual leads to one', 
   assert.doesNotMatch(MANUAL_SECTIONS.map((section) => section.html).join(''), /style=/, 'no inline style: the CSP would drop it (invariant 10)');
 });
 
+test('one convention: a legend names its part first, in bold, without an article', () => {
+  const items = MANUAL_SECTIONS.flatMap((section) => [...section.html.matchAll(/<ol class="mn-keys">([\s\S]*?)<\/ol>/g)])
+    .flatMap((list) => [...list[1].matchAll(/<li>([\s\S]*?)<\/li>/g)].map((item) => item[1]));
+  assert.ok(items.length >= 25);
+  for (const item of items) assert.match(item, /^(<span class="mn-btn">[^<]+<\/span> )?<b>/, `"${item.slice(0, 40)}" begins with its bold name`);
+});
+
 test('what the manual says is what the code does', () => {
   // A manual that promises a key the code does not answer is worse than none.
   const module = read('../src/renderer/js/modules/sequencer/sequencerModule.js');
   const editor = read('../src/renderer/js/clipEditor.js');
   const menu = read('../src/main/appMenu.js');
-  const text = MANUAL_SECTIONS.map((section) => section.html).join('');
+  // The words as read, without the bold and the keys around them.
+  const text = MANUAL_SECTIONS.map((section) => section.html).join('').replace(/<[^>]+>/g, '');
   const claims = [
     [/Splits the selected clips at the playhead/, module, /!command && key === 's'/],
     [/Duplicates the selection/, module, /command && key === 'd'/],
@@ -29,7 +37,7 @@ test('what the manual says is what the code does', () => {
     [/Makes the selected track taller/, module, /event\.altKey && !\(event\.ctrlKey/],
     [/Pans the view/, module, /event\.button !== 1/],
     [/A new note, one Snap step long, velocity 100/, editor, /durationPpq: snapLength\(\)[\s\S]{0,120}velocity: 100/],
-    [/change the rows' height/, editor, /event\.shiftKey \? \{ noteHeight/],
+    [/changes the rows' height/, editor, /event\.shiftKey \? \{ noteHeight/],
     [/This manual/, menu, /accelerator: 'F1'/]
   ];
   for (const [said, source, done] of claims) {

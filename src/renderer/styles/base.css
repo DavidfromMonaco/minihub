@@ -2388,6 +2388,8 @@ body ::-webkit-scrollbar-corner { background:transparent; }
 .manual-content p, .manual-content ul, .manual-content ol { max-width:860px; margin:8px 0; }
 .manual-content a[data-goto] { color:var(--accent); cursor:pointer; text-decoration:underline; }
 .manual-content kbd { display:inline-block; min-width:16px; padding:0 5px; border:1px solid #3a3c42; border-bottom-width:2px; border-radius:4px; background:#1f2024; color:var(--text); font:600 11px var(--mono); line-height:18px; text-align:center; }
+/* A button of the interface, drawn as the button (a letter or a symbol). */
+.manual-content .mn-btn { display:inline-block; min-width:18px; padding:0 5px; border:1px solid var(--border); border-radius:4px; background:#121315; color:var(--text); font:700 10.5px var(--font); line-height:18px; text-align:center; vertical-align:1px; }
 .mn-table { border-collapse:collapse; margin:10px 0; max-width:900px; width:100%; }
 .mn-table td { padding:6px 10px; border-top:1px solid var(--border); vertical-align:top; }
 .mn-table td:first-child { width:30%; color:var(--text); font-weight:600; white-space:nowrap; }
