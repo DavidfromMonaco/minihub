@@ -661,6 +661,22 @@ test('an audio clip draws its fades as Reaper does: a curve, and a handle where 
   assert.match(markup, /class="seq-fade-handle out" data-seq-left="160"/, 'and the fade-out that is not there has one in the corner');
 });
 
+test('a take recorded over another is drawn in its own lane, a clip alone keeps the track (D-066)', async () => {
+  const { hub } = await runtime();
+  hub.nodes.create('sequencer');
+  hub.modules.register(createSequencerModule(hub));
+  const view = captureContainer();
+  const track = hub.sequencer.model.addTrack('audio');
+  const take = (name, startPpq) => hub.sequencer.model.addAudioClip(track.id, { name, filePath: `C:/${name}.wav`, startPpq, lengthPpq: 8, durationSeconds: 4, trimEndSeconds: 4 });
+  take('Alone', 0); take('First', 16); take('Over', 20);
+  hub.modules.activate('sequencer', view.container);
+  const markup = view.container.innerHTML;
+  assert.match(markup, /aria-label="Alone"/);
+  assert.doesNotMatch(markup, /data-seq-left="0" data-seq-width="\d+" data-seq-top/, 'the clip alone is not laned');
+  assert.match(markup, /class="seq-clip audio[^"]*laned"[^>]*data-seq-top="3\.00" data-seq-height="28\.00" data-lanes="2"[^>]*aria-label="First"/, 'the first take in the upper half');
+  assert.match(markup, /data-seq-top="32\.00" data-seq-height="28\.00" data-lanes="2"[^>]*aria-label="Over"/, 'the one recorded over it below');
+});
+
 test('the shell transport seeks by bars, says where it is, and pauses without stopping a One Ring', async () => {
   const { api, hub } = await runtime();
   hub.nodes.create('sequencer');

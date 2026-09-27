@@ -457,13 +457,57 @@ export function fadeRegionAt(clip, zoom, bpm, width, x) {
   return '';
 }
 
-function clipMarkup(track, clip, zoom, selected, bpm = 120) {
+/**
+ * Clips that overlap on one track, laid out in lanes, as Reaper lays out
+ * layered takes (D-066): every take recorded over another stays in sight and
+ * in reach, and all of them still sound. A group is a run of clips that
+ * overlap one another; within it each clip takes the first lane free where
+ * it starts, and the group's lanes share the track's height. A clip that
+ * overlaps nothing keeps the whole height. Answers, by clip id,
+ * `{ lane, lanes }`. Exported for the tests.
+ */
+export function clipLanes(clips) {
+  const placed = new Map();
+  const ordered = [...(Array.isArray(clips) ? clips : [])].sort((a, b) => a.startPpq - b.startPpq);
+  let group = [];
+  let groupEnd = -Infinity;
+  const close = () => {
+    const ends = [];
+    const rows = group.map((clip) => {
+      let row = ends.findIndex((end) => end <= clip.startPpq + 1e-9);
+      if (row < 0) { row = ends.length; ends.push(0); }
+      ends[row] = clip.startPpq + clip.lengthPpq;
+      return row;
+    });
+    group.forEach((clip, index) => placed.set(clip.id, { lane: rows[index], lanes: ends.length }));
+    group = [];
+  };
+  for (const clip of ordered) {
+    if (group.length && clip.startPpq >= groupEnd - 1e-9) close();
+    group.push(clip);
+    groupEnd = group.length === 1 ? clip.startPpq + clip.lengthPpq : Math.max(groupEnd, clip.startPpq + clip.lengthPpq);
+  }
+  if (group.length) close();
+  return placed;
+}
+
+// The lane a clip is drawn in, as the attributes that place it: nothing for a
+// clip alone, which keeps the stylesheet's full height.
+function laneAttributes(place) {
+  if (!place || place.lanes < 2) return '';
+  const inner = TRACK_HEIGHT - 6;
+  const height = inner / place.lanes;
+  return ` data-seq-top="${(3 + place.lane * height).toFixed(2)}" data-seq-height="${Math.max(8, height - 1).toFixed(2)}" data-lanes="${place.lanes}"`;
+}
+
+function clipMarkup(track, clip, zoom, selected, bpm = 120, place = null) {
   const left = clip.startPpq * zoom;
   const width = Math.max(CLIP_MIN_PX, clip.lengthPpq * zoom);
   const content = clipContent(track, clip, zoom);
   const unavailable = track.type === 'audio' && clip.mediaAvailable === false;
   const title = unavailable ? `${clip.name} — ${clip.mediaError || 'Audio media is unavailable'}` : clip.name;
-  return `<button class="seq-clip ${track.type} ${selected ? 'selected' : ''} ${unavailable ? 'unavailable' : ''}" data-clip-id="${clip.id}" data-track-id="${track.id}" data-seq-left="${left}" data-seq-width="${width}" title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}">
+  const laned = place && place.lanes > 1;
+  return `<button class="seq-clip ${track.type} ${selected ? 'selected' : ''} ${unavailable ? 'unavailable' : ''} ${laned ? 'laned' : ''}" data-clip-id="${clip.id}" data-track-id="${track.id}" data-seq-left="${left}" data-seq-width="${width}"${laneAttributes(place)} title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}">
     <span class="seq-clip-resize start" data-resize="start" aria-hidden="true"></span><span class="seq-clip-name">${escapeHtml(clip.name)}</span>${unavailable ? '<span class="seq-clip-media-error">Missing media</span>' : content}${track.type === 'audio' && !unavailable ? fadeMarkup(clip, zoom, bpm, width) : ''}<span class="seq-clip-resize end" data-resize="end" aria-hidden="true"></span></button>`;
 }
 
@@ -1171,7 +1215,7 @@ export function createSequencerModule(hub) {
                 <div class="seq-track-level"><input data-track-control="volume" type="range" min="-60" max="6" step="0.1" value="${gainToDb(track.volume)}" aria-label="${escapeHtml(track.name)} level in dB"><output data-track-level-value>${formatGainDb(track.volume)}</output><input class="seq-track-pan" data-track-control="pan" type="range" min="-100" max="100" step="1" value="${Math.round((track.pan || 0) * 100)}" title="Pan (double-click: centre)" aria-label="${escapeHtml(track.name)} pan"><output data-track-pan-value>${formatPan(track.pan)}</output></div>
                 ${routeDots(routeStates(hub, track, sequencerNode.id))}
               </div>
-              <div class="seq-track-lane" data-seq-left="${TRACK_HEADER}" data-seq-width="${timelineWidth}">${laneMeterMarkup(track, controller.model.trackRegions(track), endPpq, zoom, visibleStart, visibleEnd)}${track.clips.filter((clip) => clip.startPpq + clip.lengthPpq >= visibleStart && clip.startPpq <= visibleEnd).map((clip) => clipMarkup(track, clip, zoom, selectedClipIds.has(clip.id), controller.tempo)).join('')}${automationMarkup(track, zoom, timelineWidth)}</div>
+              <div class="seq-track-lane" data-seq-left="${TRACK_HEADER}" data-seq-width="${timelineWidth}">${laneMeterMarkup(track, controller.model.trackRegions(track), endPpq, zoom, visibleStart, visibleEnd)}${((lanes) => track.clips.filter((clip) => clip.startPpq + clip.lengthPpq >= visibleStart && clip.startPpq <= visibleEnd).map((clip) => clipMarkup(track, clip, zoom, selectedClipIds.has(clip.id), controller.tempo, lanes.get(clip.id))).join(''))(clipLanes(track.clips))}${automationMarkup(track, zoom, timelineWidth)}</div>
             </div>`).join('') : `<div class="seq-empty" data-seq-top="${HEAD_HEIGHT}">Create a MIDI or audio track to begin.</div>`}
             <div class="seq-playhead" data-playhead data-seq-left="${TRACK_HEADER + controller.playheadPpq * zoom}" data-seq-height="${HEAD_HEIGHT + Math.max(1, state.tracks.length) * TRACK_HEIGHT}"><span class="seq-playhead-grip" data-playhead-grip title="Drag to move the playhead (Alt: off the grid)"></span></div>
           </div>

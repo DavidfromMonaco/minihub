@@ -27,8 +27,10 @@ asked 2026-09-27 (D-063).
   Overdub is Touch, Replace is Latch; a parameter turned during a take stops
   following its lane. Each lane is a yellow line across its track; a track's
   right-click takes a lane off. No hand-drawn points yet.
-- Next, agreed in principle: layered audio takes shown apart; editing the
-  controller moves and the automation points by hand.
+- Done (D-066): clips that overlap on a track are drawn in lanes, every
+  lane still sounding; a clip alone keeps the whole height.
+- Not started: editing the controller moves and the automation points by
+  hand; choosing which layered take sounds.
 
 **Fades on audio clips, as in Reaper — in the author's test** — asked
 2026-09-26 (D-062).

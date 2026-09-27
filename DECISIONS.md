@@ -3628,3 +3628,35 @@ recorded when its knob is turned with the mouse -- only bound knobs are.
 `drainAutomation` in `plugin_host.cpp`. Tests: `test/recordOverdub.test.mjs`,
 `testSequencerAutomationRecording` in the native core tests,
 `testRealVst3Automation` in the e2e suite.
+
+## D-066 — Takes recorded over one another are shown in lanes
+
+**Status**: in force · 2026-09-27 · **implemented**, checked by the JS tests;
+not yet seen in the application
+
+**Context** — The fourth part of the overdub request (D-063). An audio take
+in Overdub is laid over what the track holds and both sound, but the clips
+were drawn one on top of the other: the one underneath could be neither seen
+nor grabbed. A MIDI track can hold such piles too, from takes recorded before
+D-063.
+
+**Decision** — Clips that overlap on a track are drawn in lanes, as Reaper
+lays out layered takes. A group is a run of clips overlapping one another;
+in it each clip takes the first lane free where it starts, and the group's
+lanes share the track's height. A clip that overlaps nothing keeps the whole
+height, so a track without layered takes looks as it always did. Every lane
+still sounds: the lanes are how the takes are drawn, not which one plays.
+From three lanes on a clip shows its name alone.
+
+Not in this step: choosing which take sounds (Reaper's comping), a take's
+own mute, and taller tracks for many lanes.
+
+**Consequences** — Nothing moves in the model or the engine: the lanes are
+computed at each render from the clips' positions. Every gesture on a clip
+already measured the clip's own box, so a clip half as tall is grabbed,
+resized and faded as before.
+
+**Proof in the code** — `clipLanes` and `laneAttributes` in
+`modules/sequencer/sequencerModule.js`; `.seq-clip.laned` in `base.css`.
+Tests: `test/recordOverdub.test.mjs`, `test/sequencerUi.test.mjs` ("a take
+recorded over another is drawn in its own lane").

@@ -258,3 +258,22 @@ test('a take recorded on a knob reaches the arrangement, and the arrangement dra
   const { automationMarkup } = await import('../src/renderer/js/modules/sequencer/sequencerModule.js');
   assert.match(automationMarkup(track, 10, 100), /<path d="M0 0\.0 L0\.0 0\.0 L40\.0 100\.0 L100 100\.0"\/>/);
 });
+
+// D-066: layered takes shown apart.
+
+test('clips that overlap share their track in lanes, a clip alone keeps it whole', async () => {
+  const { clipLanes } = await import('../src/renderer/js/modules/sequencer/sequencerModule.js');
+  const lanes = clipLanes([
+    { id: 'alone', startPpq: 0, lengthPpq: 4 },
+    { id: 'first', startPpq: 8, lengthPpq: 8 },
+    { id: 'take', startPpq: 10, lengthPpq: 4 },
+    { id: 'after', startPpq: 14, lengthPpq: 4 },
+    { id: 'third', startPpq: 11, lengthPpq: 1 },
+    { id: 'later', startPpq: 18, lengthPpq: 2 }
+  ]);
+  assert.deepEqual(lanes.get('alone'), { lane: 0, lanes: 1 });
+  assert.deepEqual(['first', 'take', 'third', 'after'].map((id) => lanes.get(id)), [
+    { lane: 0, lanes: 3 }, { lane: 1, lanes: 3 }, { lane: 2, lanes: 3 }, { lane: 1, lanes: 3 }
+  ], 'a lane is taken again once the clip in it has ended');
+  assert.deepEqual(lanes.get('later'), { lane: 0, lanes: 1 }, 'touching the end of a group is not overlapping it');
+});
