@@ -14,8 +14,8 @@ VST3 parameters.
 ## Status
 
 A personal project under active development. The current build is
-**[MiniHub 0.9.0](https://github.com/DavidfromMonaco/minihub/releases/tag/v0.9.0)**,
-the first beta, available two ways: an installer, or a portable folder you unzip
+**[MiniHub 0.9.2](https://github.com/DavidfromMonaco/minihub/releases/tag/v0.9.2)**,
+a beta, available two ways: an installer, or a portable folder you unzip
 and replace. Both carry the same build, and both read the same settings,
 projects and recordings — none of which live inside the application folder
 (see [D-031](DECISIONS.md)). It also builds and runs from source, below.
